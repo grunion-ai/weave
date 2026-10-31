@@ -52,15 +52,6 @@ test('foldPlan: the middle folds in order until the rest and the button fit', ()
   assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 560, { more: 40 }), [1]);
 });
 
-test('foldPlan: given the current crumb\'s floor, the last-but-one folds once the middle is gone and first, it and the floor still overflow (Issue #765)', () => {
-  const { foldPlan } = globalThis.weaveBreadcrumbs;
-  assert.deepEqual(foldPlan([39, 39, 39, 39, 39, 400], 231, { more: 40, floor: 130 }), [1, 2, 3, 4], 'a 231px dock box keeps the first crumb and the current one');
-  assert.deepEqual(foldPlan([39, 39, 39, 39, 39, 400], 251, { more: 40, floor: 130 }), [1, 2, 3], 'a 251px box still keeps the last two');
-  assert.deepEqual(foldPlan([39, 39, 39, 39, 39, 400], 600, { more: 40, floor: 130 }), [], 'nothing folds when the trail fits');
-  assert.deepEqual(foldPlan([39, 400], 100, { floor: 130 }), [], 'two crumbs: nothing can fold');
-  assert.deepEqual(foldPlan([60, 80, 70, 120, 120, 400], 200, { from: 5, more: 40, floor: 130 }), [], 'the head kept by from never folds');
-});
-
 test('foldPlan: the first crumb and the last two never fold, whatever the box', () => {
   const { foldPlan } = globalThis.weaveBreadcrumbs;
   for (const n of [3, 4, 6, 12]) {

@@ -34,15 +34,15 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 
 | Kind | Settings | Organize | Share | Export | Delete |
 | --- | --- | --- | --- | --- | --- |
-| Table | | Move to space…, Duplicate | New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
-| Record (decks too) | | Duplicate | | Markdown, HTML, PDF | Move to trash |
+| Table | | Move to space…, Duplicate | Share…, New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
+| Record (decks too) | | Duplicate | Share… | Markdown, HTML, PDF | Move to trash |
 | Document section | | | | Markdown, Mermaid, HTML, PDF | |
 | Space | | | | | Move to trash |
 | Share page | | | | | Move to trash |
 | Workspace | | | Link preview before sign-in (switch) | | (none, Feature #297) |
 | Field (column header) | Field settings… | Insert field… | | | Move to trash |
 
-Share is never a menu row: every shareable page carries the Share button in its header, beside the ⋮, and it opens the one share pane (Issue #765).
+Share… keeps its current place while its redesign is parked.
 
 ## Delete
 

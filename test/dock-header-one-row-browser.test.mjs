@@ -58,10 +58,8 @@ if (s) {
       path: path ? { left: path.getBoundingClientRect().left, top: path.getBoundingClientRect().top, bottom: path.getBoundingClientRect().bottom } : null,
       expand: pick('.pose-btn'),
       close: pick('button[aria-label="Close"]'),
-      share: pick('.table-share-btn'),
       back: pick('.dock-back'),
       order: actions.map((n) => n.classList.contains('eye-btn') ? 'eye'
-        : n.classList.contains('table-share-btn') ? 'share'
         : n.classList.contains('pose-btn') ? 'expand'
         : n.getAttribute('aria-label') === 'Close' ? 'close'
         : n.querySelector?.('.dots-btn, [aria-haspopup]') || n.matches?.('.dots-btn, [aria-haspopup], .dropdown') ? 'menu' : n.className),
@@ -89,8 +87,7 @@ if (s) {
       near(r.row.top, r0.row.top, 'the crumb row keeps the top it had at rest');
       visibleOneRow(r, 'expand', r.expand);
       visibleOneRow(r, 'close', r.close);
-      visibleOneRow(r, 'share', r.share);
-      assert.deepEqual(r.order.filter((x) => ['eye', 'share', 'menu', 'expand', 'close'].includes(x)), ['eye', 'share', 'menu', 'expand', 'close'], `share sits before the ⋮, expand and close follow the eye (Issue #765): ${r.order}`);
+      assert.deepEqual(r.order.filter((x) => ['eye', 'expand', 'close'].includes(x)), ['eye', 'expand', 'close'], `expand and close follow the eye: ${r.order}`);
       assert.ok(r.order.indexOf('expand') === r.order.length - 2 && r.order.indexOf('close') === r.order.length - 1, `expand and close end the row, after the ⋮: ${r.order}`);
       await page.close();
     });
@@ -134,7 +131,7 @@ if (s) {
     const r = await read(page);
     assert.equal(r.dockHeads, 0);
     assert.equal(await page.locator('#dock .pose-btn').isVisible(), false, 'a full-screen dock has nothing to expand to');
-    for (const [name, ctl] of [['close', r.close], ['share', r.share]]) {
+    for (const [name, ctl] of [['close', r.close]]) {
       assert.ok(ctl?.inRow, `${name} sits in the crumb row`);
       assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1, `${name} is on screen: ${JSON.stringify(ctl)}`);
       assert.ok(ctl.reachable, `${name} answers a tap`);

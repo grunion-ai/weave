@@ -40,22 +40,6 @@ test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
   assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
-test('one share pane: every shareable header opens it, and no menu row or modal shares (Issue #765)', () => {
-  for (const fn of ['showHome', 'showSpace', 'tableChrome', 'renderEntityView', 'showView']) {
-    assert.match(fnBody(fn), /sharePanelButton\(\(\) => \(\{ kind: '(workspace|space|table|entity|view)'/, `${fn} puts the share button in its header`);
-  }
-  assert.equal(APP.includes('shareDialog'), false, 'the legacy share modal is gone');
-  assert.equal(APP.includes("label: 'Share…'"), false, 'no menu row says Share…');
-  assert.equal(ROWS_SRC.includes('share: {'), false, 'the registry builds no share row');
-  assert.deepEqual(globalThis.menuCore.definition('table').share, ['share-page', 'forms', 'create-link']);
-  assert.equal(globalThis.menuCore.definition('record').share, undefined, 'the record menu has no share section');
-  for (const gone of ['share-row', 'share-mode', 'share-url', 'share-chip', 'share-revoke', 'share-private', 'share-list', 'share-hint']) {
-    assert.doesNotMatch(CSS, new RegExp(`\\.${gone}\\b`), `style.css still styles .${gone}`);
-  }
-  assert.doesNotMatch(CSS, /(^|[^\w-])\.share-btn\b/m, 'the retired text button keeps no rule');
-  assert.match(fnBody('sharePanelButton'), /class: 'btn btn-sm btn-icon btn-ghost-secondary table-share-btn'/, 'the share button wears the ⋮ ghost style');
-});
-
 test('every delete row is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6)', () => {
   const kinds = globalThis.menuCore.kinds().filter((k) => globalThis.menuCore.definition(k).delete);
   assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'field']);
