@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tempDir } from './lib/temp.mjs';
 import { Weave, detachHubRegistry, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { createForm, getForm } from '../src/forms.js';
@@ -397,4 +397,114 @@ test('detach refuses live wiki references to obsolete local peer projections', (
   const before = [root, former, peer].map(w => JSON.stringify(w.state));
   assert.throws(() => detachHubRegistry(root, [former, peer]), /document reference.*orphan/i);
   assert.deepEqual([root, former, peer].map(w => JSON.stringify(w.state)), before);
+});
+
+for (const disk of [false, true]) test(`detach preserves registry attachments, page storage and revisions (${disk ? 'cross-directory disk' : 'memory'})`, () => {
+  const dir = disk ? tempDir('weave-detach-files-') : null;
+  if (disk) for (const name of ['root', 'member']) mkdirSync(join(dir, name));
+  const root = new Weave({ name: 'root', ...(disk ? { path: join(dir, 'root', 'root.db') } : {}) });
+  const member = new Weave({ name: 'member', ...(disk ? { path: join(dir, 'member', 'member.db') } : {}) });
+  const space = member.createSpace({ name: 'Work' });
+  const local = member.listEntities(member.getTable('System/Spaces').id).find(r => r.sysId === space.id);
+  const oldFile = member.attachFile(local.id, { name: 'local.txt', bytes: Buffer.from('local bytes') });
+  member.joinRegistry(root);
+  const row = root.listEntities(root.getTable('System/Spaces').id).find(r => r.sysId === space.id);
+  const file = root.attachFile(row.id, { name: 'page.html', mime: 'text/html', bytes: Buffer.from('<html>saved</html>') });
+  root.writeFileStorage(file.id, { answer: 'saved' });
+  const doc = root.addField(root.getTable('System/Spaces').id, { name: 'Notes', type: 'document' });
+  root.store.pushDocRevision({ entityId: row.id, fieldId: doc.id, at: '2026-01-01T00:00:00.000Z', text: 'history', actor: 'local' });
+  detachHubRegistry(root, [member]);
+  assert.equal(member.readFile(oldFile.id).bytes.toString(), 'local bytes');
+  assert.equal(member.readFile(file.id).bytes.toString(), '<html>saved</html>');
+  assert.deepEqual(member.readFileStorage(file.id).items, { answer: 'saved' });
+  const revisions = member.store.listDocRevisions(row.id, doc.id);
+  assert.equal(revisions.length, 1);
+  assert.equal(member.store.getDocRevision(row.id, doc.id, revisions[0].seq).text, 'history');
+  detachHubRegistry(root, [member]);
+  assert.equal(member.store.listDocRevisions(row.id, doc.id).length, 1);
+  if (disk) {
+    const path = member.store.path;
+    member.store.close();
+    const reopened = new Weave({ path });
+    assert.equal(reopened.readFile(file.id).bytes.toString(), '<html>saved</html>');
+    assert.deepEqual(reopened.readFileStorage(file.id).items, { answer: 'saved' });
+    assert.equal(reopened.store.listDocRevisions(row.id, doc.id).length, 1);
+    reopened.store.close();
+    root.store.close();
+  }
+});
+
+test('detach stages sidecar writes and preserves source on a failed destination transaction', () => {
+  const dir = tempDir('weave-detach-sidecar-');
+  const root = new Weave({ name: 'root', path: join(dir, 'root.db') });
+  const member = new Weave({ name: 'member', path: join(dir, 'member.db') });
+  member.createSpace({ name: 'Work' });
+  member.joinRegistry(root);
+  const row = root.listEntities(root.getTable('System/Spaces').id).find(r => r.sysId === member.getSpace('Work').id);
+  const file = root.attachFile(row.id, { name: 'page.html', mime: 'text/html', bytes: Buffer.from('page') });
+  root.writeFileStorage(file.id, { saved: 'yes' });
+  const save = member.store.save.bind(member.store);
+  deferMigrations();
+  detachHubRegistry(root, [member]);
+  assert.equal(member.store.getFileStorage(file.id), null);
+  member.store.save = () => { throw new Error('destination transaction failed'); };
+  assert.throws(() => runDeferredMigrations(), /destination transaction failed/);
+  assert.equal(member.store.getFileStorage(file.id), null);
+  member.store.save = save;
+  root.store.close();
+  member.store.close();
+  const reopenedRoot = new Weave({ path: join(dir, 'root.db') });
+  const reopenedMember = new Weave({ path: join(dir, 'member.db') });
+  assert.equal(reopenedRoot.getEntity(row.id).deletedAt, undefined);
+  detachHubRegistry(reopenedRoot, [reopenedMember]);
+  assert.deepEqual(reopenedMember.readFileStorage(file.id).items, { saved: 'yes' });
+  assert.equal(reopenedMember.readFile(file.id).bytes.toString(), 'page');
+  reopenedRoot.store.pushUndo({ kind: 'file-attach', entityId: row.id, data: { fileId: file.id } });
+  const result = reopenedRoot.undo();
+  assert.equal(result.undone[0].skipped, 'entity moved to its workspace');
+  assert.throws(() => reopenedRoot.restoreEntity(row.id), /moved to its workspace/);
+  reopenedRoot.deleteFile(row.id, file.id);
+  assert.equal(reopenedMember.readFile(file.id).bytes.toString(), 'page');
+  reopenedRoot.store.close();
+  reopenedMember.store.close();
+});
+
+test('detach refuses missing attachment bytes before changing either workspace', () => {
+  const { root, member } = setup();
+  const row = root.listEntities(root.getTable('System/Spaces').id).find(r => r.sysId === member.getSpace('Work').id);
+  const file = root.attachFile(row.id, { name: 'lost.txt', bytes: Buffer.from('lost') });
+  delete root.state.fileBlobs[file.id];
+  const before = [root, member].map(w => JSON.stringify(w.state));
+  assert.throws(() => detachHubRegistry(root, [member]), /file blob.*missing/);
+  assert.deepEqual([root, member].map(w => JSON.stringify(w.state)), before);
+});
+
+test('detach snapshots foreign actors without granting them local identity', () => {
+  const { root, member } = setup();
+  const owner = root.createAccount({ name: 'source-owner', role: 'architect' });
+  root.actor = `account:${owner.account.id}`;
+  const row = root.listEntities(root.getTable('System/Spaces').id).find(r => r.sysId === member.getSpace('Work').id);
+  const doc = root.addField(row.dbId, { name: 'Notes', type: 'document' });
+  root.addComment(row.id, { text: 'source note', author: root.actor });
+  root.store.pushDocRevision({ entityId: row.id, fieldId: doc.id, at: '2026-01-01T00:00:00Z', actor: root.actor, text: 'old' });
+  detachHubRegistry(root, [member]);
+  assert.equal(member.getEntity(row.id).comments.at(-1).author, 'from root: source-owner');
+  assert.equal(member.store.listDocRevisions(row.id, doc.id)[0].actor, 'from root: source-owner');
+  assert.equal(member.listAccounts().some(a => a.id === owner.account.id), false);
+});
+
+test('detach retries failed destination sidecars before retiring source rows', () => {
+  const { root, member } = setup();
+  const row = root.listEntities(root.getTable('System/Spaces').id).find(r => r.sysId === member.getSpace('Work').id);
+  const file = root.attachFile(row.id, { name: 'page.html', mime: 'text/html', bytes: Buffer.from('saved') });
+  root.writeFileStorage(file.id, { saved: 'yes' });
+  const set = member.store.setFileStorage.bind(member.store);
+  member.store.setFileStorage = () => { throw new Error('sidecar failed'); };
+  assert.throws(() => detachHubRegistry(root, [member]), /sidecar failed/);
+  assert.ok(!root.state.entities[row.id].deletedAt);
+  member.store.setFileStorage = set;
+  detachHubRegistry(root, [member]);
+  assert.deepEqual(member.readFileStorage(file.id).items, { saved: 'yes' });
+  assert.equal(member.readFile(file.id).bytes.toString(), 'saved');
+  assert.ok(root.state.entities[row.id].deletedAt);
 });

@@ -9,7 +9,7 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
@@ -996,6 +996,12 @@ function detachedRegistryState(root, member, members) {
   const fieldMap = new Map();
   const rowMap = new Map();
   const optionMap = new Map();
+  const moveActor = actor => {
+    const match = /^account:([0-9a-f-]{36})(.*)$/.exec(String(actor ?? ''));
+    if (!match || Object.hasOwn(state.meta.accounts ?? {}, match[1])) return actor;
+    const owner = [root, ...members].find(w => Object.hasOwn(w.state.meta.accounts ?? {}, match[1]));
+    return `from ${owner?.state.meta.name ?? 'legacy workspace'}: ${owner?.state.meta.accounts[match[1]].name ?? 'removed account'}${match[2]}`;
+  };
   const sourceRows = Object.values(source.entities);
   const field = (t, name) => Object.values(t.fields).find(f => f.name === name);
   const owner = row => {
@@ -1120,8 +1126,17 @@ function detachedRegistryState(root, member, members) {
     const prior = entities[original.id];
     const row = structuredClone(original);
     row.values = { ...(prior?.values ?? {}), ...row.values };
+    for (const key of ['files', 'comments', 'activity']) row[key] = [...new Map([...(prior?.[key] ?? []), ...(row[key] ?? [])].map(item => [item.id ?? JSON.stringify(item), item])).values()];
     row.docs = { ...(prior?.docs ?? {}), ...Object.fromEntries(Object.entries(row.docs ?? {}).map(([id, value]) => [id, rewriteDoc(value)])) };
     entities[row.id] = row;
+  }
+  for (const row of Object.values(entities)) {
+    for (const key of ['createdBy', 'modifiedBy']) if (row[key] != null) row[key] = moveActor(row[key]);
+    for (const comment of row.comments ?? []) comment.author = moveActor(comment.author);
+    for (const activity of row.activity ?? []) {
+      activity.actor = moveActor(activity.actor);
+      if (activity.detail?.author != null) activity.detail.author = moveActor(activity.detail.author);
+    }
   }
   state.entities = entities;
   for (const t of Object.values(state.tables)) {
@@ -1144,7 +1159,7 @@ function detachedRegistryState(root, member, members) {
   }
   delete state.meta.registry;
   state.meta.localRegistry = { source: source.meta.id, rows: [...selectedIds] };
-  return { state, ids: selectedIds };
+  return { state, ids: selectedIds, rowMap, fieldMap, rewriteDoc, moveActor };
 }
 
 export const inviteUrl = (origin, code) => `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(code)}`;
@@ -1165,6 +1180,7 @@ export class Weave {
   #dirty = new Set();
   #dirtyAll = false;
   #held = false;
+  #detachedStorage = null;
 
   #schemaVersion = null;
   #scales = new Map();
@@ -1621,7 +1637,32 @@ export class Weave {
     }
     if (HELD) this.#held = true;
     else {
-      this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+      const pending = this.#detachedStorage;
+      if (pending) for (const [id, bytes] of pending.blobs) {
+        const path = this.#blobPath(id);
+        if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
+        if (existsSync(path)) continue;
+        mkdirSync(dirname(path), { recursive: true });
+        const temporary = `${path}.${uuid()}.tmp`;
+        try { writeFileSync(temporary, bytes, { flush: true }); renameSync(temporary, path); }
+        finally { rmSync(temporary, { force: true }); }
+      }
+      this.store.batch(() => {
+        if (pending) {
+          for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
+          for (const group of pending.revisions) {
+            const restored = new Map();
+            const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
+            for (const revision of group.rows) {
+              const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
+              const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
+              restored.set(revision.seq, seq);
+            }
+          }
+        }
+        this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+      });
+      this.#detachedStorage = null;
       this.#dirty.clear();
       this.#dirtyAll = false;
     }
@@ -4368,6 +4409,48 @@ export class Weave {
       plan.state = check.state;
       HELD?.delete(check);
     }
+    for (const plan of plans) {
+      const pending = { blobs: new Map(), storage: new Map(), revisions: [] };
+      const collect = (origin, row, entityId, mapField = id => id) => {
+        for (const file of row.files ?? []) {
+          for (const id of [file.id, file.preview?.id].filter(Boolean)) {
+            const bytes = origin.#readBlob(id);
+            if (!bytes) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: file blob ${id} is missing`, 'invalid');
+            const existing = pending.blobs.get(id) ?? plan.w.#readBlob(id);
+            if (existing && !existing.equals(bytes)) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: conflicting file blob ${id}`, 'invalid');
+            pending.blobs.set(id, bytes);
+          }
+          const storage = origin.store.getFileStorage(file.id);
+          if (storage) {
+            const existing = pending.storage.get(file.id) ?? plan.w.store.getFileStorage(file.id);
+            if (existing && existing.json !== storage.json) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: conflicting page storage ${file.id}`, 'invalid');
+            pending.storage.set(file.id, storage);
+          }
+        }
+        for (const f of Object.values(origin.state.tables[row.dbId]?.fields ?? {})) {
+          if (f.type !== 'document') continue;
+          const rows = origin.store.listDocRevisions(row.id, f.id, { limit: 200 }).reverse().map(r => ({ ...origin.store.getDocRevision(row.id, f.id, r.seq), actor: plan.moveActor(r.actor), text: plan.rewriteDoc(origin.store.getDocRevision(row.id, f.id, r.seq).text) }));
+          if (rows.length) pending.revisions.push({ entityId, fieldId: mapField(f.id), rows });
+        }
+      };
+      for (const id of plan.ids) collect(this, this.state.entities[id], id);
+      for (const row of Object.values(plan.w.state.entities)) {
+        if (!plan.rowMap.has(row.id) && !Object.keys(row.docs ?? {}).some(id => plan.fieldMap.has(id))) continue;
+        collect(plan.w, row, plan.rowMap.get(row.id) ?? row.id, id => plan.fieldMap.get(id) ?? id);
+      }
+      const groups = new Map();
+      for (const group of pending.revisions) {
+        const key = `${group.entityId}:${group.fieldId}`;
+        const signatures = groups.get(key) ?? new Set(plan.w.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => {
+          const revision = plan.w.store.getDocRevision(group.entityId, group.fieldId, r.seq);
+          return JSON.stringify([revision.at, revision.actor, revision.text]);
+        }));
+        for (const r of group.rows) signatures.add(JSON.stringify([r.at, r.actor, r.text]));
+        if (signatures.size > 200) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: combined document history exceeds 200 revisions`, 'invalid');
+        groups.set(key, signatures);
+      }
+      plan.storage = pending;
+    }
     const rollups = [];
     for (const t of Object.values(this.state.tables)) {
       if (!t.system) continue;
@@ -4386,7 +4469,9 @@ export class Weave {
       for (const { w } of plans) { HELD.delete(w); HELD.add(w); }
       HELD.add(this);
     }
-    for (const { w, state } of plans) {
+    for (const w of resumed) if (w.#detachedStorage) { if (HELD) HELD.add(w); w.save(); }
+    for (const { w, state, storage } of plans) {
+      w.#detachedStorage = storage;
       w.state = state;
       w.registryHost = null;
       w.members = [];
@@ -4402,6 +4487,10 @@ export class Weave {
       delete t.fields[id];
       t.fieldOrder = t.fieldOrder.filter(fieldId => fieldId !== id);
     }
+    this.state.meta.detachedRegistry = {
+      rows: [...new Set([...(this.state.meta.detachedRegistry?.rows ?? []), ...moving])],
+      files: [...new Set([...(this.state.meta.detachedRegistry?.files ?? []), ...[...moving].flatMap(id => (this.state.entities[id]?.files ?? []).flatMap(f => [f.id, f.preview?.id].filter(Boolean)))])],
+    };
     this.state.meta.localRegistry = 1;
     this.save();
     return { migrated: plans.length };
@@ -4744,6 +4833,7 @@ export class Weave {
         const summary = { kind: entry.kind, entity: `${entry.table}#${entry.publicId}`, name: entry.name, ts: entry.ts };
         const e = this.state.entities[entry.entityId];
         if (!e) { undone.push({ ...summary, skipped: 'entity purged' }); continue; }
+        if (this.state.meta.detachedRegistry?.rows.includes(e.id)) { undone.push({ ...summary, skipped: 'entity moved to its workspace' }); continue; }
         const db = this.state.tables[e.dbId];
         switch (entry.kind) {
           case 'create':
@@ -7134,6 +7224,7 @@ export class Weave {
 
   restoreEntity(id) {
     const e = this.getEntity(id);
+    if (this.state.meta.detachedRegistry?.rows.includes(e.id)) throw new WeaveError('This registry row moved to its workspace', 'forbidden');
     {
       const db = this.state.tables[e.dbId];
       const binned = db?.system === 'fields' && e.deletedAt && !this.#inMetaSync ? this.#trashedFieldAnywhere(e.sysId) : null;
@@ -9046,6 +9137,7 @@ export class Weave {
   }
 
   #dropBlob(id) {
+    if (this.state.meta.detachedRegistry?.files.includes(id)) return;
     if (this.state.fileBlobs) delete this.state.fileBlobs[id];
     if (this.state.meta.logo?.id === id) return;
     for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
