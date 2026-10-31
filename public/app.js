@@ -3095,6 +3095,7 @@ function entityAvatarEl(entity, db, refresh) {
   });
 }
 function relationChipEl(f, s, { onRemove = null } = {}) {
+  if (s.locked) return el('span', { class: 'k k-rel k-locked', title: 'A row in a private space you are not a member of' }, iconEl('lucide:lock', 'wv-icon wv-icon-xs'), el('span', {}, s.name || 'Private'));
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [], ...(s.avatar ? { avatar: s.avatar } : {}) };
   return viewChipEl(v, {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
