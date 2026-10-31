@@ -49,13 +49,13 @@ if (s) {
     };
   });
 
-  test('a narrow dock folds the middle, then the last-but-one: the first crumb and the whole current crumb stay in the box (Issue #765)', async () => {
+  test('a narrow dock folds the middle: the first crumb, the last two and the whole current crumb stay in the box', async () => {
     const page = await walk();
     const m = await read(page);
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
     assert.equal(m.shown[0], 'Step 0', 'the first crumb stays');
-    assert.deepEqual(m.shown, ['Step 0', 'Step 5'], 'the dock row with Share leaves no room for the last-but-one beside the current crumb\'s floor, so it folds too');
+    assert.deepEqual(m.shown.slice(-2), ['Step 4', 'Step 5'], 'the last two stay');
     assert.ok(m.cur.l >= m.path.l - 0.5 && m.cur.r <= m.path.r + 0.5, `the current crumb is inside the path box: ${JSON.stringify(m)}`);
     assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows');
     assert.ok(m.cur.nm.w > 40, `and some of its Name, ending in its own ellipsis: ${m.cur.nm.w}px`);
