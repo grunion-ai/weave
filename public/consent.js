@@ -24,14 +24,17 @@
 
   const state = { key: null, user: null, ph: null, loading: false, on: false, queue: [], banner: null };
 
+  const jar = () => {
+    try { return document.cookie.split('; '); } catch { return []; }
+  };
   const choice = () => {
-    const jar = document.cookie.split('; ');
-    if (jar.includes(`${NAME}=granted`)) return 'granted';
-    if (jar.includes(`${NAME}=denied`)) return 'denied';
+    const cookies = jar();
+    if (cookies.includes(`${NAME}=granted`)) return 'granted';
+    if (cookies.includes(`${NAME}=denied`)) return 'denied';
     return null;
   };
   const remember = (value) => {
-    document.cookie = consentCookie(value, { hostname: location.hostname, https: location.protocol === 'https:' });
+    try { document.cookie = consentCookie(value, { hostname: location.hostname, https: location.protocol === 'https:' }); } catch {}
   };
 
   function send(method, args) {
