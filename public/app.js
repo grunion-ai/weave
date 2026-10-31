@@ -736,6 +736,19 @@ function applyPaneWidth(panel, pane) {
   const px = Number(localStorage.getItem(pane.key));
   pinPane(panel, px >= pane.min ? px : 0);
 }
+function fitPanes() {
+  const app = $('#app');
+  app.classList.remove('pane-over', 'table-yield');
+  if ($('#dock').hidden || dockCoversScreen.matches) return;
+  const tight = () => app.scrollWidth > app.clientWidth;
+  if (tight() && !($('#view-pane').hidden && $('#share-pane').hidden)) app.classList.add('pane-over');
+  if (tight()) app.classList.add('table-yield');
+}
+let fitPanesFrame = 0;
+const fitPanesSoon = () => { fitPanesFrame ||= requestAnimationFrame(() => { fitPanesFrame = 0; fitPanes(); }); };
+const paneWatch = new ResizeObserver(fitPanesSoon);
+for (const id of ['#main', '#share-pane', '#dock', '#side', '#view-pane']) paneWatch.observe($(id));
+addEventListener('resize', fitPanesSoon);
 function wirePaneGutter(panel, pane) {
   const grip = $(pane.grip);
   grip.hidden = false;
