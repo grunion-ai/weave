@@ -1,0 +1,1 @@
+- Opening a workspace link from the start page, the workspace switcher or an invite while signed out now lands on the sign-in page, and signing in goes on to the workspace. Before, the browser showed a raw "Sign in first" error with no way back. A signed-in person whose account cannot open that workspace gets a page that says so, with a link to their own workspaces (Issue #1284).

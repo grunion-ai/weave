@@ -71,6 +71,25 @@ if (s) {
     } finally { await ctx.close(); }
   });
 
+  test('a signed-out start link signs in on the setup pane and goes on to the workspace (Issue #1284)', async () => {
+    idp.signInBrowserAs({ sub: 'user_eve' });
+    const ctx = await s.browser.newContext({ viewport: { width: 1280, height: 860 } });
+    const page = await ctx.newPage();
+    try {
+      page.on('pageerror', (err) => { throw err; });
+      const res = await page.goto(`${base}/api/start/open/harbor`);
+      const landed = new URL(res.url());
+      assert.equal(landed.pathname, '/start', `the start link lands on the setup page, not ${res.url()}`);
+      assert.equal(landed.searchParams.get('next'), '/api/start/open/harbor', 'the link rides along');
+      await page.waitForSelector('#clerk-pane [data-fake-clerk="signin"]');
+      const inn = await options(page);
+      assert.equal(inn.forceRedirectUrl, '/api/auth/oidc/start?start=1&next=%2Fapi%2Fstart%2Fopen%2Fharbor', 'a sign-in goes on to the link');
+      await page.click('#clerk-pane [data-fake-clerk="google"]');
+      await page.waitForURL((u) => u.hostname === 'harbor.localhost' || u.pathname.startsWith('/w/harbor/'));
+      assert.equal(idp.seen.signInPages, 0, 'the provider\'s hosted sign-in page never showed');
+    } finally { await ctx.close(); }
+  });
+
   test('sign-up from a workspace link walks onboarding (Issue #994)', async () => {
     idp.signInBrowserAs({ sub: 'user_new', email: 'new@example.com', email_verified: true });
     const page = await arrive();

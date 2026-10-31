@@ -65,6 +65,7 @@ const prefersHtml = (accept) => {
   return (q['text/html'] ?? 0) > 0 && (q['text/html'] ?? 0) > (q['application/json'] ?? 0);
 };
 
+const START_LINK = /^\/api\/start\/open\/[^/?#\\]+(?:\?[^#\\]*)?$/;
 const wallPageHtml =(authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -987,7 +988,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
         const back = rx.searchParams?.get('next');
-        const workspaceReturn = back == null || (sameOriginPath(back, originFor(rx), null) === back && /^\/w\/[^/?#]+\//.test(back));
+        const workspaceReturn = back == null || (sameOriginPath(back, originFor(rx), null) === back && (/^\/w\/[^/?#]+\//.test(back) || START_LINK.test(back)));
         if (page && !workspaceReturn) {
           const q = new URLSearchParams(rx.searchParams);
           q.delete('next');
@@ -1160,7 +1161,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
               }
               if (c.start) {
-                const back = /^\/start(?:[?#]|$)/.test(c.next) ? c.next : '/start';
+                const back = /^\/start(?:[?#]|$)/.test(c.next) || START_LINK.test(c.next) ? c.next : '/start';
                 return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               }
               const root = hub.get(hub.defaultName);
@@ -1260,6 +1261,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key } } : {}) }, { 'Cache-Control': 'no-store' });
+          const navigation = ['GET', 'HEAD'].includes(rx.method) && (rx.header('sec-fetch-mode') === 'navigate' || prefersHtml(rx.header('accept')));
+          if (!logins.length && navigation) {
+            const q = rx.searchParams?.toString() ?? '';
+            const link = `${path}${q ? `?${q}` : ''}`;
+            return { status: 302, headers: { Location: START_LINK.test(link) ? `/start?next=${encodeURIComponent(link)}` : '/start', 'Cache-Control': 'no-store' }, body: '' };
+          }
           if (!logins.length) return deny(401, 'Sign in first');
           const found = findWorkspaces(logins);
           const { hubRoot, accountIn } = found;
@@ -1287,6 +1294,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if ((m = path.match(/^\/api\/start\/open\/([^/]+)$/)) && rx.method === 'GET') {
             const w = hub.bySlug(String(m[1]).toLowerCase());
             const account = w && accountIn(w);
+            if (!account && navigation) {
+              const ws = w ? w.state.meta.name : String(m[1]);
+              return out(403, renderRefusalPage({ title: `No access to ${ws}`, lines: [`The account you signed in with has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces.'], actions: [{ href: '/start?pick=1', label: 'Find your workspaces' }] }),
+                { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+            }
             if (!account) return deny(403, 'This sign-in opens no account on that workspace');
             const engine = account.viaRoot ? hubRoot : w;
             const host = String(w.state.meta.name).toLowerCase();
