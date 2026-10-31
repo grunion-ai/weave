@@ -110,7 +110,7 @@ test('routes: each workspace holds its own session; signing out of one leaves th
     await b.signIn('alpha');
     const everywhere = await b.call('POST', '/w/beta/api/auth/logout?everywhere=1');
     assert.equal(everywhere.status, 200);
-    assert.equal(b.jar.size, 0, 'sign out everywhere clears every session this browser holds');
+    assert.deepEqual([...b.jar.keys()].filter((k) => k.startsWith('wv_session')), [], 'sign out everywhere clears every session this browser holds');
     assert.equal(s.alpha.w.listSessions('kyle').length + s.beta.w.listSessions('kyle').length, 0);
   } finally { s.stop(); }
 });

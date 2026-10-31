@@ -181,3 +181,28 @@ test('template REST and MCP refuse a protected target with no local accounts', a
     assert.deepEqual(acme.listSpaces().map(s => s.id), before);
   } finally { server.close(); }
 });
+
+test('a scoped target architect session cannot manage the workspace through another workspace', async () => {
+  const root = new Weave();
+  root.updateWorkspace({ name: 'source' });
+  root.createSpace({ name: 'CRM', template: true });
+  root.createTable({ space: 'CRM', name: 'Deal' });
+  const source = root.createAccount({ name: 'source-owner', role: 'architect' }).account;
+  const target = new Weave();
+  target.updateWorkspace({ name: 'target' });
+  target.createSpace({ name: 'Ops' });
+  const scoped = target.createAccount({ name: 'scoped', role: 'architect', space: 'Ops' }).account;
+  target.setRequireAuth(true);
+  const { server } = await startServer(root, { port: 0, workspaces: { target } });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const Cookie = `wv_session_${root.state.meta.id}=${root.createSession(source.id).token}; wv_session_${target.state.meta.id}=${target.createSession(scoped.id).token}`;
+  try {
+    const before = target.listSpaces().map(s => s.id);
+    const copied = await post(`${base}/api/spaces/CRM/use`, { workspace: 'target' }, { Cookie });
+    assert.equal(copied.status, 403);
+    const removed = await fetch(`${base}/api/workspaces/target`, { method: 'DELETE', headers: { Cookie } });
+    assert.equal(removed.status, 403);
+    assert.deepEqual(target.listSpaces().map(s => s.id), before);
+    assert.ok(!target.state.meta.deletedAt);
+  } finally { server.close(); }
+});

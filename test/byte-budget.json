@@ -18,15 +18,15 @@
     },
     "/app.js": {
       "gzip": 165090,
-      "br": 125937
+      "br": 132450
     },
     "/billing.js": {
       "gzip": 2099,
       "br": 1784
     },
     "/board-core.js": {
-      "gzip": 1838,
-      "br": 1630
+      "gzip": 2077,
+      "br": 1844
     },
     "/breadcrumbs.js": {
       "gzip": 1331,
@@ -205,8 +205,8 @@
       "br": 1275
     },
     "/start.js": {
-      "gzip": 12917,
-      "br": 11513
+      "gzip": 13623,
+      "br": 12145
     },
     "/starter-core.js": {
       "gzip": 16413,
@@ -221,8 +221,8 @@
       "br": 2653
     },
     "/style.css": {
-      "gzip": 40868,
-      "br": 33428
+      "gzip": 41000,
+      "br": 33600
     },
     "/term-core.js": {
       "gzip": 1499,
@@ -243,11 +243,12 @@
   },
   "raised": {
     "/setup-core.js": "PR #347 (onboarding recovery) grew setup-core.js after PR #359 measured it: gzip 1,313 to 1,641, br 1,173 to 1,460, budget set 5% above",
-    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above",
+    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above. Issue #1280 (gallery fit modes) added FITS, FRAMES, FLOWS, fitOf, frameOf and flowOf: gzip 1,750 to 1,978, br 1,552 to 1,756. Budget set 5% above",
     "/phone-row.js": "PR #388 (Issue #1032) added hitBoxes, the 44 px phone list hit geometry that replaced the padded lookup in app.js: gzip 1,039 to 1,585, br 899 to 1,433. Budget set 5% above",
-    "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above",
-    "/app.js": "PR #490 relanded after PR #494 grew app.js past the budget PR #359 measured: gzip 157,089 to 157,228 served, budget set 5% above at 165,090; br unchanged",
+    "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above. Issue #1286 (entity pane floor) added the #dock 360px floor and the pane-over and table-yield states on top of Issues #1280, #1285 and Feature #349: the PR gate measured br 33,457 against 33,428. Budget set to gzip 41,000, br 33,600",
+    "/app.js": "PR #490 relanded after PR #494 grew app.js past the budget PR #359 measured: gzip 157,089 to 157,228 served, budget set 5% above at 165,090; br unchanged. Issue #1280 (gallery fit modes) grew br from 125,937 budget to 126,142 served; br budget set 5% above at 132,450",
     "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
-    "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes."
+    "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes.",
+    "/start.js": "PR #541 (Issue #1284) added startLink and returnOf so a signed-out start link signs in and goes on to the workspace: gzip 12,917 to 12,974, br 11,513 to 11,566. Budget set 5% above"
   }
 }

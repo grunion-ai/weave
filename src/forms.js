@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { WeaveError } from './store.js';
+import { unrestricted } from './access.js';
 import { renderBugReport, SYMPTOM_FIELD, MAX_EVENTS, BUG_CATEGORIES } from './bugreport.js';
 
 export const DOCS_WORKSPACE = 'weave';
@@ -286,6 +287,10 @@ export function createForm(w, settings = {}) {
 }
 
 export function ensureBugForm(docs) {
+  return unrestricted(() => ensureBugFormIn(docs));
+}
+
+function ensureBugFormIn(docs) {
   const have = listForms(docs).find((f) => f.kind === 'Bug report');
   if (have) return have;
   return createForm(docs, {
@@ -455,6 +460,10 @@ function plainRow(form, picked, actor, server) {
 }
 
 export function submitForm(w, ref, input = {}, options = {}) {
+  return unrestricted(() => submitFormIn(w, ref, input, options));
+}
+
+function submitFormIn(w, ref, input = {}, options = {}) {
   const owner = getForm(w, ref).owner;
   let before;
   try {

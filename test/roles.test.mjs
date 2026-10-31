@@ -193,7 +193,7 @@ test('account role changes preserve identity and immediately constrain tokens, s
   const changed = await call('PATCH', `/api/accounts/${before.id}`, { token: t.architect, body: { role: 'observer' } });
   assert.equal(changed.status, 200);
   assert.deepEqual(changed.json, { id: before.id, role: 'observer' });
-  assert.deepEqual(w.listAccounts().find(a => a.id === before.id), { ...before, role: 'observer' });
+  assert.deepEqual(w.listAccounts().find(a => a.id === before.id), { ...before, role: 'observer', seatRole: 'observer' });
   assert.equal(w.verifyToken(t.editor).role, 'observer');
   assert.equal(w.verifySession(session.token).role, 'observer');
   for (const auth of [{ token: t.editor }, { cookie: session.token }]) {
