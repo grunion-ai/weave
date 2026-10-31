@@ -346,3 +346,55 @@ test('detach tombstones a stale Fields row for a missing field without dropping 
   assert.equal(saved.values[member.findField(member.getTable('System/Fields'), 'Preserved note').id], 'Prior field context');
   assert.deepEqual(member.registryReport().problems, []);
 });
+
+const formerHub = () => {
+  const root = new Weave({ name: 'root' });
+  const former = new Weave({ name: 'former' });
+  const peer = new Weave({ name: 'peer' });
+  peer.createSpace({ name: 'Product' });
+  peer.createAccount({ name: 'Peer person', role: 'architect' });
+  peer.joinRegistry(former);
+  const users = former.getTable('System/Users');
+  const user = former.listEntities(users.id)[0];
+  former.addField(users.id, { name: 'Historical note', type: 'text' });
+  former.updateEntity(user.id, { 'Historical note': 'Retain this context' });
+  return { root, former, peer, users, user, join: () => { former.joinRegistry(root); peer.joinRegistry(root); } };
+};
+
+test('detach archives obsolete local peer projections including Users and Workspaces', () => {
+  const { root, former, peer, user, join } = formerHub();
+  join();
+  const correct = root.listEntities(root.getTable('System/Users').id).find(r => r.sysId === user.sysId);
+  detachHubRegistry(root, [former, peer]);
+  assert.equal(former.listEntities(former.getTable('System/Users').id).length, 0);
+  assert.equal(former.listEntities(former.getTable('System/Workspaces').id).length, 1);
+  assert.equal(former.listEntities(former.getTable('System/Spaces').id).some(row => row.sysId === peer.getSpace('Product').id), false);
+  assert.ok(former.state.entities[user.id].deletedAt);
+  assert.equal(former.state.entities[user.id].values[former.findField(former.getTable('System/Users'), 'Historical note').id], 'Retain this context');
+  assert.ok(!peer.state.entities[correct.id].deletedAt);
+  assert.equal(peer.listEntities(peer.getTable('System/Users').id).length, 1);
+});
+
+test('detach refuses live custom relations to obsolete local peer projections', () => {
+  const { root, former, peer, users, user, join } = formerHub();
+  former.createSpace({ name: 'Work' });
+  const table = former.createTable({ space: 'Work', name: 'Task' });
+  former.addRelation(table.id, { name: 'Owner', targetDb: users.id, cardinality: 'many-to-one' });
+  former.createEntity(table.id, { name: 'Keep owner', values: { Owner: user.id } });
+  join();
+  const before = [root, former, peer].map(w => JSON.stringify(w.state));
+  assert.throws(() => detachHubRegistry(root, [former, peer]), /orphan.*reference|reference.*orphan/i);
+  assert.deepEqual([root, former, peer].map(w => JSON.stringify(w.state)), before);
+});
+
+test('detach refuses live wiki references to obsolete local peer projections', () => {
+  const { root, former, peer, user, join } = formerHub();
+  former.createSpace({ name: 'Work' });
+  const table = former.createTable({ space: 'Work', name: 'Task' });
+  const task = former.createEntity(table.id, { name: 'Keep owner' });
+  former.setDoc(task.id, `[[${user.id}]]`);
+  join();
+  const before = [root, former, peer].map(w => JSON.stringify(w.state));
+  assert.throws(() => detachHubRegistry(root, [former, peer]), /document reference.*orphan/i);
+  assert.deepEqual([root, former, peer].map(w => JSON.stringify(w.state)), before);
+});

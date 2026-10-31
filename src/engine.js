@@ -4270,7 +4270,7 @@ export class Weave {
     return null;
   }
 
-  #retireDetachedOrphans(peers) {
+  #retireDetachedOrphans(peers, sourceIds) {
     const structural = new Set(['workspaces', 'spaces', 'tables', 'fields', 'views']);
     const exists = (state, kind, id) => kind === 'spaces' ? Object.hasOwn(state.spaces, id)
       : kind === 'tables' ? Object.hasOwn(state.tables, id)
@@ -4280,8 +4280,17 @@ export class Weave {
     const rows = Object.values(this.state.entities);
     const orphans = new Set();
     for (const row of rows) {
-      const kind = this.state.tables[row.dbId]?.system;
-      if (row.deletedAt || !row.sysId || !structural.has(kind) || exists(this.state, kind, row.sysId)) continue;
+      const table = this.state.tables[row.dbId];
+      const kind = table?.system;
+      if (row.deletedAt || !kind) continue;
+      let workspaceId = this.#wsIdOfRow(row);
+      if (!workspaceId && kind === 'forms') {
+        const target = row.values[this.#sysField(table, 'Table')?.id];
+        const targetRow = this.state.entities[Array.isArray(target) ? target[0] : target];
+        if (targetRow) workspaceId = this.#wsIdOfRow(targetRow);
+      }
+      if (!sourceIds.has(row.id) && workspaceId && workspaceId !== this.state.meta.id) { orphans.add(row.id); continue; }
+      if (!row.sysId || !structural.has(kind) || exists(this.state, kind, row.sysId)) continue;
       if (peers.some(w => exists(w.state, kind, row.sysId))) throw new WeaveError(`Cannot detach ${this.state.meta.name}: registry subject ${row.sysId} still exists in another workspace or before migration`, 'invalid');
       if (kind === 'tables' && rows.some(e => e.dbId === row.sysId && !e.deletedAt)) throw new WeaveError(`Cannot detach ${this.state.meta.name}: orphan table ${row.sysId} still contains live rows`, 'invalid');
       orphans.add(row.id);
@@ -4345,7 +4354,7 @@ export class Weave {
       const check = new Weave();
       check.state = structuredClone(plan.state);
       check.#dirtyAll = true;
-      check.#retireDetachedOrphans([this, ...members]);
+      check.#retireDetachedOrphans([this, ...members], plan.ids);
       check.#ensureMetaTables();
       for (const table of check.listTables()) {
         for (const f of Object.values(table.fields)) {
