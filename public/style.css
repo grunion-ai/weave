@@ -2748,8 +2748,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .group-head.shut .group-fold svg { transform: none; }
 .group-head-field { font-size: var(--fs-meta); letter-spacing: .06em; text-transform: uppercase; color: var(--tblr-secondary); font-weight: 500; }
 .group-count { color: var(--tblr-secondary); font-weight: 400; font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; }
-.group-crumb, .group-summary { color: var(--tblr-secondary); font-weight: 400; font-size: var(--fs-secondary); white-space: nowrap; }
-.group-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.group-crumb, .group-summary { min-width: 0; color: var(--tblr-secondary); font-weight: 400; font-size: var(--fs-secondary); white-space: normal; overflow-wrap: anywhere; }
+.group-summary { font-variant-numeric: tabular-nums; }
 .wv-grid tr.group-head.lv-0 > td { position: sticky; top: var(--wv-thead-h, 0px); z-index: 3; }
 #main .table-wrap.wv-fit .wv-grid tr.group-head.lv-0 > td { top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px) + var(--wv-thead-h, 0px)); }
 #main .wv-list > .list-group > .list-group-head { position: sticky; top: calc(var(--wv-view-h, 0px) - var(--wv-pane-pad, 0px)); z-index: 2; background: var(--tblr-bg-surface); }
