@@ -43,6 +43,7 @@ test('a deleted workspace leaves the hub list and its URL answers 404, while the
     assert.ok(trashed?.deletedAt, 'the trashed workspace shows with ?deleted=1');
 
     assert.equal((await api('GET', '/w/scratch/api/health')).status, 404, 'deleted is gone from the user\'s side');
+    assert.ok(!(await api('GET', '/api/trash')).data.items.some((i) => i.name === 'scratch'), 'no Trash lists its registry row');
     assert.equal((await api('POST', '/api/workspaces/scratch/restore')).status, 200, 'the operator can still restore it');
     assert.equal((await api('GET', '/w/scratch/api/health')).status, 200, 'and it answers again');
   });

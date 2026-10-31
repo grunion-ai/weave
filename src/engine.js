@@ -6239,7 +6239,7 @@ export class Weave {
     const dbId = dbRef == null ? null : this.getTable(dbRef).id;
     const mine = (e) => { const inWs = this.#inWorkspace(this.state.tables[e.dbId] ?? {}, workspace); return !inWs || inWs(e); };
     return Object.values(this.state.entities)
-      .filter((e) => e.deletedAt && (dbId == null || e.dbId === dbId) && mine(e))
+      .filter((e) => e.deletedAt && (dbId == null || e.dbId === dbId) && mine(e) && this.state.tables[e.dbId]?.system !== 'workspaces')
       .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
       .map((e) => this.readEntity(e.id));
   }
