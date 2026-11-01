@@ -2187,16 +2187,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (tables != null) {
             return out(200, weave.universalSearch(q, { limit, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
           }
-          if (rx.searchParams.get('all')) {
-            const results = [];
-            for (const [name, w] of hub.entries()) {
-              if (!canOpen(w)) continue;
-              for (const hit of w.universalSearch(q, { limit })) {
-                results.push({ workspace: name, ...hit });
-              }
-            }
-            return out(200, Weave.capRows(results, limit));
-          }
           return out(200, weave.universalSearch(q, { limit }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());

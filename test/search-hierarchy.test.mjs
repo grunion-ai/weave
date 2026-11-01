@@ -46,7 +46,7 @@ test('an id hit still ranks on top once hierarchy is kept', () => {
   assert.equal(hits[0].publicId, 2);
 });
 
-test('GET /api/search keeps hierarchy past the limit, scoped and across workspaces', async () => {
+test('GET /api/search keeps hierarchy past the limit and answers for one workspace', async () => {
   const { w: uno } = crowded();
   uno.state.meta.name = 'uno';
   const { w: other } = crowded('Issue');
@@ -60,14 +60,7 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
     assert.equal(scoped.filter((h) => h.kind === 'entity').length, 4);
 
     const all = await (await fetch(`${base}/api/search?q=issue&all=1&limit=4`)).json();
-    assert.ok(all.some((h) => h.workspace === 'issues' && h.kind === 'workspace'), 'all: the named workspace is returned');
-    for (const ws of ['uno', 'issues']) {
-      assert.ok(all.some((h) => h.workspace === ws && h.kind === 'table'), `all: ${ws}'s table is returned`);
-      assert.ok(all.some((h) => h.workspace === ws && h.kind === 'view'), `all: ${ws}'s view is returned`);
-    }
-    assert.equal(all.filter((h) => h.kind === 'entity').length, 4, 'all: limit bounds rows across workspaces');
-    const view = all.find((h) => h.workspace === 'issues' && h.kind === 'view');
-    assert.match(view.url, /^\/w\/issues\/#\/view\//);
+    assert.deepEqual(all, scoped, 'all=1 no longer reaches the other workspace');
   } finally {
     server.close();
   }
