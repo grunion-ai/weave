@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, browserShards, mainPlan, BROWSER_FILES_PER_SHARD, BROWSER_SHARD_CAP, UNIT_SHARDS } from '../scripts/ci-test.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
@@ -77,8 +77,45 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
-  assert.match(workflow, /max-parallel: 6/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+});
+
+test('the main browser lane takes one shard per BROWSER_FILES_PER_SHARD files, so a growing suite never walks a shard into the job timeout', () => {
+  assert.equal(browserShards(0), 1);
+  assert.equal(browserShards(1), 1);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD), 1);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD + 1), 2);
+  assert.equal(browserShards(348), 8);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD * BROWSER_SHARD_CAP), BROWSER_SHARD_CAP);
+  assert.equal(browserShards(100000), BROWSER_SHARD_CAP);
+  assert.ok(BROWSER_FILES_PER_SHARD >= 20 && BROWSER_FILES_PER_SHARD <= 60, 'four shards of about 87 files ran a median 12 and a p90 19.5 of the 20 minutes the test manager allows');
+});
+
+test('the main plan of this repository sizes its browser lane by the suite and covers every file once', async () => {
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const files = testFiles();
+  const { unit, browser } = lanes(files);
+  const shards = mainPlan();
+  assert.deepEqual(shards.flatMap((s) => s.files).sort(), [...files].sort());
+  assert.equal(shards.filter((s) => s.lane === 'unit').length, Math.min(UNIT_SHARDS, unit.length));
+  assert.equal(shards.filter((s) => s.lane === 'browser').length, browserShards(browser.length));
+});
+
+test('main unit shards skip the browser download, as the PR unit shards already do', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
+  assert.match(job, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@/);
+  assert.match(job, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
+});
+
+test('max-parallel runs every shard the main plan can make at once, so no shard queues behind another of its own run', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
+  const parallel = job.match(/max-parallel: (\d+)\n/);
+  assert.ok(parallel, 'the tests job declares max-parallel');
+  assert.ok(Number(parallel[1]) >= UNIT_SHARDS + BROWSER_SHARD_CAP, `max-parallel ${parallel[1]} queues shards of a plan that can make ${UNIT_SHARDS + BROWSER_SHARD_CAP}`);
 });
 
 test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {

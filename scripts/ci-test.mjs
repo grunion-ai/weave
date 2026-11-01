@@ -7,8 +7,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
+export const UNIT_SHARDS = 2;
+export const BROWSER_FILES_PER_SHARD = 45;
+export const BROWSER_SHARD_CAP = 12;
+export const browserShards = count => Math.max(1, Math.min(BROWSER_SHARD_CAP, Math.ceil(count / BROWSER_FILES_PER_SHARD)));
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export function plan(files, groups, weight, unitCount = 2, browserCount = 4) {
+export function plan(files, groups, weight, unitCount = UNIT_SHARDS, browserCount = 4) {
   if (!files.length) throw new Error('Empty CI selection');
   if (JSON.stringify([...files].sort()) !== JSON.stringify([...groups.unit, ...groups.browser].sort())) throw new Error('Lane coverage mismatch');
   return Object.entries(groups).flatMap(([lane, selected]) => {
@@ -119,9 +123,10 @@ export function newestAttempts(results) {
   return [...newest.values()];
 }
 
-function currentPlan() {
-  const files = testFiles(ROOT);
-  return plan(files, lanes(files, ROOT), weightOf);
+export function mainPlan(root = ROOT) {
+  const files = testFiles(root);
+  const groups = lanes(files, root);
+  return plan(files, groups, file => statSync(join(root, file)).size, UNIT_SHARDS, browserShards(groups.browser.length));
 }
 
 function currentPrPlan() {
@@ -134,7 +139,7 @@ async function main() {
   const [mode, id, out = 'ci-results'] = process.argv.slice(2);
   const pr = mode?.startsWith('pr-');
   const command = pr ? mode.slice(3) : mode;
-  const manifest = pr ? currentPrPlan() : currentPlan();
+  const manifest = pr ? currentPrPlan() : mainPlan();
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
   if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
   if (command === 'aggregate') {
