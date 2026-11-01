@@ -614,10 +614,12 @@ truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
 holding more lines than it shows (`line-clamp`), and an input or textarea whose
 value or placeholder runs past its box (`field-value`, `field-placeholder`).
 Text inside an overflow auto or scroll container, visually hidden text and
-invisible elements are not cut-offs. The current breadcrumb's name is the one
-ellipsis the probe skips by design (Issue #1159): the title row under every
-crumb row shows the full name, so the crumb keeps a fixed share and gives way
-before any other crumb shrinks. A finding's fingerprint is its kind plus its
+invisible elements are not cut-offs. Two ellipses are skipped by design. The
+current breadcrumb's name (Issue #1159): the title row under every crumb row
+shows the full name, so the crumb keeps a fixed share and gives way before any
+other crumb shrinks. A state chip leading a phone grid row (Issue #1152): a
+dense row keeps a chip on one line, and the record page one tap away wraps the
+whole name. A finding's fingerprint is its kind plus its
 selector with every number folded to `#`, and `|phone` for the phone cell.
 
 ```bash
@@ -641,6 +643,23 @@ only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
 lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.
+
+### Line endings
+
+`DESIGN.md` under Text gives every text one role. The same page function checks the endings when it is called as `probe({ root, endings: true })`, and it reports three kinds that have no baseline, because each one is a defect on its first appearance (Issue #1306):
+
+| Kind | What it found |
+| --- | --- |
+| `sliced-line` | A line partly inside and partly outside the box that clips it, by more than 2 px |
+| `lone-word` | A single word on the last line of a paragraph, when the word before it would fit beside it |
+| `unreadable` | A cut value with no way to read it: no `title` holding the full value and no Show more beside it |
+
+```bash
+node scripts/line-endings.mjs                       # both cells, all three densities
+node scripts/line-endings.mjs --cell phone --density spacious   # reproduce one
+```
+
+`PROBES.endings` in the state catalog walks the journeys, rest states and overlays of the `prose` seed: the messy seed, a description whose paragraph gaps fall inside the fold, and a long guide. A state with a grid, list or board runs at `compact`, `comfortable` and `spacious`; one without runs once. `test/line-endings-gate-browser.test.mjs` runs each of the six cells on its own and fails on any finding.
 
 ### Mandatory onboarding verification
 

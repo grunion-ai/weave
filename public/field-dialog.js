@@ -684,9 +684,10 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
   });
 
   const describable = !(isEdit && existing.type === 'view');
+  const DESC_HINT = 'What this field holds and how it is written — shown under the label and to agents in the schema';
   const descInput = el('textarea', {
     name: 'description', class: 'form-control field-desc', rows: '2',
-    placeholder: 'What this field holds and how it is written — shown under the label and to agents in the schema',
+    placeholder: DESC_HINT, title: DESC_HINT, 'aria-label': 'Description',
   });
   descInput.value = fieldDescription(existing) || '';
   const gridWrap = el('div', { class: 'full' });

@@ -7,14 +7,16 @@ export const LAYOUTS = ['table', 'list', 'board'];
 export const OPENS = ['journey', 'rest', 'overlay', 'hover', 'drag'];
 export const CELLS = ['desktop', 'phone'];
 export const THEMES = ['light', 'dark'];
+export const DENSITIES = ['compact', 'comfortable', 'spacious'];
 
 export const ROWS = 400;
 const ROW = '.wv-grid tbody tr.entity-row';
 const BOTH = ['desktop', 'phone'];
 const DESKTOP = ['desktop'];
 const PHONE = ['phone'];
-const GRID = ['grid', 'messy'];
-const MESSY = ['messy'];
+const GRID = ['grid', 'messy', 'prose'];
+const MESSY = ['messy', 'prose'];
+const PROSE = ['prose'];
 const A11Y = ['a11y'];
 const TOUCH = ['touch'];
 
@@ -131,6 +133,24 @@ function touch(weave) {
   return { table: issues.id, row: rows[0].id, ...views(weave, issues) };
 }
 
+export const WRAPPED_DESCRIPTION = [
+  'Weave keeps the record of the work.',
+  'A long paragraph sits between two gaps so that it wraps onto a second line at every width a reader opens this page at, from a phone held upright to a wide desktop window with the sidebar open beside it.',
+  'The third paragraph carries the fifth line of the fold, and it keeps running well past that line so the Show more control has something left to reveal when a reader asks for the rest of it, however wide the page happens to be. It runs on through a second sentence that adds nothing except length, then a third that does the same, so that even the widest description column in the app has to give this paragraph several lines before it can finally end here.',
+  'A fourth paragraph stays below the fold.',
+].join('\n\n');
+
+function prose(weave) {
+  const handles = messy(weave);
+  weave.updateWorkspace({ description: WRAPPED_DESCRIPTION });
+  const space = weave.createSpace({ name: 'Handbook', description: WRAPPED_DESCRIPTION });
+  const guide = weave.createTable({ space: 'Handbook', name: 'Guide', description: WRAPPED_DESCRIPTION });
+  weave.addField(guide, { name: 'Summary', type: 'text', config: { description: 'What the guide covers and who reads it, written so the note under the label runs past the width of a phone and then some more.' } });
+  const page = weave.createEntity(guide, { name: 'How text behaves', values: { Summary: 'A plain text value long enough that it runs past any column the grid gives it at every density, so the cell has to end it somewhere a reader can recover from.' } }).id;
+  weave.setDoc(page, Array.from({ length: 6 }, (_, i) => `Paragraph ${i + 1} of a guide that a reader sits down with. ${'Each sentence adds a few more words than the last, and the words run on until the paragraph wraps. '.repeat(i + 1)}Then it stops.`).join('\n\n'));
+  return { ...handles, prose: { space: space.id, table: guide.id, row: page } };
+}
+
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f3a8d40000000049454e44ae426082', 'hex');
 export const UNBROKEN = 'Antidisestablishmentarianism'.repeat(4);
 const SINK_STATE = 'Waiting on the vendor to countersign the renewal';
@@ -185,7 +205,7 @@ function sink(weave) {
 
 const withSink = (build) => (weave) => ({ ...build(weave), sink: sink(weave) });
 
-export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touch }).map(([name, build]) => [name, withSink(build)]));
+export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touch, prose }).map(([name, build]) => [name, withSink(build)]));
 
 const at = (sel) => () => sel;
 const tap = (page, sel, cell) => {
@@ -214,6 +234,12 @@ export const ROUTES = {
   'sink-row': {
     url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.sink.table}?e=${c.sink.row}` : `${c.base}/#/entity/${c.sink.row}`),
     ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Status"]' : '.entity-fields .fieldrow[data-field="Status"]'),
+  },
+  'prose-space': { url: (c) => `${c.base}/#/space/${c.prose.space}`, ready: at('.view-desc .view-desc-body') },
+  'prose-table': { url: (c) => `${c.base}/#/table/${c.prose.table}`, ready: at(ROW) },
+  'prose-row': {
+    url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.prose.table}?e=${c.prose.row}` : `${c.base}/#/entity/${c.prose.row}`),
+    ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Summary"]' : '.entity-fields .fieldrow[data-field="Summary"]'),
   },
   'entity-page': { url: (c) => `${c.base}/#/entity/${c.entityId}`, ready: at('.vditor-ir [contenteditable="true"]'), editor: true },
   map: { url: (c) => `${c.base}/#/map`, ready: at('#main .view-title') },
@@ -288,7 +314,7 @@ const JOURNEY_STATES = [
     setup: table,
     async run(page, ctx) {
       const id = ctx.ids[2];
-      await page.click(`tr[data-eid="${id}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${id}"] td[data-field="Name"] :is(input, .text-dressed)`);
       await page.keyboard.type(`Task 2, edited ${Date.now() % 1e6}`);
       const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
       await page.keyboard.press('Tab');
@@ -600,13 +626,21 @@ const TOUCH_STATES = [
 const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
   { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
-  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
+  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1161] } },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1152, 1161], touch: [1165, 1166, 1167, 1168] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1161], touch: [1165, 1166, 1167, 1168] } },
 ];
 
-export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];
+const PROSE_STATES = [
+  { name: 'prose-home', route: 'home', open: 'rest', layout: null },
+  { name: 'prose-space', route: 'prose-space', open: 'rest', layout: null },
+  { name: 'prose-table', route: 'prose-table', open: 'rest', layout: 'table' },
+  { name: 'prose-row', route: 'prose-row', open: 'rest', layout: null, roots: ['#dock'] },
+  { name: 'prose-table-description', route: 'prose-table', open: 'overlay', layout: 'table', root: '.view-desc', act: (page, ctx, cell) => tap(page, '.view-title-row .desc-info', cell), close: async () => {} },
+].map((s) => ({ ...s, cells: BOTH, seeds: PROSE }));
+
+export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES, ...PROSE_STATES];
 
 export const PROBES = {
   cutoff: { seed: 'messy', opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
@@ -614,6 +648,7 @@ export const PROBES = {
   budgets: { seed: 'grid', opens: ['journey'], cells: CELLS, themes: ['light'] },
   a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: ['desktop'], themes: THEMES },
   touch: { seed: 'touch', opens: ['rest', 'overlay'], cells: ['phone'], themes: THEMES },
+  endings: { seed: 'prose', opens: ['journey', 'rest', 'overlay'], cells: CELLS, themes: ['light'], densities: DENSITIES },
 };
 
 export const seedsOf = (s) => s.seeds ?? Object.keys(SEEDS);
@@ -621,6 +656,7 @@ export const cellsOf = (s) => s.cells ?? ['desktop'];
 export const themesOf = (s) => s.themes ?? THEMES;
 export const rootsOf = (s) => s.roots ?? (s.root ? [s.root] : ['#main']);
 export const readyOf = (s, cell) => s.ready ?? ROUTES[s.route].ready(cell);
+export const densitiesOf = (s, p) => (p.densities && s.layout && s.open !== 'overlay' ? p.densities : [null]);
 
 export const HOLD_PLATFORMS = ['darwin', 'linux'];
 export function plan(probe) {
@@ -630,7 +666,8 @@ export function plan(probe) {
     if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
-        out.push({ state, cell, theme, hold: state.hold?.[`${probe}|${cell}|${process.platform}`] ?? state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null });
+        const hold = state.hold?.[`${probe}|${cell}|${process.platform}`] ?? state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null;
+        for (const density of densitiesOf(state, p)) out.push({ state, cell, theme, density, hold });
       }
     }
   }
