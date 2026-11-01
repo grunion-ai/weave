@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch, styleOf } from './lib/browser.mjs';
 
-let uno, ada, grace, unoAda;
+let uno, ada, grace;
 const s = await launch('account chip', (root) => {
   root.updateWorkspace({ name: 'root' });
   root.createSpace({ name: 'Docs' });
@@ -14,7 +14,7 @@ const s = await launch('account chip', (root) => {
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Agent' });
   const issuer = 'https://idp.weave.test';
-  unoAda = uno.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
+  const unoAda = uno.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
   root.redeemIdentityInvite(root.linkIdentity(ada.id, { issuer }).code, { issuer, subject: 'user_ada' });
   uno.redeemIdentityInvite(uno.linkIdentity(unoAda.id, { issuer }).code, { issuer, subject: 'user_ada' });
   uno.setRequireAuth(true);
@@ -27,7 +27,6 @@ if (s) {
   const open = async (path, { account = ada, theme } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     if (account) await ctx.addCookies([{ name: `wv_session_${root.state.meta.id}`, value: root.createSession(account.id).token, url: base }]);
-    if (account === ada) await ctx.addCookies([{ name: `wv_session_${uno.state.meta.id}`, value: uno.createSession(unoAda.id).token, url: base }]);
     if (theme) await ctx.addInitScript((t) => { try { localStorage.setItem('weave-theme', t); } catch {} }, theme);
     const page = await ctx.newPage();
     await page.goto(base + path, { waitUntil: 'load' });

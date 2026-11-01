@@ -153,19 +153,19 @@ const hub = () => {
   return { root, members };
 };
 
-test('workspaces: each workspace stores its own hub ordering (Feature #284)', () => {
+test('workspaces: the hub order is the stored order, and moveWorkspace rewrites it from any member (Feature #284)', () => {
   const { root, members } = hub();
   const h = createWorkspaceHub(root, { workspaces: members });
-  const names = workspace => h.list({ workspace }).map(x => x.name);
-  assert.deepEqual(names(root), ['root', 'alpha', 'beta', 'gamma']);
-  h.move('gamma', 1, { workspace: root });
-  assert.deepEqual(names(root), ['root', 'gamma', 'alpha', 'beta']);
-  h.move('alpha', 3, { workspace: members.beta });
-  assert.deepEqual(names(members.beta), ['root', 'beta', 'gamma', 'alpha']);
-  assert.deepEqual(names(root), ['root', 'gamma', 'alpha', 'beta']);
-  assert.deepEqual(names(members.gamma), ['root', 'alpha', 'beta', 'gamma']);
-  assert.throws(() => h.move('nowhere', 0, { workspace: root }), /not found/);
-  assert.throws(() => h.move('beta', -2, { workspace: root }), /non-negative integer/);
+  const names = () => h.list().map((x) => x.name);
+  assert.deepEqual(names(), ['root', 'alpha', 'beta', 'gamma'], 'today\'s order is the starting order');
+  assert.deepEqual(root.workspaceOrder().map((x) => x.name), names(), 'the engine reads the same order');
+  root.moveWorkspace('gamma', 1);
+  assert.deepEqual(names(), ['root', 'gamma', 'alpha', 'beta']);
+  members.beta.moveWorkspace('alpha', 3);
+  assert.deepEqual(names(), ['root', 'gamma', 'beta', 'alpha'], 'a member writes the order on the hub root');
+  assert.deepEqual(members.gamma.workspaceOrder().map((x) => x.name), names());
+  assert.throws(() => root.moveWorkspace('nowhere', 0), /not found/);
+  assert.throws(() => root.moveWorkspace('beta', -2), /position is a whole number/);
 });
 
 test('workspaces: the order survives a hub restart (Feature #284)', () => inTempDir((dir) => {
@@ -180,13 +180,13 @@ test('workspaces: the order survives a hub restart (Feature #284)', () => inTemp
     w.store.close?.();
   }
   let { root, h } = open();
-  assert.deepEqual(h.list({ workspace: root }).map((x) => x.name), ['root', 'alpha', 'beta', 'gamma']);
-  h.move('gamma', 0, { workspace: root });
-  const want = h.list({ workspace: root }).map((x) => x.name);
+  assert.deepEqual(h.list().map((x) => x.name), ['root', 'alpha', 'beta', 'gamma']);
+  root.moveWorkspace('gamma', 0);
+  const want = h.list().map((x) => x.name);
   assert.deepEqual(want, ['gamma', 'root', 'alpha', 'beta']);
   for (const [, w] of h.entries()) w.store.close?.();
   ({ root, h } = open());
-  assert.deepEqual(h.list({ workspace: root }).map((x) => x.name), want);
+  assert.deepEqual(h.list().map((x) => x.name), want);
   for (const [, w] of h.entries()) w.store.close?.();
 }));
 
@@ -246,7 +246,7 @@ test('MCP reads and writes the same order through the same engine calls (Feature
     assert.ok(props(name).includes('position'), `${name} takes position`);
   }
   const { root, members } = hub();
-  const h = createWorkspaceHub(root, { workspaces: members });
+  createWorkspaceHub(root, { workspaces: members });
   root.createSpace({ name: 'Alpha' });
   root.createSpace({ name: 'Bravo' });
   for (const name of ['One', 'Two']) root.createTable({ space: 'Alpha', name });
@@ -257,11 +257,9 @@ test('MCP reads and writes the same order through the same engine calls (Feature
   assert.deepEqual(schema[1].tables.map((t) => t.name), ['Two', 'One']);
   dispatchTool(root, 'weave_move_table', { db: 'Alpha/One', space: 'Bravo', position: 0 });
   assert.deepEqual(tablesIn(root, 'Bravo'), ['One']);
-  const caller = { role: 'architect', moveWorkspace: (ref, position) => h.move(ref, position, { workspace: members.alpha }), workspaceOrder: () => h.list({ workspace: members.alpha }) };
-  const moved = dispatchTool(members.alpha, 'weave_workspace', { action: 'move', name: 'beta', position: 0 }, { caller });
+  const moved = dispatchTool(members.alpha, 'weave_workspace', { action: 'move', name: 'beta', position: 0 });
   assert.deepEqual(moved.workspaces.map((x) => x.name), ['beta', 'root', 'alpha', 'gamma']);
-  const read = dispatchTool(members.alpha, 'weave_workspace', { action: 'order' }, { caller });
-  assert.deepEqual(h.list({ workspace: root }).map(x => x.name), ['root', 'alpha', 'beta', 'gamma']);
+  const read = dispatchTool(root, 'weave_workspace', { action: 'order' });
   assert.deepEqual(read.workspaces.map((x) => x.name), ['beta', 'root', 'alpha', 'gamma']);
 });
 
@@ -277,7 +275,7 @@ test('CLI reads and writes the same order (Feature #284)', () => inTempDir((dir)
   assert.deepEqual(cli('table', 'list').filter((n) => !n.startsWith('System/')), ['Bravo/Two', 'Alpha/Three', 'Alpha/One']);
   const order = cli('workspace', 'order');
   assert.equal(order.length, 1, 'a lone workspace file is its own registry');
-  assert.equal(order[0].name, 'ws');
+  assert.equal(order[0].position, 0);
   const hubDir = join(dir, 'hub');
   mkdirSync(hubDir);
   const root = new Weave({ path: join(hubDir, 'root.db') });

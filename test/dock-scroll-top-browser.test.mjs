@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, atRest } from './lib/browser.mjs';
+import { launch } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words on the line to read as prose and to fill the dock past its bottom edge.`).join('\n\n');
 
@@ -32,8 +32,7 @@ if (s) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await dockedName(page, 'Acme Working Capital');
     await page.waitForSelector('#dock .entity-body');
-    await atRest(page.locator('#dock'));
-    await page.waitForFunction(() => document.querySelector('#dock .entity-body')?.textContent.includes('Acme paragraph 60'));
+    await page.waitForTimeout(300);
     return page;
   };
 

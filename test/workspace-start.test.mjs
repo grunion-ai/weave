@@ -29,7 +29,7 @@ const hit = (port, host, method, path, { cookie, body, token } = {}) => new Prom
 });
 const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 
-async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null, openSignup = { on: false }, kyleWorkspaces = [] } = {}) {
+async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null } = {}) {
   const idp = await startIdp();
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const dir = tempDir('weave-start-');
@@ -42,7 +42,6 @@ async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, ro
     w.state.meta.name = name;
     if (name === 'acme') pin(w, 'eve', 'editor', 'user_eve');
     if (name === 'other') w.createAccount({ name: 'someone', role: 'architect' });
-    if (kyleWorkspaces.includes(name)) pin(w, 'Kyle', 'editor', 'user_kyle');
     if (name !== 'weave') w.setRequireAuth(true);
     w.save();
     w.store.close?.();
@@ -53,7 +52,7 @@ async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, ro
   main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
   main.setRequireAuth(true);
   main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits, billing, openSignup });
+  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits, billing });
   const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
   const apex = at('weave.test');
   const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
@@ -70,7 +69,7 @@ test('reserved: weave and grunion join the list, and the docs workspace keeps an
   for (const s of ['weave', 'grunion']) assert.equal(WeaveSlugs.formState(s), 'reserved', s);
   assert.equal(WeaveSlugs.formState('acme'), null);
   assert.equal(WeaveSlugs.formState('Acme'), 'invalid');
-  const s = await serve({ openSignup: { on: true, limit: 10 } });
+  const s = await serve();
   try {
     const t = s.rootToken;
     assert.equal((await s.apex('GET', '/w/weave/api/workspace')).json().name, 'weave');
@@ -102,7 +101,7 @@ test('availability: answers available, taken, reserved and invalid, only to a si
 });
 
 test('create: the server re-checks, so a slug lost to a race is slug_taken with the same guidance', async () => {
-  const s = await serve({ openSignup: { on: true, limit: 10 } });
+  const s = await serve();
   try {
     const t = s.rootToken;
     assert.equal((await s.apex('GET', '/api/workspaces/slug?slug=harbor', { token: t })).json().state, 'available');
@@ -125,7 +124,7 @@ test('create: the server re-checks, so a slug lost to a race is slug_taken with 
 });
 
 test('resume: a signed-in start visit goes straight to the last workspace and its last page (Issue #977)', async () => {
-  const s = await serve({ openSignup: { on: true, limit: 10 } });
+  const s = await serve();
   try {
     const kyle = await s.signInAtStart('user_kyle');
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Harbor', slug: 'harbor' } })).status, 201);
@@ -263,7 +262,7 @@ test('start: the apex shows nothing until sign-in, then lists the workspaces thi
 });
 
 test('start: rows name host and role, show the logo through the start door, and the last opened sorts first (Issue #964)', async () => {
-  const s = await serve({ openSignup: { on: true, limit: 10 } });
+  const s = await serve();
   try {
     const kyle = await s.signInAtStart('user_kyle');
     for (const [name, slug] of [['Harbor', 'harbor'], ['Dock', 'dock']]) {
@@ -272,7 +271,7 @@ test('start: rows name host and role, show the logo through the start door, and 
     const before = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json().rows;
     const row = (rows, name) => rows.find((r) => r.name === name);
     assert.deepEqual([row(before, 'harbor').role, row(before, 'harbor').host, row(before, 'harbor').title], ['architect', 'harbor.weave.test', 'Harbor']);
-    assert.equal(row(before, 'acme'), undefined, 'an account on Net grants no membership in acme');
+    assert.equal(row(before, 'acme').role, 'architect', 'a hub-root architect opens acme as an architect');
     assert.ok(before.every((r) => r.seenAt === null), 'nothing opened yet');
 
     const opened = await s.apex('GET', row(before, 'harbor').open, { cookie: kyle.cookie });
@@ -319,13 +318,13 @@ test('apex: a browser at the apex root gets the start page signed in or not, Net
 });
 
 test('start: an architect creates a workspace from a name and a slug, and becomes its architect', async () => {
-  const s = await serve({ openSignup: { on: true, limit: 10 } });
+  const s = await serve();
   try {
     const { cookie } = await s.signInAtStart('user_kyle');
     const list = (await s.apex('GET', '/api/start', { cookie })).json();
     assert.equal(list.canCreate, true);
     assert.equal(list.accountName, 'Kyle Adriany');
-    assert.deepEqual(list.rows.map(r => r.name), ['Net'], 'only the workspace holding this identity is listed');
+    assert.ok(list.rows.some((r) => r.name === 'Net') && list.rows.some((r) => r.name === 'acme'), 'a hub-root account opens every workspace, as the wall does');
     assert.equal((await s.apex('GET', '/api/start/slug?slug=acme', { cookie })).json().state, 'taken');
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Acme', slug: 'acme' } })).json().code, 'slug_taken');
     const made = await s.apex('POST', '/api/start/workspaces', { cookie, body: { name: 'Harbor Launch', slug: 'harbor-launch' } });
@@ -385,11 +384,7 @@ test('start: with billing on, a new person creates a first workspace and is its 
     assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: dana.cookie, body: { name: 'Second', slug: 'dana-two' } })).status, 201, 'with the first workspace paid, another may start');
 
     const kyle = await s.signInAtStart('user_kyle');
-    const blocked = await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Kyle One', slug: 'kyle-one' } });
-    assert.deepEqual([blocked.status, blocked.json().code, blocked.json().waiting], [402, 'plan-required', 'Net'], 'the routing-workspace architect follows the same billing policy');
-    routes['GET /users/user_kyle/billing/subscription'] = SOLO;
-    billing.forget();
-    assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: 'Kyle One', slug: 'kyle-one' } })).status, 201);
+    for (const slug of ['kyle-one', 'kyle-two']) assert.equal((await s.apex('POST', '/api/start/workspaces', { cookie: kyle.cookie, body: { name: slug, slug } })).status, 201, 'a hub-root architect is not held to the limit');
   } finally { s.stop(); }
 });
 
@@ -403,8 +398,8 @@ test('start: the page and the in-app form read their words from slug-core, the o
   assert.ok(index.indexOf('/slug-form.js') > -1 && index.indexOf('/slug-form.js') < index.indexOf('/app.js'));
 });
 
-test('resume: explicit workspace choice survives listing with local memberships (Issue #957)', async () => {
-  const s = await serve({ kyleWorkspaces: ['other'] });
+test('resume: explicit workspace choice survives listing and root-backed sessions (Issue #957)', async () => {
+  const s = await serve();
   try {
     const kyle = await s.signInAtStart('user_kyle');
     const chosen = await s.apex('GET', '/api/start/open/other', { cookie: kyle.cookie });

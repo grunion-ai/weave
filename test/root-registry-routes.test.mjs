@@ -7,7 +7,7 @@ const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const patch = (url, body) => fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-test('registry routes stay in the requested workspace and reject foreign registry IDs', async () => {
+test('a member-scoped request for a root registry row or table falls through to the root', async () => {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   const uno = new Weave();
@@ -17,9 +17,8 @@ test('registry routes stay in the requested workspace and reject foreign registr
   const { server } = await startServer(root, { port: 0, workspaces: { uno } });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const tablesT = uno.getTable('System/Tables');
-    const spacesT = uno.getTable('System/Spaces');
-    assert.equal((await post(`${base}/w/uno/api/tables/${root.getTable('System/Tables').id}/query`, {})).status, 404);
+    const tablesT = root.getTable('System/Tables');
+    const spacesT = root.getTable('System/Spaces');
     const byName = await json(await post(`${base}/w/uno/api/tables/Tables/query`, { where: [['Name', '=', 'Task']] }));
     assert.equal(byName.total, 1);
     const byId = await json(await post(`${base}/w/uno/api/tables/${tablesT.id}/query`, {}));
@@ -34,9 +33,9 @@ test('registry routes stay in the requested workspace and reject foreign registr
     const made = await json(await post(`${base}/w/uno/api/tables/${spacesT.id}/entities`, { name: 'Ops' }));
     assert.equal(made.sysWorkspaceId, uno.state.meta.id);
     assert.ok(uno.getSpace('Ops'));
-    const rootMade = await json(await post(`${base}/api/tables/${root.getTable('System/Spaces').id}/entities`, { name: 'Wiki' }));
+    const rootMade = await json(await post(`${base}/api/tables/${spacesT.id}/entities`, { name: 'Wiki' }));
     assert.equal(rootMade.sysWorkspaceId, root.state.meta.id);
-    uno.addField(spacesT.id, { name: 'Job · count', type: 'rollup', config: { via: uno.getTable('Dev/Job').id, aggregate: 'count' } });
+    root.addField(spacesT.id, { name: 'Job · count', type: 'rollup', config: { via: uno.getTable('Dev/Job').id, aggregate: 'count' } });
     const stats = await json(await fetch(`${base}/w/uno/api/tables/${uno.getTable('Dev/Job').id}/stats`));
     assert.equal(stats.rollups[0].name, 'Job · count');
     assert.equal(stats.rollups[0].value, 0);

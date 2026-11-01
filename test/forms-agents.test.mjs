@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { createForm } from '../src/forms.js';
-import { createWorkspaceHub } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
 
@@ -78,18 +77,12 @@ test('CLI form configuration creates and updates the same saved form', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('MCP management honors each workspace auth wall independently', () => {
-  const w = new Weave({ name: 'locked' });
+test('MCP management honors an accountless sign-in wall on the workspace and registry', () => {
+  const w = new Weave();
   const form = seed(w);
   w.setRequireAuth(true);
   assert.throws(() => dispatchTool(w, 'weave_forms', { action: 'get', form: form.id }, { caller: { role: null } }), /architect/);
-  const member = new Weave({ name: 'member' });
-  const ownForm = seed(member);
-  member.createAccount({ name: 'member-owner', role: 'architect' });
-  member.setRequireAuth(true);
-  createWorkspaceHub(w, { workspaces: { member } });
-  const caller = { role: 'architect', rootRole: null };
-  assert.deepEqual(dispatchTool(member, 'weave_forms', { action: 'list' }, { caller }).map(f => f.id), [ownForm.id]);
-  assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'get', form: form.id }, { caller }), /not found/);
-  assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'list' }, { caller: { role: null } }), /architect/);
+  const member = new Weave();
+  member.registryHost = w;
+  assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'list' }, { caller: { role: 'architect', rootRole: null } }), /architect/);
 });

@@ -58,15 +58,12 @@ test('a legacy free-text owner or grant no longer matches the account of that na
   as(kyle);
   assert.throws(() => w.revealKey('legacy'), (e) => e.code === 'forbidden', 'the account named kyle is not the text kyle');
   assert.equal(w.ownsKey('legacy'), false);
-  assert.throws(() => w.grantKey('legacy', 'sajit'), (e) => e.code === 'forbidden');
-  w.localKeyAccess = true;
-  w.actor = 'local';
   w.grantKey('legacy', 'sajit');
   as(sajit);
-  assert.equal(w.revealKey('legacy'), 'old-secret', 'a local operator re-grants it by account');
+  assert.equal(w.revealKey('legacy'), 'old-secret', 'a root architect re-grants it by account');
 });
 
-test('an ownerless key requires explicit local recovery and granting claims nothing', () => {
+test('an ownerless key: only a root architect grants or revokes, and granting claims nothing', () => {
   const { w, keystorePath, kyle, sajit, as, id } = build();
   w.actor = 'web';
   w.setKey('orphan', 'nobody-owns-me');
@@ -76,12 +73,8 @@ test('an ownerless key requires explicit local recovery and granting claims noth
   assert.throws(() => w.revokeKey('orphan', 'kyle'), (e) => e.code === 'forbidden');
   assert.equal(raw(keystorePath).orphan.owner, null, 'a refused grant claims nothing');
   as(kyle);
-  assert.throws(() => w.grantKey('orphan', 'sajit'), (e) => e.code === 'forbidden');
-  assert.throws(() => w.revokeKey('orphan', 'sajit'), (e) => e.code === 'forbidden');
-  w.localKeyAccess = true;
-  w.actor = 'local';
   w.grantKey('orphan', 'sajit');
-  assert.equal(raw(keystorePath).orphan.owner, null, 'a local recovery grant does not claim ownership');
+  assert.equal(raw(keystorePath).orphan.owner, null, 'a granting architect does not become the owner');
   assert.deepEqual(raw(keystorePath).orphan.shared, [id(sajit)]);
   as(sajit);
   assert.equal(w.revealKey('orphan'), 'nobody-owns-me');

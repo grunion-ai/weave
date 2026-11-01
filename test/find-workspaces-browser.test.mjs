@@ -13,7 +13,7 @@ const s = await launch('find my workspaces', (weave) => {
     weave.redeemIdentityInvite(weave.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });
   }
   weave.setRequireAuth(true);
-}, { server: () => ({ oidc, openSignup: { enabled: false, limit: 0 }, limits: { options: 1000, failed: 1000, slugs: 1000 } }) });
+}, { server: () => ({ oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } }) });
 test.after(() => idp.stop());
 
 if (s) {
@@ -51,7 +51,7 @@ if (s) {
         await page.waitForSelector('.rows .ws-login');
         assert.deepEqual(await page.locator('.rows .ws-login').allInnerTexts(), ['eve'], 'with two logins each row names the login that opens it');
         assert.equal(await page.locator('.rows li').count(), 1, 'the workspace both logins open is listed once');
-        assert.equal(await page.getByRole('button', { name: 'Create a workspace' }).count(), 0, 'an architect cannot bypass closed signup');
+        assert.ok(await page.getByRole('button', { name: 'Create a workspace' }).isVisible(), 'the architect login brings the create button');
 
         const fg = await page.locator('.rows .ws-login').evaluate((n) => getComputedStyle(n).color);
         const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

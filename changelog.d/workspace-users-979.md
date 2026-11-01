@@ -1,3 +1,0 @@
-- Each workspace owns its System registry and Users table. Relations to users, forms, workflows and registry edits stay in that workspace. Hub routing no longer grants access through another workspace's architect account (Issue #979, Issue #1224).
-- Existing hub registries migrate with current row IDs retained, references remapped and destination data saved before source rows become inactive. Unsupported cross-workspace references and protected workspaces without local accounts stop migration before writes.
-- Workspace creation gives its creator a local account and follows hosting signup and billing rules. Any ordinary workspace can be deleted while another live workspace remains; routing aliases survive full backup and restore.
