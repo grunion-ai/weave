@@ -2900,7 +2900,6 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .launcher-about .launcher-chevron { margin-left: auto; }
 .launcher button.launcher-return { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0; margin-bottom: 20px; color: var(--tblr-primary); }
 .launcher-detail h2 { margin: 0 0 8px; font-size: var(--fs-title); font-weight: 500; overflow-wrap: anywhere; }
-.launcher-detail h3 { margin: 20px 0 4px; font-size: var(--fs-doc); font-weight: 500; }
 .launcher-detail-meta { margin: 0 0 12px; font-size: var(--fs-secondary); color: var(--tblr-secondary); }
 .launcher-field { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 14px 0; border-bottom: 1px solid var(--tblr-border-color); font-size: var(--fs-secondary); }
 .launcher-detail-body > .card, .launcher-detail-body > .wv-stat-tiles { margin-top: 16px; }

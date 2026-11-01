@@ -1,7 +1,6 @@
 'use strict';
 
 const LAUNCHER_SHOWN = 2;
-const LAUNCHER_CHANGED = { singular: 'row', plural: 'rows' };
 
 function launcherRow({ lead = null, name, sub = null, outcome = null, at = null, href = null, onclick = null }) {
   const when = weaveDateCore.relativeOrShort(at);
@@ -42,7 +41,7 @@ function launcherTiles(space, tables) {
     ...tables.map((t) => el('a', { class: 'launcher-tile', href: `#/table/${t.id}`, title: t.name },
       el('span', { class: 'launcher-tile-icon' }, iconEl(t.icon || 'lucide:table', 'wv-icon')),
       el('strong', {}, t.name),
-      el('small', {}, WeaveTerm.count(t.rowCount ?? 0, termOfTable(t.id))))));
+      el('small', {}, (t.rowCount ?? 0).toLocaleString()))));
 }
 
 function launcherSearch(space, tables) {
@@ -98,11 +97,10 @@ function launcherRunDetail(main, home, space, run) {
     fill: (body) => body.append(
       field('Started in', run.originSpace),
       field('Affected space', space.space),
-      field('Completed', total ? `Updated ${WeaveTerm.count(total, LAUNCHER_CHANGED)}` : 'No rows changed'),
+      field('Changed', (run.changedTables ?? []).map((t) => `${t.table} ${t.count.toLocaleString()}`).join(', ') || 'Nothing changed'),
       failed ? field('Failed', failed) : '',
-      changed.length ? el('h3', {}, 'Affected rows') : '',
-      total > changed.length && changed.length ? el('p', { class: 'launcher-detail-meta' }, `Showing ${changed.length} of ${total}`) : '',
-      ...changed.map((row) => launcherRow({ name: row.name, sub: `${row.table} #${row.publicId}`, onclick: () => openEntity(row.id) }))),
+      ...changed.map((row) => launcherRow({ name: row.name, sub: `${row.table} #${row.publicId}`, onclick: () => openEntity(row.id) })),
+      total > changed.length ? el('p', { class: 'launcher-detail-meta' }, `${(total - changed.length).toLocaleString()} more changed`) : ''),
   });
 }
 
@@ -147,9 +145,9 @@ function launcherHome(main, space, sections) {
       })),
     }),
     launcherSection({
-      part: 'rows', title: 'Recent rows', note: 'Opened by you', more: 'More recent rows',
+      part: 'rows', title: 'Recent', note: 'Opened by you', more: 'More recent',
       rows: (sections.rows ?? []).map((r) => launcherRow({
-        name: r.name, sub: [weavePalette.whereText(r), r.chip?.state?.name].filter(Boolean).join(' · '), at: r.at, onclick: () => openEntity(r.id),
+        name: r.name, sub: [`${r.table} #${r.publicId}`, r.chip?.state?.name].filter(Boolean).join(' · '), at: r.at, onclick: () => openEntity(r.id),
       })),
     }),
     launcherSection({
