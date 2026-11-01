@@ -20,7 +20,10 @@ the dev soak.
 3. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. Two checks
    are required: `Dev gate` (syntax plus a boot health check, under a minute)
    and `PR gate` (the `pr` workflow, under six minutes). The branch does not
-   have to be up to date with main.
+   have to be up to date with main. With the merge queue on (see "Merge
+   queue" below), auto-merge enqueues the PR once both pass, and the queue
+   runs the full inventory on the PR merged with everything ahead of it
+   before main moves.
 4. Fix a red `PR gate` by pushing again; a new push cancels the superseded run.
 5. Every main push swaps dev.weave.grunion.ai to that commit. The dev supervisor
    boots the new commit beside the serving one, moves traffic only after its
@@ -144,6 +147,30 @@ exits. `test/temp-dirs.test.mjs` refuses a bare
 outside the manager, such as a bare `node --test` or a browser suite that only
 takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
 directories on the disk (Issue #1083).
+
+### Merge queue
+
+The `pr` PR gate runs only the browser suites a diff maps to, so a change
+that breaks a suite it does not name used to land green and turn main red,
+where the sheriff reverted it and its author re-landed it: 10 reverts and 9
+re-lands in the 115 main commits of the week to 2026-11-01. A GitHub merge
+queue closes that gap. On a `merge_group` event the `pr` workflow runs the
+full timed plan of the `tests` workflow (timings, saved `plan-manifest`,
+`plan`/`run`/`aggregate`, full shards on the 30-minute job budget) and reports
+it as `PR gate`, and `dev.yml` reports `Dev gate`, so the queue waits on the
+two required checks a pull request already does. Main then only moves to a
+commit whose whole inventory passed. The `tests` workflow still runs on the
+resulting main push; release, the dev soak, promotion and the sheriff keep
+reading it, which costs one more full run per merge and keeps their evidence
+keyed to the main commit.
+
+Turning it on is a repository setting, after this workflow is on main:
+Settings → Rules → the ruleset that protects `main` → Require merge queue,
+merge method Squash, build concurrency 5, minimum group size 1, maximum 5,
+wait 1 minute, status check timeout 60 minutes, `Dev gate` and `PR gate`
+still required. `gh pr merge --auto --squash` then enqueues instead of
+merging. A group that fails drops its PRs back out with the red run linked,
+and the queue retests the rest without them.
 
 ### Sheriff
 

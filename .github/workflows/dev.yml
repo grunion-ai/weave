@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
@@ -12,11 +13,11 @@ permissions:
 jobs:
   gate:
     name: Dev gate
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    if: github.event_name == 'merge_group' || (github.event_name == 'pull_request' && !github.event.pull_request.draft)
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     concurrency:
-      group: dev-gate-${{ github.event.pull_request.number }}
+      group: dev-gate-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

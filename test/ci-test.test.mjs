@@ -355,7 +355,7 @@ test('the PR plan runs every unit file and the touched browser tests through the
 test('pr.yml runs the fast tier on ready pull requests and one PR gate requires every shard', async () => {
   const { readFileSync } = await import('node:fs');
   const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
-  assert.match(workflow, /^on:\n  pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n\n/m);
+  assert.match(workflow, /^on:\n  pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n  merge_group:\n\n/m);
   assert.doesNotMatch(workflow, /^  push:|pull_request_target|secrets\./m);
   assert.match(workflow, /concurrency:\n  group: \$\{\{ github.workflow \}\}-\$\{\{ github.ref \}\}\n  cancel-in-progress: true/);
   assert.match(workflow, /if: \$\{\{ !github.event.pull_request.draft \}\}/);
@@ -375,7 +375,7 @@ test('every gating workflow bounds each browser install attempt and retries it o
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
-    assert.match(job, new RegExp(`timeout-minutes: ${jobBudget}\\n`), `${file} declares the job budget this test reasons about`);
+    assert.match(job, new RegExp(`timeout-minutes: (?:${jobBudget}|\\$\\{\\{ github\\.event_name == 'merge_group' && 30 \\|\\| ${jobBudget} \\}\\})\\n`), `${file} declares the job budget this test reasons about`);
     const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
     assert.equal(steps.length, 1, `${file} has one bounded install step`);
     const [, backstop, body] = steps[0];
@@ -438,4 +438,25 @@ test('onboarding journeys are mandatory even for unrelated changes and cannot si
     assert.throws(() => touchedBrowser([], browserFiles.filter(f => f !== file), read), /Missing required journey suite/);
   }
   assert.equal(ONBOARDING.length, 4);
+});
+
+test('in the merge queue pr.yml runs the full timed plan, saved once, and PR gate judges it like the CI gate', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
+  const job = (name, next) => workflow.slice(workflow.indexOf(`  ${name}:\n`), next ? workflow.indexOf(`  ${next}:\n`) : undefined);
+  const planJob = job('plan', 'test');
+  assert.match(planJob, /permissions:\n      contents: read\n      actions: read\n/);
+  assert.match(planJob, /if: github\.event_name == 'merge_group'\n        env:\n          GH_TOKEN: \$\{\{ github\.token \}\}\n        run: node scripts\/ci-timings\.mjs/);
+  assert.match(planJob, /FULL: \$\{\{ github\.event_name == 'merge_group' \}\}/);
+  assert.match(planJob, /if \[ "\$FULL" = true \]; then\n            echo "matrix=\$\(node scripts\/ci-test\.mjs plan\)"/);
+  assert.match(planJob, /name: plan-manifest\n          path: ci-plan\/manifest\.json\n/);
+  for (const [name, next, full, fast] of [['test', 'gate', 'run "$SHARD"', 'pr-run "$SHARD"'], ['gate', null, 'aggregate ci-results', 'pr-aggregate ci-results']]) {
+    const body = job(name, next);
+    assert.match(body, /if: github\.event_name == 'merge_group'\n        uses: actions\/download-artifact@[0-9a-f]{40}\n        with:\n          name: plan-manifest\n          path: ci-plan\n/, `${name} loads the saved full plan in the queue`);
+    assert.ok(body.includes(`node scripts/ci-test.mjs ${full}`) && body.includes(`node scripts/ci-test.mjs ${fast}`), `${name} runs the full plan in the queue and the fast tier on a pull request`);
+    assert.match(body, /CI_MANIFEST: ci-plan\/manifest\.json\n/);
+  }
+  assert.match(job('test', 'gate'), /max-parallel: 16\n/);
+  assert.match(job('test', 'gate'), /timeout-minutes: \$\{\{ github\.event_name == 'merge_group' && 30 \|\| 15 \}\}\n/, 'a full shard gets the main shard job budget');
+  assert.match(job('gate'), /name: PR gate\n/, 'the queue waits on the same required check name a pull request does');
 });
