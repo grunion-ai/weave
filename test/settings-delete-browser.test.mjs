@@ -79,7 +79,7 @@ if (s) {
   }
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: Settings deletes a workspace for good from its own dialog once the name is typed (Issue #1171, Feature #347)`, async () => {
+    test(`${theme}: Settings deletes a workspace from its own dialog once the name is typed, and Trash restores it (Issue #1171)`, async () => {
       const page = await open('#/settings', theme);
       try {
         await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
@@ -125,33 +125,26 @@ if (s) {
         await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
         assert.equal(await live(), false, 'the workspace left the live list');
         const row = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
-        assert.ok(row?.deletedAt, 'the hub keeps a tombstone for the operator');
-        const toast = page.locator('.wv-toast', { hasText: 'Workspace scratch deleted' });
-        await toast.waitFor();
-        assert.equal(await toast.locator('button', { hasText: 'Undo' }).count(), 0, 'no Undo: the delete is permanent');
-        await fetch(`${base}/api/workspaces/${row.id}/restore`, { method: 'POST' });
-        assert.ok(await live(), 'only the operator route brings it back');
+        assert.ok(row?.deletedAt, 'the workspace sits in the trash, file kept');
+        await page.locator('.wv-toast', { hasText: 'scratch' }).locator('button', { hasText: 'Undo' }).click();
+        await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
+        assert.ok(await live(), 'Undo brings it back');
       } finally { await page.close(); }
     });
   }
 
-  test('a workspace deleted from the Settings dialog never shows in Trash (Feature #347)', async () => {
+  test('a workspace deleted from the Settings dialog comes back from Trash (Issue #1171)', async () => {
     const page = await open('#/settings', 'dark');
     try {
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
       await page.locator('#main .settings-workspaces .ws-delete-open').click();
       await page.locator('#modal input[name="confirm"]').fill('scratch');
       await page.locator('#modal button[type="submit"]').click();
-      await page.locator('#ws-list .ws-icon[title^="scratch "]').waitFor({ state: 'detached' });
+      await page.waitForFunction(() => !document.querySelector('#ws-list .ws-icon[title^="scratch "]'));
       await page.click('#sidebar .nav-system a[href="#/trash"]');
-      await page.waitForFunction(() => location.hash === '#/trash' && document.querySelector('#main .view-header')?.textContent.includes('Trash') && !document.querySelector('#main .settings-workspaces'));
-      assert.equal(await page.locator('#main .trash-workspaces').count(), 0, 'Trash lists no workspaces');
-      assert.doesNotMatch(await page.textContent('#main'), /scratch/);
-    } finally {
-      const row = (await fetch(`${base}/api/workspaces?deleted=1`).then((r) => r.json())).find((w) => w.name === 'scratch');
-      if (row?.deletedAt) await fetch(`${base}/api/workspaces/${row.id}/restore`, { method: 'POST' });
-      await page.close();
-    }
+      await page.locator('#main .trash-workspaces button', { hasText: 'Restore' }).click();
+      await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
+    } finally { await page.close(); }
   });
 
   test('a caller the server refuses sees no purge and no workspace delete in Settings (Features #295, #297)', async () => {
