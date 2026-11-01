@@ -1,3 +1,0 @@
-- Board groups collapse into labeled rails or compact stacked headers. Cards follow density, the board loses its extra enclosing border, and comparison checkboxes keep clear of IDs and titles (Issues #1197, #1198, #1199, #1200).
-- Drag placement uses settled card positions and waits for the drop animation before refreshing the board (Issue #1115).
-- Entity relation blocks show the linked table's default Board layout, with local folds, linked-record editing and New, Link existing and Unlink actions (Issue #1201).

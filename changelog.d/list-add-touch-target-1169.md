@@ -1,1 +1,0 @@
-- List: the add-row name field now keeps a 44 px hit area on touch, up from 32 px (Issue #1169).

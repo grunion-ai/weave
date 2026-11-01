@@ -1,1 +1,0 @@
-- Done state chips take a darker green label. The old `#218358` on the chip's own `#e2f2e5` tint read 4.05:1, under the 4.5:1 floor, in the field dialog, the filter popover, the board and the table in light theme. The new `#1a6b48` reads 5.57:1, and the dark theme is unchanged (Issue #1100).

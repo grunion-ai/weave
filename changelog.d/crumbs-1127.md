@@ -1,1 +1,0 @@
-- The breadcrumb keeps the workspace name whole instead of capping it at 14 characters, and a long row name gives way before any short space or table crumb loses a pixel (Issues #1127, #1158). The current crumb's own ellipsis stays by design, since the title row under it shows the full name, and the cut-off probe skips it (Issue #1159).

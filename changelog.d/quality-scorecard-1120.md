@@ -1,2 +1,0 @@
-- `scripts/quality-scorecard.mjs` prints one JSON row per ISO week: generalization rate of UI fixes, repeat fixes per rule class, coverage per probe over the state catalog, field types seeded, width bands covered, ceiling totals, spacing and z-index token shares, reverts on main, and the probe answers on Issue rows. The nightly flicker routine writes it to the `Development/Scorecard` table (Issue #1120).
-- A bug report filed from the web UI asks **Which probe would have caught this?**, for whoever fixes it to answer (Issue #1120).
