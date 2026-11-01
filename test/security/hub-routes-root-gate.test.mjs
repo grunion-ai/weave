@@ -56,9 +56,9 @@ test('no accounts anywhere: workspace lifecycle, list and search stay open, as t
   assert.equal((await call('POST', '/w/open/api/bug-report', { body: REPORT })).status, 201);
 });
 
-test('no credentials, root has accounts: lifecycle is refused through an unwalled member', async () => {
+test('no credentials: a protected workspace cannot be managed through an unwalled sibling', async () => {
   const { call, dir, hub } = build();
-  assert.equal((await call('POST', '/w/open/api/workspaces', { body: { name: 'mine' } })).status, 401);
+  assert.equal((await call('POST', '/api/workspaces', { body: { name: 'mine' } })).status, 401);
   assert.equal(hub.get('mine'), null);
   assert.equal((await call('DELETE', '/w/open/api/workspaces/secret?hard=1')).status, 401);
   assert.equal((await call('DELETE', '/w/open/api/workspaces/secret')).status, 401);
@@ -76,33 +76,38 @@ test('no credentials: the list and search ?all=1 leave out a walled workspace', 
   assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1')), ['open']);
 });
 
-test('reader and writer of the root cannot create, delete or restore workspaces', async () => {
-  const { call, reader, writer } = build();
-  for (const token of [reader, writer]) {
+test('reader and writer cannot create or manage an unrelated protected workspace', async () => {
+  const { call, reader, writer, hub, secret } = build();
+  for (const [token, denied] of [[reader, 403], [writer, 401]]) {
     assert.equal((await call('POST', '/api/workspaces', { token, body: { name: 'x' } })).status, 403);
-    assert.equal((await call('DELETE', '/api/workspaces/open', { token })).status, 403);
-    assert.equal((await call('POST', '/api/workspaces/open/restore', { token })).status, 403);
+    assert.equal((await call('DELETE', '/api/workspaces/secret', { token })).status, denied);
+    assert.equal((await call('POST', '/api/workspaces/secret/restore', { token })).status, denied);
+    assert.ok(!secret.state.meta.deletedAt);
+    assert.equal(hub.get('x'), null);
   }
 });
 
-test('an admin of a member only: its own workspace in the list and search, no lifecycle', async () => {
+test('an architect creates its own workspace and cannot manage an unrelated protected workspace', async () => {
   const { call, secretAdmin, hub } = build();
-  assert.equal((await call('POST', '/w/secret/api/workspaces', { token: secretAdmin, body: { name: 'x' } })).status, 401);
-  assert.equal((await call('DELETE', '/w/secret/api/workspaces/open', { token: secretAdmin })).status, 401);
+  assert.equal((await call('POST', '/w/secret/api/workspaces', { token: secretAdmin, body: { name: 'x' } })).status, 201);
+  assert.equal((await call('DELETE', '/w/secret/api/workspaces/root', { token: secretAdmin })).status, 401);
   assert.equal(hub.get('open').state.meta.deletedAt ?? null, null);
   assert.ok(names(await call('GET', '/w/secret/api/workspaces', { token: secretAdmin })).includes('secret'));
   assert.deepEqual(hitsIn(await call('GET', '/w/secret/api/search?q=needle&all=1', { token: secretAdmin })), ['open', 'secret']);
 });
 
-test('the root admin manages workspaces, from the root or through a member with a root session', async () => {
-  const { call, admin, root, dir } = build();
-  assert.equal((await call('POST', '/api/workspaces', { token: admin, body: { name: 'fresh' } })).status, 201);
-  assert.equal((await call('DELETE', '/api/workspaces/fresh', { token: admin })).status, 200);
-  assert.equal((await call('POST', '/api/workspaces/fresh/restore', { token: admin })).status, 200);
-  const { token: session } = root.createSession('root-admin');
-  assert.equal((await call('DELETE', '/w/open/api/workspaces/fresh?hard=1', { cookie: session })).status, 200);
-  assert.equal(existsSync(join(dir, 'fresh.db')), false);
-  assert.ok(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'));
+test('a creator gets a separate account on the new workspace, and source credentials stay scoped', async () => {
+  const { call, admin, dir } = build();
+  const created = await call('POST', '/api/workspaces', { token: admin, body: { name: 'fresh' } });
+  assert.equal(created.status, 201);
+  const token = created.json.owner.token;
+  assert.equal((await call('DELETE', '/api/workspaces/fresh', { token: admin })).status, 401);
+  assert.equal((await call('DELETE', '/w/fresh/api/workspaces/fresh', { token })).status, 200);
+  assert.equal((await call('POST', '/w/fresh/api/workspaces/fresh/restore', { token })).status, 404, 'a deleted workspace answers nothing to its former Architect');
+  assert.equal(existsSync(join(dir, 'fresh.db')), true, 'the file stays behind the tombstone');
+  const other = await call('POST', '/api/workspaces', { token: admin, body: { name: 'other' } });
+  assert.equal((await call('DELETE', '/w/other/api/workspaces/other?hard=1', { token: other.json.owner.token })).status, 200);
+  assert.equal(existsSync(join(dir, 'other.db')), false);
 });
 
 test('a reader or writer of the root, signed in by session, cannot open a walled member or find it in search (Issue #985)', async () => {
@@ -114,11 +119,11 @@ test('a reader or writer of the root, signed in by session, cannot open a walled
     assert.equal(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'), false, `${name} does not see secret listed`);
   }
   const { token: admin } = root.createSession('root-admin');
-  assert.equal((await call('GET', '/w/secret/api/schema', { cookie: admin })).status, 200, 'the hub operator still opens it');
-  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['open', 'secret']);
+  assert.equal((await call('GET', '/w/secret/api/schema', { cookie: admin })).status, 401, 'architects require a local account too');
+  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['open']);
 });
 
-test('OAuth MCP on a member: a root editor or observer opens nothing, the root architect is admitted, a member account seats with its own role (Issue #488)', async () => {
+test('OAuth MCP requires a local membership for every role and applies that membership role', async () => {
   const { hub, root, secret } = build();
   const issuer = 'https://idp.test';
   const oidc = { name: 'Test IdP', issuer, identify: async (token) => ({ issuer, subject: token.slice('idp-'.length), client: null }) };
@@ -147,15 +152,14 @@ test('OAuth MCP on a member: a root editor or observer opens nothing, the root a
     assert.equal((await create(`idp-${subject}`, `by ${subject}`)).status, 403);
   }
   const boss = await create('idp-admin', 'by the hub operator');
-  assert.equal(boss.status, 200);
-  assert.ok(!boss.json.result.isError, boss.json.result.content[0].text);
+  assert.equal(boss.status, 403);
   const owner = await create('idp-writer', 'by the member architect');
   assert.equal(owner.status, 200);
   assert.ok(!owner.json.result.isError, owner.json.result.content[0].text);
   assert.equal(secret.actorName(secret.getEntity(JSON.parse(owner.json.result.content[0].text).id).createdBy), 'writer-owner via MCP', 'the member account, never the root one');
   await create('idp-boss', 'by a root architect seated as a member observer');
   assert.equal(rows().includes('by a root architect seated as a member observer'), false, 'the member role wins over the root role, as crossSeat does');
-  assert.deepEqual(rows().filter((n) => n.startsWith('by ')).sort(), ['by the hub operator', 'by the member architect']);
+  assert.deepEqual(rows().filter((n) => n.startsWith('by ')).sort(), ['by the member architect']);
 });
 
 test('bug report: a writer and a reader file into weave through the form; an anonymous caller cannot reach a walled weave', async () => {

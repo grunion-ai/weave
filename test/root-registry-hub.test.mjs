@@ -11,7 +11,7 @@ const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const patch = (url, body) => fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-test('hub: members join the root registry; the root grid carries a Workspace column; a root row edit renames the member table', async () => {
+test('hub: each workspace owns its registry and registry edits stay local', async () => {
   const root = new Weave();
   root.updateWorkspace({ name: 'root' });
   const uno = new Weave();
@@ -22,20 +22,23 @@ test('hub: members join the root registry; the root grid carries a Workspace col
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const unoSchema = await json(await fetch(`${base}/w/uno/api/schema`));
-    assert.deepEqual(unoSchema.map((s) => s.space), ['Dev'], 'a member sidebar shows only its own spaces');
+    assert.ok(unoSchema.some(s => s.system === 'workspace'));
+    assert.ok(unoSchema.some(s => s.space === 'Dev'));
     const rootSchema = await json(await fetch(`${base}/api/schema`));
-    const ws = rootSchema.find((s) => s.system === 'workspace');
+    const ws = unoSchema.find((s) => s.system === 'workspace');
     assert.ok(ws.tables.find((t) => t.system === 'workspaces'), 'the root has the Workspaces table');
     const tablesT = ws.tables.find((t) => t.system === 'tables');
     assert.ok(tablesT.fields.find((f) => f.name === 'Workspace'), 'Tables carries a Workspace column');
-    const rows = await json(await post(`${base}/api/tables/${tablesT.id}/query`, { where: [['Name', '=', 'Task']] }));
+    const rows = await json(await post(`${base}/w/uno/api/tables/${tablesT.id}/query`, { where: [['Name', '=', 'Task']] }));
     assert.equal(rows.total, 1);
-    const row = await json(await fetch(`${base}/api/entities/${rows.items[0].id}`));
+    const row = await json(await fetch(`${base}/w/uno/api/entities/${rows.items[0].id}`));
     assert.equal(row.fields.Workspace?.name ?? row.fields.Workspace, 'uno');
     assert.equal(row.sysWorkspaceId, uno.state.meta.id);
-    const res = await patch(`${base}/api/entities/${row.id}`, { Name: 'Job' });
+    const res = await patch(`${base}/w/uno/api/entities/${row.id}`, { Name: 'Job' });
     assert.equal(res.status, 200, await res.text());
     assert.equal(uno.getTable('Dev/Job').name, 'Job');
+    assert.equal(rootSchema.some(s => s.tables.some(t => t.name === 'Job' || t.name === 'Task')), false);
+    assert.equal((await fetch(`${base}/api/entities/${row.id}`)).status, 404);
     const report = await json(await fetch(`${base}/w/uno/api/registry`));
     assert.deepEqual(report.problems, []);
   } finally {
@@ -43,7 +46,7 @@ test('hub: members join the root registry; the root grid carries a Workspace col
   }
 });
 
-test('hub: adopted and created workspaces join; a hard delete drops the rows', async () => {
+test('hub: adopted and created workspaces keep local registries through their lifecycle', async () => {
   const dir = tempDir('weave-rootreg-');
   try {
     const main = new Weave({ path: join(dir, 'main.db') });
@@ -61,24 +64,25 @@ test('hub: adopted and created workspaces join; a hard delete drops the rows', a
       const leg = list.find((w) => w.name === 'legacy');
       assert.ok(leg, 'scan adopted the sibling');
       const legSchema = await json(await fetch(`${base}/w/${leg.id}/api/schema`));
-      assert.deepEqual(legSchema.map((s) => s.space), ['Ops'], 'the legacy registry is tombstoned');
+      assert.ok(legSchema.some(s => s.space === 'Ops'));
+      assert.ok(legSchema.some(s => s.system === 'workspace'));
       const wsT = main.getTable('System/Workspaces');
       const names = () => main.listEntities(wsT.id).map((e) => main.entityName(e)).sort();
-      assert.deepEqual(names(), ['legacy', 'main']);
+      assert.deepEqual(names(), ['main']);
       const made = await json(await post(`${base}/api/workspaces`, { name: 'scratch' }));
       assert.equal(made.name, 'scratch');
-      assert.deepEqual(names(), ['legacy', 'main', 'scratch']);
+      assert.deepEqual(names(), ['main']);
       const meta = await json(await fetch(`${base}/w/scratch/api/workspace`));
-      assert.doesNotMatch(meta.description, /Workspace\* space below/, 'the fresh description no longer promises a local Workspace space');
+      assert.equal(meta.name, 'scratch');
       const scratch = list.concat(await json(await fetch(`${base}/api/workspaces`))).find((w) => w.name === 'scratch');
-      const wsRow = () => main.listEntities(wsT.id, { includeDeleted: true }).find((e) => main.entityName(e) === 'scratch');
+      const wsRow = async () => json(await fetch(`${base}/w/scratch/api/workspace`));
       await fetch(`${base}/api/workspaces/${scratch.id}`, { method: 'DELETE' });
-      assert.ok(wsRow().deletedAt, 'soft delete trashes the row');
-      assert.deepEqual(names(), ['legacy', 'main']);
+      assert.equal((await json(await fetch(`${base}/api/workspaces`))).some(w => w.name === 'scratch'), false);
+      assert.deepEqual(names(), ['main']);
       await post(`${base}/api/workspaces/${scratch.id}/restore`, {});
-      assert.equal(wsRow().deletedAt, null);
+      assert.equal((await wsRow()).name, 'scratch');
       await fetch(`${base}/api/workspaces/${scratch.id}?hard=1`, { method: 'DELETE' });
-      assert.deepEqual(names(), ['legacy', 'main']);
+      assert.deepEqual(names(), ['main']);
       assert.ok(readdirSync(join(dir, 'trash')).some((f) => f.startsWith('scratch-')));
     } finally {
       server.close();

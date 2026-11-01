@@ -9,7 +9,7 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'node:fs';
 import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
@@ -457,7 +457,7 @@ export const ONTOLOGY = {
     {
       key: 'workspace', name: 'Workspace', isEntity: true, registry: 'System/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
-      definition: 'One workspace file and everything in it. The top level of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and its spaces, tables and fields relate back to it.',
+      definition: 'One workspace file and everything in it. The top level of the hierarchy. Each workspace owns its users and system registry. Its spaces, tables and fields relate to its own workspace row; the hub routes between independent workspace files.',
       api: ['describeSchema', 'ontology', 'spaceVersions', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
@@ -984,8 +984,187 @@ export function runDeferredMigrations() {
   const held = HELD;
   HELD = null;
   for (const w of held ?? []) {
-    try { w.settleDeferred(); } catch (err) { console.warn(`weave: deferred migration of ${w.store.path} failed: ${err.message}`); }
+    w.settleDeferred();
   }
+}
+
+export function detachHubRegistry(root, members = []) {
+  return root.detachHubRegistry(members);
+}
+
+function detachedRegistryState(root, member, members) {
+  const source = root.state;
+  const state = structuredClone(member.state);
+  const tables = Object.values(source.tables).filter(t => t.system && !t.deletedAt);
+  const localTables = Object.values(state.tables).filter(t => t.system);
+  const tableMap = new Map(localTables.map(t => [t.id, tables.find(r => r.system === t.system)?.id ?? t.id]));
+  const fieldMap = new Map();
+  const rowMap = new Map();
+  const optionMap = new Map();
+  const moveActor = actor => {
+    const match = /^account:([0-9a-f-]{36})(.*)$/.exec(String(actor ?? ''));
+    if (!match || Object.hasOwn(state.meta.accounts ?? {}, match[1])) return actor;
+    const owner = [root, ...members].find(w => Object.hasOwn(w.state.meta.accounts ?? {}, match[1]));
+    return `from ${owner?.state.meta.name ?? 'legacy workspace'}: ${owner?.state.meta.accounts[match[1]].name ?? 'removed account'}${match[2]}`;
+  };
+  const sourceRows = Object.values(source.entities);
+  const field = (t, name) => Object.values(t.fields).find(f => f.name === name);
+  const owner = row => {
+    const t = source.tables[row.dbId];
+    if (!t?.system) return null;
+    if (t.system === 'workspaces') return row.sysId;
+    const workspace = field(t, 'Workspace');
+    if (workspace && row.values[workspace.id]) return source.entities[row.values[workspace.id]]?.sysId;
+    if (t.system === 'forms') {
+      const ref = row.values[field(t, 'Table')?.id];
+      const tableRow = source.entities[Array.isArray(ref) ? ref[0] : ref];
+      return tableRow && owner(tableRow);
+    }
+    return null;
+  };
+  const selected = sourceRows.filter(row => owner(row) === state.meta.id);
+  const selectedIds = new Set(selected.map(row => row.id));
+  const localIds = new Set(Object.keys(state.entities));
+  const move = value => {
+    if (typeof value === 'string') return rowMap.get(value) ?? fieldMap.get(value) ?? tableMap.get(value) ?? value;
+    if (Array.isArray(value)) return value.map(move);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [fieldMap.get(k) ?? k, move(v)]));
+    return value;
+  };
+  for (const local of localTables) {
+    const target = tables.find(t => t.system === local.system);
+    if (!target) throw new WeaveError(`Cannot detach ${state.meta.name}: missing ${local.system} registry`, 'invalid');
+    for (const f of Object.values(local.fields)) {
+      const match = f.type === 'rollup' && f.config.via
+        ? Object.values(target.fields).find(r => r.type === 'rollup' && r.config.via === f.config.via && r.config.aggregate === f.config.aggregate && r.config.targetField === f.config.targetField)
+        : field(target, f.name);
+      if (match && match.type !== f.type) throw new WeaveError(`Cannot detach ${state.meta.name}: conflicting ${local.name}.${f.name}`, 'invalid');
+      if (match) {
+        fieldMap.set(f.id, match.id);
+        for (const option of f.config.options ?? f.config.states ?? []) {
+          const mapped = (match.config.options ?? match.config.states ?? []).find(o => o.name === option.name);
+          if (mapped) optionMap.set(option.id, mapped.id);
+        }
+      }
+    }
+    for (const row of Object.values(state.entities).filter(row => row.dbId === local.id)) {
+      const match = row.sysId && selected.find(r => r.dbId === target.id && r.sysId === row.sysId);
+      if (match) rowMap.set(row.id, match.id);
+    }
+  }
+  const localSystem = Object.values(state.spaces).find(s => s.system === 'workspace');
+  if (!localSystem) throw new WeaveError(`Cannot detach ${state.meta.name}: missing local System space`, 'invalid');
+  localSystem.deletedAt = null;
+  for (const t of localTables) delete state.tables[t.id];
+  for (const original of tables) {
+    const t = structuredClone(original);
+    t.spaceId = localSystem.id;
+    const local = localTables.find(l => l.system === t.system);
+    if (local?.tableViews) t.tableViews = move(structuredClone(local.tableViews));
+    for (const f of Object.values(local?.fields ?? {})) {
+      if (!fieldMap.has(f.id) && !t.fields[f.id]) t.fields[f.id] = move(structuredClone(f));
+      const mapped = t.fields[fieldMap.get(f.id)];
+      if (!mapped) continue;
+      const key = f.type === 'workflow' ? 'states' : ['select', 'multiselect'].includes(f.type) ? 'options' : null;
+      if (key) {
+        for (const option of f.config[key] ?? []) {
+          if (mapped.config[key].some(o => o.name === option.name)) continue;
+          if (mapped.config[key].some(o => o.id === option.id)) throw new WeaveError(`Cannot detach ${state.meta.name}: conflicting option ${t.name}.${f.name}`, 'invalid');
+          mapped.config[key].push(structuredClone(option));
+        }
+      }
+      if (!f.system && !mapped.system) {
+        const normalize = value => Array.isArray(value) ? value.map(normalize) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, normalize(v)])) : value;
+        const semantic = config => normalize(Object.fromEntries(Object.entries(config).filter(([k]) => !['options', 'states'].includes(k))));
+        if (JSON.stringify(semantic(move(f.config))) !== JSON.stringify(semantic(mapped.config))) throw new WeaveError(`Cannot detach ${state.meta.name}: conflicting field configuration ${t.name}.${f.name}`, 'invalid');
+      }
+    }
+    t.fieldOrder = [...new Set([...t.fieldOrder, ...Object.keys(t.fields)])];
+    t.publicIdCounter = Math.max(t.publicIdCounter ?? 0, local?.publicIdCounter ?? 0);
+    for (const f of Object.values(t.fields)) {
+      const targets = f.type === 'relation' ? (f.config.targetDbs ?? [f.config.targetDb]) : f.type === 'rollup' && f.config.via ? [f.config.via] : [];
+      if (targets.some(id => id && !tables.some(r => r.id === id) && !state.tables[id])) {
+        if (f.type === 'rollup' && f.config.via && [root, ...members].some(w => w !== member && w.state.tables[f.config.via])) {
+          delete t.fields[f.id];
+          t.fieldOrder = t.fieldOrder.filter(id => id !== f.id);
+          continue;
+        }
+        throw new WeaveError(`Cannot detach ${state.meta.name}: cross-workspace field ${t.name}.${f.name}`, 'invalid');
+      }
+    }
+    state.tables[t.id] = t;
+  }
+  const rewriteDoc = value => String(value).replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)|(\[\[[^\]\n]+\]\])/g, (token, code, wiki) => {
+    if (code) return code;
+    const inner = wiki.slice(2, -2);
+    const ref = inner.split('|', 1)[0].trim();
+    const typed = /^(table|space|workspace):(.+)$/.exec(ref);
+    const id = (typed ? typed[2] : ref).trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return token;
+    const target = typed?.[1] === 'table' ? tableMap.get(id) : !typed ? rowMap.get(id) : null;
+    if (!target) {
+      const foreign = typed?.[1] === 'table' ? !state.tables[id] && [root, ...members].some(w => w.state.tables[id])
+        : typed?.[1] === 'space' ? !state.spaces[id] && [root, ...members].some(w => w.state.spaces[id])
+        : typed?.[1] === 'workspace' ? id !== state.meta.id && [root, ...members].some(w => w.state.meta.id === id)
+        : !selectedIds.has(id) && !localIds.has(id) && [root, ...members].some(w => w !== member && w.state.entities[id]);
+      if (foreign) throw new WeaveError(`Cannot detach ${state.meta.name}: cross-workspace document reference ${id}`, 'invalid');
+      return token;
+    }
+    return token.replace(id, target);
+  });
+  const entities = {};
+  for (const original of Object.values(state.entities)) {
+    const row = structuredClone(original);
+    const oldTable = member.state.tables[original.dbId];
+    row.values = Object.fromEntries(Object.entries(original.values).map(([id, value]) => {
+      const type = oldTable?.fields[id]?.type;
+      const mapped = type === 'relation' ? move(value) : ['select', 'workflow', 'multiselect'].includes(type) ? (Array.isArray(value) ? value.map(v => optionMap.get(v) ?? v) : optionMap.get(value) ?? value) : structuredClone(value);
+      return [fieldMap.get(id) ?? id, mapped];
+    }));
+    row.docs = Object.fromEntries(Object.entries(original.docs ?? {}).map(([id, value]) => [fieldMap.get(id) ?? id, rewriteDoc(value)]));
+    if (row.sysId) row.sysId = tableMap.get(row.sysId) ?? fieldMap.get(row.sysId) ?? row.sysId;
+    row.id = rowMap.get(original.id) ?? original.id;
+    row.dbId = tableMap.get(original.dbId) ?? original.dbId;
+    entities[row.id] = row;
+  }
+  for (const original of selected) {
+    const prior = entities[original.id];
+    const row = structuredClone(original);
+    row.values = { ...(prior?.values ?? {}), ...row.values };
+    for (const key of ['files', 'comments', 'activity']) row[key] = [...new Map([...(prior?.[key] ?? []), ...(row[key] ?? [])].map(item => [item.id ?? JSON.stringify(item), item])).values()];
+    row.docs = { ...(prior?.docs ?? {}), ...Object.fromEntries(Object.entries(row.docs ?? {}).map(([id, value]) => [id, rewriteDoc(value)])) };
+    entities[row.id] = row;
+  }
+  for (const row of Object.values(entities)) {
+    for (const key of ['createdBy', 'modifiedBy']) if (row[key] != null) row[key] = moveActor(row[key]);
+    for (const comment of row.comments ?? []) comment.author = moveActor(comment.author);
+    for (const activity of row.activity ?? []) {
+      activity.actor = moveActor(activity.actor);
+      if (activity.detail?.author != null) activity.detail.author = moveActor(activity.detail.author);
+    }
+  }
+  state.entities = entities;
+  for (const t of Object.values(state.tables)) {
+    if (!t.system) {
+      for (const f of Object.values(t.fields)) f.config = move(f.config);
+      if (t.tableViews) t.tableViews = move(t.tableViews);
+    }
+    for (const f of Object.values(t.fields)) {
+      if (f.type !== 'relation') continue;
+      for (const row of Object.values(entities).filter(r => r.dbId === t.id)) {
+        const refs = [].concat(row.values[f.id] ?? []);
+        for (const id of refs) {
+          const target = source.entities[id];
+          if (target && source.tables[target.dbId]?.system && !selectedIds.has(id) && !localIds.has(id)) {
+            throw new WeaveError(`Cannot detach ${state.meta.name}: cross-workspace relation ${t.name}.${f.name}`, 'invalid');
+          }
+        }
+      }
+    }
+  }
+  delete state.meta.registry;
+  state.meta.localRegistry = { source: source.meta.id, rows: [...selectedIds] };
+  return { state, ids: selectedIds, rowMap, fieldMap, rewriteDoc, moveActor };
 }
 
 export const inviteUrl = (origin, code) => `${origin}/api/auth/oidc/start?invite=${encodeURIComponent(code)}`;
@@ -1006,6 +1185,7 @@ export class Weave {
   #dirty = new Set();
   #dirtyAll = false;
   #held = false;
+  #detachedStorage = null;
 
   #schemaVersion = null;
   #scales = new Map();
@@ -1015,8 +1195,9 @@ export class Weave {
 
   #computing = [];
 
-  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null } = {}) {
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null, localKeyAccess = null } = {}) {
     this.actor = actor;
+    this.localKeyAccess = localKeyAccess;
     this.revisionWindowMs = revisionWindowMs;
     this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     this.keystoreEnv = keystoreEnv ?? process.env;
@@ -1461,7 +1642,32 @@ export class Weave {
     }
     if (HELD) this.#held = true;
     else {
-      this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+      const pending = this.#detachedStorage;
+      if (pending) for (const [id, bytes] of pending.blobs) {
+        const path = this.#blobPath(id);
+        if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
+        if (existsSync(path)) continue;
+        mkdirSync(dirname(path), { recursive: true });
+        const temporary = `${path}.${uuid()}.tmp`;
+        try { writeFileSync(temporary, bytes, { flush: true }); renameSync(temporary, path); }
+        finally { rmSync(temporary, { force: true }); }
+      }
+      this.store.batch(() => {
+        if (pending) {
+          for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
+          for (const group of pending.revisions) {
+            const restored = new Map();
+            const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
+            for (const revision of group.rows) {
+              const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
+              const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
+              restored.set(revision.seq, seq);
+            }
+          }
+        }
+        this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+      });
+      this.#detachedStorage = null;
       this.#dirty.clear();
       this.#dirtyAll = false;
     }
@@ -3369,7 +3575,7 @@ export class Weave {
   workspaceOrder() {
     const reg = this.#reg;
     const t = reg.#sysTable('workspaces');
-    if (!t) throw new WeaveError('This file holds no workspace registry: order workspaces on the hub root', 'invalid');
+    if (!t) throw new WeaveError('This file holds no local workspace registry; migrate its legacy registry before ordering workspaces', 'invalid');
     const rank = new Map((reg.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
     return reg.listEntities(t.id).filter((r) => r.sysId)
       .map((r, i) => ({ id: r.sysId, name: reg.entityName(r), i }))
@@ -3487,9 +3693,11 @@ export class Weave {
     refuseReserved('key', name);
     const data = this.#readKeystore();
     const prior = own(data.keys, name);
+    if (prior && !this.#mayGrant(prior)) throw this.#grantRefusal(prior, 'replace', name);
     data.keys[name] = {
       ...this.#seal(secret ?? ''),
       owner: prior?.owner ?? this.#callerAccount(),
+      workspace: prior?.workspace ?? this.state.meta.id,
       shared: prior?.shared ?? false,
       createdAt: prior?.createdAt ?? nowISO(),
       ...(prior ? { rotatedAt: nowISO() } : {}),
@@ -3502,6 +3710,7 @@ export class Weave {
   deleteKey(name) {
     const data = this.#readKeystore();
     if (!Object.hasOwn(data.keys, name)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
+    if (!this.#mayGrant(data.keys[name])) throw this.#grantRefusal(data.keys[name], 'delete', name);
     delete data.keys[name];
     this.#writeKeystore(data);
     this.#audit('key-deleted', { name });
@@ -3509,12 +3718,13 @@ export class Weave {
   }
 
   hasKey(name) {
-    return Object.hasOwn(this.#readKeystore().keys, name);
+    const entry = own(this.#readKeystore().keys, name);
+    return !!entry && (this.#keyInWorkspace(entry) || this.#localKeys());
   }
 
   listKeys() {
     const { keys } = this.#readKeystore();
-    return Object.keys(keys).sort().map((name) => ({
+    return Object.keys(keys).filter(name => this.#keyInWorkspace(keys[name]) || this.#localKeys()).sort().map((name) => ({
       name,
       set: true,
       owner: this.actorName(keys[name].owner ?? null),
@@ -3526,12 +3736,23 @@ export class Weave {
     const { keys } = this.#readKeystore();
     const entry = own(keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
+    if (!this.#keyInWorkspace(entry) && !this.#localKeys()) throw new WeaveError(`Key '${name}' belongs to another workspace or needs local recovery`, 'forbidden');
     return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
+  }
+
+  #localKeys() { return (this.localKeyAccess === true || this.localKeyAccess !== false && !this.listAccounts().length) && !/^account:/.test(String(this.actor ?? '')); }
+
+  #keyInWorkspace(entry) {
+    if (entry.workspace) return entry.workspace === this.state.meta.id;
+    const id = /^account:(.+)$/.exec(entry.owner ?? '')?.[1];
+    return !!id && Object.hasOwn(this.state.meta.accounts ?? {}, id);
   }
 
   #mayReveal(entry) {
     if (!entry) return false;
-    if (!(this.registryHost ?? this).listAccounts().length) return true;
+    if (this.#localKeys()) return true;
+    if (!this.#keyInWorkspace(entry)) return false;
+    if (!this.#callerAccount()) return false;
     if (entry.shared === true) return true;
     if (Array.isArray(entry.shared) && entry.shared.some((a) => this.#isKeyHolder(a))) return true;
     return this.#isKeyHolder(entry.owner);
@@ -3563,16 +3784,13 @@ export class Weave {
   }
 
   #mayGrant(entry) {
-    const reg = this.registryHost ?? this;
-    if (!reg.listAccounts().length) return true;
-    if (/^account:/.test(entry.owner ?? '')) return this.#isKeyHolder(entry.owner);
-    const me = this.#callerAccount();
-    const a = me && own(reg.state.meta.accounts ?? {}, me.slice(8));
-    return !!a && Weave.roleName(a.role) === 'architect';
+    if (this.#localKeys()) return true;
+    if (!this.#keyInWorkspace(entry)) return false;
+    return /^account:/.test(entry.owner ?? '') && this.#isKeyHolder(entry.owner);
   }
 
   #grantRefusal(entry, verb, name) {
-    const who = /^account:/.test(entry.owner ?? '') ? `'${this.actorName(entry.owner)}'` : 'an architect on the hub root';
+    const who = /^account:/.test(entry.owner ?? '') ? `'${this.actorName(entry.owner)}'` : 'a local CLI operator';
     return new WeaveError(`Only ${who} can ${verb} '${name}'`, 'forbidden');
   }
 
@@ -3582,6 +3800,7 @@ export class Weave {
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(entry)) throw this.#grantRefusal(entry, 'share', name);
+    if (!entry.workspace && this.#localKeys()) entry.workspace = this.state.meta.id;
     const who = account === true ? true : this.#actorFor(account);
     if (who == null) throw new WeaveError(`No account named '${account}': a credential is shared with an account`, 'invalid');
     const list = Array.isArray(entry.shared) ? entry.shared : [];
@@ -4177,6 +4396,7 @@ export class Weave {
   #inMetaSync = false;
   #oneTime = new Map();
   inviteIssuer = null;
+  localKeyAccess = null;
   registryHost = null;
   members = [];
   get #reg() { return this.registryHost ?? this; }
@@ -4205,6 +4425,191 @@ export class Weave {
       if (table) return { owner: w, table, field: table.fields[fieldId] };
     }
     return null;
+  }
+
+  #retireDetachedOrphans(peers, sourceIds) {
+    const structural = new Set(['workspaces', 'spaces', 'tables', 'fields', 'views']);
+    const exists = (state, kind, id) => kind === 'spaces' ? Object.hasOwn(state.spaces, id)
+      : kind === 'tables' ? Object.hasOwn(state.tables, id)
+      : kind === 'fields' ? Object.values(state.tables).some(t => Object.hasOwn(t.fields, id))
+      : kind === 'views' ? Object.values(state.tables).some(t => t.tableViews?.some(v => v.id === id))
+      : true;
+    const rows = Object.values(this.state.entities);
+    const orphans = new Set();
+    for (const row of rows) {
+      const table = this.state.tables[row.dbId];
+      const kind = table?.system;
+      if (row.deletedAt || !kind) continue;
+      let workspaceId = this.#wsIdOfRow(row);
+      if (!workspaceId && kind === 'forms') {
+        const target = row.values[this.#sysField(table, 'Table')?.id];
+        const targetRow = this.state.entities[Array.isArray(target) ? target[0] : target];
+        if (targetRow) workspaceId = this.#wsIdOfRow(targetRow);
+      }
+      if (!sourceIds.has(row.id) && workspaceId && workspaceId !== this.state.meta.id) { orphans.add(row.id); continue; }
+      if (!row.sysId || !structural.has(kind) || exists(this.state, kind, row.sysId)) continue;
+      if (peers.some(w => exists(w.state, kind, row.sysId))) throw new WeaveError(`Cannot detach ${this.state.meta.name}: registry subject ${row.sysId} still exists in another workspace or before migration`, 'invalid');
+      if (kind === 'tables' && rows.some(e => e.dbId === row.sysId && !e.deletedAt)) throw new WeaveError(`Cannot detach ${this.state.meta.name}: orphan table ${row.sysId} still contains live rows`, 'invalid');
+      orphans.add(row.id);
+    }
+    if (!orphans.size) return;
+    const navigation = [];
+    for (const row of rows) {
+      if (row.deletedAt || orphans.has(row.id)) continue;
+      const table = this.state.tables[row.dbId];
+      if (!table || table.deletedAt) continue;
+      for (const f of Object.values(table.fields)) {
+        if (f.type !== 'relation' || ![].concat(row.values[f.id] ?? []).some(id => orphans.has(id))) continue;
+        if (!f.system || !structural.has(table.system)) throw new WeaveError(`Cannot detach ${this.state.meta.name}: live reference ${table.name}.${f.name} points to an orphan registry row`, 'invalid');
+        navigation.push([row, f.id]);
+      }
+      for (const doc of Object.values(row.docs ?? {})) {
+        String(doc).replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)|(\[\[[^\]\n]+\]\])/g, (token, code, wiki) => {
+          if (code) return token;
+          const ref = wiki.slice(2, -2).split('|', 1)[0].trim();
+          let target;
+          try { target = this.getEntity(ref); } catch { return token; }
+          if (orphans.has(target.id)) throw new WeaveError(`Cannot detach ${this.state.meta.name}: live document reference points to an orphan registry row`, 'invalid');
+          return token;
+        });
+      }
+    }
+    for (const [row, fieldId] of navigation) {
+      const value = row.values[fieldId];
+      row.values[fieldId] = Array.isArray(value) ? value.filter(id => !orphans.has(id)) : null;
+      this.#mark(row);
+    }
+    for (const id of orphans) {
+      this.state.entities[id].deletedAt = nowISO();
+      this.#mark(id);
+    }
+  }
+
+  detachHubRegistry(members = []) {
+    const legacy = members.filter(w => w !== this && w.state.meta.registry === 'hub' && !w.state.meta.localRegistry);
+    const resumed = members.filter(w => w.state.meta.localRegistry?.source === this.state.meta.id);
+    if (!legacy.length && !resumed.length) return { migrated: 0 };
+    for (const w of legacy) {
+      if (w.state.meta.requireAuth && !w.listAccounts().length) throw new WeaveError(`Cannot detach ${w.state.meta.name}: this protected workspace has no local account; create an explicit local account or invite before upgrading`, 'invalid');
+    }
+    const plans = legacy.map(w => ({ w, ...detachedRegistryState(this, w, members) }));
+    const moving = new Set([...plans.flatMap(p => [...p.ids]), ...resumed.flatMap(w => w.state.meta.localRegistry.rows ?? [])]);
+    for (const w of resumed) {
+      for (const id of w.state.meta.localRegistry.rows ?? []) {
+        if (!w.state.entities[id] && this.state.entities[id] && !this.state.entities[id].deletedAt) throw new WeaveError(`Cannot detach ${w.state.meta.name}: copied registry row ${id} is missing`, 'invalid');
+      }
+    }
+    for (const table of Object.values(this.state.tables)) {
+      for (const f of Object.values(table.fields)) {
+        if (f.type !== 'relation' || f.system) continue;
+        for (const row of Object.values(this.state.entities).filter(r => r.dbId === table.id && !r.deletedAt && !moving.has(r.id))) {
+          if ([].concat(row.values[f.id] ?? []).some(id => moving.has(id))) throw new WeaveError(`Cannot detach: cross-workspace relation ${table.name}.${f.name}`, 'invalid');
+        }
+      }
+    }
+    for (const plan of plans) {
+      const check = new Weave();
+      check.state = structuredClone(plan.state);
+      check.#dirtyAll = true;
+      check.#retireDetachedOrphans([this, ...members], plan.ids);
+      check.#ensureMetaTables();
+      for (const table of check.listTables()) {
+        for (const f of Object.values(table.fields)) {
+          if (f.type !== 'formula') continue;
+          const result = check.checkFormula(table.id, f.config.expression, { excludeField: f.id });
+          if (!result.ok) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: invalid formula ${table.name}.${f.name}: ${result.error}`, 'invalid');
+        }
+      }
+      const problems = check.registryReport().problems;
+      if (problems.length) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: ${problems[0].name}: ${problems[0].problem}`, 'invalid');
+      plan.state = check.state;
+      HELD?.delete(check);
+    }
+    for (const plan of plans) {
+      const pending = { blobs: new Map(), storage: new Map(), revisions: [] };
+      const collect = (origin, row, entityId, mapField = id => id) => {
+        for (const file of row.files ?? []) {
+          for (const id of [file.id, file.preview?.id].filter(Boolean)) {
+            const bytes = origin.#readBlob(id);
+            if (!bytes) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: file blob ${id} is missing`, 'invalid');
+            const existing = pending.blobs.get(id) ?? plan.w.#readBlob(id);
+            if (existing && !existing.equals(bytes)) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: conflicting file blob ${id}`, 'invalid');
+            pending.blobs.set(id, bytes);
+          }
+          const storage = origin.store.getFileStorage(file.id);
+          if (storage) {
+            const existing = pending.storage.get(file.id) ?? plan.w.store.getFileStorage(file.id);
+            if (existing && existing.json !== storage.json) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: conflicting page storage ${file.id}`, 'invalid');
+            pending.storage.set(file.id, storage);
+          }
+        }
+        for (const f of Object.values(origin.state.tables[row.dbId]?.fields ?? {})) {
+          if (f.type !== 'document') continue;
+          const rows = origin.store.listDocRevisions(row.id, f.id, { limit: 200 }).reverse().map(r => ({ ...origin.store.getDocRevision(row.id, f.id, r.seq), actor: plan.moveActor(r.actor), text: plan.rewriteDoc(origin.store.getDocRevision(row.id, f.id, r.seq).text) }));
+          if (rows.length) pending.revisions.push({ entityId, fieldId: mapField(f.id), rows });
+        }
+      };
+      for (const id of plan.ids) collect(this, this.state.entities[id], id);
+      for (const row of Object.values(plan.w.state.entities)) {
+        if (!plan.rowMap.has(row.id) && !Object.keys(row.docs ?? {}).some(id => plan.fieldMap.has(id))) continue;
+        collect(plan.w, row, plan.rowMap.get(row.id) ?? row.id, id => plan.fieldMap.get(id) ?? id);
+      }
+      const groups = new Map();
+      for (const group of pending.revisions) {
+        const key = `${group.entityId}:${group.fieldId}`;
+        const signatures = groups.get(key) ?? new Set(plan.w.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => {
+          const revision = plan.w.store.getDocRevision(group.entityId, group.fieldId, r.seq);
+          return JSON.stringify([revision.at, revision.actor, revision.text]);
+        }));
+        for (const r of group.rows) signatures.add(JSON.stringify([r.at, r.actor, r.text]));
+        if (signatures.size > 200) throw new WeaveError(`Cannot detach ${plan.state.meta.name}: combined document history exceeds 200 revisions`, 'invalid');
+        groups.set(key, signatures);
+      }
+      plan.storage = pending;
+    }
+    const rollups = [];
+    for (const t of Object.values(this.state.tables)) {
+      if (!t.system) continue;
+      for (const f of Object.values(t.fields)) {
+        if (f.type !== 'rollup' || !f.config.via) continue;
+        const owner = [...plans.map(p => p.state), ...resumed.map(w => w.state)].find(state => state.tables[f.config.via]);
+        if (!owner) continue;
+        const copied = Object.values(owner.tables).find(r => r.system === t.system)?.fields[f.id];
+        if (!copied) throw new WeaveError(`Cannot detach: copied rollup ${t.name}.${f.name} is missing`, 'invalid');
+        rollups.push([t, f.id]);
+      }
+    }
+    if (!plans.length && !rollups.length && ![...moving].some(id => this.state.entities[id] && !this.state.entities[id].deletedAt)) return { migrated: 0 };
+    if (HELD) {
+      HELD.delete(this);
+      for (const { w } of plans) { HELD.delete(w); HELD.add(w); }
+      HELD.add(this);
+    }
+    for (const w of resumed) if (w.#detachedStorage) { if (HELD) HELD.add(w); w.save(); }
+    for (const { w, state, storage } of plans) {
+      w.#detachedStorage = storage;
+      w.state = state;
+      w.registryHost = null;
+      w.members = [];
+      w.#dirtyAll = true;
+      w.save();
+    }
+    this.members = this.members.filter(w => !legacy.includes(w));
+    for (const id of moving) {
+      const row = this.state.entities[id];
+      if (row && !row.deletedAt) { row.deletedAt = nowISO(); this.#mark(row); }
+    }
+    for (const [t, id] of rollups) {
+      delete t.fields[id];
+      t.fieldOrder = t.fieldOrder.filter(fieldId => fieldId !== id);
+    }
+    this.state.meta.detachedRegistry = {
+      rows: [...new Set([...(this.state.meta.detachedRegistry?.rows ?? []), ...moving])],
+      files: [...new Set([...(this.state.meta.detachedRegistry?.files ?? []), ...[...moving].flatMap(id => (this.state.entities[id]?.files ?? []).flatMap(f => [f.id, f.preview?.id].filter(Boolean)))])],
+    };
+    this.state.meta.localRegistry = 1;
+    this.save();
+    return { migrated: plans.length };
   }
 
   joinRegistry(root) {
@@ -4544,6 +4949,7 @@ export class Weave {
         const summary = { kind: entry.kind, entity: `${entry.table}#${entry.publicId}`, name: entry.name, ts: entry.ts };
         const e = this.state.entities[entry.entityId];
         if (!e) { undone.push({ ...summary, skipped: 'entity purged' }); continue; }
+        if (this.state.meta.detachedRegistry?.rows.includes(e.id)) { undone.push({ ...summary, skipped: 'entity moved to its workspace' }); continue; }
         const db = this.state.tables[e.dbId];
         switch (entry.kind) {
           case 'create':
@@ -4743,7 +5149,7 @@ export class Weave {
       if (!this.#sysField(usersT, n)) this.addField(usersT.id, { name: n, type, config }).system = true;
     }
     const wsT = this.#sysTable('workspaces')
-      ?? mkTable('Workspaces', 'workspaces', 'Every workspace this weave serves, as a row: the hub root and every member workspace. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted from the hub, not as rows.');
+      ?? mkTable('Workspaces', 'workspaces', 'This workspace as a row. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as rows.');
     for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
@@ -7078,6 +7484,7 @@ export class Weave {
   restoreEntity(id) {
     this.#mayWriteRow(id);
     const e = this.getEntity(id);
+    if (this.state.meta.detachedRegistry?.rows.includes(e.id)) throw new WeaveError('This registry row moved to its workspace', 'forbidden');
     {
       const db = this.state.tables[e.dbId];
       const binned = db?.system === 'fields' && e.deletedAt && !this.#inMetaSync ? this.#trashedFieldAnywhere(e.sysId) : null;
@@ -9097,6 +9504,7 @@ export class Weave {
   }
 
   #dropBlob(id) {
+    if (this.state.meta.detachedRegistry?.files.includes(id)) return;
     if (this.state.fileBlobs) delete this.state.fileBlobs[id];
     if (this.state.meta.logo?.id === id) return;
     for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;

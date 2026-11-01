@@ -29,7 +29,6 @@ const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden':
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 window.weaveFileBase = WS_PREFIX;
-const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
@@ -820,17 +819,7 @@ function registryWorkflows(dbId) {
   return null;
 }
 
-async function readRegistry() {
-  const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
-  if (res.status === 401 || res.status === 403) return [];
-  if (!res.ok) throw new Error(`${res.status}`);
-  const rootSchema = await res.json();
-  return Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
-}
-
 async function loadSchema() {
-  const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
-  registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
@@ -838,14 +827,7 @@ async function loadSchema() {
     state.schema = await api('GET', '/schema');
     loadedSchemaVersion = lastSchemaVersion;
   } finally { schemaLoading = false; }
-  if (WS_PREFIX && !state.schema.some((sp) => sp.system === 'workspace')) {
-    try {
-      state.registry = await (registryRead ?? readRegistry());
-    } catch (err) {
-      state.registry = [];
-      toast(`Couldn't load the workspace registry: ${err.message}`, true);
-    }
-  } else state.registry = null;
+  state.registry = null;
   if (idRead) state.wsId = await idRead;
   if (formPermission) await formPermission;
   renderNav();
@@ -1279,7 +1261,6 @@ function renderNav() {
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
-  const peopleHere = !!people && allTables().some((d) => d.id === people.id);
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
     el('div', { class: 'nav-space-row nav-system-head' },
@@ -1294,7 +1275,7 @@ function renderNav() {
       })),
     ...(systemFolded ? [] : [
       sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-      ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
+      ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));

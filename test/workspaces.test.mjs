@@ -108,9 +108,9 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     const page = await (await fetch(`${base}/w/weave/`)).text();
     assert.match(page, /id="app"/);
     assert.match(page, /<title>weave<\/title>/, 'the shell wears the workspace title before the app runs (Feature #264)');
-    assert.match(page, /<meta name="weave-workspace" content="weave" data-root="false">/, 'a member shell says it is not the root (Issue #395)');
-    assert.match(await (await fetch(`${base}/`)).text(), /<meta name="weave-workspace" content="uno" data-root="true">/, 'the root shell says it is the root');
-    assert.match(await (await fetch(`${base}/w/uno/`)).text(), /<meta name="weave-workspace" content="uno" data-root="true">/, 'the root under its own prefix is still the root');
+    assert.match(page, /<meta name="weave-workspace" content="weave">/, 'the member shell names its workspace');
+    assert.match(await (await fetch(`${base}/`)).text(), /<meta name="weave-workspace" content="uno">/, 'the compatibility mount names its workspace');
+    assert.match(await (await fetch(`${base}/w/uno/`)).text(), /<meta name="weave-workspace" content="uno">/, 'the explicit mount names the same workspace');
 
     const mmd = await fetch(`${base}/w/weave/e/${guideId}/doc.mmd`);
     assert.equal(mmd.headers.get('content-type'), 'text/vnd.mermaid; charset=utf-8');
@@ -156,9 +156,30 @@ test('workspace delete: trash move, guards, and the fresh-workspace description'
       assert.ok(readdirSync(join(dir, 'trash')).some((f) => f.startsWith('scratch-')), 'and landed in trash/');
 
       const noDefault = await fetch(`${base}/api/workspaces/main`, { method: 'DELETE' });
-      assert.equal(noDefault.status, 400, 'the default workspace stays');
+      assert.equal(noDefault.status, 400, 'the last live workspace stays');
     } finally {
       server.close();
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+test('standalone legacy member import refuses missing hub registry without retaining the copy', async () => {
+  const { createWorkspaceHub } = await import('../src/server.js');
+  const { join } = await import('node:path');
+  const { existsSync } = await import('node:fs');
+  const source = new Weave({ path: join(tempDir('weave-old-root-'), 'root.db') });
+  const member = new Weave({ path: join(tempDir('weave-old-member-'), 'member.db') });
+  source.hostRegistry();
+  member.joinRegistry(source);
+  member.save();
+  const sourcePath = member.store.path;
+  member.store.close?.();
+  const targetDir = tempDir('weave-import-target-');
+  const target = new Weave({ path: join(targetDir, 'target.db') });
+  const hub = createWorkspaceHub(target);
+  try {
+    assert.throws(() => hub.create('imported', { from: sourcePath }), /full legacy hub backup/);
+    assert.equal(existsSync(join(targetDir, 'imported.db')), false);
+  } finally { target.store.close?.(); source.store.close?.(); }
 });

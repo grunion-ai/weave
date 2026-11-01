@@ -97,6 +97,9 @@ test('a credential carried over from #64 has no owner, so nobody reveals it', ()
     'a credential nobody claimed is shared with nobody');
   assert.throws(() => w.grantKey('ancient', 'sajit'), (e) => e.code === 'forbidden', 'an editor cannot claim an ownerless credential');
   asAccount(w, 'kyle');
+  assert.throws(() => w.resolveKey('ancient'), (e) => e.code === 'forbidden');
+  w.localKeyAccess = true;
+  w.actor = 'local';
   assert.equal(w.resolveKey('ancient'), 'old-secret');
   w.grantKey('ancient', 'sajit');
   asAccount(w, 'sajit');
@@ -119,20 +122,22 @@ test('a credential in someone else\'s keystore is refused with somewhere to go',
 
 test('the HTTP surface has a reveal verb, and still has no GET', async () => {
   const { w } = fresh('kyle', { solo: true });
+  const { token } = w.createAccount({ name: 'kyle', role: 'architect' });
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     await fetch(`${base}/api/keys`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers,
       body: JSON.stringify({ name: 'stripe', value: 'sk_live_hush' }),
     });
-    assert.equal((await fetch(`${base}/api/keys/stripe`)).status, 404, 'still no read-back by GET');
+    assert.equal((await fetch(`${base}/api/keys/stripe`, { headers })).status, 404, 'still no read-back by GET');
 
-    const ok = await fetch(`${base}/api/keys/stripe/reveal`, { method: 'POST' });
+    const ok = await fetch(`${base}/api/keys/stripe/reveal`, { method: 'POST', headers });
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).value, 'sk_live_hush');
 
-    const gone = await fetch(`${base}/api/keys/nope/reveal`, { method: 'POST' });
+    const gone = await fetch(`${base}/api/keys/nope/reveal`, { method: 'POST', headers });
     assert.equal(gone.status, 404);
   } finally {
     server.close();
