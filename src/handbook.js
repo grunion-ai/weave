@@ -1108,7 +1108,11 @@ Architects opening a workspace with no tables of their own see a **New table** b
 
 Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit rows once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
 
-Then the home page shows the relation map. A space page shows architects a **+ New table** button, the space's relation map, and its tables with record counts.
+Then the home page shows the relation map.
+
+On a desktop or tablet, opening a space lands on one page, computed from what the workspace already holds. It runs from the space's tables and their row counts, through the saved views and rows you opened recently in this browser, to the automation runs that changed rows here, wherever the automation started. A section with nothing in it disappears. Open a run to see the rows it changed; a run that stopped partway names the step that failed, where weave recorded it. A run that started in a space you cannot open stays off your list.
+
+**Space overview** at the foot of the page holds the description, the space's rollups, its relation map, its tables with **+ New table** for architects, and the **Schema** disclosure. Opened, it stays open in that browser until you close it.
 
 On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
 
@@ -1350,7 +1354,7 @@ A view's link is a share grant (**Share links** above), so sharing a view takes 
 
 ## The relation map
 
-One map, drawn in three places from one renderer: the \`#/map\` page, a card on the workspace home, and a card on every space page. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
+One map, drawn in three places from one renderer: the \`#/map\` page, a card on the workspace home, and a card in every space's overview. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
 
 ## Automations
 
