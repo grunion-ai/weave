@@ -262,7 +262,7 @@ test('the Door C guide explains the account chip, both sign-out rows and the 30-
   assert.ok(doc.includes('**Sign out of <workspace>**'), 'door C names the Sign out tooltip');
   assert.match(doc, /## Your account and signing out\n/, 'the chip has its own section');
   const section = doc.split('## Your account and signing out\n')[1].split('\n## ')[0];
-  for (const s of ['sidebar', '30 days', 'hub root', 'wv_out_<workspace id>', 'POST /api/auth/logout?everywhere=1']) {
+  for (const s of ['sidebar', '30 days', 'Each workspace checks its own account and session', 'POST /api/auth/logout?everywhere=1']) {
     assert.ok(section.includes(s), `the section covers ${s}`);
   }
 });

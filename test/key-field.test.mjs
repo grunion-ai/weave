@@ -52,22 +52,31 @@ test('key is a definable, defaultable-free value type', () => {
   assert.ok(row);
 });
 
-test('the API sets and lists keys but can never read one back', async () => {
+test('the authenticated API sets and lists keys while a generic key GET never reveals a secret', async () => {
   const { w } = fresh();
+  const { token } = w.createAccount({ name: 'key-owner', role: 'architect' });
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const set = await fetch(`${base}/api/keys`, {
+    assert.equal((await fetch(`${base}/api/keys`)).status, 401);
+    const denied = await fetch(`${base}/api/keys`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'stripe', value: 'sk_live_hush' }),
     });
+    assert.equal(denied.status, 401);
+    assert.equal(w.hasKey('stripe'), false);
+    const set = await fetch(`${base}/api/keys`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ name: 'stripe', value: 'sk_live_hush' }),
+    });
     assert.equal(set.status, 201);
-    const list = await (await fetch(`${base}/api/keys`)).json();
+    const list = await (await fetch(`${base}/api/keys`, { headers })).json();
     assert.deepEqual(list.map((k) => k.name), ['stripe']);
     assert.equal(list[0].set, true);
     assert.ok(!JSON.stringify(list).includes('hush'));
-    assert.equal((await fetch(`${base}/api/keys/stripe`)).status, 404, 'no read-back endpoint');
-    assert.equal((await fetch(`${base}/api/keys/stripe`, { method: 'DELETE' })).status, 200);
+    assert.equal((await fetch(`${base}/api/keys/stripe`, { headers })).status, 404, 'no read-back endpoint');
+    assert.equal((await fetch(`${base}/api/keys/stripe`, { method: 'DELETE', headers })).status, 200);
     assert.equal(w.hasKey('stripe'), false);
   } finally {
     server.close();

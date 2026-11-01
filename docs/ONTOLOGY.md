@@ -39,7 +39,7 @@ Both lists are exported from the engine — `ONTOLOGY` and `FIELD_TYPES` in
 | Kind | Level of | Registry | Lives in | What it is |
 | --- | --- | --- | --- | --- |
 | **Entity** | — | — | `state.entities` | One addressable thing: id, public id (`Table#n`), fields, and an entity view. Everything below is one. |
-| **Workspace** | contains spaces | `System/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. The registry lives once, at the hub root (Feature #219): every workspace the hub serves is a row there, and the Spaces, Tables, Fields and Workflows rows relate back to it through a `Workspace` relation. |
+| **Workspace** | contains spaces | `System/Workspaces` | `state.meta` | One workspace file and everything in it. The top of the hierarchy. Each workspace owns its system registry and Users table. Its Spaces, Tables, Fields and Workflows rows relate to its local Workspaces row through a `Workspace` relation. |
 | **Space** | contains tables | `System/Spaces` | `state.spaces` | The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest. |
 | **Table** | contains rows | `System/Tables` | `state.tables` | An entity that is also an **entity type**: the ordered set of fields every row in it follows. |
 | **Field** | describes a slot | `System/Fields` | `table.fields` | One typed, named slot on a table. Not a row of data, but it has a registry row carrying its type and definition, which is how the schema stays editable as data. |
@@ -102,7 +102,7 @@ deleting, or reordering columns through the schema verbs updates the row.
 ## How it nests
 
 ```
-Workspace ......................... entity (level 1) — row in System/Workspaces, at the hub root
+Workspace ......................... entity (level 1), row in its own System/Workspaces table
 └── Space ......................... entity (level 2) — row in System/Spaces
     └── Table ..................... entity (level 3) — row in System/Tables
         │                             …and the ENTITY TYPE of everything in it
@@ -185,11 +185,10 @@ order, then its documents, comments, files and activity. A space, a table and a
 customer all have one, because all three are entities.
 
 ### Workspace
-One weave file — a SQLite `.db` — holding spaces, tables, rows and the
-machinery around them. The top level of the hierarchy. A row in
-`System/Workspaces` at the hub root: the registry lives once, in the engine
-the hub stands on, and member workspaces project their structure into it
-(Feature #219) instead of minting a `Workspace` space of their own.
+One SQLite `.db` file holding spaces, tables, rows, accounts and its system
+registry. The workspace is the top level of the hierarchy, with a row in its
+own `System/Workspaces` table. The hub discovers workspace files and routes
+requests to them; each workspace checks its own users and permissions.
 
 ### Space
 The unit of meaning in a workspace: the tables of one area, under one schema
@@ -314,9 +313,9 @@ same reason.
 ### Registry
 A system table whose rows are structure: `System/Workspaces`,
 `System/Spaces`, `System/Tables`, `System/Fields`. Readable, queryable
-and editable like any table; not deletable, not redefinable. There is one
-registry per hub, at the root; every row carries a `Workspace` relation naming
-the workspace it describes, and a row edit routes to that workspace's engine.
+and editable like any table; not deletable, not redefinable. Each workspace
+owns its registry. Every row carries a `Workspace` relation to its local
+Workspaces row, and a row edit calls that workspace's schema operation.
 
 Not every system table is a registry. `System/Workflows` is a system table
 whose rows are the workspace's automations, one row per rule, and the table
@@ -335,13 +334,18 @@ and Off refuses to be switched On; Health is runtime, `Healthy`, `Warning`,
 `Failed` or `No runs`, stamped with Last Run on every fire. A row whose setup
 breaks while On (its trigger field deleted, say) stays On, is skipped, and
 reads Failed with the reason; a failing row is never switched off for you.
-A hub member's rows live at the root, its Workspace relation naming it.
+Workflow rows live in the workspace whose tables the rules operate on.
 
 The registries are related to each other exactly as the hierarchy says: a
 Fields row belongs to its Tables row (the `Table` field, inverse `Fields`), and
 a Tables row to its Spaces row (`Space`, inverse `Tables`). Both links are
 re-asserted on every sync, and `registryReport()` / `rebuildRegistry()` inspect
 and repair a workspace whose links drifted.
+
+Legacy hub detachment preserves current registry IDs and remaps typed references
+and UUID wiki targets from older local registries. Plain markdown URLs and saved
+bookmarks containing replaced local IDs need manual updates. Restore a complete
+hub backup and migrate it before importing an individual legacy member archive.
 
 ### Relation
 A link between two tables, materialised as a paired field on each side. The pair
