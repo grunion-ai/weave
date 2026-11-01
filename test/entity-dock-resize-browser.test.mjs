@@ -131,17 +131,12 @@ if (s) {
       const wide = await geometry(page);
       assert.ok(Math.abs(wide.dockW - 900) <= 2, `the pin applies where it fits: ${wide.dockW}px`);
       await page.setViewportSize({ width: 1000, height: 900 });
-      await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
       const narrow = await geometry(page);
-      assert.equal(narrow.main, 0, 'the table yields when both pane floors cannot fit');
-      assert.ok(narrow.dockW >= 360, `the entity keeps its floor: ${narrow.dockW}px`);
-      assert.equal(await page.locator('#dock-gutter').isVisible(), false);
+      assert.ok(narrow.main >= MAIN_MIN, `narrowed, the table keeps ${MAIN_MIN}px: ${narrow.main}px`);
       assert.ok(narrow.overflow <= 0, `narrowed, nothing spills past the window: ${narrow.overflow}px`);
       assert.equal(narrow.stored, '900', 'the narrow window never rewrites the pin');
       await page.setViewportSize({ width: 1600, height: 900 });
-      await page.waitForFunction(() => !document.querySelector('#app').classList.contains('table-yield'));
       const back = await geometry(page);
-      assert.ok(back.main >= MAIN_MIN, 'widening restores the table floor');
       assert.ok(Math.abs(back.dockW - 900) <= 2, `widened again, the pinned width returns: ${back.dockW}px`);
       await page.close();
     });
@@ -160,11 +155,10 @@ if (s) {
       await page.close();
     });
 
-    test(`a drag at the narrowest fitting pane layout leaves a pin a wide window honours (Issue #326, ${theme})`, async () => {
-      const page = await openPinned(theme, 0, 1100);
+    test(`a drag on a window too narrow for the dock leaves a pin a wide window honours (Issue #326, ${theme})`, async () => {
+      const page = await openPinned(theme, 0, 1000);
       const squeezed = await geometry(page);
-      assert.ok(squeezed.dockW >= 360, `the entity keeps its floor: ${squeezed.dockW}px`);
-      assert.ok(squeezed.main >= MAIN_MIN, 'the table keeps its floor');
+      assert.ok(squeezed.dockW < 360, `the window squeezes the dock under 360px: ${squeezed.dockW}px`);
       const box = await page.locator('#dock-gutter').boundingBox();
       const y = box.y + 200;
       await page.mouse.move(box.x + 4, y);

@@ -76,7 +76,6 @@ if (s) {
 
   test("with the View pane open, the docked entity's eye opens its own popover and shuts it again", async () => {
     const page = await table('light');
-    await page.setViewportSize({ width: 1800, height: 900 });
     await page.click(`tr[data-eid="${acme.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .eye-btn');
     await openPane(page, 'fields');

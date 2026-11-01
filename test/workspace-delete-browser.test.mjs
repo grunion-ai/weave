@@ -51,16 +51,14 @@ if (s) {
     await hold(go);
   }
 
-  test('the default workspace offers no workspace menu: no ⋮ on its page and its chip opens nothing (Feature #347)', async () => {
+  test('the initial mount is an ordinary workspace: its page has the ⋮ and its chip opens the same menu (Issue #979, Feature #347)', async () => {
     const page = await open('/');
     try {
       await page.waitForSelector('#main .view-header');
-      assert.equal(await page.locator('#main .view-header .dots-btn[title="Workspace actions"]').count(), 0, 'no ⋮ when the one row cannot work');
+      assert.equal(await page.locator('#main .view-header .dots-btn[title="Workspace actions"]').count(), 1, 'the ⋮ sits on the initial mount like any workspace');
       await chip(page, 'main').click({ button: 'right' });
-      await chip(page, 'scratch').click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
-      assert.match(await page.locator('.ws-ctx').textContent(), /scratch/, 'only the deletable chip opened a menu');
-      assert.equal(await page.locator('.ws-ctx').count(), 1);
+      assert.match(await page.locator('.ws-ctx').textContent(), /Delete workspace/, 'the chip opens the delete row');
     } finally { await page.close(); }
   });
 
