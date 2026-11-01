@@ -204,6 +204,10 @@
       "gzip": 1482,
       "br": 1275
     },
+    "/space-home-core.js": {
+      "gzip": 927,
+      "br": 842
+    },
     "/start.js": {
       "gzip": 13623,
       "br": 12145

@@ -4487,6 +4487,10 @@ async function showDatabase(dbId, view) {
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
+  if (!(state.route?.page === 'db' && state.route.dbId === dbId && state.route.view === view)) {
+    const savedView = WeaveSpaceHome.viewRecent(table, view);
+    if (savedView) noteRecent(savedView);
+  }
   const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
     stopTableSearchTimer();
@@ -11626,17 +11630,18 @@ function currentWsName() {
 }
 
 const RECENT_KEY = `weave-recent:${WS_PREFIX || '/'}`;
+const RECENT_KEEP = 60;
 function readRecents() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; }
 }
 function noteRecent(item) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch {}
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), { ...item, at: Date.now() }, RECENT_KEEP))); } catch {}
 }
 function noteEntityRecent(entity) {
   const wf = allTables().find((d) => d.id === entity.dbId)?.fields.find((f) => f.type === 'workflow');
   const st = wf ? entity.fields?.[wf.name] : null;
   noteRecent({
-    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
+    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, dbId: entity.dbId, publicId: entity.publicId,
     url: `/e/${entity.id}`,
     ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
   });
