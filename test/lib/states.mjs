@@ -1,6 +1,7 @@
 import { createForm } from '../../src/forms.js';
 import { openBugReport } from './bug-report.mjs';
 import { openPane } from './view-pane.mjs';
+import { hold } from './hold.mjs';
 
 export const LAYOUTS = ['table', 'list', 'board'];
 export const OPENS = ['journey', 'rest', 'overlay', 'hover', 'drag'];
@@ -346,7 +347,7 @@ const JOURNEY_STATES = [
       const boxes = page.locator('.wv-grid tbody .sel-box');
       await boxes.nth(1).check();
       await boxes.nth(2).check();
-      await page.locator('.sel-puck .sel-act.danger').click();
+      await hold(page.locator('.sel-puck .sel-act.danger'));
       const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
       await toast.waitFor();
       await toast.locator('.wv-toast-action').click();
@@ -475,6 +476,7 @@ const paneSection = (section) => async (page, ctx, cell) => {
   await page.waitForSelector(`#view-pane #vp-body-${section}`);
 };
 const paneClose = (page, ctx, cell) => tap(page, '#view-pane .vp-close', cell);
+const shareClose = (page, ctx, cell) => tap(page, '#share-pane button[aria-label="Close share panel"]', cell);
 
 const OVERLAY_STATES = [
   {
@@ -489,7 +491,6 @@ const OVERLAY_STATES = [
   { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
   { name: 'personal-menu', route: 'home', cells: DESKTOP, root: '.nav-personal-menu', act: (page, ctx, cell) => tap(page, '#sidebar .nav-identity-more', cell) },
   { name: 'new-workspace', route: 'home', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
-  { name: 'workspace-menu', route: 'home', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', route: 'home', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#nav .dots-btn[title="Task actions"]', cell) },
   {
     name: 'bug-report', route: 'home', cells: BOTH, root: '#bug-panel',
@@ -521,7 +522,7 @@ const OVERLAY_STATES = [
   { name: 'fields', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('fields'), close: paneClose },
   { name: 'view-pane-display', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('display'), close: paneClose },
   { name: 'table-menu', route: 'table', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Table actions"]', cell) },
-  { name: 'share-table', route: 'table', cells: BOTH, root: '#modal-back', act: tableMenu('Share…') },
+  { name: 'share-table', route: 'table', cells: BOTH, root: '#share-pane', act: toolsThen('#main .table-share-btn'), close: shareClose },
   { name: 'share-page', route: 'table', cells: BOTH, root: '#tray-back', act: tableMenu('New share page') },
   {
     name: 'name-field-editor', route: 'table', cells: DESKTOP, root: '#tray-back',
@@ -546,14 +547,12 @@ const OVERLAY_STATES = [
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
-  { name: 'share-row', route: 'entity', cells: BOTH, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, `${scope(cell)} .dots-btn[title="Row actions"]`, 'Share…') },
+  { name: 'share-row', route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
   { name: 'date-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },
 ].map((o) => ({ ...o, open: 'overlay', layout: o.route === 'table' ? 'table' : null, seeds: MESSY }));
-
-const a11yMenu = (label) => (page) => menu(page, 'desktop', '#main .dots-btn[title="Table actions"]', label);
 
 const A11Y_STATES = [
   { name: 'Task table', route: 'table', open: 'rest', layout: 'table' },
@@ -565,7 +564,10 @@ const A11Y_STATES = [
     await tap(page, '.search-like');
     await page.waitForSelector('#cmdk-input');
   } },
-  { name: 'share dialog', route: 'table', open: 'overlay', layout: 'table', root: '#modal-back', act: a11yMenu('Share…') },
+  { name: 'share pane', route: 'table', open: 'overlay', layout: 'table', root: '#share-pane', async act(page) {
+    await tap(page, '#main .table-share-btn');
+    await page.waitForSelector('#share-pane:not([hidden]) .share-add');
+  } },
   { name: 'filter popover', route: 'table', open: 'overlay', layout: 'table', root: '#view-pane', act: (page) => openPane(page, 'filters') },
   { name: 'sort popover', route: 'table', open: 'overlay', layout: 'table', root: '#view-pane', act: (page) => openPane(page, 'sort') },
   { name: 'row menu', route: 'table', open: 'overlay', layout: 'table', root: '.wv-menu', async act(page) {
@@ -590,18 +592,18 @@ const TOUCH_STATES = [
   { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
-  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163, 1164] } },
+  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
-  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { cutoff: [1123, 1124, 1125, 1126, 1127] } },
-  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127] } },
-  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1127, 1160, 1161], 'cutoff|phone': [1152, 1161] } },
-  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { 'cutoff|desktop': [1127], 'cutoff|phone': [1157], touch: [1169, 1170] } },
-  { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { 'cutoff|desktop': [1123, 1124, 1125, 1126, 1127, 1151, 1152, 1153, 1154, 1155, 1156, 1157, 1161], 'cutoff|phone': [1157] } },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|desktop': [1127, 1151, 1153, 1158, 1159, 1161], 'cutoff|phone': [1151, 1152, 1156, 1161, 1162], touch: [1165, 1166, 1167, 1168] } },
+  { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
+  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
+  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
+  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
+  { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1152, 1161], touch: [1165, 1166, 1167, 1168] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];
@@ -620,6 +622,7 @@ export const themesOf = (s) => s.themes ?? THEMES;
 export const rootsOf = (s) => s.roots ?? (s.root ? [s.root] : ['#main']);
 export const readyOf = (s, cell) => s.ready ?? ROUTES[s.route].ready(cell);
 
+export const HOLD_PLATFORMS = ['darwin', 'linux'];
 export function plan(probe) {
   const p = PROBES[probe];
   const out = [];
@@ -627,7 +630,7 @@ export function plan(probe) {
     if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
-        out.push({ state, cell, theme, hold: state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null });
+        out.push({ state, cell, theme, hold: state.hold?.[`${probe}|${cell}|${process.platform}`] ?? state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null });
       }
     }
   }

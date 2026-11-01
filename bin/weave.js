@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
-import { startServer, openDefaultWorkspace } from '../src/server.js';
+import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
@@ -404,7 +404,7 @@ async function main() {
       console.error(`--tools takes core or all, not ${JSON.stringify(flags.tools)}`);
       process.exit(1);
     }
-    const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
+    const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
     startMcpServer(w, flags.tools ? { tools: flags.tools } : {});
     return;
   }
@@ -545,10 +545,10 @@ async function main() {
       archive = backups.at(-1).name;
     }
     const r = await c.migrate({ name: flagStr('name'), slug: flagStr('slug'), archive, key, workspace: flagStr('workspace') });
-    return out(`Migrated ${archive} into the workspace ${r.name} on ${c.origin} (${r.entities} entities): ${c.origin}${r.url}`);
+    return out(`Migrated ${archive} into the workspace ${r.name} on ${c.origin} (${r.entities} entities): ${c.origin}${r.url}${r.owner?.token ? `\nWorkspace token: ${r.owner.token}` : ''}`);
   }
 
-  const w = new Weave({ path: dataPath, actor: CLI_ACTOR });
+  const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   switch (command) {
     case 'ontology':
@@ -633,14 +633,20 @@ async function main() {
       const [sub, name] = args;
       if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
       if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon', 'position']);
+        const patch = pickFlags(['name', 'description', 'icon', 'position', 'access']);
         if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
         return out(w.updateSpace(name, patch));
       }
       if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
       if (sub === 'restore') return out(w.restoreSpace(name));
       if (sub === 'list' || !sub) return out(w.listSpaces());
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, delete, restore`);
+      if (sub === 'members') {
+        const [, , account] = args;
+        if (account && flags.remove) return out(w.removeSpaceMember(name, account));
+        if (account) return out(w.setSpaceMember(name, account, { role: flags.role ?? null }));
+        return out(w.spaceMembers(name));
+      }
+      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, members, delete, restore`);
     }
     case 'template': {
       const [sub, ref] = args;
@@ -649,7 +655,7 @@ async function main() {
         if (!ref) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
         if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
         const into = String(flags.into);
-        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR });
+        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true });
         try {
           return out(w.useTemplate(ref, target, { name: flags.name == null || flags.name === true ? undefined : String(flags.name) }));
         } finally { if (target !== w) target.store.close?.(); }
@@ -956,8 +962,12 @@ async function main() {
       if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
       if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
-      if (sub === 'order') return out(w.workspaceOrder());
-      if (sub === 'move') return out(w.moveWorkspace(args[1], Number(flags.position)));
+      if (sub === 'order' || sub === 'move') {
+        const hub = createWorkspaceHub(w);
+        try {
+          return out(sub === 'order' ? hub.list({ workspace: w }) : hub.move(args[1], Number(flags.position), { workspace: w }));
+        } finally { for (const [, on] of hub.entries()) on.store.close?.(); }
+      }
       if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
       if (sub === 'get' || !sub) return out(w.getWorkspace());
       throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move, leave`);

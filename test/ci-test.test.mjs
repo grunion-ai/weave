@@ -81,6 +81,15 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /install --with-deps chromium webkit/);
 });
 
+test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const concurrency = workflow.match(/\nconcurrency:\n  group: (.+)\n  cancel-in-progress: (\S+)\n/);
+  assert.ok(concurrency, 'test.yml carries one workflow-level concurrency block');
+  assert.match(concurrency[1], /\$\{\{ inputs\.ref \|\| github\.sha \}\}/, 'the group names the commit under test, so two main pushes never queue behind one lane');
+  assert.equal(concurrency[2], 'false', 'a running gate is never cancelled by the next merge');
+});
+
 const browserFiles = ['test/chip-browser.test.mjs', 'test/chip-width-browser.test.mjs', 'test/grid-keymap-browser.test.mjs', 'test/oidc-login-browser.test.mjs', ...SMOKE];
 const sources = { 'test/oidc-login-browser.test.mjs': "import { startIdp } from './lib/idp.mjs'; const src = '../src/oidc.js';" };
 const read = file => sources[file] ?? '';
@@ -228,6 +237,7 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
 
 test('every gating workflow bounds each browser install attempt and retries it once', async () => {
   const { readFileSync } = await import('node:fs');
+  const dropIns = new Set();
   for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 15], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
@@ -241,11 +251,20 @@ test('every gating workflow bounds each browser install attempt and retries it o
     for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);
     assert.match(body, /dpkg --configure -a \|\| true/, `${file} repairs an interrupted unpack before the second attempt`);
     assert.match(body, /Acquire::Retries/, `${file} bounds apt's own connections`);
+    const lock = body.match(/DPkg::Lock::Timeout "(\d+)"/);
+    assert.ok(lock, `${file} waits for the dpkg frontend lock rather than failing the attempt on it`);
+    assert.ok(Number(lock[1]) >= 120, `${file} waits ${lock[1]}s for the dpkg lock, too short to outlast the runner's own boot-time apt-get`);
+    const shortest = Math.min(...attempts);
+    assert.ok(Number(lock[1]) <= shortest * 60, `${file} promises a ${lock[1]}s lock wait that its ${shortest}m attempt bound kills first`);
+    const dropIn = body.match(/printf '[^']*' \| sudo tee \S+ > \/dev\/null/);
+    assert.ok(dropIn, `${file} writes the apt drop-in this test reasons about`);
+    dropIns.add(dropIn[0]);
     assert.ok(attempts[0] + attempts[1] <= Number(backstop), `${file} fits both attempts in the step backstop`);
     assert.ok(Number(backstop) < jobBudget, `${file} leaves the job room to run its work`);
     assert.doesNotMatch(job, /continue-on-error/, `${file} does not lean on continue-on-error, which a killed step does not survive`);
     assert.equal(job.match(/playwright install --with-deps /g).length, 2, `${file} installs browsers in one place`);
   }
+  assert.equal(dropIns.size, 1, `every gating workflow writes one apt drop-in, so a lock wait cannot land in one and miss the others: ${[...dropIns].join(' | ')}`);
 });
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };

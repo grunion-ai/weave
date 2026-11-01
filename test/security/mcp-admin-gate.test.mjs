@@ -131,12 +131,12 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
   assert.equal(spaces(), before + 1);
 });
 
-test('an admin of a member only: its own accounts yes, the keystore no', async () => {
+test('a local architect manages its own accounts and keys', async () => {
   const { call, memAdmin, mem } = build();
   const r = await mcp(call, '/w/mem', 'weave_accounts', { action: 'create', name: 'helper', role: 'writer' }, memAdmin);
   assert.ok(!refused(r), JSON.stringify(r.json));
   assert.equal(mem.listAccounts().length, 2);
-  assert.ok(refused(await mcp(call, '/w/mem', 'weave_keys', { action: 'set', name: 'k', value: 'v' }, memAdmin)));
+  assert.ok(!refused(await mcp(call, '/w/mem', 'weave_keys', { action: 'set', name: 'k', value: 'v' }, memAdmin)));
 });
 
 test('the root admin reaches all three tools', async () => {

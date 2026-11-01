@@ -34,19 +34,19 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 
 | Kind | Settings | Organize | Share | Export | Delete |
 | --- | --- | --- | --- | --- | --- |
-| Table | | Move to space…, Duplicate | Share…, New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
-| Record (decks too) | | Duplicate | Share… | Markdown, HTML, PDF | Move to trash |
+| Table | | Move to space…, Duplicate | New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
+| Record (decks too) | | Duplicate | | Markdown, HTML, PDF | Move to trash |
 | Document section | | | | Markdown, Mermaid, HTML, PDF | |
 | Space | | | | | Move to trash |
 | Share page | | | | | Move to trash |
-| Workspace | | | Link preview before sign-in (switch) | | (none, Feature #297) |
+| Workspace | | | | | Delete workspace… (Feature #347) |
 | Field (column header) | Field settings… | Insert field… | | | Move to trash |
 
-Share… keeps its current place while its redesign is parked.
+Share is never a menu row: every shareable page carries the Share button in its header, beside the ⋮, and it opens the one share pane (Issue #765).
 
 ## Delete
 
-Every delete row is `trashRow`, labelled **Move to trash**. One click moves the object to the trash and raises a **Moved to trash** toast with **Undo**. Undo calls the kind's restore route and puts the object back where it was.
+Every delete row is `trashRow`, labelled **Move to trash** with a **HOLD** hint. Holding the row until its fill sweeps across moves the object to the trash and raises a **Moved to trash** toast with **Undo**; a click deletes nothing (Feature #346). Undo calls the kind's restore route and puts the object back where it was.
 
 | Kind | Trash | Undo | Back where it was |
 | --- | --- | --- | --- |
@@ -56,11 +56,13 @@ Every delete row is `trashRow`, labelled **Move to trash**. One click moves the 
 | Share page | `DELETE /api/views/:id` | `POST /api/views/:id/restore` | its row on the workspace page; reopens if it was open |
 | Field | `DELETE /api/tables/:table/fields/:field` | `POST /api/tables/:table/fields/:field/restore` | its column, with its values |
 
-The multi-select toolbar trash uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
+The multi-select toolbar trash is a hold too, uses the same verb, `TRASHED`, and the same Undo; its toast adds the count.
 
-A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one. **Delete forever** lives in Settings (`#/settings`, Feature #295): a typed name arms the builder's hold row, and the Trash page only restores.
+Every other control that sends a DELETE is a hold as well: the Delete workspace dialog, Revoke on a share link and on an invite, Delete link in the Share panel, Remove logo, the Views list delete and Delete forever. `test/menu-contract.test.mjs` counts the DELETE call sites in the app and fails until a new one is a hold.
 
-Workspace delete lives in Settings beside it (Feature #297), behind the same typed name and hold, and no menu carries it. `DELETE /api/workspaces/:id` trashes a workspace and the Trash page restores it.
+`trashRow` carries the builder's `hold: true`, and no kind's definition spells its own. **Delete forever** lives in Settings (`#/settings`, Feature #295): a typed name arms the builder's hold row, and the Trash page only restores.
+
+The workspace is the one kind whose Delete row is not `trashRow`: **Delete workspace…** opens a dialog whose hold arms only on the workspace's exact name; the hold sends `DELETE /api/workspaces/:id` (Feature #346, Feature #347). The delete is permanent from the user's side: no Undo, no Trash entry, and the workspace's address answers 404; the hub keeps a tombstone only the operator restores. The row shows only where `GET /api/workspaces` marks the workspace `deletable`, so a workspace you cannot delete has no workspace menu at all. Deleting the workspace you stand in opens the next workspace on the rail, or the `weave` workspace when it was your last. Settings lists the same workspaces with the same dialog. Invite lives on the workspace page's **Invite** button and **Link preview before sign-in** on the Settings page; neither is a menu row.
 
 ## Triggers
 

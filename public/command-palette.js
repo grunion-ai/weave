@@ -10,13 +10,14 @@ function navigateToResult(hit) {
   else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
   else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
   else if (hit.kind === 'view') location.hash = `#/view/${hit.id}`;
+  else if (hit.kind === 'table-view') location.hash = hit.url;
   else location.hash = '#/';
 }
 
 function paletteIcon(hit, group) {
   if (hit.avatar) return chipElFrom(chipView.avatarHtml(hit.avatar, { cls: 'cmdk-ic cmdk-av' }));
   const name = hit.kind === 'table' ? 'table'
-    : hit.kind === 'view' ? 'eye'
+    : hit.kind === 'view' || hit.kind === 'table-view' ? 'eye'
     : hit.kind === 'space' ? 'layout-grid'
     : hit.kind === 'workspace' ? 'house'
     : group === 'docs' ? 'file-text' : 'file';
@@ -62,14 +63,15 @@ function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null 
 
 function openCommandK({
   onPick = null, onDismiss = null, kinds = null, placeholder = null,
-  scope = null, selected = null, multi = false, onCommit = null, create = null,
+  scope = null, browse = false, selected = null, multi = false, onCommit = null, create = null,
 } = {}) {
   if ($('#cmdk-back')) return;
   const P = weavePalette;
   const here = currentWsName();
   const linked = (selected ?? []).map((h) => ({ kind: 'entity', ...h }));
   const chosen = new Set(linked.map((h) => h.id));
-  const checks = !!scope || selected != null || multi;
+  const picking = !!scope && !browse;
+  const checks = picking || selected != null || multi;
   const creators = (create ?? []).map((c) => ({ kind: 'create', name: c.label, run: c.run }));
   let picked = false;
   const dismiss = () => {
@@ -144,7 +146,7 @@ function openCommandK({
       g.hits.map((h) => {
         const i = rowEls.length;
         const row = paletteRow(h, i, {
-          needle, group: g.key, here, onPick: pick, href: onPick || scope ? null : h.url,
+          needle, group: g.key, here, onPick: pick, href: onPick || picking ? null : h.url,
           checked: checks && h.kind !== 'create' ? chosen.has(h.id) : null,
         });
         row.addEventListener('mouseenter', () => setSel(i, false));
@@ -166,7 +168,7 @@ function openCommandK({
     ].filter((g) => g.hits.length));
   };
   const showRecent = () => {
-    const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
+    const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind)).slice(0, P.RECENT_MAX);
     render('', recent.length ? [{ key: 'recent', label: 'Recent', hits: recent }] : [], 'Records and tables you open show up here.');
   };
   const searchUrl = (q) => (scope
@@ -213,7 +215,7 @@ function openCommandK({
     list,
     el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
       el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
-      el('span', {}, cap('↵'), multi ? ' toggle' : scope ? ' pick' : ' open'),
+      el('span', {}, cap('↵'), multi ? ' toggle' : picking ? ' pick' : ' open'),
       el('span', {}, cap('tab'), ' next group'),
       multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close')));
   back.append(box);

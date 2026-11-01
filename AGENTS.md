@@ -76,7 +76,7 @@ workspace file (see
 | Build | `weave_build` | spaces, tables, fields, relations and rows in one call (dryRun checks) |
 | Read and search | `weave_ontology` | short schema: outline, one table, changes |
 |  | `weave_schema` | the full schema as JSON |
-|  | `weave_query` | rows of one table, filtered (where), sorted, paged |
+|  | `weave_query` | rows of one table, filtered (where), sorted, 200 a page |
 |  | `weave_get_entity` | one row in full: values, document, comments, activity |
 |  | `weave_search` | find rows, tables and spaces by text; each hit has a permalink |
 | Write rows | `weave_create_entity` | create one row |
@@ -183,6 +183,24 @@ Each error is the text weave returns; the fix follows.
 
 The detail behind Using weave, one subsection per topic.
 
+### Local file uploads
+
+For local files, call `weave_call` with `name: "weave_attach_file"` and
+`args: {entity, field, name, mime, prepare: true, size}`. `field` is an optional
+attachments field; `size` is the exact file size in bytes, up to 10 MiB.
+The authenticated HTTP connector returns `{url, method, headers, maxBytes,
+expiresAt}`. A local script sends the file bytes to that URL with the returned
+method and headers. File bytes never need to enter the model context, and no
+separate editor token is needed.
+
+The upload grant authorizes one file at the prepared destination for ten
+minutes. Every transfer attempt consumes it, even if the transfer fails.
+Prepare a fresh grant after failure or server restart. After an uncertain
+response, read the row's attachments before retrying to avoid a duplicate.
+Keep the returned authorization header private. The server rechecks the
+account's current role before accepting bytes and before attaching them.
+For small inline payloads, `contentBase64` still works, with optional `field`.
+
 ### Tool list and replies
 
 `tools/list` names the default tools in the [Tool map](#tool-map); every other
@@ -282,7 +300,7 @@ Card, `description` is the description size (`none`, `small`, `medium`, `large`)
 
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
-screen*: the eighteen field types with how each renders in the grid and which
+screen*: every field type with how it renders in the grid and which
 config keys it takes, the eight option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
 and date formats, document kinds, relation cardinalities, workflow state
 categories, rollup aggregates, the system columns, the two view kinds, and the
@@ -422,7 +440,7 @@ workspace. Every MCP tool has a command:
 
 | Read | Schema | Data |
 | --- | --- | --- |
-| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
+| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space members` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` / `weave field restore` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |

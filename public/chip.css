@@ -22,7 +22,10 @@
   border-color: var(--tblr-primary); color: var(--tblr-primary);
 }
 .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
+.k-attach { max-width: 100%; }
 .k-rel { padding: 0; }
+.k-rel.k-locked { padding: 0 6px; gap: 4px; color: var(--tblr-secondary); cursor: default; }
+.k-rel.k-locked:hover { border-color: var(--tblr-border-color); color: var(--tblr-secondary); }
 .k-rel > a.mention { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 2px;
   color: inherit; text-decoration: none;
   box-shadow: none; border-radius: 0; background: none; font-size: inherit; font-weight: inherit; line-height: inherit; }
@@ -41,6 +44,9 @@
 .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-field .k-key > .k-label, .fieldrow .k-key > .k-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+:is(.tile-field dd, .fieldrow) .k > .k-label, :is(.tile-field dd, .fieldrow) .k-rel > a > .k-label, .tile-field dd > .computed.k { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+.tile-field dd .k-attach > .k-label { white-space: nowrap; }
 .k-doc .doc-kind { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); color: var(--tblr-secondary); }
 .k-more { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); }
 .mention-fields { display: none; }
@@ -90,9 +96,15 @@
 .wv-card-head:has(> .wv-card-av) { justify-content: flex-start; gap: 10px; }
 .wv-card-head:has(> .wv-card-av) > .wv-card-title { flex: 1 1 auto; min-width: 0; }
 .wv-prose .k-rel .wv-av { vertical-align: -3px; margin-right: 4px; }
+.wv-face-pile { display: inline-flex; align-items: center; vertical-align: middle; }
+.wv-face-pile > a { display: inline-flex; border-radius: 50%; text-decoration: none; }
+.wv-face-pile > a + a { margin-left: -1px; }
+.wv-face-pile > a > .wv-av { --wv-av-size: 20px; box-shadow: 0 0 0 1px var(--tblr-bg-surface); }
+.wv-face-pile > a:hover { position: relative; z-index: 1; }
+.wv-face-pile > .k-more { margin-left: 4px; padding-block: 0; }
 .hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
 .hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
-.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #218358; --dot: #2ea043; }
+.hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #1a6b48; --dot: #2ea043; }
 .hue-amber  { --fill: rgba(245, 159, 0, .16);   --text: #7a5209; --dot: #f59f00; }
 .hue-red    { --fill: rgba(229, 72, 77, .12);   --text: #ce2c31; --dot: #e5484d; }
 .hue-purple { --fill: rgba(142, 78, 198, .12);  --text: #7a3fb8; --dot: #8e4ec6; }

@@ -75,7 +75,7 @@ async function serve() {
 
 const OPEN = (method, path) => path === '/api/health' || path === '/auth' || path === '/ingest' || path.startsWith('/ingest/') || path === '/start' || /^\/api\/start(\/|$)/.test(path)
   || (method === 'GET' && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs' || path === '/status' || path === '/status/'))
-  || /^\/api\/auth\/(oidc\/(start|callback)|handoff)$/.test(path)
+  || /^\/api\/auth\/(oidc\/(start|callback)|handoff|open\/[^/]+)$/.test(path)
   || path === '/api/auth/logout' || path === '/.well-known/openai-apps-challenge'
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || (path.startsWith('/t/') && !/^\/t\/[0-9a-f-]{36}\/new$/.test(path))
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));

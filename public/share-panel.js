@@ -10,10 +10,10 @@
     if (value !== 'custom' || !Number.isFinite(stamp) || stamp <= Date.now()) throw new Error('Choose an expiration in the future.');
     return { expiresAt: new Date(stamp).toISOString() };
   }
-  function mount(pane, context, { el, icon, api, copy, notify, close, confirm }) {
+  function mount(pane, context, { el, icon, api, copy, notify, close, confirm, hold }) {
     let links = [], editing = null, busy = false, alive = true;
     const snapshot = scope(context);
-    const scopeName = snapshot.kind === 'entities' ? `${snapshot.ids.length} selected entries` : `Entire ${context.kind}: ${context.name}`;
+    const scopeName = snapshot.kind === 'entities' ? `${snapshot.ids.length} selected entries` : `${['entity', 'view'].includes(context.kind) ? 'This' : 'Entire'} ${context.noun ?? context.kind}: ${context.name}`;
     const message = el('p', { class: 'share-note', role: 'status', 'aria-live': 'polite' });
     const list = el('div', { class: 'share-links' });
     const editor = el('div', { class: 'share-editor' });
@@ -36,7 +36,7 @@
         if (context.kind === 'workspace' || access.kind === 'workspace') return true;
         if (access.kind === context.kind && access.id === context.id) return true;
         if (access.kind === 'space' && access.id === context.spaceId) return true;
-        if (context.kind === 'space' && access.kind === 'table' && context.tableIds?.includes(access.id)) return true;
+        if (access.kind === 'table' && context.tableIds?.includes(access.id)) return true;
         const ids = access.kind === 'entities' ? access.ids : access.kind === 'entity' ? [access.id] : [];
         return ids.some(id => (context.entityIds ?? [...(context.selected ?? [])]).includes(id));
       });
@@ -54,10 +54,9 @@
             action('Preview link', 'eye', () => window.open(`${url(link)}?preview=1`, '_blank', 'noopener,noreferrer')),
             action('Copy link', 'copy', () => copy(url(link), 'Link copied')),
             action('Edit link', 'pencil', () => edit(link)),
-            !link.revokedAt ? action('Delete link', 'trash-2', async () => {
-              if (!await confirm('Delete link?', 'Anyone using this link will lose access. Entries stay in weave.')) return;
+            !link.revokedAt ? hold('Delete link', 'trash-2', () => perform(async () => {
               await api('DELETE', `/shares/${link.id}`); editing = null; editor.replaceChildren(); add.hidden = false; await refresh();
-            }) : null),
+            })) : null),
           inactive ? el('small', { class: 'share-note' }, 'This link no longer opens shared content.') : null);
       }));
       if (!links.length) list.append(el('p', { class: 'share-note' }, 'No links yet.'));
@@ -77,7 +76,7 @@
       expiry.addEventListener('change', () => { date.hidden = expiry.value !== 'custom'; });
       const label = el('input', { class: 'form-control', 'aria-label': 'Link name', value: link?.label ?? '', placeholder: 'Optional link name', maxlength: '120' });
       const note = el('p', { class: 'share-note share-scope' });
-      const setNote = () => { note.textContent = link ? `Scope fixed: ${link.scope.kind}` : mode.value === 'submit' ? `Creates entries in ${context.name}. Does not reveal existing entries.` : snapshot.kind === 'entities' ? `${scopeName}. Related and computed fields are omitted in this beta.` : `${scopeName}. Includes every field; view filters do not restrict access.`; };
+      const setNote = () => { note.textContent = link ? `Scope fixed: ${link.scope.kind}` : mode.value === 'submit' ? `Creates entries in ${context.name}. Does not reveal existing entries.` : snapshot.kind === 'entities' ? `${scopeName}. Related and computed fields are omitted in this beta.` : snapshot.kind === 'view' ? `${scopeName}. Recipients see this page only.` : `${scopeName}. Includes every field; view filters do not restrict access.`; };
       setNote(); mode.addEventListener('change', setNote);
       const exp = () => expiry.value === 'keep' ? {} : expiration(expiry.value, date.value);
       const save = el('button', { type: 'submit', class: 'btn btn-primary btn-sm' }, link ? 'Save changes' : 'Create link');

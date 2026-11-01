@@ -1,0 +1,1 @@
+- A long key in a key chip now breaks across lines on board tiles and the record page, so the whole value is readable instead of ending in an ellipsis or being clipped at the tile edge. The grid keeps its one-line chip with the ellipsis and the hover title (Issue #1153).

@@ -1,0 +1,1 @@
+- Deleting a workspace from Settings opens its own **Delete workspace** dialog. The dialog names the workspace and what moves with it, and its Delete button stays off until you type the workspace's exact name. Cancel, Escape or a click outside closes it with nothing deleted, and the message after a delete still carries Undo (Issue #1171).

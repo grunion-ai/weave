@@ -45,25 +45,25 @@ if (s) {
   });
   const refill = (page) => page.evaluate(() => window.__refill());
 
-  test('browser: four fixed controls in the workspace rail; Trash opens the workspace trash', async () => {
+  test('browser: five fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#ws-rail .nav-system a');
-    const rows = await page.locator('#ws-rail .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
+    await page.waitForSelector('#sidebar .nav-system a');
+    const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
     assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows') && !inList.includes('Users'), 'Workflows and Users are not listed twice');
     const below = await page.evaluate(() => {
-      const group = document.querySelector('#ws-rail .nav-system');
+      const group = document.querySelector('#sidebar .nav-system');
       const nav = document.querySelector('#nav').getBoundingClientRect();
-      return { outside: !document.querySelector('#nav').contains(group), under: group.getBoundingClientRect().top >= document.querySelector('#ws-new').getBoundingClientRect().bottom };
+      return { outside: !document.querySelector('#nav').contains(group), under: group.getBoundingClientRect().top >= nav.top };
     });
-    assert.deepEqual(below, { outside: true, under: true }, 'the group sits under New workspace in the rail');
-    await page.click('#ws-rail .nav-system a[href="#/trash"]');
+    assert.deepEqual(below, { outside: true, under: true }, 'the group sits under the space list, outside it, in the pinned strip');
+    await page.click('#sidebar .nav-system a[href="#/trash"]');
     await page.waitForSelector('#main .trash-when');
     assert.match(await page.textContent('#main'), /binned/);
-    assert.equal(await page.$eval('#ws-rail .nav-system a[href="#/trash"]', (a) => a.classList.contains('active')), true);
-    await page.click(`#ws-rail .nav-system a[href="#/table/${wfId}"]`);
+    assert.equal(await page.$eval('#sidebar .nav-system a[href="#/trash"]', (a) => a.classList.contains('active')), true);
+    await page.click(`#sidebar .nav-system a[href="#/table/${wfId}"]`);
     await page.waitForSelector('#main input.view-title');
     assert.equal(await page.locator('#main input.view-title').first().evaluate((i) => i.readOnly), true, 'Workflows cannot be renamed from its page');
     await page.close();
@@ -74,13 +74,13 @@ if (s) {
       const page = await browser.newPage({ viewport: { width: 1400, height: 760 } });
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#ws-rail .nav-system a');
+      await page.waitForSelector('#sidebar .nav-system a');
       const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });
       assert.ok(spare > 200, `the nav has more spaces than room, so anything unpinned would scroll away: ${spare}`);
 
-      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#ws-rail .nav-system a[href="#/trash"]', '#sidebar .nav-identity .nav-identity-more'];
+      const SEEN = ['#ws-name', '#search-btn', '#sidebar .nav-foot button', '#sidebar .nav-system a[href="#/trash"]', '#sidebar .nav-identity .nav-identity-more'];
       const look = () => page.evaluate((sels) => {
-        const box = document.querySelector('#app').getBoundingClientRect();
+        const box = document.querySelector('#sidebar').getBoundingClientRect();
         const out = {};
         for (const sel of sels) {
           const r = document.querySelector(sel).getBoundingClientRect();
@@ -101,14 +101,18 @@ if (s) {
       }
 
       const stack = await page.evaluate(() => {
+        const y = (sel) => document.querySelector(sel).getBoundingClientRect().top;
         return {
           order: [...document.querySelectorAll('#sidebar > :not(#nav-resize)')].map((n) => n.id || n.className.split(' ')[0]),
           strip: [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]),
-
+          newSpaceAboveSystem: y('#sidebar .nav-foot') < y('#sidebar .nav-system'),
+          systemBelowNav: y('#sidebar .nav-system') > y('#nav'),
         };
       });
       assert.deepEqual(stack.order, ['nav-head', 'nav', 'nav-pinned'], 'head, scrolling list, pinned strip');
-      assert.deepEqual(stack.strip, ['nav-foot', 'nav-identity'], 'New space, then the identity panel (Issue #908)');
+      assert.deepEqual(stack.strip, ['nav-foot', 'nav-system', 'nav-identity'], 'New space, then the System space, then the identity panel (Feature #333)');
+      assert.ok(stack.newSpaceAboveSystem, 'New space sits above the system tables');
+      assert.ok(stack.systemBelowNav, 'the system tables sit below the spaces');
       await page.close();
     });
   }
@@ -139,9 +143,9 @@ if (s) {
   test('browser: a member workspace served by the hub still pins Workflows, Users, Activity and Trash (Issue #872)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#ws-rail .nav-system a');
-    const rows = await page.locator('#ws-rail .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
+    await page.waitForSelector('#sidebar .nav-system a');
+    const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 
@@ -152,8 +156,8 @@ if (s) {
     const listed = async (ws) => {
       const page = await browser.newPage();
       await page.goto(`${base}/w/${ws.state.meta.id}/#/`, { waitUntil: 'networkidle' });
-      await page.click('#ws-rail .nav-system a[href^="#/table/"]');
-      await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${wfId}$`));
+      await page.click('#sidebar .nav-system a[href^="#/table/"]');
+      await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${ws.getTable('System/Workflows').id}$`));
       await page.waitForSelector('#main .wv-grid tbody tr');
       const text = await page.textContent('#main .wv-grid');
       await page.close();

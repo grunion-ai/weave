@@ -36,7 +36,7 @@
     return hops.map((h, i) => rowCrumb(h, i === hops.length - 1));
   }
 
-  function foldPlan(widths, box, { from = 1, more = 0 } = {}) {
+  function foldPlan(widths, box, { from = 1, more = 0, mins = null } = {}) {
     let w = widths.reduce((a, b) => a + b, 0);
     if (w <= box) return [];
     w += more;
@@ -45,6 +45,10 @@
       out.push(i);
       w -= widths[i];
     }
+    const last = widths.length - 2;
+    if (!mins || last < Math.max(1, from)) return out;
+    const floor = widths.reduce((sum, width, i) => (out.includes(i) ? sum : sum + Math.min(width, mins[i] ?? width)), out.length ? more : 0);
+    if (floor > box) out.push(last);
     return out;
   }
 

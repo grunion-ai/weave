@@ -81,15 +81,15 @@ test('the sidebar anchors its name and search at the top, and pins New space the
   const nav = fnBodyOf('renderNav');
   const strip = nav.indexOf("class: 'nav-pinned'");
   assert.ok(strip > -1, 'one strip holds everything pinned to the bottom');
-  const order = ['foot', 'identity'].map((n) => nav.indexOf(n, strip));
+  const order = ['foot', 'system', 'identity'].map((n) => nav.indexOf(n, strip));
   assert.deepEqual([...order].sort((a, b) => a - b), order,
-    'New space leads the strip, followed by the identity panel (Issue #908)');
+    'New space leads the strip, the System space follows it, the identity panel last (Issue #854, Feature #333)');
   assert.doesNotMatch(nav, /nav-stats/, 'the rows and size line is gone (Feature #333)');
 });
 
 test('the nav pins Workflows, Users, Activity and Trash, in that order, under the spaces', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("$('#rail-system').replaceChildren"), nav.indexOf("class: 'nav-pinned'"));
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("class: 'nav-pinned'"));
   const at = (s) => group.indexOf(s);
   assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at("'Workflows'") > -1, 'the three routes');
   assert.ok(at("'Workflows'") < at("'Users'") && at("'Users'") < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Users, Activity, Trash (Issue #561, Feature #318)');
@@ -99,7 +99,7 @@ test('the nav pins Workflows, Users, Activity and Trash, in that order, under th
 
 test('the Workflows row always shows, resolved through the registry a member reads from the root (Issue #872)', () => {
   const nav = fnBodyOf('renderNav');
-  const group = nav.slice(nav.indexOf("$('#rail-system').replaceChildren"), nav.indexOf("class: 'nav-pinned'"));
+  const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("class: 'nav-pinned'"));
   assert.doesNotMatch(group, /wf \? \[/, 'no condition wraps the Workflows row');
   assert.match(nav, /registryTable\('workflows'\)/, 'a member workspace finds Workflows in state.registry');
   assert.match(nav, /wf \? `#\/table\/\$\{wf\.id\}`/, 'the row opens Workflows at this workspace\'s own URL (Issue #875)');
@@ -120,8 +120,7 @@ test('the pinned group sits outside the scrolling list, above the identity panel
   assert.match(nav, /document\.querySelector\('#sidebar \.nav-pinned'\)\?\.remove\(\)/, 'redrawn, never stacked');
   const strip = nav.indexOf("class: 'nav-pinned'");
   assert.ok(strip > -1, 'a sibling after #nav, the one strip pinned to the bottom');
-  assert.doesNotMatch(nav.slice(strip), /foot, system/, 'System belongs to the rail');
-  assert.match(HTML, /id="rail-system" class="nav-system" role="group" aria-label="System"/, 'the rail names its System group');
+  assert.ok(nav.indexOf('system', strip) < nav.indexOf('identity', strip), 'System above the identity panel');
   assert.ok(rulesFor('.nav-system')['border-top'], 'a hairline sets it apart from the spaces');
 });
 

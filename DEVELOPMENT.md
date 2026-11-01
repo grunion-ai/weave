@@ -81,7 +81,13 @@ down with it. The bound lives in the shell, not in `timeout-minutes`: a step
 the runner kills on its own timeout cancels the whole job, so `continue-on-error`
 never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
 an apt drop-in with a twenty-second acquire timeout and three retries, so one
-stalled connection no longer costs minutes. The `tests` shard job and the dev
+stalled connection no longer costs minutes, and a `DPkg::Lock::Timeout` of 180
+seconds, so an attempt waits for the dpkg frontend lock instead of failing on
+it. The runner image's own boot-time `apt-get` holds that lock past the first
+attempt, and without the wait the retry died in under a second with 299 of its
+300 seconds unspent (Issues #1230, #1141). The wait is sized to fit inside one
+`timeout 5m` attempt, since the bound would otherwise kill the wait it is meant
+to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
@@ -90,6 +96,12 @@ The `tests` workflow runs the full inventory on every main push. Its final
 only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
+Each main push holds its own concurrency lane, keyed by the commit under test.
+A shared lane keeps one pending run at a time, so the next merge cancelled the
+gate queued behind it: eight merges in the half hour from 18:32Z on 2026-10-25
+left nine consecutive main gates cancelled and the deploy watcher two hours
+behind the tip (Issue #1181). A merge rate above the gate's nineteen-minute
+runtime now costs parallel runs instead of a stalled deploy.
 
 Local runs are for debugging: `npm test -- --targeted <file...>` reproduces a
 red shard, and CI owns verification. Never invoke bare `node --test`; empty
@@ -116,16 +128,27 @@ directories on the disk (Issue #1083).
 ### Sheriff
 
 `.github/workflows/sheriff.yml` owns a red main (Feature #320). A failed main
-push `tests` run gets its failed jobs rerun once by `scripts/sheriff.mjs`. A green
-rerun is a flake: it appends a line to the Issue row
+push `tests` run gets its failed jobs rerun by `scripts/sheriff.mjs`. Only
+the rerun's `CI gate` conclusion decides guilt, and only `success` and `failure`
+count: a rerun that ends `cancelled`, `timed_out` or `skipped`, or whose
+`CI gate` job never ran, carries no verdict (Issue #1139). The sheriff reruns
+the failed jobs once more and, with still no verdict, skips the run and leaves
+the next red main run to judge that commit. The `tests` concurrency group
+cancels a rerun whenever a newer main commit pushes, and the cancelled rerun
+used to read as a second red.
+
+A green rerun is a flake: it appends a line to the Issue row
 `Error: <test file> flakes on main`, creating it if none is open, and stops. A
 second red finds the commits since the last main run whose `CI gate` succeeded
 and bisects them by dispatching `tests` with its `ref` input, at most four
-runs. Completed runs for a commit are reused for free. It then opens a
-`sheriff/revert-<sha>` PR with squash auto-merge, comments on the original PR,
-files `Error: <test> fails on main after PR #<n>` with the run links, and writes
+runs. Completed runs for a commit are reused for free. It checks once more that
+main has not gone green on its own, then opens a `sheriff/revert-<sha>` PR with
+squash auto-merge, comments on the original PR, files
+`Error: <test> fails on main after PR #<n>` with the run links, and writes
 one alert line to the job summary and `SHERIFF_ALERT_URL`. Past the cap it
-reverts what is still suspect. It never reverts a revert, never acts on a
+reverts what is still suspect. A revert whose range took no bisect probe, the
+single-commit range among them, says so in its subject, so main's history shows
+how much evidence the revert carried. It never reverts a revert, never acts on a
 culprit that already has a revert branch, never pushes to main and never
 forces a push. Replay a run without writing anything:
 `gh workflow run sheriff -f run_id=<id> -f dry_run=true`, or locally
@@ -156,14 +179,36 @@ the supervisor's `watch` for `c<sha>` reports `ok: true`, no rollback
 happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that
 context. A failure posts `dev-soak` failure linking the run and sends one line
-to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
-older run, and a soak that sees dev move to newer main posts nothing.
+to `SHERIFF_ALERT_URL` and the job summary.
+
+A new main merge never ends or restarts a window, because the soak exists to
+review a batch. The job's concurrency keeps one running soak and one pending
+run, and a newer pending run replaces the older one (it shows as cancelled), so
+merges queue and the next window takes the newest commit. When dev moves to a
+newer commit and main's head differs from the soak's SHA, the run keeps its
+clock and its smoke schedule to the end of the window. Main is linear, so every
+later commit dev serves contains the soak's SHA. From then on the pid check and
+the SHA's own watch no longer apply. Each poll instead checks whatever release
+dev serves now for a rollback, a watch alert or `watch.ok === false`, and a
+release with no watch yet is fine. The run passes when the window has elapsed,
+at least one smoke ran, 5xx stayed within `DEV_SOAK_MAX_5XX` and none of those
+checks tripped, and it never waits for a watch. Its `dev-soak` success names
+the commit dev moved to. Dev serving another commit while main's head still
+equals the SHA stays a failure.
+
+A failure after a move cannot be pinned on the SHA, so it posts `dev-soak`
+pending described as superseded, with no alert, and promotion skips it. The
+queued soak on the newest commit catches a real break and alerts. A smoke, 5xx
+or health failure polls health once more first, so a swap the last poll missed
+counts as a move. A rollback of a later release counts as a move even when dev
+lands back on the soak's SHA. A rollback of the SHA itself is a failure.
 
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,
 in the workspace named by the `DEV_SMOKE_WORKSPACE` variable (default
-`/w/smoke`, which needs at least one table). Without it the smoke covers the
-anonymous read surface only. Run one smoke locally with
+`/w/smoke`, which needs at least one table). The token goes only to that
+workspace, since a token from another workspace answers 401 even on a public
+page. Without it the smoke covers the anonymous read surface only. Run one smoke locally with
 `node scripts/dev-soak.mjs smoke`, or soak a commit dev serves with
 `gh workflow run dev-soak -f sha=<sha>`.
 
@@ -559,7 +604,10 @@ truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
 holding more lines than it shows (`line-clamp`), and an input or textarea whose
 value or placeholder runs past its box (`field-value`, `field-placeholder`).
 Text inside an overflow auto or scroll container, visually hidden text and
-invisible elements are not cut-offs. A finding's fingerprint is its kind plus its
+invisible elements are not cut-offs. The current breadcrumb's name is the one
+ellipsis the probe skips by design (Issue #1159): the title row under every
+crumb row shows the full name, so the crumb keeps a fixed share and gives way
+before any other crumb shrinks. A finding's fingerprint is its kind plus its
 selector with every number folded to `#`, and `|phone` for the phone cell.
 
 ```bash

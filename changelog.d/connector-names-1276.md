@@ -1,0 +1,1 @@
+- Workspace setup gives each named workspace its own connector name and uses it consistently when adding and authenticating the connection (Issue #1276).

@@ -99,8 +99,10 @@ test('the default query is unchanged: full rows, full summaries, no chips', () =
 test('fields and relations together: the grid page', () => {
   const { w, cases, grid } = buildWorkspace();
   const q = w.query(cases, { sort: ['Line'], limit: 2, fields: ['Name', 'Suite'], relations: 'chip', trashCount: true });
-  assert.deepEqual(Object.keys(q).sort(), ['chips', 'items', 'total', 'trashCount']);
+  assert.deepEqual(Object.keys(q).sort(), ['chips', 'items', 'nextOffset', 'total', 'trashCount']);
   assert.equal(q.total, 6);
+  assert.equal(q.nextOffset, 2, 'a page that leaves rows behind says where the next one starts (Issue #1267)');
+  assert.equal(w.query(cases, { sort: ['Line'], limit: -1 }).nextOffset, undefined, 'a whole-table read names no next offset');
   assert.deepEqual(Object.keys(q.chips), [grid.id], 'only the far rows this page points at');
   assert.deepEqual(q.items[1].fields, { Name: 'case 1', Suite: { id: grid.id, publicId: grid.publicId, name: 'grid.test.mjs' } });
   const full = JSON.stringify(w.query(cases, { sort: ['Line'], limit: 2 })).length;

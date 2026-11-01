@@ -30,6 +30,7 @@ const SURFACE = [
   ['space.update', ['updateSpace'], 'weave_update_space', 'space update', ['PATCH /api/spaces/:ref']],
   ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete', ['DELETE /api/spaces/:ref']],
   ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore', ['POST /api/spaces/:ref/restore']],
+  ['space.members', ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'], 'weave_update_space', 'space members', ['GET /api/spaces/:ref/members', 'PUT /api/spaces/:ref/members/:ref', 'DELETE /api/spaces/:ref/members/:ref']],
   ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.create', ['createTable'], 'weave_create_table', 'table create', ['POST /api/tables']],
@@ -106,8 +107,9 @@ const INTERNAL = {
   userTables: 'read helper (Issue #386) — the tables a person made, registry excluded; the hub list\'s `tables` count reads it, and describeSchema already carries the `system` flag an agent filters on',
   schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
   workflowWorkspace: 'hub plumbing (Issue #875): the member route asks which workspace a Workflows row belongs to before it lets a member read it by id; an agent reads the row\'s Workspace column',
-  joinRegistry: 'hub plumbing (Feature #219) — the hub joins every member to the root registry on adoption',
-  hostRegistry: 'hub plumbing (Feature #219) — the engine the hub stands on hosts the registry',
+  detachHubRegistry: 'migration plumbing (Issue #979): validates and copies legacy hub registry records into independent workspaces before serving requests; never an agent action',
+  joinRegistry: 'legacy registry enrollment retained for migration fixtures and compatibility; the current hub keeps workspaces independent',
+  hostRegistry: 'legacy local registry restoration for migration and recovery plumbing; never an agent action',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',
   dropWorkspace: 'hub plumbing (Feature #219) — a hard workspace delete drops its rows; DELETE /api/workspaces/:id is the door',
   ownsKey: 'permission helper (Issue #497): the key routes ask whether the caller\'s account owns a credential before letting a non-architect rotate or delete it; weave_keys list shows the owner',
@@ -121,6 +123,7 @@ const INTERNAL = {
   credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
   viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
+  canSee: 'access helper (Feature #141): the router asks whether a mention or path target sits in a space the caller sees', hidesAnySpace: 'access helper (Feature #141): true when the caller cannot see every space', asAccount: 'test and CLI helper (Feature #141): runs a block as one account, the way a request does', noteTokenWrite: 'audit hook (Feature #141): the router records each write a space-scoped token makes',
   shareByToken: 'auth path (Feature #194): a /s/<token> link and an Authorization: Bearer wvs_ header ARE this call; GET /api/share answers what the token reaches',
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
   removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
@@ -146,6 +149,9 @@ const INTERNAL = {
   viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
   permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
+  readFileStorage: 'browser bridge (Issue #1176): the app reads an HTML file\'s page storage over GET /api/files/:id/storage and seeds it into the ?view page; an agent reads the file itself with weave_files',
+  writeFileStorage: 'browser bridge (Issue #1176): the app saves what a sandboxed HTML page wrote to localStorage over PUT /api/files/:id/storage; no agent writes a page\'s storage',
+  spaceHome: 'browser read (Feature #344): the space home page and phone launcher draw GET /api/spaces/:id/home; an agent reads the same tables with weave_schema and the same runs from a row\'s activity',
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
 };
 
@@ -312,7 +318,8 @@ test('every query option reaches every door', () => {
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
-  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, limit, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
+  assert.match(ROUTES, /const limit = body\?\.limit == null \? QUERY_PAGE : boundedLimit\(body\.limit\);/, 'a query body that names no limit gets the default page, not the whole table (Issue #1267)');
 });
 
 test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {

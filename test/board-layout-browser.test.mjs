@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { deflateSync } from 'node:zlib';
+import { launch, eventually, atRest } from './lib/browser.mjs';
 import { openPane } from './lib/view-pane.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (buf) => { let x = 0xffffffff; for (const b of buf) x = CRC[(x ^ b) & 0xff] ^ (x >>> 8); return (x ^ 0xffffffff) >>> 0; };
+const pngChunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const body = Buffer.concat([Buffer.from(type), data]); const sum = Buffer.alloc(4); sum.writeUInt32BE(crc32(body)); return Buffer.concat([len, body, sum]); };
+const pngOf = (w, h) => {
+  const head = Buffer.alloc(13); head.writeUInt32BE(w, 0); head.writeUInt32BE(h, 4); head[8] = 8; head[9] = 2;
+  const raw = Buffer.alloc((w * 3 + 1) * h, 160);
+  for (let y = 0; y < h; y++) raw[y * (w * 3 + 1)] = 0;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', head), pngChunk('IDAT', deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))]);
+};
 
 let list, ids, pics;
 const s = await launch('board layout', (weave) => {
@@ -33,7 +44,7 @@ if (s) {
     };
     for (const v of weave.tableView(list).views) if (v.name !== 'Standard') weave.tableView(`${list.id}/${v.id}`, { delete: true });
     weave.tableView(`${list.id}/Standard`, {
-      layout: 'board', groups: null, picture: null, group: ['State'], completedBy: null,
+      layout: 'board', groups: null, picture: null, fit: null, frame: null, flow: null, group: ['State'], completedBy: null,
       fields: ['Name', 'State', 'Best Price', 'Photo'], collapsed: null, order: null, filters: {}, sort: [], ...view,
     });
   };
@@ -134,6 +145,23 @@ if (s) {
         assert.deepEqual(page.errors, []);
       } finally { await page.close(); }
     }
+  });
+
+  test('a long title wraps inside the card and nothing is cut off (Issue #1123)', async () => {
+    seed();
+    const long = weave.createEntity(list.id, { name: 'Standing desk: a title that runs well past the card so the tile has to wrap it somewhere sensible', values: { State: 'Research' } }).id;
+    const page = await open();
+    try {
+      const title = page.locator(`${tile(long)} .tile-title`);
+      await atRest(title);
+      const box = (n) => ({ height: n.getBoundingClientRect().height, over: n.scrollWidth - n.clientWidth, lines: n.getClientRects().length });
+      const got = await title.evaluate(box);
+      const short = await page.locator(`${tile(ids.pants)} .tile-title`).evaluate(box);
+      assert.ok(got.height > short.height, `the long title takes more lines than a short one: ${JSON.stringify({ got, short })}`);
+      assert.ok(got.over <= 1, `no title text runs past the card: ${got.over}px hidden`);
+      assert.equal(await title.evaluate((n) => getComputedStyle(n).textOverflow), 'clip', 'no ellipsis stands in for the title');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
   });
 
   test('picture off draws no cover; stacked sizes cards from the picture size', async () => {
@@ -334,6 +362,117 @@ if (s) {
       await page.click('.board-picture .seg-opt:text-is("Large")');
       await eventually(() => view().picture, 'large');
       await page.waitForFunction(() => document.querySelector('.wv-board')?.dataset.picture === 'large');
+    } finally { await page.close(); }
+  });
+
+  const shaped = (view) => {
+    seed({ groups: 'stacked', picture: 'medium', group: null, ...view });
+    weave.attachToField(ids.desk, 'Photo', { name: 'wide.png', mime: 'image/png', bytes: pngOf(800, 200) });
+    weave.attachToField(ids.chair, 'Photo', { name: 'tall.png', mime: 'image/png', bytes: pngOf(300, 900) });
+    weave.attachToField(ids.pants, 'Photo', { name: 'tiny.png', mime: 'image/png', bytes: pngOf(24, 24) });
+  };
+  const loaded = (page) => page.waitForFunction(() => [...document.querySelectorAll('.wv-board .tile-cover img')].every((i) => i.complete && i.naturalWidth));
+  const coverRatio = (page, id) => page.locator(`${tile(id)} .tile-cover`).evaluate((n) => { const r = n.getBoundingClientRect(); return Math.round((r.height / r.width) * 100) / 100; });
+  const imgWidth = (page, id) => page.locator(`${tile(id)} .tile-cover img`).evaluate((n) => Math.round(n.getBoundingClientRect().width));
+
+  test('each fit mode shapes the cover: Crop and Fit keep the card shape, Original follows the picture, Capped holds it between 2:3 and 2:1 (Issue #1280)', async () => {
+    const expect = {
+      crop: { desk: 0.75, chair: 0.75, fit: 'cover' },
+      fit: { desk: 0.75, chair: 0.75, fit: 'scale-down' },
+      original: { desk: 0.25, chair: 3, fit: 'fill' },
+      capped: { desk: 0.5, chair: 1.5, fit: 'cover' },
+    };
+    for (const [mode, want] of Object.entries(expect)) {
+      shaped({ fit: mode });
+      const page = await open();
+      try {
+        await loaded(page);
+        assert.equal(await page.locator('.wv-board').getAttribute('data-fit'), mode);
+        assert.equal(await coverRatio(page, ids.desk), want.desk, `${mode}: the 4:1 picture's cover`);
+        assert.equal(await coverRatio(page, ids.chair), want.chair, `${mode}: the 1:3 picture's cover`);
+        if (mode === 'original' || mode === 'capped') assert.equal(await imgWidth(page, ids.pants), 24, `${mode}: a 24 px picture keeps its own size`);
+        if (mode !== 'original') assert.equal(await page.locator(`${tile(ids.desk)} .tile-cover img`).evaluate((n) => getComputedStyle(n).objectFit), want.fit);
+        if (mode === 'crop' || mode === 'fit') assert.equal(await page.locator(`${tile(ids.chair)} .tile-cover img`).evaluate((n) => Math.round(n.getBoundingClientRect().height) - Math.round(n.parentElement.getBoundingClientRect().height)), 0, `${mode}: a tall picture's box stays inside the card shape`);
+        assert.equal(await page.locator(`${tile(ids.mat)} .tile-cover.is-empty`).count(), 1, `${mode}: a row with no picture keeps its placeholder`);
+        assert.deepEqual(page.errors, []);
+      } finally { await page.close(); }
+    }
+    shaped({ fit: 'crop', frame: '1:1' });
+    const page = await open();
+    try {
+      await loaded(page);
+      assert.equal(await coverRatio(page, ids.desk), 1, 'frame 1:1 makes square covers');
+    } finally { await page.close(); }
+  });
+
+  test('uneven cards pack into masonry by default and line up in rows on request (Issue #1280)', async () => {
+    const firstRowGap = (page) => page.$$eval('.wv-board .board-cards > .tile', (ts) => {
+      const boxes = ts.map((t) => t.getBoundingClientRect());
+      const top = Math.min(...boxes.map((b) => b.top));
+      const first = boxes.filter((b) => Math.abs(b.top - top) < 2);
+      const rest = boxes.filter((b) => Math.abs(b.top - top) >= 2);
+      return { rest: rest.length, under: Math.min(...rest.map((b) => b.top)) - Math.max(...first.map((b) => b.bottom)) };
+    });
+    shaped({ fit: 'original' });
+    let page = await open({ width: 640 });
+    try {
+      await loaded(page);
+      await atRest(page.locator('.wv-board'));
+      const got = await firstRowGap(page);
+      assert.ok(got.rest > 0, 'the cards wrap to a second row');
+      assert.ok(got.under < 0, `masonry starts a card under a short one before the tall one ends: ${JSON.stringify(got)}`);
+    } finally { await page.close(); }
+    shaped({ fit: 'original', flow: 'rows' });
+    page = await open({ width: 640 });
+    try {
+      await loaded(page);
+      const got = await firstRowGap(page);
+      assert.ok(got.under >= 0, `rows start the second row below the tallest card: ${JSON.stringify(got)}`);
+    } finally { await page.close(); }
+  });
+
+  test('the Display pane offers Fit, Card shape for Crop and Fit, and Uneven cards for Original and Capped (Issue #1280)', async () => {
+    shaped({});
+    const page = await open();
+    try {
+      await openPane(page, 'display');
+      await page.waitForSelector('#view-pane .board-fit');
+      assert.equal(await page.locator('.board-frame').count(), 1, 'Crop offers a card shape');
+      assert.equal(await page.locator('.board-flow').count(), 0);
+      await page.click('.board-fit .seg-opt:text-is("Original")');
+      await eventually(() => view().fit, 'original');
+      await page.waitForFunction(() => document.querySelector('.wv-board')?.dataset.fit === 'original');
+      await openPane(page, 'display');
+      await page.waitForSelector('#view-pane .board-flow');
+      assert.equal(await page.locator('.board-frame').count(), 0, 'Original has no fixed card shape');
+      await page.click('.board-flow .seg-opt:text-is("Rows")');
+      await eventually(() => view().flow, 'rows');
+      await openPane(page, 'display');
+      await page.click('.board-fit .seg-opt:text-is("Crop")');
+      await eventually(() => view().fit, 'crop');
+      await openPane(page, 'display');
+      await page.click('.board-frame .seg-opt:text-is("16:9")');
+      await eventually(() => view().frame, '16:9');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
+  test('Hide empty groups drops the column with no cards and saves on the view (Feature #345)', async () => {
+    seed();
+    const page = await open();
+    try {
+      assert.equal(await page.locator('.board-group[data-key="Bought"]').count(), 1);
+      const pane = await openPane(page, 'group');
+      await pane.locator('[data-hide-empty]').click();
+      assert.equal(await pane.locator('[data-hide-empty] input').isChecked(), true);
+      await eventually(() => view().hideEmpty, true);
+      await page.waitForFunction(() => !document.querySelector('.board-group[data-key="Bought"]'));
+      assert.equal(await page.locator('.board-group[data-key="Research"] .tile').count(), 2);
+      assert.equal(await page.locator('.board-group[data-key="Ready to Buy"] .tile').count(), 3);
+      await pane.locator('[data-hide-empty]').click();
+      await eventually(() => view().hideEmpty, undefined);
+      await page.waitForSelector('.board-group[data-key="Bought"] .board-empty');
+      assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
   });
 }

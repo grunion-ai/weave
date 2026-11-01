@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, Weave } from '../src/engine.js';
-import { CELLS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
+import { CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
 import { SWEEP_JOURNEYS } from './lib/cutoff.mjs';
@@ -56,8 +56,9 @@ test('the board and list views enter every probe that walks a route at rest (Iss
 test('a hold names the Issue rows that track it, and only holds a probe that would walk the state', () => {
   for (const s of STATES) {
     for (const [key, rows] of Object.entries(s.hold ?? {})) {
-      const [probe, cell, ...rest] = key.split('|');
+      const [probe, cell, platform, ...rest] = key.split('|');
       assert.deepEqual(rest, [], `${s.name}: hold ${key}`);
+      assert.ok(platform === undefined || (cell !== undefined && HOLD_PLATFORMS.includes(platform)), `${s.name}: hold ${key} names a platform after its cell`);
       assert.ok(Object.hasOwn(PROBES, probe), `${s.name}: hold names probe ${probe}`);
       assert.ok(cell === undefined || cellsOf(s).includes(cell), `${s.name}: hold names cell ${cell}`);
       assert.ok(PROBES[probe].opens.includes(s.open) && seedsOf(s).includes(PROBES[probe].seed), `${s.name}: ${probe} would walk it, so the hold means something`);
@@ -66,6 +67,18 @@ test('a hold names the Issue rows that track it, and only holds a probe that wou
   }
 });
 
+test('a hold with a platform segment holds that platform alone and the others fall back to the plain key', () => {
+  for (const s of STATES) {
+    for (const [key, rows] of Object.entries(s.hold ?? {})) {
+      const [probe, cell, platform] = key.split('|');
+      if (!platform) continue;
+      const fallback = s.hold[`${probe}|${cell}`] ?? s.hold[probe] ?? null;
+      for (const p of plan(probe).filter((x) => x.state === s && x.cell === cell)) {
+        assert.deepEqual(p.hold, process.platform === platform ? rows : fallback, `${s.name}: ${key} on ${process.platform}`);
+      }
+    }
+  }
+});
 test('a held walk leaves the gate and lands in the held list with its Issue rows', () => {
   for (const probe of Object.keys(PROBES)) {
     const all = plan(probe);
@@ -102,11 +115,11 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 14);
   assert.equal(SWEEP_JOURNEYS.length, 15);
-  assert.equal(OVERLAYS.length, 39);
+  assert.equal(OVERLAYS.length, 38);
   assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
-  assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share dialog', 'sort popover']);
+  assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'table list', 'workspace home']);
   assert.deepEqual(overlays('touch'), ['bug panel', 'menu', 'picker sheet']);
 });

@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.ref || github.sha }}
   cancel-in-progress: false
 
 env:
@@ -25,7 +25,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -44,7 +44,7 @@ jobs:
   test:
     name: tests ${{ matrix.id }}
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -70,7 +70,7 @@ jobs:
       - name: Install browsers and system dependencies
         timeout-minutes: 11
         run: |
-          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99weave-acquire > /dev/null
+          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\nDPkg::Lock::Timeout "180";\n' | sudo tee /etc/apt/apt.conf.d/99weave-apt > /dev/null
           if timeout 5m npx --no-install playwright install --with-deps chromium webkit; then exit 0; fi
           sudo dpkg --configure -a || true
           timeout 5m npx --no-install playwright install --with-deps chromium webkit
@@ -92,7 +92,7 @@ jobs:
     name: CI gate
     if: always()
     needs: [plan, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every shard

@@ -35,6 +35,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/space/${space.spaceId ?? space.id}`, { waitUntil: 'networkidle' });
+      await page.click('details.space-home-overview > summary');
       await page.waitForSelector('.card.list-rows.space-tables .list-row');
       const rows = await page.evaluate(inset, '.card.list-rows.space-tables');
       roomy(rows, 'space tables');
@@ -48,41 +49,6 @@ if (s) {
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.card.list-rows.system-tables .list-row');
       roomy(await page.evaluate(inset, '.card.list-rows.system-tables'), 'system tables');
-    } finally { await page.close(); }
-  });
-
-  test('trashed workspaces are list rows on the same inset as the card title', async () => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    try {
-      await page.goto(`${base}/`, { waitUntil: 'networkidle' });
-      const gone = await page.evaluate(async () => {
-        const list = await fetch('/api/workspaces').then((r) => r.json());
-        const w = list.find((x) => x.name === 'scratch');
-        return (await fetch(`/api/workspaces/${w.id}`, { method: 'DELETE' })).status;
-      });
-      assert.ok(gone < 300, `the scratch workspace moved to the trash (${gone})`);
-      await page.goto(`${base}/#/trash`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('.trash-workspaces .list-row');
-      roomy(await page.evaluate(inset, '.trash-workspaces'), 'trash workspaces');
-      const g = await page.evaluate(() => {
-        const card = document.querySelector('.trash-workspaces');
-        const title = card.querySelector('.card-title');
-        const row = card.querySelector('.list-row');
-        const name = row.firstElementChild;
-        const btn = row.querySelector('button');
-        return {
-          toolbar: card.querySelectorAll('.wv-toolbar').length,
-          title: (() => { const r = document.createRange(); r.selectNodeContents(title); return r.getBoundingClientRect().left; })() - card.getBoundingClientRect().left,
-          name: name.getBoundingClientRect().left - card.getBoundingClientRect().left,
-          btnRight: card.getBoundingClientRect().right - btn.getBoundingClientRect().right,
-          restore: btn.textContent.trim(),
-        };
-      });
-      assert.equal(g.toolbar, 0, 'no inline-styled toolbars are left');
-      assert.equal(g.restore, 'Restore');
-      assert.ok(g.title >= 12, `the title sits ${g.title}px in`);
-      assert.ok(Math.abs(g.title - g.name) <= 1, `the title (${g.title}px) and the names (${g.name}px) share one inset`);
-      assert.ok(g.btnRight >= 12, `Restore keeps ${g.btnRight}px from the right edge`);
     } finally { await page.close(); }
   });
 

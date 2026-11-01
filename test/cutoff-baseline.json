@@ -4,9 +4,7 @@
     "clipped|td.clipped > div.wv-cb > span.ms-box > button.btn.btn-sm": 2,
     "ellipsis|div#cmdk-results > div.cmdk-group > div#cmdk-opt-#.result.active > span.cmdk-text": 1,
     "ellipsis|div#cmdk-results > div.cmdk-group > div#cmdk-opt-#.result.active > span.cmdk-text|phone": 1,
-    "ellipsis|span.crumb-path > span.crumb-slot > a.crumb-item.crumb-k-ws > span.crumb-nm": 8,
-    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label": 42,
-    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label|phone": 1,
+    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label": 41,
     "field-placeholder|form.tray-form > div.tray-body > div.dlg-sec.full > textarea.form-control.field-desc|phone": 1,
     "field-value|tr.entity-row > td.name-cell.clipped > div.wv-cb > input.form-control.form-control-sm": 7,
     "line-clamp|tr.entity-row > td.pid-cell > div.wv-cb > span.list-name|phone": 7
@@ -15,9 +13,7 @@
     "clipped|td.clipped > div.wv-cb > span.ms-box > button.btn.btn-sm": 2,
     "ellipsis|div#cmdk-results > div.cmdk-group > div#cmdk-opt-#.result.active > span.cmdk-text": 1,
     "ellipsis|div#cmdk-results > div.cmdk-group > div#cmdk-opt-#.result.active > span.cmdk-text|phone": 1,
-    "ellipsis|span.crumb-path > span.crumb-slot > a.crumb-item.crumb-k-ws > span.crumb-nm": 8,
-    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label": 42,
-    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label|phone": 1,
+    "ellipsis|span.ms-box > span.k.k-rel > a.mention.mention-entity > span.k-label": 41,
     "field-placeholder|form.tray-form > div.tray-body > div.dlg-sec.full > textarea.form-control.field-desc|phone": 1,
     "field-value|tr.entity-row > td.name-cell.clipped > div.wv-cb > input.form-control.form-control-sm": 7,
     "line-clamp|tr.entity-row > td.pid-cell > div.wv-cb > span.list-name|phone": 7

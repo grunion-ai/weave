@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
 const nextStarting = (labels, from, letter) => {
@@ -10,12 +11,16 @@ const nextStarting = (labels, from, letter) => {
   return labels[from];
 };
 
+let scratch;
 const s = await launch('menu keyboard', (weave) => {
   weave.createSpace({ name: 'Product' });
   const tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.createEntity(tasks, { name: 'First' });
+  scratch = new Weave();
+  scratch.state.meta.name = 'scratch';
+  scratch.markOnboarded();
   return { table: `#/table/${tasks.id}` };
-});
+}, { server: () => ({ workspaces: { scratch } }) });
 
 if (s) {
   const { base, browser, table } = s;
@@ -90,18 +95,18 @@ if (s) {
       await page.locator('#main .crumb-row .dots-btn').focus();
       await page.keyboard.press('Enter');
       await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
-      await page.keyboard.type('share');
-      assert.equal((await focused(page)).text, 'Share…', 'typing a whole word reaches its row');
+      await page.keyboard.type('forms');
+      assert.equal((await focused(page)).text, 'Forms…', 'typing a whole word reaches its row');
       await page.keyboard.press('Enter');
       await page.waitForSelector('#modal, #tray-back, [role="dialog"]');
-      assert.equal(await menuOpen(page), 0, 'the menu closed before the share dialog opened');
+      assert.equal(await menuOpen(page), 0, 'the menu closed before the forms dialog opened');
     } finally { await page.close(); }
   });
 
   test('the workspace tray menu opens at the pointer and takes the same keys (Issue #763)', async () => {
     const page = await open('dark');
     try {
-      const chip = page.locator('#ws-list .ws-icon').first();
+      const chip = page.locator('#ws-list .ws-icon[title^="scratch "]');
       const box = await chip.boundingBox();
       await chip.click({ button: 'right', position: { x: 6, y: 6 } });
       await page.waitForSelector('.chip-pop.wv-menu.ws-ctx[role="menu"]');

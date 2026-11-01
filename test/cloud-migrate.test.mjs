@@ -53,10 +53,14 @@ async function cloud() {
   return { dir, root, alice, bob, port, base, post, workspaces, close: () => server.close() };
 }
 
-async function storedArchive(c) {
+async function storedArchive(c, identity = null) {
   const src = tmp('src');
   const w = new Weave({ path: join(src, 'alpha.db') });
   w.state.meta.name = 'alpha';
+  if (identity) {
+    const account = w.createAccount({ name: 'archive-person', role: 'observer' }).account;
+    w.redeemIdentityInvite(w.linkIdentity(account.id, { issuer: identity.issuer }).code, identity);
+  }
   w.createSpace({ name: 'Ops' });
   w.createTable({ space: 'Ops', name: 'Task' });
   const t = w.createEntity('Ops/Task', { name: 'Move to the cloud' });
@@ -80,7 +84,9 @@ test('POST /api/workspaces with from backup:<archive> creates the workspace from
     assert.equal(made.name, 'acme');
     assert.equal(made.from, `backup:${archive}`);
     assert.ok(made.entities >= 2);
-    assert.ok((await c.workspaces()).includes('acme'));
+    assert.equal((await c.workspaces()).includes('acme'), false, 'the source token does not grant membership on the imported workspace');
+    const opened = await fetch(`${c.base}/w/acme/api/schema`, { headers: { Authorization: `Bearer ${made.owner.token}` } });
+    assert.equal(opened.status, 200);
     const acme = new Weave({ path: join(c.dir, 'acme.db') });
     assert.equal(acme.state.meta.name, 'acme');
     assert.deepEqual(acme.listEntities(acme.findTable('Ops/Task').id).map((e) => acme.entityName(e)).sort(), ['Keep self-hosting', 'Move to the cloud']);
@@ -131,7 +137,7 @@ test('weave workspace migrate is the CLI form, and the Handbook page covers it',
     const env = { ...process.env, WEAVE_BACKUP_TOKEN: c.alice.token, WEAVE_BACKUP_PASSPHRASE: PASS };
     const { stdout } = await run('node', [BIN, 'workspace', 'migrate', '--from', `weave://127.0.0.1:${c.port}/alice`, '--name', 'from-cli', '--data', tmp('cli')], { env });
     assert.match(stdout, /Migrated weave-backup-.* into the workspace from-cli .*\(\d+ entities\)/);
-    assert.ok((await c.workspaces()).includes('from-cli'));
+    assert.ok(existsSync(join(c.dir, 'from-cli.db')));
     const { stdout: help } = await run('node', [BIN, 'help'], { env });
     assert.match(help, /workspace migrate --from weave:\/\//);
   } finally { c.close(); }
@@ -139,4 +145,21 @@ test('weave workspace migrate is the CLI form, and the Handbook page covers it',
   for (const topic of ['## Migrate to a cloud workspace', 'weave workspace migrate', 'backup:<archive>', 'POST /api/workspaces', '409', 'never written down or logged']) {
     assert.ok(g.doc.includes(topic), `the guide never mentions ${topic}`);
   }
+});
+
+test('import reuses the caller identity already in the archive and makes it the local owner', async () => {
+  const c = await cloud();
+  try {
+    const identity = { issuer: 'https://identity.test', subject: 'alice' };
+    c.root.redeemIdentityInvite(c.root.linkIdentity(c.alice.account.id, { issuer: identity.issuer }).code, identity);
+    const { archive } = await storedArchive(c, identity);
+    const response = await c.post(c.alice.token, { name: 'recovered', from: `backup:${archive}`, key: PASS });
+    assert.equal(response.status, 201);
+    const made = await response.json();
+    const w = new Weave({ path: join(c.dir, 'recovered.db') });
+    assert.equal(w.listAccounts().length, 1);
+    assert.equal(w.accountForIdentity(identity).id, made.owner.account.id);
+    assert.equal(w.accountForIdentity(identity).role, 'architect');
+    w.store.close();
+  } finally { c.close(); }
 });

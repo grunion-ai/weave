@@ -59,9 +59,16 @@
 
   function cap(s) { s = String(s ?? ''); return s.charAt(0).toUpperCase() + s.slice(1); }
 
+  function inverseName(tableName, term, many) {
+    if (!many || !term || !term.set) return tableName;
+    const upper = (w) => /^\p{Lu}/u.test(w);
+    if (String(tableName).trim().split(/\s+/).every(upper)) return term.plural.replace(/(^|\s)(\p{Ll})/gu, (_, gap, c) => gap + c.toUpperCase());
+    return upper(tableName) ? cap(term.plural) : term.plural;
+  }
+
   function options() {
     return GROUPS.flatMap((g) => g.terms.map((t) => ({ id: t, label: cap(t), group: g.name })));
   }
 
-  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, singularize, normalize, resolve, count, cap, options };
+  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, singularize, normalize, resolve, count, cap, inverseName, options };
 })(globalThis);

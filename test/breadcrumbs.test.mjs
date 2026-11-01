@@ -52,6 +52,18 @@ test('foldPlan: the middle folds in order until the rest and the button fit', ()
   assert.deepEqual(foldPlan([100, 100, 100, 100, 100, 100], 560, { more: 40 }), [1]);
 });
 
+test('foldPlan: given each crumb\'s floor, the last-but-one folds only when the kept crumbs overflow even at their floors (Issue #765)', () => {
+  const { foldPlan } = globalThis.weaveBreadcrumbs;
+  const mins = [39, 39, 39, 39, 39, 130];
+  assert.deepEqual(foldPlan([200, 200, 200, 200, 200, 400], 231, { more: 40, mins }), [1, 2, 3, 4], 'a 231px dock box keeps the first crumb and the current one');
+  assert.deepEqual(foldPlan([200, 200, 200, 200, 200, 400], 251, { more: 40, mins }), [1, 2, 3], 'a 251px box still keeps the last two, squeezed to their floors');
+  assert.deepEqual(foldPlan([200, 200, 200, 200, 200, 400], 2000, { more: 40, mins }), [], 'nothing folds when the trail fits');
+  assert.deepEqual(foldPlan([80, 90, 120], 200, { more: 40, mins: [39, 39, 84.5] }), [], 'a phone header squeezes the space crumb to its floor instead of folding it (Issues #1127, #1158)');
+  assert.deepEqual(foldPlan([80, 90, 120], 150, { more: 40, mins: [39, 39, 84.5] }), [1], 'and folds it only when even the floors overflow');
+  assert.deepEqual(foldPlan([39, 400], 100, { mins: [39, 130] }), [], 'two crumbs: nothing can fold');
+  assert.deepEqual(foldPlan([60, 80, 70, 120, 120, 400], 200, { from: 5, more: 40, mins: [39, 39, 39, 39, 39, 130] }), [], 'the head kept by from never folds');
+});
+
 test('foldPlan: the first crumb and the last two never fold, whatever the box', () => {
   const { foldPlan } = globalThis.weaveBreadcrumbs;
   for (const n of [3, 4, 6, 12]) {

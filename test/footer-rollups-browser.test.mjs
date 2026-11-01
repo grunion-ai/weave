@@ -93,6 +93,7 @@ if (s) {
 
   test('the space page draws its rollups as tiles that open the table', async () => {
     const page = await open(`/space/${weave.findSpace('Agent').id}`);
+    await page.click('details.space-home-overview > summary');
     await page.waitForSelector('.wv-stat-tiles .wv-stat-tile');
     const tiles = await page.$$eval('.wv-stat-tile', (ts) => ts.map((t) => [t.querySelector('.wv-stat-value').textContent, t.querySelector('.wv-stat-label').textContent, t.getAttribute('href')]));
     const sum = tiles.find((t) => t[1] === 'Sessions · Cost');

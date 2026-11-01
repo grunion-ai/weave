@@ -91,8 +91,8 @@ test('start: each sign-in adds a login to the one start cookie; the rows are the
 
     const kyle = await s.signInAtStart({ sub: 'user_kyle' }, again.cookie);
     me = (await s.apex('GET', '/api/start', { cookie: kyle.cookie })).json();
-    assert.deepEqual(me.rows.map((r) => [r.name, r.login]), [['Net', 'Kyle Adriany'], ['acme', 'eve'], ['other', 'dana@example.com'], ['weave', 'Kyle Adriany']], 'a workspace two logins open is listed once, under the first; the root architect opens the docs workspace too');
-    assert.equal(me.canCreate, true, 'the root architect among the logins may create');
+    assert.deepEqual(me.rows.map((r) => [r.name, r.login]), [['Net', 'Kyle Adriany'], ['acme', 'eve'], ['other', 'dana@example.com']], 'only local memberships are listed, once under the first matching login');
+    assert.equal(me.canCreate, false, 'membership does not bypass the closed signup policy');
   } finally { s.stop(); }
 });
 
@@ -154,6 +154,103 @@ test('rail: a workspace host lists the held workspaces from the rail cookie as c
     const meta = (await acme('GET', '/api/workspace', { cookie: session })).json();
     assert.equal(meta.start, 'http://weave.test/start', 'the workspace page knows where the start page is');
   } finally { s.stop(); }
+});
+
+const openAcme = async (s) => {
+  const eve = await s.signInAtStart({ sub: 'user_eve' });
+  const open = await s.apex('GET', '/api/start/open/acme', { cookie: eve.cookie });
+  const landed = await s.follow(open.headers.location);
+  return cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]);
+};
+
+test('recency: a workspace page load moves its name to the front of wv_recent; API and asset requests leave it alone (Feature #349)', async () => {
+  const s = await serve();
+  try {
+    const session = await openAcme(s);
+    const acme = s.at('acme.weave.test');
+    const first = await acme('GET', '/', { cookie: session });
+    assert.equal(first.status, 200);
+    const line = cookieLine(first, 'wv_recent');
+    assert.ok(line, 'the workspace page sets wv_recent');
+    assert.equal(line.split(';')[0], 'wv_recent=acme');
+    assert.match(line, /; Domain=\.weave\.test(;|$)/, 'every workspace host reads the same recency');
+    assert.match(line, /; Path=\/(;|$)/);
+    assert.match(line, /; SameSite=Lax(;|$)/);
+    assert.match(line, /; HttpOnly/);
+    assert.match(line, new RegExp(`; Max-Age=${Weave.SESSION_TTL_MS / 1000}(;|$)`), 'it lives as long as the rail');
+
+    const again = await acme('GET', '/', { cookie: `${session}; wv_recent=other,acme,weave,acme` });
+    assert.equal(cookieOf(again, 'wv_recent'), 'wv_recent=acme,other,weave', 'the opened workspace moves to the front, each name once');
+
+    for (const path of ['/api/workspaces', '/api/workspace', '/app.js', '/style.css']) {
+      const res = await acme('GET', path, { cookie: `${session}; wv_recent=other` });
+      assert.equal(cookieLine(res, 'wv_recent'), undefined, `${path} does not stamp recency`);
+    }
+
+    const long = Array.from({ length: 80 }, (_, i) => `w${i}`).join(',');
+    const capped = cookieOf(await acme('GET', '/', { cookie: `${session}; wv_recent=${long}` }), 'wv_recent').split('=')[1].split(',');
+    assert.equal(capped.length, 50, 'the cookie keeps the fifty most recent names');
+    assert.equal(capped[0], 'acme');
+  } finally { s.stop(); }
+});
+
+test('recency: GET /api/workspaces sorts by wv_recent, held chips included, and keeps the old order for names it does not hold (Feature #349)', async () => {
+  const s = await serve();
+  try {
+    const session = await openAcme(s);
+    const acme = s.at('acme.weave.test');
+    const cookie = `${session}; wv_rail=other,acme`;
+    const names = async (extra = '') => (await acme('GET', '/api/workspaces', { cookie: cookie + extra })).json();
+    const natural = (await names()).map((w) => w.name);
+    assert.deepEqual([...natural].sort(), ['acme', 'other', 'weave']);
+
+    const byRecent = await names('; wv_recent=weave,other');
+    assert.deepEqual(byRecent.map((w) => w.name), ['weave', 'other', 'acme']);
+    assert.equal(byRecent[1].held, true, 'a held chip takes its place by the same rule');
+
+    const one = await names('; wv_recent=acme,ghost');
+    assert.deepEqual(one.map((w) => w.name), ['acme', ...natural.filter((n) => n !== 'acme')], 'names the cookie does not hold keep their order after the named ones');
+
+    const heldFirst = await names('; wv_recent=other');
+    assert.deepEqual(heldFirst.map((w) => w.name), ['other', ...natural.filter((n) => n !== 'other')]);
+  } finally { s.stop(); }
+});
+
+test('recency: on one host with no base domain and no sign-in, /w/<name>/ page loads drive the order (Feature #349)', async () => {
+  const dir = tempDir('weave-recent-');
+  for (const name of ['acme', 'other']) {
+    const w = new Weave({ path: join(dir, `${name}.db`), name });
+    w.state.meta.name = name;
+    w.save();
+    w.store.close?.();
+  }
+  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+  main.state.meta.name = 'Net';
+  main.save();
+  const { server, port } = await startServer(main, { port: 0 });
+  const get = (path, cookie) => hit(port, `127.0.0.1:${port}`, 'GET', path, { cookie });
+  try {
+    const page = await get('/w/other/');
+    assert.equal(page.status, 200);
+    const line = cookieLine(page, 'wv_recent');
+    assert.equal(line?.split(';')[0], 'wv_recent=other');
+    assert.match(line, /; Path=\/(;|$)/, 'every /w/<name>/ path reads it');
+    assert.doesNotMatch(line, /Domain=/, 'one host keeps a host-only cookie');
+
+    assert.equal(cookieOf(await get('/w/acme/', 'wv_recent=other'), 'wv_recent'), 'wv_recent=acme,other');
+    const root = (await get('/api/workspaces')).json();
+    const rootName = root.find((w) => w.default).name.toLowerCase();
+    assert.equal(cookieOf(await get('/', 'wv_recent=acme,other'), 'wv_recent'), `wv_recent=${rootName},acme,other`, 'the root page stamps the default workspace');
+
+    const api = await get('/w/acme/api/workspaces', 'wv_recent=other,acme');
+    assert.equal(cookieLine(api, 'wv_recent'), undefined);
+    const natural = root.map((w) => w.name);
+    assert.deepEqual(api.json().map((w) => w.name), ['other', 'acme', ...natural.filter((n) => !['other', 'acme'].includes(n))]);
+  } finally {
+    server.close();
+    main.store.close?.();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('rail: without an identity provider there is no start page to point at', async () => {

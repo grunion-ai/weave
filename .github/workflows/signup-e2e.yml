@@ -12,7 +12,7 @@ env:
 jobs:
   signup:
     name: Production sign-up from grunion.ai
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
       group: signup-e2e

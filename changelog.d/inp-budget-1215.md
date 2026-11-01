@@ -1,0 +1,1 @@
+- The open-table INP budgets rise to 160 ms on desktop and 112 ms on phone, with the measurements written under `raised` in `test/vitals-budget.json`; the old 80 and 64 ms budgets sat one 8 ms quantum above the green runs and failed on slower shared runners with no code change. A cheaper dock render will try to restore them (Issue #1215).

@@ -1,0 +1,1 @@
+- While a file is open in the side panel or the full-screen viewer, the floating Report a problem button steps aside and the same button sits in the viewer's own bar, so it no longer covers the file's controls in the bottom corner. Its report panel opens under the bar button, and Esc closes the report panel before the viewer (Issue #1193).

@@ -57,7 +57,7 @@ if (s) {
       await page.$eval(`${DOCK_STATUS}`, (row) => { row.children[2].dataset.firstPaint = 'yes'; });
       await hold.release();
       await page.waitForSelector(DOC_MOUNTED);
-      await page.waitForFunction(() => document.querySelector('#dock .fieldrow[data-field="Owner"] input')?.value === 'bo');
+      await page.waitForFunction(() => document.querySelector('#dock .fieldrow[data-field="Owner"] .text-dressed')?.textContent === 'bo');
       assert.equal(await page.locator('#dock .fieldrow-pending').count(), 0, 'every slot is filled');
       assert.deepEqual(await fieldOrder(page), before, 'the field order does not move');
       assert.equal(await page.$eval(DOCK_STATUS, (row) => row.children[2].dataset.firstPaint), 'yes', 'a value the grid painted is left in place');
@@ -115,7 +115,7 @@ if (s) {
       assert.match(await statusText(page), /Doing/);
       await hold.release();
       await page.waitForSelector(DOC_MOUNTED);
-      await page.waitForFunction(() => document.querySelector('#dock .fieldrow[data-field="Owner"] input')?.value === 'bo');
+      await page.waitForFunction(() => document.querySelector('#dock .fieldrow[data-field="Owner"] .text-dressed')?.textContent === 'bo');
       await page.close();
     });
   }

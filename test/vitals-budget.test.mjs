@@ -48,3 +48,8 @@ const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show',
 test('this change raises no vitals budget without a reason (Issue #1042)', () => {
   assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, VITAL), []);
 });
+test('the open-table INP budgets clear the slow-runner medians and cite Issue #1215', () => {
+  assert.ok(budget.vitals['open-table|desktop|inp'] >= 160, 'desktop medians reached 144 on green-tip runners');
+  assert.ok(budget.vitals['open-table|phone|inp'] >= 104, 'phone medians reached 104 on slow runners');
+  for (const k of ['open-table|desktop|inp', 'open-table|phone|inp']) assert.match(budget.raised[k], /Issue #1215/);
+});

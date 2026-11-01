@@ -1,0 +1,1 @@
+- **The tab icon shows the whole weave mark** (Issue #1203): the favicon frames the rope at `8 8 32 32` instead of the 48-unit mark frame, so it fills 89% of the icon rather than 60%, and `favicon-16/32/48.png` and `favicon.ico` are rebuilt from it.

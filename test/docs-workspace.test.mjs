@@ -137,12 +137,29 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
     const filed = await h.call('POST', '/w/weave/api/bug-report', { body: { categories: ['slow'], note: 'from a visitor', events: [], client: {} } });
     assert.equal(filed.status, 201, 'but may submit a bug through the form');
     const issue = h.docs.readEntity((await filed.json()).id);
-    assert.equal(issue.createdBy, 'kyle', 'the submitter is the actor');
+    assert.equal(issue.createdBy, 'visitor: kyle', 'the visitor is named without impersonating a local account');
     const forms = await (await h.call('GET', '/w/weave/api/forms')).json();
     const bug = forms.find((f) => f.name === BUG_FORM_NAME);
     assert.equal((await h.call('POST', `/w/weave/api/forms/${bug.id}/submit`, { body: { note: 'second', events: [] } })).status, 201);
     assert.equal((await h.call('POST', '/w/weave/api/workspace/leave', { body: {} })).status, 403, 'and cannot leave it');
     assert.equal((await h.call('GET', '/w/beta/api/workspace')).status, 401, 'the visit opens the docs workspace only, not a third one');
+  } finally { h.stop(); }
+});
+
+test('routes: a login whose only workspace was deleted still opens the docs workspace as an Observer (Feature #347)', async () => {
+  const h = await oidcHub();
+  try {
+    const { token } = h.alpha.w.createAccount({ name: 'alpha-owner', role: 'architect' });
+    assert.equal((await h.s.call('DELETE', '/w/alpha/api/workspaces/alpha', { token })).status, 200, 'alpha, the login\'s only workspace, is deleted by its own Architect');
+    const back = await h.signIn('weave');
+    assert.equal(back.status, 302, 'the sign-in still lands on the docs workspace');
+    assert.equal(back.headers.get('location'), '/w/weave/');
+    const me = await h.call('GET', '/w/weave/api/auth/me');
+    assert.equal(me.status, 200);
+    assert.equal((await me.json()).role, 'observer');
+    assert.equal((await h.call('POST', '/w/weave/api/tables/Development%2FIssue/query', { body: {} })).status, 200, 'an Observer reads');
+    assert.equal((await h.call('POST', '/w/weave/api/tables/Development%2FIssue/entities', { body: { name: 'direct' } })).status, 403, 'and writes nothing');
+    assert.notEqual((await h.call('GET', '/w/alpha/api/workspace')).status, 200, 'the deleted workspace stays shut');
   } finally { h.stop(); }
 });
 

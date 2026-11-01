@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 const svg = (fill) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fill}"/></svg>`);
 
@@ -19,7 +20,6 @@ if (s) {
   const { weave: net, base, browser } = s;
   const port = new URL(base).port;
   const memberBase = `http://scratch.localhost:${port}`;
-  const netId = net.state.meta.id;
   const chip = (page, name) => page.locator(`#ws-list .ws-icon[title^="${name} "]`);
 
   async function open(theme) {
@@ -41,7 +41,7 @@ if (s) {
         assert.ok(await img.evaluate((n) => n.complete && n.naturalWidth > 0), `the logo loads from ${await img.getAttribute('src')}`);
         assert.equal(await chip(page, 'net').evaluate((n) => n.classList.contains('ws-letter')), false);
         const href = await chip(page, 'net').evaluate((n) => new URL(n.href).pathname);
-        assert.equal(href, `/w/${netId}/`, 'the net tile opens net, not the host workspace');
+        assert.equal(href, '/api/auth/open/net', 'the net tile hops to the net host, not the host workspace (Issue #1263)');
         assert.equal((await page.locator('#ws-name').textContent()).trim(), 'scratch', 'the wordmark names the host workspace');
         assert.ok(await chip(page, 'scratch').evaluate((n) => n.classList.contains('active')), 'the host workspace tile is the active one');
         assert.equal(await chip(page, 'net').evaluate((n) => n.classList.contains('active')), false);
@@ -49,15 +49,22 @@ if (s) {
     });
   }
 
-  test('the default workspace\'s rail menu on another workspace\'s host reads its own record (Issue #907)', async () => {
+  test('deleting the host workspace from its rail chip hops to the next workspace\'s host, with no Undo (Feature #347)', async () => {
     const page = await open('light');
     try {
-      const read = page.waitForResponse((r) => r.request().method() === 'GET' && /\/api\/workspace$/.test(new URL(r.url()).pathname));
       await chip(page, 'net').click({ button: 'right' });
-      const res = await read;
-      assert.equal(res.status(), 200);
-      assert.equal((await res.json()).id, netId, `the menu read ${res.url()}`);
+      await chip(page, 'scratch').click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
-    } finally { await page.close(); }
+      assert.match(await page.locator('.ws-ctx').textContent(), /scratch/, 'the default net chip opens no menu; the host chip does');
+      await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace…' }).click();
+      await page.fill('#modal input[name="confirm"]', 'scratch');
+      const hop = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/auth/open/net');
+      await hold(page.locator('#modal .ws-delete-go'));
+      assert.equal(new URL((await hop).url()).search, '', 'the hop to the next host carries nothing back');
+      assert.ok(member.state.meta.deletedAt, 'scratch is deleted');
+    } finally {
+      if (member.state.meta.deletedAt) await fetch(`${base}/api/workspaces/scratch/restore`, { method: 'POST' });
+      await page.close();
+    }
   });
 }

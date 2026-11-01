@@ -17,7 +17,7 @@ env:
 jobs:
   plan:
     if: ${{ !github.event.pull_request.draft }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -36,7 +36,7 @@ jobs:
   test:
     name: pr ${{ matrix.id }}
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -63,7 +63,7 @@ jobs:
         if: matrix.lane == 'browser'
         timeout-minutes: 11
         run: |
-          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99weave-acquire > /dev/null
+          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\nDPkg::Lock::Timeout "180";\n' | sudo tee /etc/apt/apt.conf.d/99weave-apt > /dev/null
           if timeout 5m npx --no-install playwright install --with-deps chromium webkit; then exit 0; fi
           sudo dpkg --configure -a || true
           timeout 5m npx --no-install playwright install --with-deps chromium webkit
@@ -85,7 +85,7 @@ jobs:
     name: PR gate
     if: ${{ always() && !github.event.pull_request.draft }}
     needs: [plan, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every shard

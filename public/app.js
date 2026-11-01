@@ -29,7 +29,6 @@ const summaryChevron = () => el('span', { class: 'wv-disclosure', 'aria-hidden':
 
 const WS_PREFIX = (location.pathname.match(/^\/w\/[^/]+/) ?? [''])[0];
 window.weaveFileBase = WS_PREFIX;
-const SHELL_ROOT = document.querySelector('meta[name="weave-workspace"]')?.dataset.root === 'true';
 
 const LOCAL_ZONE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
 function commitActiveEdit() {
@@ -317,7 +316,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
-function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
+function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
   const close = () => {
@@ -327,7 +326,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     if (held && opener?.isConnected) opener.focus();
   };
   const back = el('div', { id: 'modal-back', onclick: (e) => { if (e.target === back) close(); } });
-  const done = el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel);
+  const done = el('button', { class: `btn ${submitClass}`, type: 'submit' }, submitLabel);
   const form = el('form', {}, ...bodyNodes,
     el('div', { class: 'actions' },
       onSubmit ? el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel') : null,
@@ -736,6 +735,20 @@ function applyPaneWidth(panel, pane) {
   const px = Number(localStorage.getItem(pane.key));
   pinPane(panel, px >= pane.min ? px : 0);
 }
+function fitPanes() {
+  const app = $('#app');
+  app.classList.remove('pane-over', 'table-yield');
+  const floats = !($('#view-pane').hidden && $('#share-pane').hidden);
+  if ($('#dock').hidden || dockCoversScreen.matches || (!floats && $('#side').hidden)) return;
+  const tight = () => app.scrollWidth > app.clientWidth;
+  if (tight()) app.classList.add('table-yield');
+  if (tight() && floats) app.classList.add('pane-over');
+}
+let fitPanesFrame = 0;
+const fitPanesSoon = () => { fitPanesFrame ||= requestAnimationFrame(() => { fitPanesFrame = 0; fitPanes(); }); };
+const paneWatch = new ResizeObserver(fitPanesSoon);
+for (const id of ['#main', '#share-pane', '#dock', '#side', '#view-pane']) paneWatch.observe($(id));
+addEventListener('resize', fitPanesSoon);
 function wirePaneGutter(panel, pane) {
   const grip = $(pane.grip);
   grip.hidden = false;
@@ -806,17 +819,7 @@ function registryWorkflows(dbId) {
   return null;
 }
 
-async function readRegistry() {
-  const res = await fetch('/api/schema', { headers: { 'X-Weave-Zone': LOCAL_ZONE } });
-  if (res.status === 401 || res.status === 403) return [];
-  if (!res.ok) throw new Error(`${res.status}`);
-  const rootSchema = await res.json();
-  return Array.isArray(rootSchema) ? rootSchema.filter((sp) => sp.system === 'workspace') : [];
-}
-
 async function loadSchema() {
-  const registryRead = WS_PREFIX && !SHELL_ROOT && state.registry !== null ? readRegistry() : null;
-  registryRead?.catch(() => {});
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
   const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
@@ -824,14 +827,7 @@ async function loadSchema() {
     state.schema = await api('GET', '/schema');
     loadedSchemaVersion = lastSchemaVersion;
   } finally { schemaLoading = false; }
-  if (WS_PREFIX && !state.schema.some((sp) => sp.system === 'workspace')) {
-    try {
-      state.registry = await (registryRead ?? readRegistry());
-    } catch (err) {
-      state.registry = [];
-      toast(`Couldn't load the workspace registry: ${err.message}`, true);
-    }
-  } else state.registry = null;
+  state.registry = null;
   if (idRead) state.wsId = await idRead;
   if (formPermission) await formPermission;
   renderNav();
@@ -872,6 +868,7 @@ function playIcon(host) {
 function lucideEl(name, cls = 'wv-icon') {
   const reg = window.weaveIconRegistry;
   const span = el('span', { class: `${cls} mi mi-${name}`, 'data-ms': String(reg.MOTION[name] || 0) });
+  if (!window.LUCIDE_MOVING[name]) return span;
   span.innerHTML = window.LUCIDE_MOVING[name];
   return span;
 }
@@ -996,7 +993,8 @@ function fitCrumbs(path, foldFrom) {
   path.classList.add('crumb-measure');
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
-  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX });
+  const mins = slots.map((sl) => { const min = parseFloat(getComputedStyle(sl).minWidth); return Number.isNaN(min) ? Infinity : min; });
+  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX, mins });
   if (!fold.length) return;
   for (const i of fold) slots[i].hidden = true;
   const hidden = fold.map((i) => slots[i].crumb);
@@ -1259,19 +1257,28 @@ function renderNav() {
         await loadSchema();
       })),
     }, '+ New space'));
+  const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
-  const peopleHere = !!people && allTables().some((d) => d.id === people.id);
-  const sysRow = (href, icon, label, on) => el('a', {
-    class: 'ws-icon' + (on ? ' active' : ''), href, title: label, 'aria-label': label,
-    ...(on ? { 'aria-current': 'page' } : {}),
-  }, lucideEl(icon, 'wv-icon'), el('span', { class: 'visually-hidden' }, label));
-  $('#rail-system').replaceChildren(
-    sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
-    ...(people ? [sysRow(peopleHere ? `#/table/${people.id}` : `/#/table/${people.id}`, 'users', 'Users', peopleHere && state.route?.dbId === people.id)] : []),
-    sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
-    sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId));
+  const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
+  const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
+    el('div', { class: 'nav-space-row nav-system-head' },
+      el('button', {
+        class: 'nav-space', type: 'button', 'aria-expanded': String(!systemFolded),
+        title: systemFolded ? 'Expand System' : 'Collapse System',
+        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
+      }, lucideEl('settings', 'wv-icon nav-icon'), 'System'),
+      disclosure('nav-caret', !systemFolded, {
+        title: systemFolded ? 'Expand System' : 'Collapse System',
+        onclick: () => toggleFold(SYSTEM_FOLD_KEY),
+      })),
+    ...(systemFolded ? [] : [
+      sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+      ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
+      sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
+      sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
+    ]));
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
@@ -1313,9 +1320,10 @@ function renderNav() {
   }
   const identity = el('div', { class: 'nav-identity' }, accountSlot(), personalMenuButton());
   document.querySelector('#sidebar .nav-pinned')?.remove();
-  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, state.healthChip, state.trialChip, identity));
+  $('#sidebar').append(el('div', { class: 'nav-pinned' }, foot, system, state.healthChip, state.trialChip, identity));
 }
 
+const SYSTEM_FOLD_KEY = 'system';
 const TRIAL_NOTICE_DAYS = 3;
 
 const ACCOUNT_ROLE_LABELS = { architect: 'Architect', editor: 'Editor', observer: 'Observer', admin: 'Architect', writer: 'Editor', reader: 'Observer' };
@@ -1362,7 +1370,18 @@ const ACCOUNT_ROLE_HUES = { Architect: 'purple', Editor: 'blue', Observer: 'slat
 function accountChip(me) {
   const name = accountDisplayName(me.account.name) || 'Signed in';
   const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
-  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  let avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  const people = workspaceUsers([me.account.name]);
+  const face = () => {
+    const u = people.rows.find((r) => r.name === me.account.name);
+    if (!u?.avatar || avatar.dataset.face) return;
+    const next = chipElFrom(chipView.avatarHtml(u.avatar, { cls: 'nav-account-av' }));
+    next.dataset.face = '1';
+    avatar.replaceWith(next);
+    avatar = next;
+  };
+  queueMicrotask(face);
+  if (!people.done) people.read?.then(face);
   return el('span', {
     class: 'nav-account-chip',
     title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
@@ -1503,9 +1522,9 @@ function expandDocument(grid, url, title) {
   return wrap;
 }
 
-function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null } = {}) {
+function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null, fileId = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
-  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined }) : null;
+  const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined, dataset: fileId ? { fileId } : {} }) : null;
   const close = () => back.remove();
   const back = el('div', { id: 'fsv-back' },
     el('div', { class: 'fsv-bar' },
@@ -1516,13 +1535,14 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
         el('button', { class: 'btn btn-sm', title: 'Previous (←)', disabled: prev ? undefined : '', onclick: () => prev?.() }, iconEl('‹')),
         el('button', { class: 'btn btn-sm', title: 'Next (→)', disabled: next ? undefined : '', onclick: () => next?.() }, iconEl('›'))) : null,
       url ? el('a', { class: 'btn btn-sm', href: url, target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')) : null,
+      url ? bugTrigger('btn btn-sm') : null,
       el('button', { class: 'btn btn-sm', title: 'Close (Esc)', onclick: close }, iconEl('✕'))),
     frame ?? el('div', { class: 'fsv-body' }));
   holdPage(back, back, back.querySelector('.fsv-title'));
   back.tabIndex = -1;
   back.focus();
   const onKey = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') { if (!document.querySelector('#bug-panel')) close(); }
     else if (e.key === 'ArrowLeft' && prev) prev();
     else if (e.key === 'ArrowRight' && next) next();
   };
@@ -1707,6 +1727,15 @@ function holdToConfirm(label, onConfirm, {
       await onConfirm();
     }, 80);
   });
+  return btn;
+}
+
+function holdIcon(icon, title, onConfirm, { rowClass, label = title } = {}) {
+  const btn = holdToConfirm('', onConfirm, { rowClass, holdingLabel: '' });
+  btn.classList.remove('text-danger');
+  btn.insertBefore(lucideEl(icon, 'wv-icon hold-icon'), btn.querySelector('.hold-label'));
+  btn.setAttribute('aria-label', label);
+  btn.title = title;
   return btn;
 }
 
@@ -2411,6 +2440,10 @@ function markClippedCells(grid) {
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
+  for (const n of grid.querySelectorAll('tbody td .num-dressed[data-compact]')) {
+    n.textContent = n.title;
+    if (overflowsX(n)) n.textContent = n.dataset.compact;
+  }
   for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
     const chip = label.parentElement;
     chip.dataset.fieldTitle ??= chip.getAttribute('title') ?? '';
@@ -2673,12 +2706,12 @@ async function duplicateEntity(db, id, opts = {}) {
   return api('POST', `/tables/${db.id}/entities`, { values }, opts);
 }
 
-async function toggleLinkPreview(w, on, after) {
+async function setLinkPreview(on) {
   try {
-    const r = await wsApi(w, 'PATCH', '/workspace', { linkPreview: !on });
+    const r = await api('PATCH', '/workspace', { linkPreview: on });
     toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
-    after?.();
-  } catch (err) { toast(err.message, true); }
+    return r.linkPreview;
+  } catch (err) { toast(err.message, true); return !on; }
 }
 
 const TRASHED = 'Moved to trash';
@@ -2692,7 +2725,7 @@ function reopenAfterUndo(href, open, stayed) {
 
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
-    label: 'Move to trash', danger: true,
+    label: 'Move to trash', danger: true, hold: true, holdingLabel: 'Hold to delete…', hint: 'hold',
     run: () => {
       let where = null, landed = null;
       const settled = (async () => {
@@ -2743,7 +2776,6 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     },
-    share: { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
     'share-page': {
       label: 'New share page…',
       run: () => tray('New share page', [
@@ -2793,7 +2825,6 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     } : null,
-    share: { label: 'Share…', run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
     export: globalThis.menuCore.exportSection({ name: entity.name || 'entity', serves: ['md', 'html', 'pdf'], href: (ext) => `${WS_PREFIX}/e/${entity.id}/entity.${ext}` }),
     delete: trashRow({
       remove: () => api('DELETE', `/entities/${entity.id}`),
@@ -2843,11 +2874,7 @@ const MENU_ROWS = {
     }),
   }),
   workspace: (w, { after = null } = {}) => ({
-    invite: w.invite ? { label: 'Invite people…', run: () => inviteDialog() } : null,
-    'link-preview': typeof w.linkPreview === 'boolean' ? {
-      label: 'Link preview before sign-in', switch: w.linkPreview,
-      run: () => toggleLinkPreview(w, w.linkPreview, after),
-    } : null,
+    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => deleteWorkspaceDialog(w, after) } : null,
   }),
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
@@ -2883,16 +2910,29 @@ function dressTokens(into, tokens) {
   return into;
 }
 
-function dressedText(md, input) {
-  const tokens = globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
+function dressedText(md, input, { literal = false } = {}) {
+  const tokens = literal ? [{ text: md }] : globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
   const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
   dressTokens(dressed, tokens);
-  dressed.addEventListener('click', (e) => {
-    e.stopPropagation();
+  const open = () => {
     dressed.replaceWith(input);
     input.focus();
     input.select();
+  };
+  dressed.addEventListener('click', (e) => {
+    e.stopPropagation();
+    open();
   });
+  dressed.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const typed = e.key.length === 1 && e.key !== ' ';
+    if (!typed && e.key !== ' ' && !(e.key === 'Enter' && !e.shiftKey)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    open();
+    if (typed) document.execCommand('insertText', false, e.key);
+  });
+  dressed.wvEditor = input;
   input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
   return dressed;
 }
@@ -3065,6 +3105,7 @@ function entityAvatarEl(entity, db, refresh) {
   });
 }
 function relationChipEl(f, s, { onRemove = null } = {}) {
+  if (s.locked) return el('span', { class: 'k k-rel k-locked', title: 'A row in a private space you are not a member of' }, iconEl('lucide:lock', 'wv-icon wv-icon-xs'), el('span', {}, s.name || 'Private'));
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [], ...(s.avatar ? { avatar: s.avatar } : {}) };
   return viewChipEl(v, {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
@@ -3177,6 +3218,21 @@ const fileSizeText = (n) => n == null ? '' : n >= 1048576 ? `${(n / 1048576).toF
 const isViewableFile = (file) => !file.missing && fileKind(file) !== 'other';
 const fileViewUrl = (file) => fileUrl(file) + (fileKind(file) === 'html' ? '?view' : '');
 const plainClick = (e) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+const MISSING_TAIL = ' (missing)';
+function fitAttachName(chip) {
+  const label = chip.querySelector(':scope > .k-label');
+  if (!label || !chip.clientWidth) return;
+  const tail = chip.title.endsWith(MISSING_TAIL) ? MISSING_TAIL : '';
+  const name = chip.title.slice(0, chip.title.length - tail.length);
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 8 ? name.slice(dot) : '';
+  const stem = name.slice(0, name.length - ext.length);
+  label.textContent = chip.title;
+  for (let keep = stem.length; keep > 4 && label.scrollWidth - label.clientWidth > 1;) {
+    keep = Math.max(4, keep - Math.max(1, Math.ceil((keep * (label.scrollWidth - label.clientWidth)) / label.scrollWidth)));
+    label.textContent = `${stem.slice(0, keep - 3)}…${stem.slice(-3)}${ext}${tail}`;
+  }
+}
 function attachItemEl(file, { remove = null, group = null } = {}) {
   const viewable = isViewableFile(file);
   const siblings = viewable ? (group ?? [file]).filter(isViewableFile) : [];
@@ -3231,6 +3287,34 @@ addEventListener('message', (e) => {
   const h = Math.round(Number(e.data.height));
   if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
 });
+const PAGE_STORAGE_SAVE_MS = 400;
+(() => {
+  const due = new Map();
+  const refused = new Set();
+  let timer = null;
+  const flush = () => {
+    clearTimeout(timer);
+    timer = null;
+    for (const [id, items] of due) {
+      due.delete(id);
+      api('PUT', `/files/${id}/storage`, { items }).then(() => refused.delete(id), (err) => {
+        if (refused.has(id)) return;
+        refused.add(id);
+        toast(err.message, true);
+      });
+    }
+  };
+  addEventListener('message', (e) => {
+    if (e.data?.weave !== 'frame-storage') return;
+    const frame = fileFrameOf(e.source);
+    const items = e.data.items;
+    if (!frame || !items || typeof items !== 'object' || Array.isArray(items)) return;
+    due.set(frame.dataset.fileId, items);
+    clearTimeout(timer);
+    timer = setTimeout(flush, PAGE_STORAGE_SAVE_MS);
+  });
+  addEventListener('pagehide', flush);
+})();
 function fileViewerEl(file, { size = 'medium' } = {}) {
   const kind = fileKind(file);
   const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
@@ -3258,6 +3342,7 @@ function fileLightbox(files, index) {
   fullscreenViewer(`${file.name} · ${index + 1} / ${files.length}`, {
     url: fileUrl(file) + (kind === 'html' ? '?view' : ''),
     sandbox: kind === 'html' ? HTML_FRAME_SANDBOX : null,
+    fileId: kind === 'html' ? file.id : null,
     prev: index > 0 ? () => fileLightbox(files, index - 1) : null,
     next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
   });
@@ -3290,6 +3375,7 @@ const filePanel = (() => {
         files.length > 1 ? icon('Next', 'lucide:chevron-right', { disabled: index < files.length - 1 ? undefined : '', onclick: () => step(1) }) : null,
         icon('Full screen', 'lucide:maximize-2', { onclick: () => fileLightbox(files, index) }),
         el('a', { class: 'wv-act-icon', href: fileViewUrl(file), target: '_blank', rel: 'noopener', title: 'Open in a browser tab', 'aria-label': 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon')),
+        bugTrigger('wv-act-icon'),
         icon('Close (Esc)', 'lucide:x', { class: 'wv-act-icon wv-act-close', onclick: close })),
       el('div', { class: `wv-file-body kind-${kind}` }, fileBodyEl(file, 'wv-file-frame')));
     const side = $('#side');
@@ -3301,7 +3387,7 @@ const filePanel = (() => {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !isOpen() || e.defaultPrevented) return;
-    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, .picker-pop, .chip-pop')) return;
+    if (document.querySelector('#fsv-back, #modal-back, #tray-back, #cmdk-back, #bug-panel, .picker-pop, .chip-pop')) return;
     e.stopPropagation();
     close();
   }, true);
@@ -3316,7 +3402,7 @@ function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, 
   const node = editorFor(f, item, db, onSaved, { compact, fit });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
-    for (const n of [node, ...node.querySelectorAll('*')]) {
+    for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
       if (n.matches('input, select, textarea') && !n.hasAttribute('aria-label') && !n.hasAttribute('aria-labelledby')) n.setAttribute('aria-label', name);
     }
   }
@@ -3517,8 +3603,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
     const CAP = 3;
-    const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
-    const hidden = all.length - current.length;
+    const pile = compact && all.length > 1 && all.every((s) => s.avatar);
+    const current = pile ? [] : compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
+    const hidden = pile ? 0 : all.length - current.length;
+    if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
     for (const s of current) {
       const onRemove = compact ? null : async () => {
         try {
@@ -3600,11 +3688,15 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       } catch (err) { toast(err.message, true); }
       if (landed) await saved().catch((err) => toast(err.message, true));
     };
-    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: 'attachments' },
+    const shown = ids.length ? String(val ?? `${ids.length}`) : '';
+    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' },
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
-      ids.length ? String(val ?? `${ids.length}`) : '—');
+      shown ? el('span', { class: 'k-label' }, shown) : '—');
     chip.dropFiles = upload;
-    if (compact) return chip;
+    if (compact) {
+      if (ids.length === 1) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
+      return chip;
+    }
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     const remove = (file) => el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
@@ -3679,14 +3771,18 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     return graphic;
   }
   if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {
-    const dressed = el('span', { class: 'num-dressed', tabindex: 0, onclick: (e) => {
+    const dressed = el('span', { class: 'num-dressed', tabindex: 0, title: String(val), onclick: (e) => {
       e.stopPropagation();
       dressed.replaceWith(input);
       input.focus();
     } }, String(val));
+    if (typeof rawVal === 'number' && f.format !== 'compact') {
+      dressed.dataset.compact = numberCore.dressNumber({ format: 'compact', currency: f.currency }, isPercent ? rawVal * 100 : rawVal) + (isPercent ? '%' : f.unit ? ` ${f.unit}` : '');
+    }
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
+  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 
@@ -3741,8 +3837,7 @@ async function showTrash(dbId) {
     title: db ? `${db.name} — trash` : 'Trash',
   }));
 
-  const wsTrashed = db ? [] : await trashedWorkspaces();
-  if (!items.length && !views.length && !wsTrashed.length) {
+  if (!items.length && !views.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
@@ -3789,7 +3884,6 @@ async function showTrash(dbId) {
         ...(db ? [] : [el('th', {}, 'Table')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
-  if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
 }
 
 function typedHold(name, prompt, row) {
@@ -3819,10 +3913,50 @@ function confirmToggle(after, build) {
   };
 }
 
+function hrefAfterDelete(order, gone) {
+  const at = order.findIndex((x) => x.name === gone.name);
+  const open = (x) => x.name !== gone.name && x.name !== 'weave' && !x.held && !x.deletedAt;
+  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open) ?? order.find((x) => x.name === 'weave');
+  return next ? wsHref(next) : '/';
+}
+
+function deleteWorkspaceDialog(w, after = null) {
+  const input = el('input', {
+    class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
+    placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
+  });
+  let held = false;
+  modal('Delete workspace', [
+    el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
+      ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
+    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm, then hold Delete workspace'),
+    input,
+  ], async () => {
+    const armed = held;
+    held = false;
+    if (!armed || input.value !== w.name) throw Object.assign(new Error('Hold Delete workspace to confirm'), { shown: true });
+    const order = state.wsList ?? [];
+    await api('DELETE', `/workspaces/${w.id}`);
+    if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
+    toast(`Workspace ${w.name} deleted`);
+    buildWsRail();
+    if (state.route?.page === 'settings') showSettings();
+    else after?.();
+  }, 'Delete workspace', 'btn-danger');
+  const submit = $('#modal button[type="submit"]');
+  const form = submit.form;
+  const go = holdToConfirm('Delete workspace', () => { held = true; form.requestSubmit(); },
+    { rowClass: 'btn btn-danger ws-delete-go', holdingLabel: 'Hold to delete…' });
+  go.classList.remove('text-danger');
+  go.disabled = true;
+  submit.replaceWith(go);
+  input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
+}
+
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
-  const [trash, list] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => [])]);
+  const [trash, list, ws] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null)]);
   const main = $('#main');
   main.replaceChildren();
   main.append(viewHeader({
@@ -3830,6 +3964,18 @@ async function showSettings() {
     permalink: `${location.origin}${WS_PREFIX}/#/settings`,
     title: 'Settings',
   }));
+  if (typeof ws?.linkPreview === 'boolean') {
+    main.append(el('div', { class: 'card settings-link-preview' },
+      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
+      el('p', { class: 'settings-note' }, 'A row permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
+      paneSwitch({
+        label: 'Link preview before sign-in', on: ws.linkPreview,
+        onChange: async (on) => {
+          const now = await setLinkPreview(on);
+          if (now !== on) showSettings();
+        },
+      })));
+  }
   const gone = [
     ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
       .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
@@ -3878,32 +4024,16 @@ async function showSettings() {
   if (!deletable.length) return;
   main.append(el('div', { class: 'card settings-workspaces' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
-    el('p', { class: 'settings-note' }, 'A workspace moved to the trash keeps its file. Restore brings it back from Trash in the sidebar.'),
+    el('p', { class: 'settings-note' }, 'Deleting a workspace is permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.'),
     ...deletable.map((w) => {
       const row = el('div', { class: 'list-row' },
         el('span', { class: 'list-row-name' }, w.name),
         el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
         el('span', { class: 'spacer' }));
       row.append(el('button', {
-        class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
-        onclick: confirmToggle(row, () => {
-          const { box, input } = typedHold(w.name, `Its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities move with it.`, {
-            label: 'Move to trash', hold: true, holdingLabel: 'Hold to move to trash…',
-            run: async () => {
-              try {
-                await api('DELETE', `/workspaces/${w.id}`);
-                if (w.name === state.wsCurrent) { location.href = '/'; return; }
-                toast(`Workspace ${w.name} moved to the trash`, false, {
-                  label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
-                });
-                buildWsRail();
-                showSettings();
-              } catch (err) { toast(err.message, true); }
-            },
-          });
-          return { node: el('div', {}, box), input };
-        }),
-      }, 'Move to trash…'));
+        class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button',
+        onclick: () => deleteWorkspaceDialog(w),
+      }, 'Delete…'));
       return row;
     })));
 }
@@ -3946,7 +4076,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
-    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, fit: null, frame: null, flow: null, group: null, completedBy: null, nest: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -4011,17 +4141,13 @@ function viewStrip(db) {
     const name = el('a', { class: 'view-name', href: viewHref(db, v), draggable: 'false', ...(active ? { 'aria-current': 'true' } : {}) }, v.name);
     name.addEventListener('click', (e) => { if (active) e.preventDefault(); });
     const act = (cls, icon, label, run) => el('button', { class: `view-act ${cls}`, type: 'button', 'aria-label': `${label} ${v.name}`, title: label, onclick: run }, lucideEl(icon));
-    const del = holdToConfirm('', async () => {
+    const del = holdIcon('trash-2', 'Hold to delete', async () => {
       try { await api('DELETE', at(v.id)); } catch (err) { toast(err.message, true); return; }
       await loadSchema();
       if (cur?.id !== v.id) return showDatabase(db.id);
       const bare = `#/table/${db.id}`;
       if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
-    }, { rowClass: 'view-act view-del', holdingLabel: '' });
-    del.classList.remove('text-danger');
-    del.insertBefore(lucideEl('trash-2', 'wv-icon hold-icon'), del.querySelector('.hold-label'));
-    del.setAttribute('aria-label', `Hold to delete ${v.name}`);
-    del.title = 'Hold to delete';
+    }, { rowClass: 'view-act view-del', label: `Hold to delete ${v.name}` });
     const row = el('div', { class: 'view-tab view-row' + (active ? ' active' : ''), role: 'listitem', dataset: { view: v.id } },
       grip, name,
       i === 0 ? el('span', { class: 'view-first', title: 'This view opens with the table' }, 'Opens first') : null,
@@ -4354,6 +4480,10 @@ async function showDatabase(dbId, view) {
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
+  if (!(state.route?.page === 'db' && state.route.dbId === dbId && state.route.view === view)) {
+    const savedView = WeaveSpaceHome.viewRecent(table, view);
+    if (savedView) noteRecent(savedView);
+  }
   const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
     stopTableSearchTimer();
@@ -4391,7 +4521,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
     ...(search ? { search } : {}),
-    ...(whole ? {} : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
+    ...(whole ? { limit: -1 } : { limit: globalThis.WeaveGridWindow.PAGE, offset: 0 }),
     ...(group ? { groupBy: db.view.id } : {}),
     includeDeleted: showDeleted,
     fields: gridFields(db),
@@ -4943,7 +5073,8 @@ function listRowPrefs(db, save) {
   doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
   const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
   nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
-  return [el('div', { class: 'eye-head' }, 'Rows'),
+  const hide = v.group?.length ? [paneSwitch({ label: 'Hide empty groups', on: !!v.hideEmpty, data: { hideEmpty: '' }, onChange: (on) => save({ hideEmpty: on }) })] : [];
+  return [...hide, el('div', { class: 'eye-head' }, 'Rows'),
     el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
     el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel)];
 }
@@ -5199,19 +5330,24 @@ function renderViewPane(pane, db, { force = false } = {}) {
 }
 
 let closeSharePanel = null;
+let sharePanelOwner = null;
 function sharePanelButton(context) {
   if (!state.canManageForms) return null;
-  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('share'));
+  const button = el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('upload'));
   button.addEventListener('click', () => {
-    if (closeSharePanel) { closeSharePanel(); return; }
+    const mine = sharePanelOwner === button;
+    if (closeSharePanel) closeSharePanel();
+    if (mine) return;
     setPaneOpen(false, { focus: false });
     button.setAttribute('aria-expanded', 'true');
-    const close = () => { dispose(); closeSharePanel = null; button.setAttribute('aria-expanded', 'false'); button.focus({ preventScroll: true }); };
+    const close = () => { dispose(); closeSharePanel = null; sharePanelOwner = null; button.setAttribute('aria-expanded', 'false'); if (button.isConnected) button.focus({ preventScroll: true }); };
     const dispose = WeaveSharePanel.mount($('#share-pane'), context(), {
       el, icon: lucideEl, api, copy: copyText, notify: toast, close,
+      hold: (label, glyph, run) => holdIcon(glyph, `Hold to ${label.toLowerCase()}`, run, { rowClass: 'btn btn-sm btn-icon btn-ghost-secondary', label }),
       confirm: async (title, detail) => window.confirm(`${title}\n\n${detail}`),
     });
     closeSharePanel = close;
+    sharePanelOwner = button;
   });
   return button;
 }
@@ -5474,6 +5610,7 @@ function listSetup(db) {
     levels,
     completedBy: fieldOf(v.completedBy),
     nest: fieldOf(v.nest),
+    hideEmpty: !!v.hideEmpty,
     chip: viewFieldOf(db, 'chip'),
     dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
   };
@@ -5499,8 +5636,9 @@ async function readAndDrawList(db, dbId, search) {
   const sort = gridSort(db);
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
     ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
-    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
-  const base = { fields: [...new Set(names)], relations: 'chip' };
+    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n)),
+    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(breakdownFields(db), s.levels, i)?.name))].filter(Boolean);
+  const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
   const showDeleted = !board && showsDeleted(db);
   const sums = !board && showsRollups(db);
@@ -5523,7 +5661,15 @@ async function readAndDrawList(db, dbId, search) {
     sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
 }
 let listWrites = Promise.resolve();
+function shareCollapsed(db, collapsed) {
+  const sig = listCore.groupSig(db.view?.group);
+  if (!sig) return;
+  for (const v of allTables().find((t) => t.id === db.id)?.views ?? []) {
+    if (v.id !== db.view.id && listCore.groupSig(v.group) === sig) v.collapsed = Array.isArray(collapsed) ? [...collapsed] : undefined;
+  }
+}
 function listViewWrite(db, patch) {
+  if (patch.collapsed !== undefined) shareCollapsed(db, patch.collapsed);
   listWrites = listWrites.catch(() => {}).then(() => api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch))
     .then(() => loadSchema()).catch((err) => toast(err.message, true));
   return listWrites;
@@ -5569,6 +5715,37 @@ function listHeadingEl(s, depth, node) {
   if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
 }
+function groupCrumbEl(node) {
+  const text = VP.crumbText(node);
+  return text ? el('span', { class: 'group-crumb' }, text) : null;
+}
+function breakdownFields(db) {
+  return (allTables().find((t) => t.id === db.id) ?? db).fields;
+}
+function groupSummaryEl(db, levels, node) {
+  const f = VP.breakdownField(breakdownFields(db), levels, node.level);
+  const text = VP.breakdown(node.rows, f);
+  return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
+}
+const drawnPast = new Map();
+let revealRow = null;
+function cappedEls(db, cap, key, items, draw) {
+  const memo = `${db.id}/${db.view?.id}/${db.view?.layout}/${key ?? ''}`;
+  const wanted = revealRow ? items.findIndex((i) => i.row.id === revealRow) + 1 : 0;
+  if (wanted > cap) drawnPast.set(memo, Math.max(wanted, drawnPast.get(memo) ?? 0));
+  let shown = Math.max(cap, drawnPast.get(memo) ?? 0);
+  if (!cap || items.length <= shown) return items.flatMap(draw);
+  const more = el('button', { class: 'btn btn-sm btn-ghost-secondary wv-more', type: 'button' });
+  const relabel = () => { more.textContent = listCore.moreLabel({ shown, all: items.length, cap, term: db.term }); };
+  more.addEventListener('click', () => {
+    more.before(...items.slice(shown, shown + cap).flatMap(draw));
+    shown = Math.min(items.length, shown + cap);
+    drawnPast.set(memo, shown);
+    if (shown >= items.length) more.remove(); else relabel();
+  });
+  relabel();
+  return [...items.slice(0, shown).flatMap(draw), more];
+}
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
@@ -5597,7 +5774,7 @@ function renderList(main, db, items, ctx) {
   const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
   const levels = s.levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: VP.NO_VALUE }));
-  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered });
+  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered && !s.hideEmpty });
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
@@ -5674,10 +5851,11 @@ function renderList(main, db, items, ctx) {
       }
       const release = gridHold();
       try {
-        await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        const made = await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        revealRow = made.id;
         await keepScroll(() => showDatabase(db.id, db.view.id));
         document.querySelector(`#main .list-add[data-key="${CSS.escape(where)}"] .list-add-name`)?.focus({ preventScroll: true });
-      } catch (err) { toast(err.message, true); } finally { release(); }
+      } catch (err) { toast(err.message, true); } finally { revealRow = null; release(); }
     });
     return form;
   };
@@ -5686,14 +5864,16 @@ function renderList(main, db, items, ctx) {
     const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
     const body = node.groups
       ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+      : [...cappedEls(db, listCore.LIST_CAP, node.key, node.items, (i) => rowEls(i, node.path)), addEl(node.path)];
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
+        groupCrumbEl(node),
         headingEl(depth, node),
-        el('span', { class: 'list-count' }, String(node.count))),
+        el('span', { class: 'list-count' }, String(node.count)),
+        sums ? null : groupSummaryEl(db, s.levels, node)),
       el('div', { class: 'list-group-body' }, ...body),
-      sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? sumEl(node.label, node.rows, depth, sums.sums.get(node.key)) : null);
+      ...(sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? [sumEl(node.label, node.rows, depth, sums.sums.get(node.key))] : []));
     sec.wvPath = node.path;
     sec.wvItems = node.items ?? null;
     return sec;
@@ -5704,7 +5884,7 @@ function renderList(main, db, items, ctx) {
     ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  else { list.append(...cappedEls(db, listCore.LIST_CAP, '', arranged.items, (i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
   if (arranged.completed?.count) {
     const c = arranged.completed;
     const shut = listCore.isCollapsed(collapsed, c.key);
@@ -5714,7 +5894,7 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
         el('span', { class: 'list-group-label' }, c.label),
         el('span', { class: 'list-count' }, String(c.count))),
-      el('div', { class: 'list-group-body' }, ...c.items.flatMap((i) => rowEls(i, null))));
+      el('div', { class: 'list-group-body' }, ...cappedEls(db, listCore.LIST_CAP, c.key, c.items, (i) => rowEls(i, null))));
     sec.wvItems = c.items;
     list.append(sec);
   }
@@ -5833,9 +6013,23 @@ function boardCardFields(db) {
   return db.fields.filter((f) => shown.has(f.name) && f !== name && f.role !== 'name' && f.name !== cover?.name && f.type !== 'document' && f.type !== 'view');
 }
 const PICTURE_LABELS = { off: 'Off', small: 'Small', medium: 'Medium', large: 'Large' };
+const FIT_OPTIONS = [
+  { id: 'crop', label: 'Crop', title: 'Fill the card shape, trimming the edges' },
+  { id: 'fit', label: 'Fit', title: 'The whole picture inside the card shape' },
+  { id: 'original', label: 'Original', title: 'The card takes the picture\'s own shape' },
+  { id: 'capped', label: 'Capped', title: 'The picture\'s own shape, between 2:3 tall and 2:1 wide' },
+];
+const masonryRows = new ResizeObserver((entries) => {
+  for (const { target: t } of entries) {
+    if (!t.isConnected) { masonryRows.unobserve(t); continue; }
+    const gap = parseFloat(getComputedStyle(t.parentElement).columnGap) || 0;
+    t.style.gridRowEnd = `span ${Math.ceil((t.getBoundingClientRect().height + gap) / 2)}`;
+  }
+});
 function boardControls(db, put) {
   const v = db.view ?? {};
   const cover = boardCore.coverField(db);
+  const fit = boardCore.fitOf(v);
   const by = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
   const columns = { groups: 'side', picture: 'off', sort: [], ...(!(v.group ?? []).length && by ? { group: [by.name] } : {}) };
   const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
@@ -5846,8 +6040,15 @@ function boardControls(db, put) {
     row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
     row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
       boardCore.pictureOf(db, v), (picture) => put({ picture }))),
-  ];
+    row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
+    fit === 'crop' || fit === 'fit' ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
+    fit === 'original' || fit === 'capped' ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
+  ].filter(Boolean);
 }
+const coverSize = (e) => {
+  e.target.style.setProperty('--nw', `${e.target.naturalWidth}px`);
+  e.target.style.setProperty('--nh', `${e.target.naturalHeight}px`);
+};
 const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
 const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field, .tile-pick`;
 const boardPicks = { dbId: null, ids: [], full: false };
@@ -5914,6 +6115,9 @@ function renderBoard(main, db, items, ctx) {
   const groups = boardCore.groupsOf(v);
   const picture = boardCore.pictureOf(db, v);
   const size = boardCore.widths(picture);
+  const fit = boardCore.fitOf(v);
+  const flow = boardCore.flowOf(v);
+  const masonry = picture !== 'off' && (fit === 'original' || fit === 'capped') && flow === 'masonry';
   const fields = boardCardFields(db);
   if (picksState.dbId !== db.id) Object.assign(picksState, { dbId: db.id, ids: [], full: false });
   const known = new Set((everyone ?? items).map((it) => it.id));
@@ -5924,8 +6128,8 @@ function renderBoard(main, db, items, ctx) {
   const rows = items.map((it) => ({ id: it.id, keys: levels.map((l) => listKeys(l, it)), parent: null, done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, item: it }));
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const arrangeLevels = levels.map((l, i) => ({ order: l.order, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
-  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered });
+  const arrangeLevels = levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
+  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered && !s.hideEmpty });
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
@@ -5966,17 +6170,18 @@ function renderBoard(main, db, items, ctx) {
       dataset: { eid: it.id, href: `#/entity/${it.id}` }, 'aria-label': label,
     },
       picture === 'off' ? null : el('div', { class: 'tile-cover' + (file ? '' : ' is-empty') },
-        file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
+        file ? el('img', { loading: 'lazy', decoding: 'async', onload: coverSize, src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
       el('div', { class: 'tile-body' },
         el('div', { class: 'tile-head' },
           el('label', { class: 'tile-pick', title: 'Pick to compare' },
             el('input', { type: 'checkbox', 'aria-label': `Pick ${label} to compare`, onchange: () => pickCard(it.id) })),
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
-          el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1', title: label }, label)),
+          el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1' }, label)),
         fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
           el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
     card.wvPath = path;
     card.wvItem = node;
+    if (masonry) masonryRows.observe(card);
     RO().guard(card);
     fileDropZone(card, (files) => dropCover(it, files));
     card.addEventListener('click', (e) => {
@@ -6002,10 +6207,20 @@ function renderBoard(main, db, items, ctx) {
     });
     return card;
   };
+  const cardsEl = (node, completed) => {
+    const items = node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; });
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...cappedEls(db, listCore.BOARD_CAP, node.key, items, (i) => [tileEl(i, completed ? null : node.path)]));
+    const more = cards.querySelector(':scope > .wv-more');
+    if (masonry && more) masonryRows.observe(more);
+    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    return cards;
+  };
   const groupEl = (node, depth, { completed = false, cell = false } = {}) => {
     const key = node.key ?? '';
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...node.items.map((i) => tileEl(i, completed ? null : node.path)));
-    cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
+    const nested = !!node.groups;
+    const body = nested
+      ? el('div', { class: 'board-nest' }, ...node.groups.map((g) => groupEl(g, depth + 1)))
+      : cardsEl(node, completed);
     const shut = !cell && listCore.isCollapsed(collapsed, key);
     const fold = el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.label || key}` }, lucideEl('chevron-right'));
     const head = !cell && (node.path?.length || completed)
@@ -6013,7 +6228,10 @@ function renderBoard(main, db, items, ctx) {
         completed ? el('span', { class: 'list-group-label' }, node.label) : listHeadingEl(s, depth, node),
         el('span', { class: 'list-count' }, String(node.count ?? node.items.length)))
       : null;
-    const sec = el('section', { class: 'board-group' + (completed ? ' board-completed' : '') + (shut ? ' shut' : ''), dataset: { key }, 'aria-label': key || db.name }, head, cards);
+    const sec = el('section', {
+      class: 'board-group' + (nested ? ' board-parent' : '') + (completed ? ' board-completed' : '') + (shut ? ' shut' : ''),
+      dataset: { key, depth: String(depth) }, 'aria-label': key || db.name,
+    }, head, body);
     fold.addEventListener('click', () => {
       collapsed = listCore.toggleCollapsed(collapsed, key);
       const now = listCore.isCollapsed(collapsed, key);
@@ -6022,14 +6240,10 @@ function renderBoard(main, db, items, ctx) {
       v.collapsed = collapsed;
       writeView({ collapsed });
     });
-    sec.wvPath = completed ? null : node.path;
+    sec.wvPath = completed || nested ? null : node.path;
     return sec;
   };
-  const leaves = [];
-  const walk = (node, depth) => (node.groups ? node.groups.forEach((g) => walk(g, depth + 1)) : leaves.push([node, depth]));
-  if (arranged.groups) arranged.groups.forEach((g) => walk(g, 0));
-  else leaves.push([{ key: '', path: [], items: arranged.items, count: arranged.items.length }, 0]);
-  const flat = (node) => ({ ...node, items: node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; }) });
+  const stacked = arranged.groups ?? [{ key: '', path: [], items: arranged.items, count: arranged.items.length }];
   const laneEl = (lane) => {
     const shut = boardCore.laneShut(collapsed, lane);
     const row = el('div', { class: 'board-lane' + (shut ? ' shut' : ''), role: 'group', 'aria-label': lane.label, dataset: { key: lane.key } });
@@ -6044,7 +6258,7 @@ function renderBoard(main, db, items, ctx) {
     });
     row.append(el('div', { class: 'board-lane-head' },
       el('span', { class: 'board-lane-title' }, fold, listHeadingEl(s, 1, lane), el('span', { class: 'list-count' }, String(lane.count)))),
-    ...lane.cells.map((c) => groupEl(flat(c), 1, { cell: true })));
+    ...lane.cells.map((c) => groupEl(c, 1, { cell: true })));
     return row;
   };
   const grid = lanes ? boardCore.laneGrid(arranged.groups, arrangeLevels[1]) : null;
@@ -6065,13 +6279,13 @@ function renderBoard(main, db, items, ctx) {
     } }, lucideEl('chevron-right')), listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)));
   const board = el('div', {
     class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
-    dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}) },
-    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
+    dataset: { groups: levels.length ? groups : 'stacked', picture, fit, flow, ...(lanes ? { lanes: 'true' } : {}) },
+    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone};--frame:${boardCore.frameOf(v).replace(':', ' / ')}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
     ? [...grid.columns.map(columnHead), ...grid.lanes.map(laneEl)]
-    : leaves.map(([node, depth]) => groupEl(flat(node), depth))));
+    : stacked.map((node) => groupEl(node, 0))));
   if (lanes) syncColumns();
-  if (arranged.completed?.count) board.append(groupEl(flat(arranged.completed), 0, { completed: true }));
+  if (arranged.completed?.count) board.append(groupEl(arranged.completed, 0, { completed: true }));
   const sortName = (gridSort(db) ?? []).map((x) => x.field).join(', ');
   const manualBtn = el('button', { class: 'btn btn-sm btn-ghost-primary tiny board-manual', type: 'button', onclick: () => listViewWrite(db, { sort: [] }).then(reload) }, 'Manual');
   const hint = ctx.embedded ? null : sorted
@@ -6104,11 +6318,11 @@ function renderBoard(main, db, items, ctx) {
     }
     if (!on.size) { picks.replaceChildren(); return; }
     const n = on.size;
-    picks.replaceChildren(
+    picks.replaceChildren(...[
       picksState.full ? el('span', { class: 'board-pick-hint' }, `Compare takes up to ${boardCore.PICK_CAP} cards`) : null,
       el('button', { class: 'btn btn-sm btn-primary board-compare', type: 'button', ...(n < boardCore.PICK_MIN ? { disabled: '', title: `Pick ${boardCore.PICK_MIN} to ${boardCore.PICK_CAP} cards to compare` } : {}),
         onclick: () => openCompare(db, picksState.ids) }, `Compare ${n}`),
-      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(picksState, { ids: [], full: false }); syncPicks(); } }, 'Clear'));
+      el('button', { class: 'btn btn-sm btn-ghost-secondary board-clear', type: 'button', onclick: () => { Object.assign(picksState, { ids: [], full: false }); syncPicks(); } }, 'Clear')].filter(Boolean));
   }
   function boardDrag(down, card) {
     const side = board.dataset.groups === 'side';
@@ -6121,7 +6335,7 @@ function renderBoard(main, db, items, ctx) {
     const inLanes = board.dataset.lanes === 'true';
     let held = null;
     const under = () => {
-      const g = [...board.querySelectorAll('.board-group')].find((n) => {
+      const g = [...board.querySelectorAll('.board-group:not(.board-parent)')].find((n) => {
         if (n.classList.contains('shut') || n.classList.contains('column-shut') || !n.getClientRects().length) return false;
         const r = n.getBoundingClientRect();
         return at.x >= r.left && at.x <= r.right && ((side && !inLanes) || (at.y >= r.top && at.y <= r.bottom));
@@ -6624,6 +6838,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     trash: trashChosen,
   };
 
+  const holdAct = (c) => {
+    const btn = holdIcon(CMD_ICON[c.id].replace('lucide:', ''), `Hold to ${c.label.toLowerCase()}`, () => COMMANDS[c.id]?.(),
+      { rowClass: 'sel-act danger', label: c.label });
+    btn.append(el('span', { class: 'sel-tip' }, btn.title));
+    return btn;
+  };
   const drawPuck = () => {
     const sel = chosen();
     if (!sel.size) { puck.replaceChildren(); return; }
@@ -6638,8 +6858,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
       ...cmds.map((c) => [
         c.danger ? el('span', { class: 'sel-sep' }) : null,
-        el('button', {
-          class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
+        c.danger ? holdAct(c) : el('button', {
+          class: 'sel-act', type: 'button',
           title: c.label, 'aria-label': c.label,
           onclick: (ev) => COMMANDS[c.id]?.(ev.currentTarget),
         }, iconEl(CMD_ICON[c.id], 'wv-icon'), el('span', { class: 'sel-tip' }, c.label)),
@@ -6744,9 +6964,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
         el('div', { class: 'group-head-in', style: `--level:${n.level}` },
           el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
+          groupCrumbEl(n),
           el('span', { class: 'group-head-field' }, level.f.name),
           listHeadingEl({ levels: grouping.levels }, n.level, n),
-          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
+          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)),
+          grouping.rollups ? null : groupSummaryEl(db, grouping.levels, n))));
   };
   const buildSumRow = (s) => {
     const grand = s.kind === 'grand';
@@ -6771,6 +6993,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const live = new Map();
   const built = new Map();
   const win = { start: 0, end: 0 };
+  let pinned = null;
 
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
@@ -7258,6 +7481,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
+  const pinFor = (start) => {
+    if (!slots || start <= 0 || start >= slots.length || slots[start].kind === 'grand') return -1;
+    for (let i = start; i >= 0; i--) if (slots[i].kind === 'head' && slots[i].node.level === 0) return i < start ? i : -1;
+    return -1;
+  };
   const paint = (w) => {
     let changed = false;
     for (const [i, tr] of live) {
@@ -7265,8 +7493,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         tr.remove(); live.delete(i); changed = true;
       }
     }
-    setPad(topSpacer, w.topPad); setPad(bottomSpacer, w.bottomPad);
+    const pin = pinFor(w.start);
+    const pinTr = pin < 0 ? null : rowFor(pin);
+    if (pinned && pinned !== pinTr) { pinned.remove(); changed = true; }
+    pinned = pinTr;
+    setPad(topSpacer, w.topPad - (pinTr ? rowH() : 0)); setPad(bottomSpacer, w.bottomPad);
     let cursor = topSpacer.isConnected ? topSpacer : null;
+    if (pinTr) {
+      if (!pinTr.isConnected || pinTr.previousElementSibling !== cursor) { cursor ? cursor.after(pinTr) : tbody.prepend(pinTr); changed = true; }
+      cursor = pinTr;
+    }
     for (let i = w.start; i < w.end; i++) {
       let tr = live.get(i);
       if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; }
@@ -7287,6 +7523,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
+    const headH = `${g.headH}px`;
+    if (table.style.getPropertyValue('--wv-thead-h') !== headH) table.style.setProperty('--wv-thead-h', headH);
     const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach() });
     if (pager) {
       const next = GW().feedFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), loaded: reach(), total: total() });
@@ -7337,7 +7575,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const stale = fresh.affected.filter((x) => x !== fresh.id && at(x) >= 0);
     const rows = [fresh];
     if (stale.length) {
-      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]] });
+      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]], limit: -1 });
       rows.push(...read.items.filter((r) => r.id !== fresh.id));
     }
     for (const item of rows) {
@@ -7391,7 +7629,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const levels = (db.sort ?? []).filter((x) => x?.field);
     if (levels.length && !pager) sortedItems.sort(VP.comparator(levels, clientSortValue, (a, b) => (a.publicId ?? 0) - (b.publicId ?? 0)));
     slots = grouping ? groupSlots() : null;
-    live.clear(); built.clear();
+    live.clear(); built.clear(); pinned = null;
     win.start = 0; win.end = 0;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
@@ -7937,7 +8175,7 @@ function flushUsers(t) {
   return api('POST', `/tables/${t.id}/query`, { where: [['Name', 'in', want]] }).then((res) => {
     for (const u of res.items ?? []) {
       usersCache.rows.push({
-        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email, avatar: u.avatar ?? null,
         workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
       });
     }
@@ -7984,7 +8222,8 @@ function actorChipEl(actor, { link = true } = {}) {
   const chip = el('span', { class: 'k k-actor' });
   const paint = (users) => {
     const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
-    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+    const mark = r.user?.avatar ? chipElFrom(chipView.avatarHtml(r.user.avatar, { cls: 'actor-av' }))
+      : r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
       : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
     const label = el('span', { class: 'k-label' }, r.name);
     const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
@@ -8676,11 +8915,21 @@ async function showSpace(spaceId) {
     }),
   );
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showSpaceLauncher(main, space);
+  if (!dockCoversScreen.matches) {
+    const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
+    if (loaded) return mountSpaceHome(main, space);
+  }
+  await appendSpaceDetails(main, space);
+}
+
+async function appendSpaceDetails(parent, space, { withTables = true } = {}) {
+  const { spaceId } = space;
   const tiles = await spaceStatTiles(space);
-  if (tiles) main.append(tiles);
-  main.append(spaceTablesCard(space));
+  if (tiles) parent.append(tiles);
+  if (withTables) parent.append(spaceTablesCard(space));
   const card = await relationMapCard('Relation map', { spaceId });
-  if (card) main.append(card);
+  if (card) parent.append(card);
   const reg = registryTable('tables');
   if (reg) {
     const onSaved = async () => {
@@ -8690,8 +8939,8 @@ async function showSpace(spaceId) {
       restoreGridFocus();
     };
     const onAdd = () => tableTray({ spaceId, after: () => showSpace(spaceId) });
-    await schemaDisclosure(main, async (body) => {
-      const res = await api('POST', `/tables/${reg.id}/query`, {});
+    await schemaDisclosure(parent, async (body) => {
+      const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
       renderTable(body, reg, items, onSaved, onAdd);
     });
@@ -10235,6 +10484,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const recordCtx = () => ({ db, inPeek, onClose });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
+  const shareBtn = sharePanelButton(() => ({ kind: 'entity', id, name: entity.name || `#${entity.publicId}`, noun: termOfTable(entity.dbId).singular, spaceId: db?.spaceId, tableIds: [entity.dbId], entityIds: [id] }));
 
   const activityBtn = el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
@@ -10264,7 +10514,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   let nextFab = null;
@@ -10396,6 +10646,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
 
   const VALUES_BLOCK = '@values';
+  const FILES_BLOCK = '@files';
   const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
   const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
   const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
@@ -10535,10 +10786,62 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const named = db.bodyBlocks ?? [VALUES_BLOCK];
+  let filesCard = null;
+  let placed = false;
+  const drawFiles = () => {
+    if (filesCard) return;
+    const inFields = new Set((db.fields ?? [])
+      .filter((f) => f.type === 'attachments')
+      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
+    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
+    if (!loose.length) return;
+    const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
+    const pages = loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
+    const foldFiles = (closed) => {
+      for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
+      filesCaret.classList.toggle('closed', closed);
+      setDisclosure(filesCaret, !closed);
+    };
+    const filesCaret = disclosure('doc-caret', true, {
+      title: 'Collapse files',
+      onclick: (e) => {
+        e.stopPropagation();
+        const closed = !filesBody.classList.contains('hidden');
+        foldFiles(closed);
+        docSectionCollapse(id, FILES_BLOCK, closed);
+      },
+    });
+    const makeField = async () => {
+      try {
+        const name = boardCore.freeFieldName(db, 'Files');
+        await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments' });
+        await api('PATCH', `/entities/${id}`, { values: { [name]: loose.map((f) => f.id) } });
+        await loadSchema();
+        toast(`${loose.length === 1 ? 'The file moved' : 'The files moved'} into a new ${name} field`);
+        refresh();
+      } catch (err) { toast(err.message, true); }
+    };
+    const filesHead = el('div', { class: 'block-head' },
+      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
+      el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
+        title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
+      }, 'Make a field'));
+    if (docSectionCollapse(id, FILES_BLOCK)) foldFiles(true);
+    filesCard = wireBlock(FILES_BLOCK, el('div', { class: 'entity-files-card' }, filesHead, filesBody, ...pages), [filesHead.querySelector('.opt-grip'), filesHead]);
+    if (!placed) return;
+    const order = [...named, ...blocks.keys()];
+    const next = order.slice(order.indexOf(FILES_BLOCK) + 1).map((k) => blocks.get(k)).find((n) => n?.isConnected);
+    if (next) next.before(filesCard); else left.append(filesCard);
+  };
+  drawFiles();
+  if (later) fills.push(drawFiles);
+
   for (const key of [...named, ...blocks.keys()]) {
     const node = blocks.get(key);
     if (node && !node.isConnected) left.append(node);
   }
+  placed = true;
   let appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
   if (later) {
@@ -10553,24 +10856,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
     });
   }
-  let filesCard = null;
-  const drawFiles = () => {
-    if (filesCard) return;
-    const inFields = new Set((db.fields ?? [])
-      .filter((f) => f.type === 'attachments')
-      .flatMap((f) => (Array.isArray(entity.raw?.[f.name]) ? entity.raw[f.name] : [])));
-    const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
-    if (!loose.length) return;
-    filesCard = el('div', { class: 'card panel entity-files-card' },
-      el('div', { class: 'card-header' },
-        el('h3', { class: 'card-title' }, `Files · ${loose.length}`)),
-      el('div', { class: 'card-body attach-chips' },
-        ...loose.map((file) => attachItemEl(file, { group: loose }))),
-      ...loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'card-body entity-files-page' }, fileViewerEl(file))));
-    left.append(filesCard);
-  };
-  drawFiles();
-  if (later) fills.push(drawFiles);
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
@@ -10750,7 +11035,7 @@ function tableTray({ spaceId = null, after = null } = {}) {
     await loadSchema();
     if (!after) { location.hash = `#/table/${made.id}`; return; }
     const reg = registryTable('tables');
-    const rows = reg ? (await api('POST', `/tables/${reg.id}/query`, {})).items : [];
+    const rows = reg ? (await api('POST', `/tables/${reg.id}/query`, { limit: -1 })).items : [];
     const row = rows.find((i) => i.sysId === made.id);
     await after();
     if (row) focusNewRow(row.id, { field: 'Name' });
@@ -11112,58 +11397,6 @@ async function openActivityLog(param) {
   return showActivity(param);
 }
 
-const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
-const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
-
-function shareDialog(kind, id, name) {
-  const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
-  const fill = async () => {
-    let grants;
-    try { grants = await api('GET', `/shares?kind=${kind}&id=${encodeURIComponent(id)}`); } catch (err) {
-      rows.replaceChildren(el('span', { class: 'share-hint' }, err.message));
-      return;
-    }
-    if (!grants.length) { rows.replaceChildren(el('span', { class: 'share-hint' }, 'No links yet.')); return; }
-    rows.replaceChildren(...grants.map((g) => {
-      const full = location.origin + WS_PREFIX + g.url;
-      return el('div', { class: 'share-row' },
-        el('div', { class: 'share-row-head' },
-          el('span', { class: 'share-chip' }, SHARE_MODE_LABEL[g.mode] ?? g.mode),
-          el('span', { class: 'share-chip' }, g.visibility === 'private' ? 'Signed-in only' : 'Anyone with the link'),
-          g.label ? el('span', { class: 'share-label' }, g.label) : null),
-        el('code', { class: 'share-url' }, full),
-        el('div', { class: 'share-row-actions' },
-          el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
-          el('button', {
-            class: 'btn btn-sm share-revoke', type: 'button',
-            onclick: async () => {
-              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
-            },
-          }, 'Revoke')));
-    }));
-  };
-  modal(`Share ${name}`, [
-    el('span', { class: 'form-label', id: 'share-mode' }, 'Access'),
-    el('div', { class: 'share-modes', role: 'radiogroup', 'aria-labelledby': 'share-mode' },
-      ...SHARE_MODES.map(([value, label]) => el('label', { class: `share-mode${value === 'comment' ? ' is-off' : ''}` },
-        el('input', { type: 'radio', name: 'mode', value, checked: value === 'read' ? '' : null, disabled: value === 'comment' ? '' : null }),
-        el('span', {}, label)))),
-    el('label', { class: 'form-check share-private' },
-      el('input', { type: 'checkbox', name: 'private', class: 'form-check-input' }),
-      el('span', { class: 'form-check-label' }, 'Signed-in members only')),
-    el('label', { class: 'form-label', for: 'share-label' }, 'Label'),
-    el('input', { id: 'share-label', name: 'label', class: 'form-control', placeholder: 'Who the link is for' }),
-    el('span', { class: 'share-hint' }, 'Pages open read-only. Edit and add-delete reach the API and MCP through the link\'s token.'),
-    el('h3', { class: 'share-list-title' }, 'Links'),
-    rows,
-  ], async (fd) => {
-    const g = await api('POST', '/shares', { scope: { kind, id }, mode: fd.get('mode'), visibility: fd.get('private') ? 'private' : 'public', label: fd.get('label') || '' });
-    await copyText(location.origin + WS_PREFIX + g.url, 'Link copied');
-    setTimeout(() => shareDialog(kind, id, name));
-  }, 'Create link');
-  fill();
-}
-
 async function showView(id) {
   state.route = { page: 'view', id };
   syncDocTitle(null);
@@ -11175,7 +11408,7 @@ async function showView(id) {
   main.replaceChildren(kindContext(el('div', { class: 'wv-toolbar share-page-head' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
+    sharePanelButton(() => ({ kind: 'view', id, name: v.name, noun: 'share page' })),
     kindDots('share-page', v, () => ({}), { title: 'Share page actions' })), 'share-page', v));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});
@@ -11204,7 +11437,7 @@ async function showHome() {
   bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
   const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
@@ -11273,7 +11506,7 @@ async function showHome() {
       } catch (err) { toast(err.message, true); }
     };
     await schemaDisclosure(main, async (body) => {
-      const res = await api('POST', `/tables/${reg.id}/query`, {});
+      const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
     });
   }
@@ -11338,13 +11571,13 @@ async function inviteDialog() {
           el('span', {}, i.email), el('span', { class: 'pid' }, ROLE_LABELS[i.role] ?? i.role),
           el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `invited by ${i.invitedBy ?? 'unknown'} on ${day(i.createdAt)}`),
-          el('button', { class: 'btn btn-sm btn-ghost-danger', type: 'button', onclick: async () => {
+          holdToConfirm('Revoke', async () => {
             try {
               await api('DELETE', `/invites/${i.id}`);
               toast('Invite revoked');
               draw(accounts, await api('GET', '/invites'));
             } catch (err) { toast(err.message, true); }
-          } }, 'Revoke'))))
+          }, { rowClass: 'btn btn-sm btn-ghost-danger', holdingLabel: 'Hold to revoke…' }))))
         : el('div', { class: 'wv-members-empty' }, 'No pending invites.'),
     ].filter(Boolean));
   };
@@ -11357,17 +11590,18 @@ function currentWsName() {
 }
 
 const RECENT_KEY = `weave-recent:${WS_PREFIX || '/'}`;
+const RECENT_KEEP = 60;
 function readRecents() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; }
 }
 function noteRecent(item) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch {}
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), { ...item, at: Date.now() }, RECENT_KEEP))); } catch {}
 }
 function noteEntityRecent(entity) {
   const wf = allTables().find((d) => d.id === entity.dbId)?.fields.find((f) => f.type === 'workflow');
   const st = wf ? entity.fields?.[wf.name] : null;
   noteRecent({
-    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
+    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, dbId: entity.dbId, publicId: entity.publicId,
     url: `/e/${entity.id}`,
     ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
   });
@@ -12160,12 +12394,15 @@ async function buildWsRail() {
       if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
+    const railed = list.filter((w) => w.name !== 'weave');
     listBox.replaceChildren(
-      ...list.filter((w) => w.name !== 'weave').map((w) => {
+      ...[...railed.filter((w) => w === cur), ...railed.filter((w) => w !== cur)].map((w) => {
+        const expired = `${w.name}: session expired, click to sign in`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
+          class: 'ws-icon' + (w.held ? ' ws-held' : w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.held ? w.open : wsHref(w),
-          title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          title: w.held ? expired : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          ...(w.held ? { 'aria-label': expired } : {}),
         }, w.logo && !w.held
           ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
             const host = e.currentTarget.parentElement;
@@ -12175,17 +12412,14 @@ async function buildWsRail() {
           } })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
-        const wsMenu = async (e) => {
+        const wsMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
           const at = e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip };
           if (openMenu?.trigger === chip) { openMenu.close(); return; }
-          const [record, invite] = await Promise.all([wsApi(w, 'GET', '/workspace').catch(() => null),
-            w.name === current ? api('GET', '/invites').then(() => true, () => false) : false]);
-          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined, invite };
-          const items = menuFor('workspace', o, { after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
+          const items = menuFor('workspace', w);
           if (!items.length) return;
-          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
+          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', w), label: `${w.name} workspace` });
         };
         chip.addEventListener('contextmenu', wsMenu);
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
@@ -12196,31 +12430,9 @@ async function buildWsRail() {
   refreshAccountChip();
 }
 
-async function trashedWorkspaces() {
-  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
-}
-function trashedWorkspacesCard(trashed, redraw) {
-  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
-    el('h3', { class: 'card-title' }, 'Workspaces'),
-    ...trashed.map((w) => el('div', { class: 'list-row' },
-      el('span', { class: 'list-row-name' }, w.name),
-      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
-      el('span', { class: 'spacer' }),
-      el('button', {
-        class: 'btn btn-sm', type: 'button',
-        onclick: async () => {
-          try {
-            await api('POST', `/workspaces/${w.id}/restore`);
-            toast(`Workspace ${w.name} restored`);
-            buildWsRail();
-            redraw();
-          } catch (err) { toast(err.message, true); }
-        },
-      }, 'Restore'))));
-}
 const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
 const bareRootWs = (list) => list.find(servesBareRoot);
-const wsHref = (w) => (servesBareRoot(w) ? '/' : (w.url ?? `/w/${w.id}/`));
+const wsHref = (w) => (servesBareRoot(w) ? '/' : w.host ? `/api/auth/open/${encodeURIComponent(w.name.toLowerCase())}` : (w.url ?? `/w/${w.id}/`));
 const wsApiPrefix = (w) => `/w/${w.id}/api`;
 async function wsApi(w, method, path, body) {
   const res = await fetch(wsApiPrefix(w) + path, {
@@ -12243,10 +12455,8 @@ function wsLogoButton(w, hasLogo) {
     host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id ?? w.name)}`);
     host.replaceChildren(String(w.name ?? 'w').slice(0, 1).toUpperCase());
   } }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
-  const clear = hasLogo ? el('button', {
-    type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
-    onclick: () => removeWorkspaceLogo(w, after),
-  }, lucideEl('x')) : null;
+  const clear = hasLogo ? holdIcon('x', 'Hold to remove logo', () => removeWorkspaceLogo(w, after),
+    { rowClass: 'ws-logo-clear', label: 'Remove logo' }) : null;
   return el('span', { class: 'ws-logo' }, pick, clear);
 }
 
@@ -12632,15 +12842,23 @@ function installBugReporter() {
   document.body.append(fab);
 }
 
+function bugTrigger(cls) {
+  if (!bugRecorder) return null;
+  return el('button', {
+    class: `${cls} bug-trigger`, type: 'button', title: 'Report a problem', 'aria-label': 'Report a problem', 'aria-expanded': 'false',
+    onclick: (e) => (document.querySelector('#bug-panel') ? closeBugPanel() : openBugPanel(e.currentTarget)),
+  }, bugGlyph());
+}
+
 function closeBugPanel() {
   document.querySelector('#bug-panel')?.remove();
-  document.querySelector('.bug-fab')?.setAttribute('aria-expanded', 'false');
+  for (const n of document.querySelectorAll('.bug-fab, .bug-trigger')) n.setAttribute('aria-expanded', 'false');
 }
 
 function openBugPanel(from) {
   closeBugPanel();
   const fab = from.classList.contains('bug-fab');
-  if (fab) from.setAttribute('aria-expanded', 'true');
+  from.setAttribute('aria-expanded', 'true');
   const c = bugRecorder.counts();
   let picked = bugDraft.categories.slice();
 
@@ -12729,10 +12947,11 @@ function openBugPanel(from) {
   const panel = el('div', { id: 'bug-panel', role: 'dialog', 'aria-label': 'Report a problem' }, form);
   document.body.append(panel);
 
-  if (fab) {
+  if (!dockCoversScreen.matches) {
     const r = from.getBoundingClientRect();
     panel.style.right = Math.max(8, innerWidth - r.right) + 'px';
-    panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+    if (fab) panel.style.bottom = (innerHeight - r.top + 6) + 'px';
+    else panel.style.top = (r.bottom + 6) + 'px';
   }
 
   dismissOutside({

@@ -27,7 +27,7 @@ concurrency:
 jobs:
   guard:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.guard.outputs.sha }}
@@ -53,7 +53,7 @@ jobs:
       sha: ${{ steps.publish.outputs.sha }}
       state: ${{ steps.publish.outputs.state }}
     if: needs.guard.outputs.current == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
       contents: write
@@ -83,7 +83,7 @@ jobs:
   image:
     needs: [guard, publish]
     if: needs.publish.outputs.sha != '' && (needs.publish.outputs.state == 'published' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -118,7 +118,7 @@ jobs:
   registry:
     needs: [guard, publish, image]
     if: needs.publish.outputs.sha != '' && (needs.publish.outputs.state == 'published' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read

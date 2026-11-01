@@ -383,11 +383,12 @@ test('the space menu holds no per-table export', () => {
   assert.doesNotMatch(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,80}export\.csv/);
 });
 
-test('deleting a table or a space is one click to the trash, with Undo (Feature #296, D6)', () => {
+test('deleting a table or a space is a hold to the trash, with Undo (Feature #296, Feature #346)', () => {
   const rows = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
   assert.match(rows, /delete: db\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
   assert.match(rows, /delete: space\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/spaces\/\$\{space\.spaceId\}`\)/);
-  assert.doesNotMatch(rows, /Delete table|Delete space|hold: true/, 'neither holds');
+  assert.doesNotMatch(rows, /Delete table|Delete space/, 'both say Move to trash');
+  assert.match(fnBody('trashRow'), /hold: true/, 'and both hold');
 });
 
 test('header menus hang off the right edge and fill their rows', () => {
@@ -489,7 +490,8 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
 test('deleting a field from the header moves it to the trash and is never offered for Name', () => {
   const menu = FIELD_ROWS;
   assert.match(menu, /\.\.\.trashRow\(\{/, 'the field delete is the one trash row, Undo restores it (Issue #768, Feature #296)');
-  assert.doesNotMatch(menu, /hold: true|Delete field/, 'a recoverable delete never demands a hold');
+  assert.doesNotMatch(menu, /Delete field/, 'it says Move to trash');
+  assert.match(fnBody('trashRow'), /hold: true/, 'and holds like every other delete (Feature #346)');
   assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'the builder keeps the house hold for permanent delete');
   assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
 });
@@ -538,9 +540,9 @@ test('the menu names the column it belongs to', () => {
   assert.equal(rulesFor('.wv-menu-title')['text-overflow'], 'ellipsis', 'a long field name must not stretch the panel');
 });
 
-test('the hold gesture is advertised before it is pressed, and only permanent delete holds (Feature #296, D6)', () => {
-  assert.doesNotMatch(FIELD_ROWS, /hint: 'hold'|hold: true/, 'the field delete is recoverable, so it does not hold');
-  assert.match(fnBody('menuRow'), /holdToConfirm\([\s\S]{0,200}hint: it\.hint \?\? null/, 'a permanent-delete hold row still carries its hint into the house hold');
+test('the hold gesture is advertised before it is pressed, on every delete (Feature #296, Feature #346)', () => {
+  assert.match(fnBody('trashRow'), /hint: 'hold'/, 'the trash row, the field delete included, advertises its hold');
+  assert.match(fnBody('menuRow'), /holdToConfirm\([\s\S]{0,200}hint: it\.hint \?\? null/, 'a hold row carries its hint into the house hold');
   assert.match(fnBody('holdToConfirm'), /hold-hint/, 'which draws it');
   const hint = rulesFor('.hold-hint');
   assert.ok(hint['border-radius'], 'the hint is a chip, in the chip idiom');
@@ -710,8 +712,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
-    'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
+    'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
   assert.match(body, /grid\.classList\.toggle\('side-open', refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
     'the column opens when it has references, never on comments (Feature #323) or an Activity switch (Feature #315)');
@@ -1032,15 +1034,13 @@ test('navigation schedules a skeleton of the destination (Feature #49, Issue #63
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
 });
 
-test('the Share dialog shows the link and no QR code (Feature #263)', () => {
+test('the share pane shows the link and no QR code (Feature #263)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-  const start = app.indexOf('function shareDialog(');
-  assert.ok(start > 0, 'the Share dialog exists');
-  const share = app.slice(start, app.indexOf("'Create link')", start));
-  assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
-  assert.ok(share.includes("copyText(location.origin + WS_PREFIX + g.url, 'Link copied')"), 'minting a link copies it (Feature #194)');
+  const share = readFileSync(join(ROOT, 'public/share-panel.js'), 'utf8');
+  assert.match(share, /el\('a', \{ class: 'share-link-name', href: url\(link\)/, 'the pane shows the link');
+  assert.match(share, /action\('Copy link', 'copy', \(\) => copy\(url\(link\), 'Link copied'\)\)/, 'and copies it (Feature #194)');
   assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
   for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
   assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');
@@ -1594,7 +1594,7 @@ test('the slash link glyph is the interlocked chain, drawn from the inventory', 
 });
 
 test('the space page renders the Tables registry as a real grid', () => {
-  const body = fnBody('showSpace');
+  const body = fnBody('appendSpaceDetails');
   assert.match(body, /registryTable\('tables'\)/, 'the space page finds the Tables registry');
   assert.match(body, /renderTable\(/, 'and renders it with the one grid renderer');
   assert.doesNotMatch(body, /space-table-row/, 'the hand-rolled table list is gone');
@@ -1618,7 +1618,7 @@ test('opening a registry row opens the structure it stands for', () => {
 });
 
 test('the space page scopes its registry grid by id, not by name', () => {
-  const body = fnBody('showSpace');
+  const body = fnBody('appendSpaceDetails');
   assert.match(body, /item\.sysId|i\.sysId/, 'rows are matched to the space through sysId');
   assert.doesNotMatch(body, /\.name === space\.space/, 'no name-join — two names can drift, ids cannot');
 });
@@ -1629,7 +1629,7 @@ test('workspace links and rename use the workspace id permalink', () => {
   assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
   const rail = fnBody('buildWsRail');
   assert.match(rail, /wsHref\(w\)/, 'the rail links workspaces through wsHref');
-  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref links by id unless the workspace serves this host\'s bare root');
+  assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : w\.host \? `\/api\/auth\/open\/\$\{encodeURIComponent\(w\.name\.toLowerCase\(\)\)\}` : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref hops to a workspace host when it has one, else links by id, unless the workspace serves this host\'s bare root (Issue #1263)');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
 });
 

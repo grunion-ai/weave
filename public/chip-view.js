@@ -111,6 +111,15 @@
     return `<span class="wv-av ${shape} hue-${hue}${a.file ? ' has-photo' : ''}${cls ? ` ${cls}` : ''}" aria-hidden="true">${face}${badge}</span>`;
   }
 
+  function facePileHtml(list, { href, max = 5 } = {}) {
+    const shown = list.slice(0, max);
+    const more = list.length - shown.length;
+    return '<span class="wv-face-pile">'
+      + shown.map((s) => `<a href="${esc(href(s))}" title="${esc(s.name ?? '')}" data-eid="${esc(s.id)}">${avatarHtml(s.avatar)}</a>`).join('')
+      + (more > 0 ? `<span class="k k-more" title="${esc(list.slice(max).map((s) => s.name ?? '').join(', '))}">+${more}</span>` : '')
+      + '</span>';
+  }
+
   function chipHtml(v, { kind = 'entity', href = null, home = null, removable = false, broken = false, label = null } = {}) {
     const title = label ?? String(v?.name ?? '');
     if (broken || !href) return `<span class="mention broken">${esc(title)}</span>`;
@@ -156,5 +165,5 @@
       + '</div>';
   }
 
-  root.weaveChipView = { KIND_GLYPH, CARET, COMPUTED_GLYPHS, ROUTE_GLYPH, chipHtml, cardHtml, avatarHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
+  root.weaveChipView = { KIND_GLYPH, CARET, COMPUTED_GLYPHS, ROUTE_GLYPH, chipHtml, cardHtml, avatarHtml, facePileHtml, segHtml, valueHtml, stateClass, iconHtml, esc };
 })(typeof window !== 'undefined' ? window : globalThis);

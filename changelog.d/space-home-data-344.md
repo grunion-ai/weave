@@ -1,0 +1,3 @@
+- `GET /api/spaces/:id/home` returns a space's tables with live row counts and the automation runs that changed its rows, wherever the automation started. A run from a space the reader cannot open stays off the list. A share link gets a 403.
+- An `automation-ran` activity entry records `failed: {step, error}` on the row where the run stopped.
+- The recents list now holds saved table views and the time each item was opened. The command palette still shows the newest eight.

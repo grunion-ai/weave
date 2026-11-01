@@ -34,10 +34,10 @@ test('a text column becomes a relation, each value linked to the row of that nam
   assert.deepEqual(names(w, rows[1].id, 'Account'), ['Checking'], 'a name matches whatever its case');
   assert.deepEqual(names(w, rows[2].id, 'Account'), ['Savings']);
   assert.deepEqual(names(w, rows[3].id, 'Account'), [], 'an empty cell stays empty');
-  const inverse = w.getField(account.id, 'Transactions');
+  const inverse = w.getField(account.id, 'Transaction');
   assert.equal(inverse.config.inverseFieldId, field.id, 'the target gains the inverse');
-  assert.deepEqual(names(w, checking.id, 'Transactions').sort(), ['Coffee', 'Rent']);
-  assert.deepEqual(names(w, savings.id, 'Transactions'), ['Interest']);
+  assert.deepEqual(names(w, checking.id, 'Transaction').sort(), ['Coffee', 'Rent']);
+  assert.deepEqual(names(w, savings.id, 'Transaction'), ['Interest']);
 });
 
 test('a value no row carries is refused by name, and nothing changes', () => {
@@ -47,7 +47,7 @@ test('a value no row carries is refused by name, and nothing changes', () => {
   assert.equal(w.getField(tx.id, 'Account').type, 'text', 'the field is untouched');
   assert.equal(w.readEntity(rows[3].id).fields.Account, 'Brokerage', 'the value is untouched');
   assert.equal(w.listEntities(account.id).length, 2, 'no row was made');
-  assert.equal(w.findField(w.getTable(account.id), 'Transactions'), undefined, 'no inverse was left behind');
+  assert.equal(w.findField(w.getTable(account.id), 'Transaction'), undefined, 'no inverse was left behind');
 });
 
 test('createMissing makes the rows the values name', () => {
@@ -83,7 +83,7 @@ test('the conversion rolls back with its values, and the inverse goes', () => {
   assert.equal(out.field.type, 'text');
   assert.equal(w.readEntity(rows[1].id).fields.Account, 'checking', 'the text as it was typed comes back');
   assert.equal(w.readEntity(rows[3].id).fields.Account, null);
-  assert.equal(w.findField(w.getTable(account.id), 'Transactions'), undefined, 'the inverse is gone');
+  assert.equal(w.findField(w.getTable(account.id), 'Transaction'), undefined, 'the inverse is gone');
   assert.equal(w.getField(tx.id, 'Account').config.width, 150);
 });
 

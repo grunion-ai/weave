@@ -1,6 +1,9 @@
 (function (root) {
   const GROUPS = ['stacked', 'side'];
   const PICTURES = ['off', 'small', 'medium', 'large'];
+  const FITS = ['crop', 'fit', 'original', 'capped'];
+  const FRAMES = ['4:3', '1:1', '3:4', '16:9'];
+  const FLOWS = ['masonry', 'rows'];
   const CARD_PX = { small: 132, medium: 188, large: 256 };
   const COLUMN_PX = { small: 184, medium: 232, large: 288 };
   const PHONE_COLUMNS = { small: 3, medium: 2, large: 2 };
@@ -28,12 +31,14 @@
     return field ? { field, file } : { refuse: 'no-field', file };
   }
 
-  function photoFieldName(db) {
+  function freeFieldName(db, base) {
     const taken = new Set((db?.fields ?? []).map((f) => String(f.name).toLowerCase()));
+    const nth = (n) => (n === 1 ? base : `${base} ${n}`);
     let n = 1;
-    while (taken.has((n === 1 ? 'photo' : `photo ${n}`))) n += 1;
-    return n === 1 ? 'Photo' : `Photo ${n}`;
+    while (taken.has(nth(n).toLowerCase())) n += 1;
+    return nth(n);
   }
+  const photoFieldName = (db) => freeFieldName(db, 'Photo');
 
   const PICK_MIN = 2;
   const PICK_CAP = 4;
@@ -62,11 +67,13 @@
     const seen = new Map();
     for (const col of groups ?? []) for (const g of col.groups ?? []) if (!seen.has(g.value)) seen.set(g.value, g.path[g.path.length - 1]);
     const rank = new Map((lane.order === 'az' ? [] : lane.domain ?? []).map((d, i) => [d.key, i]));
+    const turn = lane.dir === 'desc' ? -1 : 1;
     const keys = [...seen.keys()].sort((a, b) => {
       if ((a === '') !== (b === '')) return a === '' ? 1 : -1;
       const ra = rank.has(a) ? rank.get(a) : Infinity;
       const rb = rank.has(b) ? rank.get(b) : Infinity;
-      return ra - rb || String(seen.get(a).label).localeCompare(String(seen.get(b).label), undefined, { numeric: true });
+      if (ra !== rb) return ra === Infinity ? 1 : rb === Infinity ? -1 : (ra - rb) * turn;
+      return String(seen.get(a).label).localeCompare(String(seen.get(b).label), undefined, { numeric: true }) * turn;
     });
     const lanes = keys.map((value) => {
       const bucket = seen.get(value);
@@ -87,6 +94,9 @@
   }
 
   const groupsOf = (view) => (GROUPS.includes(view?.groups) ? view.groups : 'side');
+  const fitOf = (view) => (FITS.includes(view?.fit) ? view.fit : 'crop');
+  const frameOf = (view) => (FRAMES.includes(view?.frame) ? view.frame : '4:3');
+  const flowOf = (view) => (FLOWS.includes(view?.flow) ? view.flow : 'masonry');
 
   function pictureOf(db, view) {
     if (PICTURES.includes(view?.picture)) return view.picture;
@@ -99,5 +109,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, FITS, FRAMES, FLOWS, fitOf, frameOf, flowOf, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);

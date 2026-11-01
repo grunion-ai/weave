@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT } from '../src/engine.js';
+import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT, frameStorageScript } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 await import('../public/date-grain.js');
@@ -132,7 +132,7 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
     assert.equal(shown.status, 200);
     assert.equal(shown.headers.get('content-type'), 'text/html; charset=utf-8');
     assert.equal(shown.headers.get('content-security-policy'), `${HTML_VIEW_POLICY}; frame-ancestors 'self'`, 'the view policy, plus the frame rule every HTML answer carries');
-    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), viewHtml(HTML), 'the page, with the frame script after its doctype');
+    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), viewHtml(HTML, frameStorageScript({}) + FRAME_HEIGHT_SCRIPT), 'the page, with the storage and height scripts after its doctype');
     assert.deepEqual(Buffer.from(await (await fetch(`${base}/api/files/${file.id}`)).arrayBuffer()), HTML, 'the stored bytes are unchanged');
     const png = w.attachFile(e.id, { name: 'a.png', mime: 'image/png', bytes: PNG });
     assert.equal((await fetch(`${base}/api/files/${png.id}?view`)).headers.get('content-security-policy'), "sandbox; default-src 'none'");

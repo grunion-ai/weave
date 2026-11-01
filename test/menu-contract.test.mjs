@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP, HTML, CSS, fnBody } from './lib/source.mjs';
+import { APP, HTML, CSS, fnBody, read } from './lib/source.mjs';
 
 test('the retired menu markup is gone from app.js (Feature #296, Issue #762)', () => {
   for (const gone of ['dl-menu', 'tools-row', 'tools-group', 'tableSheetGroup', 'contextMenu(', 'dropdown-divider']) {
@@ -40,13 +40,29 @@ test('rows that left the menus stay out of app.js menus (Feature #296)', () => {
   assert.doesNotMatch(fnBody('fieldMenuButton'), /onSort|sortLabelsFor/, 'the column menu holds no sort rows');
 });
 
-test('every delete row is the one trash row: one click, "Moved to trash", Undo through the restore route (Feature #296, D6)', () => {
+test('one share pane: every shareable header opens it, and no menu row or modal shares (Issue #765)', () => {
+  for (const fn of ['showHome', 'showSpace', 'tableChrome', 'renderEntityView', 'showView']) {
+    assert.match(fnBody(fn), /sharePanelButton\(\(\) => \(\{ kind: '(workspace|space|table|entity|view)'/, `${fn} puts the share button in its header`);
+  }
+  assert.equal(APP.includes('shareDialog'), false, 'the legacy share modal is gone');
+  assert.equal(APP.includes("label: 'Share…'"), false, 'no menu row says Share…');
+  assert.equal(ROWS_SRC.includes('share: {'), false, 'the registry builds no share row');
+  assert.deepEqual(globalThis.menuCore.definition('table').share, ['share-page', 'forms', 'create-link']);
+  assert.equal(globalThis.menuCore.definition('record').share, undefined, 'the record menu has no share section');
+  for (const gone of ['share-row', 'share-mode', 'share-url', 'share-chip', 'share-revoke', 'share-private', 'share-list', 'share-hint']) {
+    assert.doesNotMatch(CSS, new RegExp(`\\.${gone}\\b`), `style.css still styles .${gone}`);
+  }
+  assert.doesNotMatch(CSS, /(^|[^\w-])\.share-btn\b/m, 'the retired text button keeps no rule');
+  assert.match(fnBody('sharePanelButton'), /class: 'btn btn-sm btn-icon btn-ghost-secondary table-share-btn'/, 'the share button wears the ⋮ ghost style');
+});
+
+test('every delete row but the workspace\'s is the one trash row: a hold, "Moved to trash", Undo through the restore route (Feature #296, Feature #346, Feature #347)', () => {
   const kinds = globalThis.menuCore.kinds().filter((k) => globalThis.menuCore.definition(k).delete);
-  assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'field']);
-  assert.doesNotMatch(ROWS_SRC, /hold: true|holdingLabel/, 'no kind holds to delete');
+  assert.deepEqual(kinds, ['table', 'record', 'space', 'share-page', 'workspace', 'field']);
+  assert.doesNotMatch(ROWS_SRC, /hold: true|holdingLabel/, 'no kind spells its own hold: trashRow carries it for all of them');
   const deletes = ROWS_SRC.match(/^    delete: /gm) ?? [];
   assert.equal(deletes.length, kinds.length, 'one delete row per kind');
-  assert.equal((ROWS_SRC.match(/trashRow\(\{/g) ?? []).length, kinds.length, 'and every one is built by trashRow');
+  assert.equal((ROWS_SRC.match(/trashRow\(\{/g) ?? []).length, kinds.length - 1, 'every one but the workspace row is built by trashRow');
   for (const [route, restore] of [
     ["api('DELETE', `/tables/${db.id}`)", "api('POST', `/tables/${db.id}/restore`)"],
     ["api('DELETE', `/entities/${entity.id}`)", "api('POST', `/entities/${entity.id}/restore`)"],
@@ -61,20 +77,48 @@ test('every delete row is the one trash row: one click, "Moved to trash", Undo t
   const row = fnBody('trashRow');
   assert.match(row, /label: 'Move to trash', danger: true/);
   assert.match(row, /toast\(TRASHED, false, \{\s*label: 'Undo'/, 'the toast says Moved to trash and carries Undo');
-  assert.doesNotMatch(row, /hold/, 'one click, no hold');
+  assert.match(row, /hold: true, holdingLabel: 'Hold to delete…', hint: 'hold'/, 'every trash row is a hold and says so');
   assert.match(APP, /const TRASHED = 'Moved to trash';/);
 });
 
-test('the multi-select trash speaks the record menu\'s words (Feature #296, D6)', () => {
+test('the multi-select trash speaks the record menu\'s words (Feature #296, Feature #346)', () => {
   const body = APP.slice(APP.indexOf('const trashChosen = '), APP.indexOf('const runBulk = async'));
   assert.match(body, /toast\(`\$\{TRASHED\} \$\{SEL\(\)\.countLabel\(/, 'the toolbar trash toasts the same verb');
   assert.match(body, /label: 'Undo'/, 'and offers the same Undo');
 });
 
-test('workspace delete has left the interface; its routes stay (Feature #297)', () => {
-  assert.equal(APP.includes('Delete workspace'), false, 'no Delete workspace row or dialog');
+test('every DELETE the app sends waits for a hold (Feature #346)', () => {
+  const sites = (src) => src.split("'DELETE'").length - 1;
+  assert.equal(sites(APP), 12, 'a new DELETE call site in app.js gets a hold and a line in this test');
+  assert.equal(sites(ROWS_SRC), 5, 'the five menu kinds');
+  assert.match(fnBody('trashRow'), /hold: true/, 'hold through trashRow');
+  assert.match(fnBody('showSettings'), /label: 'Delete forever', hold: true/, 'Delete forever in Settings');
+  for (const fn of ['deleteWorkspaceDialog', 'viewStrip', 'inviteDialog', 'wsLogoButton']) {
+    assert.equal(sites(fnBody(fn)) + (fn === 'wsLogoButton' ? sites(fnBody('removeWorkspaceLogo')) : 0), 1, `${fn} sends one DELETE`);
+    assert.match(fnBody(fn), /holdToConfirm\(|holdIcon\(/, `${fn} sends it from a hold`);
+  }
+  assert.match(fnBody('wsLogoButton'), /holdIcon\([\s\S]{0,120}removeWorkspaceLogo\(w, after\)/, 'Remove logo is the hold');
+  const puck = APP.slice(APP.indexOf('const holdAct = '), APP.indexOf("addEventListener('keydown', function esc(e)", APP.indexOf('const holdAct = ')));
+  assert.match(puck, /const holdAct = \(c\) => \{\s*const btn = holdIcon\(/, 'the selection bar builds its destructive command as a hold');
+  assert.match(puck, /c\.danger \? holdAct\(c\)/, 'and the trash is that command');
+  assert.equal(sites(fnBody('footRollupWrite')), 1, 'the one exemption: the rollup eye checkbox drops the Spaces rollup column it added');
+  const share = read('public/share-panel.js');
+  assert.equal(sites(share), 1);
+  assert.match(share, /hold\('Delete link', 'trash-2', /, 'Delete link in the Share panel is a hold');
+  assert.doesNotMatch(share, /confirm\('Delete link\?'/, 'with no confirm in front of it');
+});
+
+test('workspace delete runs through one typed dialog, from the workspace menu row and from Settings, and the app offers no way back (Feature #347, Issue #1171)', () => {
+  const dialog = fnBody('deleteWorkspaceDialog');
+  assert.equal(APP.split('Delete workspace').length - 1, dialog.split('Delete workspace').length - 1 + 1, 'outside the dialog only the menu row names Delete workspace');
+  assert.match(ROWS_SRC, /delete: w\.deletable \? \{ label: 'Delete workspace…', danger: true, run: \(\) => deleteWorkspaceDialog\(w, after\) \} : null/, 'the workspace menu row opens the dialog, and only where the workspace is deletable');
+  assert.equal(APP.split('deleteWorkspaceDialog(').length - 1, 3, 'the dialog has two callers');
+  assert.match(fnBody('showSettings'), /deleteWorkspaceDialog\(w\)/, 'Settings is the other');
+  for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} reaches workspace delete only through the menu definition`);
+  assert.doesNotMatch(dialog, /\?hard=1/, 'the dialog trashes, never purges');
   assert.equal(APP.includes('confirmDeleteWorkspace'), false, 'no dialog entry point');
-  assert.match(APP, /api\('POST', `\/workspaces\/\$\{w\.id\}\/restore`\)/, 'the Trash page still restores a trashed workspace');
+  assert.doesNotMatch(APP, /\/workspaces\/[^`]*\/restore/, 'the app restores no workspace: deleting is permanent from the user\'s side');
+  assert.doesNotMatch(APP, /trashed=|trashedArrival|trashedWorkspaces/, 'no Undo marker and no workspace list in Trash');
 });
 
 test('no menu row is a Bootstrap dropdown-item; only the menu-less hold button keeps that default', () => {
