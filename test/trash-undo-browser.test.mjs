@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, hold } from './lib/browser.mjs';
+import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let bugs;
 const s = await launch('trash undo', (weave) => {

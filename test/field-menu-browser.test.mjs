@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, hold } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let tasks;
 const s = await launch('field menu', (weave) => {

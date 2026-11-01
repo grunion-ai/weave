@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, painted, eventually, hold } from './lib/browser.mjs';
+import { launch, painted, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let task;
 let one;

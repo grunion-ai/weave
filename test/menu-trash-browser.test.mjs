@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, hold } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 const s = await launch('menu trash', (weave) => {
   weave.createSpace({ name: 'Product' });

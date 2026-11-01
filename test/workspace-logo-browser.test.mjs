@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, hold } from './lib/browser.mjs';
+import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 const svg = (fill) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fill}"/></svg>`);
 const logoOf = (weave) => weave.state.meta.logo ? weave.getWorkspaceLogo().bytes.toString() : null;

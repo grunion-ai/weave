@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, hold } from './lib/browser.mjs';
+import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let scratch, spare;
 const s = await launch('workspace delete', (weave) => {

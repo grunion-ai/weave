@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch, eventually, hold } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let notes;
 let scratch;
