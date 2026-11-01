@@ -179,8 +179,9 @@ older run, and a soak that sees dev move to newer main posts nothing.
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,
 in the workspace named by the `DEV_SMOKE_WORKSPACE` variable (default
-`/w/smoke`, which needs at least one table). Without it the smoke covers the
-anonymous read surface only. Run one smoke locally with
+`/w/smoke`, which needs at least one table). The token goes only to that
+workspace, since a token from another workspace answers 401 even on a public
+page. Without it the smoke covers the anonymous read surface only. Run one smoke locally with
 `node scripts/dev-soak.mjs smoke`, or soak a commit dev serves with
 `gh workflow run dev-soak -f sha=<sha>`.
 

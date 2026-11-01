@@ -105,8 +105,8 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
   let step = 'load';
   const counted = { fivexx: 0 };
   page.on('response', (r) => { if (r.url().startsWith(base) && r.status() >= 500) counted.fivexx++; });
-  const api = async (method, url, data) => {
-    const r = await page.request.fetch(url, { method, data, timeout: 20_000 });
+  const api = async (method, url, data, headers) => {
+    const r = await page.request.fetch(url, { method, data, headers, timeout: 20_000 });
     if (r.status() >= 500) counted.fivexx++;
     if (!r.ok()) throw new Error(`${method} ${url.slice(base.length)} answered ${r.status()}`);
     return r.json();
@@ -133,14 +133,16 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
     if (token) {
       step = 'create row';
       const wws = `${base}${writeWorkspace}`;
-      const writable = await api('GET', `${wws}/api/tables`);
+      const auth = { Authorization: `Bearer ${token}` };
+      await page.setExtraHTTPHeaders(auth);
+      const writable = await api('GET', `${wws}/api/tables`, undefined, auth);
       const table = writable.find((t) => !t.system);
       if (!table) throw new Error(`${writeWorkspace} has no table to write to`);
-      const made = await api('POST', `${wws}/api/tables/${table.id}/entities`, { Name: `dev-smoke ${new Date().toISOString()}` });
+      const made = await api('POST', `${wws}/api/tables/${table.id}/entities`, { Name: `dev-smoke ${new Date().toISOString()}` }, auth);
       await page.goto(`${wws}/#/table/${table.id}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.waitForSelector(`tr[data-eid="${made.id}"]`, { timeout: 20_000 });
       step = 'delete row';
-      await api('DELETE', `${wws}/api/entities/${made.id}?hard=1`);
+      await api('DELETE', `${wws}/api/entities/${made.id}?hard=1`, undefined, auth);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#main', { timeout: 20_000 });
       await page.waitForSelector(`tr[data-eid="${made.id}"]`, { state: 'detached', timeout: 20_000 });
@@ -191,7 +193,7 @@ function realIO(cfg, env = process.env) {
     smoke: async () => {
       const { chromium } = await import('playwright');
       browser ??= await chromium.launch();
-      const context = await browser.newContext({ extraHTTPHeaders: smokeToken ? { Authorization: `Bearer ${smokeToken}` } : {} });
+      const context = await browser.newContext();
       try {
         const page = await context.newPage();
         const result = await smoke(page, { ...cfg, token: smokeToken });
