@@ -35,6 +35,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/space/${space.spaceId ?? space.id}`, { waitUntil: 'networkidle' });
+      await page.click('details.space-home-overview > summary');
       await page.waitForSelector('.card.list-rows.space-tables .list-row');
       const rows = await page.evaluate(inset, '.card.list-rows.space-tables');
       roomy(rows, 'space tables');

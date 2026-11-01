@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, painted, eventually } from './lib/browser.mjs';
-import { hold } from './lib/hold.mjs';
 
 let task;
 let one;
 let space;
 let view;
-const s = await launch('share dialog', (weave) => {
+const s = await launch('share pane', (weave) => {
   space = weave.createSpace({ name: 'Dev' });
   task = weave.createTable({ space: 'Dev', name: 'Task' });
   one = weave.createEntity(task.id, { name: 'One' });
@@ -18,121 +17,145 @@ const s = await launch('share dialog', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const open = async (hash, theme = 'light') => {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, colorScheme: theme });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: theme });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
+    await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     return page;
   };
-  const fromMenu = async (page, scope) => {
-    await page.locator(`${scope} .dots-btn`).first().click();
-    await page.locator('.wv-menu .wv-menu-row', { hasText: 'Share…' }).click();
-  };
-  const dialog = (page) => page.locator('#modal');
   const reset = () => { for (const g of weave.listShares()) weave.revokeShare(g.id); };
+  const pages = () => [
+    ['workspace', '', '#main .view-header', /Entire workspace: /],
+    ['space', `#/space/${space.id}`, '#main .view-header', /Entire space: Dev/],
+    ['table', `#/table/${task.id}`, '#main .view-header', /Entire table: Task/],
+    ['record', `#/entity/${one.id}`, '#main .view-header', /This row: One/],
+    ['docked record', `#/table/${task.id}?e=${one.id}`, '#dock .view-header', /This row: One/],
+    ['share page', `#/view/${view.id}`, '#main .share-page-head', /This share page: Focus/],
+  ];
 
-  test('the entity page opens the share dialog: the mode ladder with comment held back, a private toggle, then mint and revoke', async () => {
-    reset();
-    const page = await open(`#/entity/${one.id}`);
-    try {
-      await painted(page, '.entity-head');
-      await fromMenu(page, '.view-header .crumb-row');
-      await painted(page, '#modal');
-      assert.match(await dialog(page).locator('h2').textContent(), /Share/);
-      const options = await page.$$eval('#modal input[name=mode]', (os) => os.map((o) => [o.value, o.disabled, o.checked]));
-      assert.deepEqual(options, [['read', false, true], ['comment', true, false], ['edit', false, false], ['manage', false, false]]);
-      assert.equal(await page.locator('#modal input[name=private]').count(), 1);
-      await page.locator('#modal .share-hint', { hasText: 'No links yet' }).waitFor();
-      await page.check('#modal input[name=mode][value=edit]');
-      await page.fill('#modal input[name=label]', 'vendor');
-      await page.locator('#modal button[type=submit]').click();
-      assert.equal(await eventually(() => weave.listShares().length, 1), 1);
-      const [g] = weave.listShares();
-      assert.deepEqual([g.scope.kind, g.scope.id, g.mode, g.visibility, g.label], ['entity', one.id, 'edit', 'public', 'vendor']);
-      await page.locator('#modal .share-row .share-url', { hasText: `/s/${g.token}` }).waitFor();
-      await page.locator('#modal .share-row .share-revoke').click();
-      assert.equal(weave.listShares().length, 1, 'a click alone revokes nothing');
-      await hold(page.locator('#modal .share-row .share-revoke'));
-      assert.equal(await eventually(() => weave.listShares().length, 0), 0);
-      await page.locator('#modal .share-hint', { hasText: 'No links yet' }).waitFor();
-    } finally {
-      await page.close();
-    }
-  });
+  for (const theme of ['light', 'dark']) {
+    test(`every shareable page carries one share button that opens the one share pane, never a modal (${theme}, Issue #765)`, async () => {
+      for (const [kind, hash, header, scope] of pages()) {
+        const page = await open(hash, theme);
+        try {
+          const button = page.locator(`${header} .table-share-btn`);
+          await button.waitFor();
+          assert.equal(await button.count(), 1, `${kind}: one share button in its header`);
+          assert.equal(await page.locator(`${header} .share-btn`).count(), 0, `${kind}: no retired text button`);
+          const look = await page.evaluate((sel) => {
+            const head = document.querySelector(sel);
+            const pick = (n) => { const cs = getComputedStyle(n); return { border: cs.borderTopColor, bg: cs.backgroundColor, shadow: cs.boxShadow }; };
+            const dots = head.querySelector('.dots-btn');
+            return { share: pick(head.querySelector('.table-share-btn')), dots: dots && pick(dots) };
+          }, header);
+          if (look.dots) assert.deepEqual(look.share, look.dots, `${kind}: the share button wears the ⋮ ghost style`);
+          else assert.equal(kind, 'workspace', 'only a workspace nobody here can delete has no ⋮ (Feature #347)');
+          await button.click();
+          await page.locator('#share-pane:not([hidden]) .share-add').waitFor();
+          assert.match(await page.locator('#share-pane').innerText(), scope, `${kind}: the pane names its scope`);
+          assert.equal(await button.getAttribute('aria-expanded'), 'true');
+          assert.equal(await page.locator('#modal').count(), 0, `${kind}: no modal`);
+          await button.click();
+          assert.equal(await page.locator('#share-pane').isVisible(), false, `${kind}: the button closes the pane again`);
+        } finally { await page.close(); }
+      }
+    });
+  }
 
-  test('the table menu and saved-view pages retain their legacy dialog on their own scope', async () => {
-    reset();
-    const cases = [
-      [`#/table/${task.id}`, async (page) => fromMenu(page, '.view-header .crumb-row'), 'table', task.id],
-      [`#/view/${view.id}`, async (page) => page.locator('#main .share-btn').click(), 'view', view.id],
-    ];
-    for (const [hash, opener, kind, id] of cases) {
+  test('no table or record menu offers a Share… row (Issue #765)', async () => {
+    for (const [hash, title] of [[`#/table/${task.id}`, 'Table actions'], [`#/entity/${one.id}`, 'Row actions']]) {
       const page = await open(hash);
       try {
-        await painted(page, '#main .view-header, #main h1');
-        await opener(page);
-        await painted(page, '#modal');
-        await page.locator('#modal input[name=private]').check();
-        await page.locator('#modal button[type=submit]').click();
-        assert.equal(await eventually(() => weave.listShares({ kind, id }).length, 1), 1);
-        assert.equal(weave.listShares({ kind, id })[0].visibility, 'private', `${kind}: the toggle reaches the grant`);
-        await page.locator('#modal .share-row').first().waitFor();
-      } finally {
-        await page.close();
-      }
+        await page.locator(`#main .dots-btn[title="${title}"]`).click();
+        await page.locator('.wv-menu .wv-menu-row').first().waitFor();
+        const rows = await page.locator('.wv-menu .wv-menu-row').allInnerTexts();
+        assert.equal(rows.some((r) => r.trim() === 'Share…'), false, `${title}: ${rows}`);
+      } finally { await page.close(); }
     }
   });
 
-  test('the space toolbar opens the beta panel and creates a link for the entire space', async () => {
+  test('the record pane mints a link scoped to the record and lists the table links that reach it', async () => {
+    reset();
+    weave.mintShare({ scope: { kind: 'table', id: task.id }, label: 'whole table' });
+    const page = await open(`#/entity/${one.id}`);
+    try {
+      await page.locator('#main .view-header .table-share-btn').click();
+      await page.locator('#share-pane .share-link', { hasText: 'whole table' }).waitFor();
+      await page.getByRole('button', { name: 'Add link', exact: true }).click();
+      assert.equal(await page.getByLabel('Link purpose', { exact: true }).locator('option').count(), 1, 'a record link only reads');
+      await page.getByLabel('Link name', { exact: true }).fill('vendor');
+      await page.getByRole('button', { name: 'Create link', exact: true }).click();
+      assert.equal(await eventually(() => weave.listShares({ kind: 'entity', id: one.id }).length, 1), 1);
+      const [g] = weave.listShares({ kind: 'entity', id: one.id });
+      assert.deepEqual([g.mode, g.visibility, g.label], ['read', 'public', 'vendor']);
+      await page.locator('#share-pane .share-link', { hasText: 'vendor' }).waitFor();
+    } finally { await page.close(); }
+  });
+
+  test('the share page pane mints a link scoped to that page', async () => {
+    reset();
+    const page = await open(`#/view/${view.id}`);
+    try {
+      await page.locator('#main .share-page-head .table-share-btn').click();
+      await page.getByRole('button', { name: 'Add link', exact: true }).click();
+      await page.getByRole('button', { name: 'Create link', exact: true }).click();
+      assert.equal(await eventually(() => weave.listShares({ kind: 'view', id: view.id }).length, 1), 1);
+      await page.locator('#share-pane .share-link').first().waitFor();
+    } finally { await page.close(); }
+  });
+
+  test('a second page\'s share button opens its own scope over an open pane', async () => {
+    const page = await open(`#/table/${task.id}?e=${one.id}`);
+    try {
+      await page.locator('#main .view-header .table-share-btn').click();
+      await painted(page, '#share-pane .share-add');
+      assert.match(await page.locator('#share-pane').innerText(), /Entire table: Task/);
+      await page.locator('#dock .view-header .table-share-btn').click();
+      await page.waitForFunction(() => /This row: One/.test(document.querySelector('#share-pane')?.innerText ?? ''));
+      assert.equal(await page.locator('#main .view-header .table-share-btn').getAttribute('aria-expanded'), 'false');
+      assert.equal(await page.locator('#dock .view-header .table-share-btn').getAttribute('aria-expanded'), 'true');
+    } finally { await page.close(); }
+  });
+
+  test('on a phone the header share button answers a 44px tap on every axis, like the ⋮ beside it (Issue #1222)', async () => {
+    for (const [kind, hash, header] of [['workspace', '', '#main .view-header'], ['space', `#/space/${space.id}`, '#main .view-header'], ['docked record', `#/table/${task.id}?e=${one.id}`, '#dock .view-header']]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+      try {
+        await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
+        const button = page.locator(`${header} .table-share-btn`);
+        await button.waitFor();
+        const reachOf = (b) => {
+          const r = b.getBoundingClientRect();
+          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          const hit = (x, y) => { const n = document.elementFromPoint(x, y); return !!n && (n === b || b.contains(n)); };
+          const span = (dx, dy) => { let d = 0; while (d < 30 && hit(cx - dx * (d + 0.5), cy - dy * (d + 0.5)) && hit(cx + dx * (d + 0.5), cy + dy * (d + 0.5))) d += 0.5; return 2 * d; };
+          return { w: span(1, 0), h: span(0, 1), left: r.left, right: r.right };
+        };
+        const reach = await button.evaluate(reachOf);
+        assert.ok(reach.w >= 43 && reach.h >= 43, `${kind}: the share button answers ${reach.w}x${reach.h}px of taps`);
+        const kebab = page.locator(`${header} .crumb-row .dots-btn`);
+        if (!(await kebab.count())) { assert.equal(kind, 'workspace', 'only a workspace nobody here can delete has no ⋮ (Feature #347)'); continue; }
+        const dots = await kebab.first().evaluate(reachOf);
+        assert.ok(dots.w >= 43 && dots.h >= 43, `${kind}: the ⋮ beside it still answers ${dots.w}x${dots.h}px of taps`);
+        assert.ok(reach.right <= dots.left, `${kind}: the two tap areas do not overlap (share ends at ${reach.right}, ⋮ starts at ${dots.left})`);
+      } finally { await page.close(); }
+    }
+  });
+
+  test('the space toolbar creates a link for the entire space', async () => {
     reset();
     const page = await open(`#/space/${space.id}`);
     try {
       await page.getByRole('button', { name: 'Share (Beta)', exact: true }).click();
       await page.locator('#share-pane:not([hidden])').waitFor();
-      assert.match(await page.locator('#share-pane').innerText(), /Entire space: Dev/);
-      assert.equal(await page.locator('#modal').count(), 0);
       await page.getByRole('button', { name: 'Add link', exact: true }).click();
-      assert.equal(await page.getByLabel('Link purpose', { exact: true }).locator('option').count(), 1);
       await page.getByRole('button', { name: 'Create link', exact: true }).click();
       await page.locator('#share-pane .share-link').first().waitFor();
       const grants = weave.listShares({ kind: 'space', id: space.id });
       assert.equal(grants.length, 1);
       assert.equal(grants[0].mode, 'read');
-      assert.equal(grants[0].visibility, 'public');
       await page.getByRole('button', { name: 'Close share panel', exact: true }).click();
       assert.equal(await page.locator('#share-pane').isVisible(), false);
     } finally { await page.close(); }
   });
-
-  for (const theme of ['light', 'dark']) {
-    test(`the share dialog is drawn on the theme's surface (${theme})`, async () => {
-      reset();
-      weave.mintShare({ scope: { kind: 'entity', id: one.id }, label: 'kept' });
-      const page = await open(`#/entity/${one.id}`, theme);
-      try {
-        await painted(page, '.entity-head');
-        await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
-        await fromMenu(page, '.view-header .crumb-row');
-        await page.locator('#modal .share-row').first().waitFor();
-        const look = await page.evaluate(() => {
-          const lum = (c) => {
-            const [r, g, b] = c.match(/\d+(\.\d+)?/g).map(Number);
-            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-          };
-          const box = getComputedStyle(document.querySelector('#modal'));
-          const url = getComputedStyle(document.querySelector('#modal .share-url'));
-          const chip = getComputedStyle(document.querySelector('#modal .share-chip'));
-          return { bg: lum(box.backgroundColor), url: lum(url.color), chip: lum(chip.color) };
-        });
-        if (theme === 'dark') {
-          assert.ok(look.bg < 80, `a dark surface (luminance ${look.bg})`);
-          assert.ok(look.url > look.bg + 60 && look.chip > look.bg + 60, `text reads on it: ${JSON.stringify(look)}`);
-        } else {
-          assert.ok(look.bg > 200, `a light surface (luminance ${look.bg})`);
-          assert.ok(look.url < look.bg - 60 && look.chip < look.bg - 60, `text reads on it: ${JSON.stringify(look)}`);
-        }
-      } finally {
-        await page.close();
-      }
-    });
-  }
 }

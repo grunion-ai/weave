@@ -476,6 +476,7 @@ const paneSection = (section) => async (page, ctx, cell) => {
   await page.waitForSelector(`#view-pane #vp-body-${section}`);
 };
 const paneClose = (page, ctx, cell) => tap(page, '#view-pane .vp-close', cell);
+const shareClose = (page, ctx, cell) => tap(page, '#share-pane button[aria-label="Close share panel"]', cell);
 
 const OVERLAY_STATES = [
   {
@@ -521,7 +522,7 @@ const OVERLAY_STATES = [
   { name: 'fields', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('fields'), close: paneClose },
   { name: 'view-pane-display', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('display'), close: paneClose },
   { name: 'table-menu', route: 'table', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Table actions"]', cell) },
-  { name: 'share-table', route: 'table', cells: BOTH, root: '#modal-back', act: tableMenu('Share…') },
+  { name: 'share-table', route: 'table', cells: BOTH, root: '#share-pane', act: toolsThen('#main .table-share-btn'), close: shareClose },
   { name: 'share-page', route: 'table', cells: BOTH, root: '#tray-back', act: tableMenu('New share page') },
   {
     name: 'name-field-editor', route: 'table', cells: DESKTOP, root: '#tray-back',
@@ -546,14 +547,12 @@ const OVERLAY_STATES = [
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
-  { name: 'share-row', route: 'entity', cells: BOTH, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, `${scope(cell)} .dots-btn[title="Row actions"]`, 'Share…') },
+  { name: 'share-row', route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
   { name: 'date-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },
 ].map((o) => ({ ...o, open: 'overlay', layout: o.route === 'table' ? 'table' : null, seeds: MESSY }));
-
-const a11yMenu = (label) => (page) => menu(page, 'desktop', '#main .dots-btn[title="Table actions"]', label);
 
 const A11Y_STATES = [
   { name: 'Task table', route: 'table', open: 'rest', layout: 'table' },
@@ -565,7 +564,10 @@ const A11Y_STATES = [
     await tap(page, '.search-like');
     await page.waitForSelector('#cmdk-input');
   } },
-  { name: 'share dialog', route: 'table', open: 'overlay', layout: 'table', root: '#modal-back', act: a11yMenu('Share…') },
+  { name: 'share pane', route: 'table', open: 'overlay', layout: 'table', root: '#share-pane', async act(page) {
+    await tap(page, '#main .table-share-btn');
+    await page.waitForSelector('#share-pane:not([hidden]) .share-add');
+  } },
   { name: 'filter popover', route: 'table', open: 'overlay', layout: 'table', root: '#view-pane', act: (page) => openPane(page, 'filters') },
   { name: 'sort popover', route: 'table', open: 'overlay', layout: 'table', root: '#view-pane', act: (page) => openPane(page, 'sort') },
   { name: 'row menu', route: 'table', open: 'overlay', layout: 'table', root: '.wv-menu', async act(page) {
@@ -587,7 +589,7 @@ const A11Y_STATES = [
 ].map((s) => ({ ...s, cells: DESKTOP, seeds: A11Y }));
 
 const TOUCH_STATES = [
-  { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'], hold: { touch: [1222] } },
+  { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
   { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },

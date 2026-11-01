@@ -39,7 +39,7 @@
     const views = table?.views ?? [];
     const v = views.find((x) => x.id === ref);
     if (!v || v === views[0]) return null;
-    return { kind: 'table-view', id: v.id, name: v.name, tableId: table.id, table: table.name, layout: v.layout ?? 'grid', url: `#/table/${table.id}/view/${v.id}` };
+    return { kind: 'table-view', id: v.id, name: v.name, tableId: table.id, table: table.name, layout: v.layout ?? 'table', url: `#/table/${table.id}/view/${v.id}` };
   }
 
   globalThis.WeaveSpaceHome = { homeSections, filterRuns, runSubject, runResult, viewRecent };

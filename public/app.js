@@ -993,7 +993,8 @@ function fitCrumbs(path, foldFrom) {
   path.classList.add('crumb-measure');
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
-  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX });
+  const mins = slots.map((sl) => { const min = parseFloat(getComputedStyle(sl).minWidth); return Number.isNaN(min) ? Infinity : min; });
+  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX, mins });
   if (!fold.length) return;
   for (const i of fold) slots[i].hidden = true;
   const hidden = fold.map((i) => slots[i].crumb);
@@ -2775,7 +2776,6 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     },
-    share: { label: 'Share…', run: () => shareDialog('table', db.id, db.name) },
     'share-page': {
       label: 'New share page…',
       run: () => tray('New share page', [
@@ -2825,7 +2825,6 @@ const MENU_ROWS = {
         } catch (err) { toast(err.message, true); }
       },
     } : null,
-    share: { label: 'Share…', run: () => shareDialog('entity', entity.id, entity.name || `#${entity.publicId}`) },
     export: globalThis.menuCore.exportSection({ name: entity.name || 'entity', serves: ['md', 'html', 'pdf'], href: (ext) => `${WS_PREFIX}/e/${entity.id}/entity.${ext}` }),
     delete: trashRow({
       remove: () => api('DELETE', `/entities/${entity.id}`),
@@ -5331,20 +5330,24 @@ function renderViewPane(pane, db, { force = false } = {}) {
 }
 
 let closeSharePanel = null;
+let sharePanelOwner = null;
 function sharePanelButton(context) {
   if (!state.canManageForms) return null;
-  const button = el('button', { class: 'btn btn-sm btn-icon table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('upload'));
+  const button = el('button', { class: 'btn btn-sm btn-icon btn-ghost-secondary table-share-btn', type: 'button', title: 'Share (Beta)', 'aria-label': 'Share (Beta)', 'aria-controls': 'share-pane', 'aria-expanded': 'false' }, lucideEl('upload'));
   button.addEventListener('click', () => {
-    if (closeSharePanel) { closeSharePanel(); return; }
+    const mine = sharePanelOwner === button;
+    if (closeSharePanel) closeSharePanel();
+    if (mine) return;
     setPaneOpen(false, { focus: false });
     button.setAttribute('aria-expanded', 'true');
-    const close = () => { dispose(); closeSharePanel = null; button.setAttribute('aria-expanded', 'false'); button.focus({ preventScroll: true }); };
+    const close = () => { dispose(); closeSharePanel = null; sharePanelOwner = null; button.setAttribute('aria-expanded', 'false'); if (button.isConnected) button.focus({ preventScroll: true }); };
     const dispose = WeaveSharePanel.mount($('#share-pane'), context(), {
       el, icon: lucideEl, api, copy: copyText, notify: toast, close,
       hold: (label, glyph, run) => holdIcon(glyph, `Hold to ${label.toLowerCase()}`, run, { rowClass: 'btn btn-sm btn-icon btn-ghost-secondary', label }),
       confirm: async (title, detail) => window.confirm(`${title}\n\n${detail}`),
     });
     closeSharePanel = close;
+    sharePanelOwner = button;
   });
   return button;
 }
@@ -8912,11 +8915,20 @@ async function showSpace(spaceId) {
     }),
   );
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  if (!dockCoversScreen.matches) {
+    const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
+    if (loaded) return mountSpaceHome(main, space);
+  }
+  await appendSpaceDetails(main, space);
+}
+
+async function appendSpaceDetails(parent, space, { withTables = true } = {}) {
+  const { spaceId } = space;
   const tiles = await spaceStatTiles(space);
-  if (tiles) main.append(tiles);
-  main.append(spaceTablesCard(space));
+  if (tiles) parent.append(tiles);
+  if (withTables) parent.append(spaceTablesCard(space));
   const card = await relationMapCard('Relation map', { spaceId });
-  if (card) main.append(card);
+  if (card) parent.append(card);
   const reg = registryTable('tables');
   if (reg) {
     const onSaved = async () => {
@@ -8926,7 +8938,7 @@ async function showSpace(spaceId) {
       restoreGridFocus();
     };
     const onAdd = () => tableTray({ spaceId, after: () => showSpace(spaceId) });
-    await schemaDisclosure(main, async (body) => {
+    await schemaDisclosure(parent, async (body) => {
       const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
       renderTable(body, reg, items, onSaved, onAdd);
@@ -10471,6 +10483,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const recordCtx = () => ({ db, inPeek, onClose });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
+  const shareBtn = sharePanelButton(() => ({ kind: 'entity', id, name: entity.name || `#${entity.publicId}`, noun: termOfTable(entity.dbId).singular, spaceId: db?.spaceId, tableIds: [entity.dbId], entityIds: [id] }));
 
   const activityBtn = el('button', {
     class: 'btn btn-sm activity-btn', type: 'button', title: 'Activity', 'aria-label': 'Activity',
@@ -10500,7 +10513,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls)),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   let nextFab = null;
@@ -11383,55 +11396,6 @@ async function openActivityLog(param) {
   return showActivity(param);
 }
 
-const SHARE_MODES = [['read', 'Read'], ['comment', 'Comment (soon)'], ['edit', 'Edit rows'], ['manage', 'Add and delete rows']];
-const SHARE_MODE_LABEL = Object.fromEntries(SHARE_MODES);
-
-function shareDialog(kind, id, name) {
-  const rows = el('div', { class: 'share-list', 'aria-live': 'polite' });
-  const fill = async () => {
-    let grants;
-    try { grants = await api('GET', `/shares?kind=${kind}&id=${encodeURIComponent(id)}`); } catch (err) {
-      rows.replaceChildren(el('span', { class: 'share-hint' }, err.message));
-      return;
-    }
-    if (!grants.length) { rows.replaceChildren(el('span', { class: 'share-hint' }, 'No links yet.')); return; }
-    rows.replaceChildren(...grants.map((g) => {
-      const full = location.origin + WS_PREFIX + g.url;
-      return el('div', { class: 'share-row' },
-        el('div', { class: 'share-row-head' },
-          el('span', { class: 'share-chip' }, SHARE_MODE_LABEL[g.mode] ?? g.mode),
-          el('span', { class: 'share-chip' }, g.visibility === 'private' ? 'Signed-in only' : 'Anyone with the link'),
-          g.label ? el('span', { class: 'share-label' }, g.label) : null),
-        el('code', { class: 'share-url' }, full),
-        el('div', { class: 'share-row-actions' },
-          el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
-          holdToConfirm('Revoke', async () => {
-            try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
-          }, { rowClass: 'btn btn-sm share-revoke', holdingLabel: 'Hold to revoke…' })));
-    }));
-  };
-  modal(`Share ${name}`, [
-    el('span', { class: 'form-label', id: 'share-mode' }, 'Access'),
-    el('div', { class: 'share-modes', role: 'radiogroup', 'aria-labelledby': 'share-mode' },
-      ...SHARE_MODES.map(([value, label]) => el('label', { class: `share-mode${value === 'comment' ? ' is-off' : ''}` },
-        el('input', { type: 'radio', name: 'mode', value, checked: value === 'read' ? '' : null, disabled: value === 'comment' ? '' : null }),
-        el('span', {}, label)))),
-    el('label', { class: 'form-check share-private' },
-      el('input', { type: 'checkbox', name: 'private', class: 'form-check-input' }),
-      el('span', { class: 'form-check-label' }, 'Signed-in members only')),
-    el('label', { class: 'form-label', for: 'share-label' }, 'Label'),
-    el('input', { id: 'share-label', name: 'label', class: 'form-control', placeholder: 'Who the link is for' }),
-    el('span', { class: 'share-hint' }, 'Pages open read-only. Edit and add-delete reach the API and MCP through the link\'s token.'),
-    el('h3', { class: 'share-list-title' }, 'Links'),
-    rows,
-  ], async (fd) => {
-    const g = await api('POST', '/shares', { scope: { kind, id }, mode: fd.get('mode'), visibility: fd.get('private') ? 'private' : 'public', label: fd.get('label') || '' });
-    await copyText(location.origin + WS_PREFIX + g.url, 'Link copied');
-    setTimeout(() => shareDialog(kind, id, name));
-  }, 'Create link');
-  fill();
-}
-
 async function showView(id) {
   state.route = { page: 'view', id };
   syncDocTitle(null);
@@ -11443,7 +11407,7 @@ async function showView(id) {
   main.replaceChildren(kindContext(el('div', { class: 'wv-toolbar share-page-head' },
     el('h1', {}, v.name),
     el('span', { style: 'flex:1' }),
-    el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('view', id, v.name) }, 'Share…'),
+    sharePanelButton(() => ({ kind: 'view', id, name: v.name, noun: 'share page' })),
     kindDots('share-page', v, () => ({}), { title: 'Share page actions' })), 'share-page', v));
   for (const b of v.blocks) {
     const cols = Object.keys(b.items[0]?.fields ?? {});

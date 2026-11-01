@@ -1065,7 +1065,7 @@ On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by defa
 
 ## Share links
 
-The **Share** up-arrow in the toolbar opens a docked **Beta** panel beside your table. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared. Filters hide rows in a view but do not narrow table access. Container links include every field. Selected-entry links omit related and computed fields to keep neighboring records private.
+The **Share** up-arrow in the header of every workspace, space, table, record and share page opens the one docked **Beta** panel beside the page; no menu row or dialog shares. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared, or the one record or share page you are on. Filters hide rows in a view but do not narrow table access. Container links include every field. Selected-entry links omit related and computed fields to keep neighboring records private.
 
 **Expires** offers one hour, one day, seven days, thirty days, ninety days, a custom future date, or **Never**. Editing expiration keeps the address. **Regenerate link** preserves the grant and replaces its credential; the previous address stops working immediately. **Delete link** revokes it. Expired and deleted links remain visible for review. Dedicated HTTP links use the workspace UUID and an opaque token, with no username in the path; renaming a workspace or link does not change access.
 
@@ -1108,7 +1108,11 @@ Architects opening a workspace with no tables of their own see a **New table** b
 
 Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit rows once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
 
-Then the home page shows the relation map. A space page shows architects a **+ New table** button, the space's relation map, and its tables with record counts.
+Then the home page shows the relation map.
+
+On a desktop or tablet, opening a space lands on one page, computed from what the workspace already holds. It runs from the space's tables and their row counts, through the saved views and rows you opened recently in this browser, to the automation runs that changed rows here, wherever the automation started. A section with nothing in it disappears. Open a run to see the rows it changed; a run that stopped partway names the step that failed, where weave recorded it. A run that started in a space you cannot open stays off your list.
+
+**Space overview** at the foot of the page holds the description, the space's rollups, its relation map, its tables with **+ New table** for architects, and the **Schema** disclosure. Opened, it stays open in that browser until you close it.
 
 On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
 
@@ -1350,7 +1354,7 @@ A view's link is a share grant (**Share links** above), so sharing a view takes 
 
 ## The relation map
 
-One map, drawn in three places from one renderer: the \`#/map\` page, a card on the workspace home, and a card on every space page. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
+One map, drawn in three places from one renderer: the \`#/map\` page, a card on the workspace home, and a card in every space's overview. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
 
 ## Automations
 
@@ -2533,7 +2537,7 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb: **Search → View → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **Share…**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
+The controls sit beside the breadcrumb: **Search → View → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
 
 | Control | What it does |
 | --- | --- |

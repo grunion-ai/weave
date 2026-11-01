@@ -8582,7 +8582,7 @@ export class Weave {
           name: db.name,
           icon: db.icon || null,
           rowCount: counts.get(db.id) ?? 0,
-          views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'grid' })),
+          views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'table' })),
         })),
         runs: this.#spaceRuns(sp.id),
       };

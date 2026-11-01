@@ -29,8 +29,8 @@
       "br": 1844
     },
     "/breadcrumbs.js": {
-      "gzip": 1331,
-      "br": 1231
+      "gzip": 1428,
+      "br": 1319
     },
     "/bug-core.js": {
       "gzip": 3184,
@@ -208,6 +208,10 @@
       "gzip": 927,
       "br": 842
     },
+    "/space-home-view.js": {
+      "gzip": 2613,
+      "br": 2306
+    },
     "/start.js": {
       "gzip": 13623,
       "br": 12145
@@ -255,6 +259,7 @@
     "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes.",
     "/start.js": "PR #541 (Issue #1284) added startLink and returnOf so a signed-out start link signs in and goes on to the workspace: gzip 12,917 to 12,974, br 11,513 to 11,566. Budget set 5% above",
     "/list-core.js": "Feature #348 (PR #542) added groupSig, the grouping signature collapse memory keys on: served gzip 3,257 over 3,219, br 2,964 over 2,909. Budget set 5% above",
-    "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above"
+    "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above",
+    "/breadcrumbs.js": "Issue #765 (share header button reland) gave foldPlan per-crumb mins so the last-but-one folds only when the kept crumbs overflow at their floors: served gzip 1,360 past its 1,331 budget, br 1,256 past its 1,231. Budget set 5% above"
   }
 }

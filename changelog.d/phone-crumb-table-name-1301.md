@@ -1,0 +1,1 @@
+- On a phone a docked record's table name ellipsizes inside its crumb chip, so the #number stays whole and clear of Copy permalink. A long table name used to run under Copy permalink and the header controls (Issue #1301).
