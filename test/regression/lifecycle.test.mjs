@@ -113,7 +113,7 @@ test('lifecycle: workspace delete leaves the hub list, file untouched', async ()
   assert.equal((await wsApi('DELETE', '/api/workspaces/probe')).status, 200);
   assert.ok(!(await wsApi('GET', '/api/workspaces')).data.some((w) => w.name === 'probe'));
   assert.ok((await wsApi('GET', '/api/workspaces?deleted=1')).data.find((w) => w.name === 'probe')?.deletedAt);
-  assert.equal((await wsApi('GET', '/w/probe/api/health')).status, 404, 'the URL stops answering');
+  assert.equal((await wsApi('GET', '/w/probe/api/health')).status, 200, 'the URL keeps answering');
 });
 
 test('lifecycle: workspace restore rejoins hub routing', async () => {

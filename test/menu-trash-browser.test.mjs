@@ -144,7 +144,7 @@ if (s) {
         const undo = await trashOnce(page, '#main .share-page-head .dots-btn');
         assert.ok(await eventually(() => !order().includes(name), true), 'the share page left the live list');
         assert.ok(weave.listViews({ trash: true }).some((x) => x.id === v.id), 'and sits in the trash');
-        await page.waitForSelector('#main .system-tables');
+        await page.waitForSelector('#main .view-header .dots-btn[title="Workspace actions"]');
         assert.equal(await page.locator('#main .list-row', { hasText: name }).count(), 0, 'the workspace page no longer lists it');
         await undo.click();
         await hashIs(page, `#/view/${v.id}`);

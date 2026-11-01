@@ -2690,12 +2690,12 @@ async function duplicateEntity(db, id, opts = {}) {
   return api('POST', `/tables/${db.id}/entities`, { values }, opts);
 }
 
-async function setLinkPreview(on) {
+async function toggleLinkPreview(w, on, after) {
   try {
-    const r = await api('PATCH', '/workspace', { linkPreview: on });
+    const r = await wsApi(w, 'PATCH', '/workspace', { linkPreview: !on });
     toast(`Link preview before sign-in is ${r.linkPreview ? 'on' : 'off'}`);
-    return r.linkPreview;
-  } catch (err) { toast(err.message, true); return !on; }
+    after?.();
+  } catch (err) { toast(err.message, true); }
 }
 
 const TRASHED = 'Moved to trash';
@@ -2860,7 +2860,11 @@ const MENU_ROWS = {
     }),
   }),
   workspace: (w, { after = null } = {}) => ({
-    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => deleteWorkspaceDialog(w, after) } : null,
+    invite: w.invite ? { label: 'Invite people…', run: () => inviteDialog() } : null,
+    'link-preview': typeof w.linkPreview === 'boolean' ? {
+      label: 'Link preview before sign-in', switch: w.linkPreview,
+      run: () => toggleLinkPreview(w, w.linkPreview, after),
+    } : null,
   }),
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
@@ -3821,7 +3825,8 @@ async function showTrash(dbId) {
     title: db ? `${db.name} — trash` : 'Trash',
   }));
 
-  if (!items.length && !views.length) {
+  const wsTrashed = db ? [] : await trashedWorkspaces();
+  if (!items.length && !views.length && !wsTrashed.length) {
     main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
     return;
   }
@@ -3868,6 +3873,7 @@ async function showTrash(dbId) {
         ...(db ? [] : [el('th', {}, 'Table')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
+  if (wsTrashed.length) main.append(trashedWorkspacesCard(wsTrashed, () => showTrash(dbId)));
 }
 
 function typedHold(name, prompt, row) {
@@ -3897,32 +3903,25 @@ function confirmToggle(after, build) {
   };
 }
 
-function hrefAfterDelete(order, gone) {
-  const at = order.findIndex((x) => x.name === gone.name);
-  const open = (x) => x.name !== gone.name && x.name !== 'weave' && !x.held && !x.deletedAt;
-  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open) ?? order.find((x) => x.name === 'weave');
-  return next ? wsHref(next) : '/';
-}
-
-function deleteWorkspaceDialog(w, after = null) {
+function deleteWorkspaceDialog(w) {
   const input = el('input', {
     class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
     placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
   });
   modal('Delete workspace', [
-    el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
-      ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
+    el('p', {}, 'This moves ', el('strong', {}, w.name),
+      ` to the trash with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. Restore brings it back from Trash in the sidebar.`),
     el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
     input,
   ], async () => {
     if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
-    const order = state.wsList ?? [];
     await api('DELETE', `/workspaces/${w.id}`);
-    if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
-    toast(`Workspace ${w.name} deleted`);
+    if (w.name === state.wsCurrent) { location.href = '/'; return; }
+    toast(`Workspace ${w.name} moved to the trash`, false, {
+      label: 'Undo', run: async () => { await api('POST', `/workspaces/${w.id}/restore`); buildWsRail(); showSettings(); },
+    });
     buildWsRail();
-    if (state.route?.page === 'settings') showSettings();
-    else after?.();
+    showSettings();
   }, 'Delete workspace', 'btn-danger');
   const go = $('#modal button[type="submit"]');
   go.disabled = true;
@@ -3932,7 +3931,7 @@ function deleteWorkspaceDialog(w, after = null) {
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
-  const [trash, list, ws] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null)]);
+  const [trash, list] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => [])]);
   const main = $('#main');
   main.replaceChildren();
   main.append(viewHeader({
@@ -3940,18 +3939,6 @@ async function showSettings() {
     permalink: `${location.origin}${WS_PREFIX}/#/settings`,
     title: 'Settings',
   }));
-  if (typeof ws?.linkPreview === 'boolean') {
-    main.append(el('div', { class: 'card settings-link-preview' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
-      el('p', { class: 'settings-note' }, 'A row permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
-      paneSwitch({
-        label: 'Link preview before sign-in', on: ws.linkPreview,
-        onChange: async (on) => {
-          const now = await setLinkPreview(on);
-          if (now !== on) showSettings();
-        },
-      })));
-  }
   const gone = [
     ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
       .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
@@ -4000,7 +3987,7 @@ async function showSettings() {
   if (!deletable.length) return;
   main.append(el('div', { class: 'card settings-workspaces' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
-    el('p', { class: 'settings-note' }, 'Deleting a workspace is permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.'),
+    el('p', { class: 'settings-note' }, 'A workspace moved to the trash keeps its file. Restore brings it back from Trash in the sidebar.'),
     ...deletable.map((w) => {
       const row = el('div', { class: 'list-row' },
         el('span', { class: 'list-row-name' }, w.name),
@@ -11420,7 +11407,7 @@ async function showHome() {
   bootHomeReads = null;
   const ws = wsRead.value ?? { name: $('#ws-name').textContent || 'workspace', description: '' };
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
-  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
+  const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, linkPreview: !!ws.linkPreview, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
   const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
@@ -12394,14 +12381,17 @@ async function buildWsRail() {
           } })
           : w.name.slice(0, 1).toUpperCase());
         if (w.held) return chip;
-        const wsMenu = (e) => {
+        const wsMenu = async (e) => {
           e.preventDefault();
           e.stopPropagation();
           const at = e.clientX || e.clientY ? { point: { x: e.clientX, y: e.clientY } } : { anchor: chip };
           if (openMenu?.trigger === chip) { openMenu.close(); return; }
-          const items = menuFor('workspace', w);
+          const [record, invite] = await Promise.all([wsApi(w, 'GET', '/workspace').catch(() => null),
+            w.name === current ? api('GET', '/invites').then(() => true, () => false) : false]);
+          const o = { ...w, title: record?.title ?? w.name, linkPreview: record ? !!record.linkPreview : undefined, invite };
+          const items = menuFor('workspace', o, { after: () => { if (w.name === current && state.route?.page === 'home') showHome(); } });
           if (!items.length) return;
-          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', w), label: `${w.name} workspace` });
+          menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', o), label: `${w.name} workspace` });
         };
         chip.addEventListener('contextmenu', wsMenu);
         if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
@@ -12412,6 +12402,28 @@ async function buildWsRail() {
   refreshAccountChip();
 }
 
+async function trashedWorkspaces() {
+  try { return (await api('GET', '/workspaces?deleted=1')).filter((w) => w.deletedAt); } catch { return []; }
+}
+function trashedWorkspacesCard(trashed, redraw) {
+  return el('div', { class: 'card list-rows trash-workspaces', style: 'margin-top:12px' },
+    el('h3', { class: 'card-title' }, 'Workspaces'),
+    ...trashed.map((w) => el('div', { class: 'list-row' },
+      el('span', { class: 'list-row-name' }, w.name),
+      el('span', { class: 'text-secondary' }, 'deleted ', whenEl(w.deletedAt)),
+      el('span', { class: 'spacer' }),
+      el('button', {
+        class: 'btn btn-sm', type: 'button',
+        onclick: async () => {
+          try {
+            await api('POST', `/workspaces/${w.id}/restore`);
+            toast(`Workspace ${w.name} restored`);
+            buildWsRail();
+            redraw();
+          } catch (err) { toast(err.message, true); }
+        },
+      }, 'Restore'))));
+}
 const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
 const bareRootWs = (list) => list.find(servesBareRoot);
 const wsHref = (w) => (servesBareRoot(w) ? '/' : w.host ? `/api/auth/open/${encodeURIComponent(w.name.toLowerCase())}` : (w.url ?? `/w/${w.id}/`));
