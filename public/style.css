@@ -393,7 +393,7 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid .wv-cb > .inline-edit { flex: 1 1 auto; }
 .wv-grid .wv-cb > :is(.text-dressed, .doc-preview) { padding-top: 0; padding-bottom: 0; }
 .wv-grid .wv-cb .k { line-height: var(--wv-grid-chip-line); }
-.wv-grid .wv-cb .av { width: var(--wv-av); height: var(--wv-av); }
+.wv-grid .wv-cb :is(.av, .actor-av) { width: var(--wv-av); height: var(--wv-av); }
 .wv-grid[data-density="spacious"] .wv-cb > .text-dressed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--wv-lines); white-space: normal; }
 .wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line { display: block; overflow: hidden; text-overflow: ellipsis; }
 .wv-grid[data-density="spacious"] .wv-cb > .doc-preview .doc-preview-line ~ .doc-preview-line ~ .doc-preview-line { display: none; }
@@ -687,6 +687,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-av.cell-av { --wv-av-size: 20px; }
 .wv-av.crumb-ic { --wv-av-size: 16px; color: var(--text, var(--tblr-secondary)); }
 .wv-av.cmdk-av { --wv-av-size: 18px; }
+.wv-av.actor-av { letter-spacing: -.06em; }
+.wv-av.actor-av > .av-badge { right: -4px; bottom: 0; width: 9px; height: 9px; min-width: 0; min-height: 0; }
+.wv-av.nav-account-av { --wv-av-size: 22px; }
+.wv-av.round.nav-account-av { border-radius: 50%; }
 .entity-head textarea.name-edit { --wv-edit-fs: var(--fs-title); --wv-edit-pad: 1px 3px; width: 100%; resize: none; overflow: hidden; field-sizing: content; line-height: 1.25; }
 .entity-head .dl-wrap { margin-left: auto; }
 .crumb { color: var(--tblr-secondary); font-size: var(--fs-grid); margin-bottom: 14px; }
@@ -2295,7 +2299,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(> .wv-cb > input.inline-edit[value=""]) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(> .wv-cb > .date-cell > input.date-text[value=""]) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field]:has(> .wv-cb > .ms-box:empty) { display: none; }
-  #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-ftype="relation"]:not(:has(> .wv-cb > .ms-box > .k)):not(:has(> .wv-cb > .ms-box > .mention-wrap)) { display: none; }
+  #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-ftype="relation"]:not(:has(> .wv-cb > .ms-box > :is(.k, .mention-wrap, .wv-face-pile))) { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb { height: 24px; overflow: hidden; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field].list-hide { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field][data-more] { display: flex; align-items: center; gap: 6px; }
