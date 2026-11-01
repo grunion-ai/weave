@@ -1396,7 +1396,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               if (waiting) {
                 const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}.${baseDomain}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
-                return out(402, { error: `${waiting} is still waiting on a plan. Subscribe to the solo plan on its billing page, then start another workspace.`, code: 'plan-required', waiting, billing: at }, { 'Cache-Control': 'no-store' });
+                return out(402, { error: `${waiting} is still waiting on a plan. Buy its first seat on its billing page, then start another workspace.`, code: 'plan-required', waiting, billing: at }, { 'Cache-Control': 'no-store' });
               }
             }
             const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
@@ -1578,14 +1578,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });
         }
 
-        if (path === '/api/billing' || path === '/api/billing/team') {
-          if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and the plan slugs are not set.', code: 'billing-off' });
+        if (path === '/api/billing' || path === '/api/billing/organization') {
+          if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and WEAVE_BILLING_PLAN are not set.', code: 'billing-off' });
           const architect = (unseated ?? role) === 'architect' || mayAdminister(weave, unseated ?? role);
           const standingNow = async () => {
             const accounts = weave.listAccounts();
             const s = await billing.standing({ workspace: weave.billing(), accounts });
             return {
-              plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, soloPlan: billing.soloPlan, teamPlan: billing.teamPlan, publishableKey: billing.publishableKey,
+              plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, planSlug: billing.plan, publishableKey: billing.publishableKey,
               me: accountName, architect,
               members: accounts.map((a) => {
                 const mail = a.identities?.find((i) => i.verifiedEmail)?.verifiedEmail ?? null;
@@ -1603,17 +1603,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (!role && !unseated && !mayAdminister(weave, role)) return deny(401, 'Sign in to see this workspace\'s plan');
             return answer();
           }
-          if (route === 'POST /api/billing/team') {
-            if (!architect) return deny(role ? 403 : 401, 'Opening the team plan needs an architect');
+          if (route === 'POST /api/billing/organization') {
+            if (!architect) return deny(role ? 403 : 401, 'Setting up billing needs an architect');
             const me = weave.listAccounts().find((a) => a.name === accountName);
             const createdBy = me ? billing.subjectOf(me) : null;
-            if (!createdBy) return out(400, { error: 'Your account has no sign-in identity at the billing provider, so it cannot own the team plan. Sign in with the provider first.', code: 'invalid' });
+            if (!createdBy) return out(400, { error: 'Your account has no sign-in identity at the billing provider, so it cannot own the billing organization. Sign in with the provider first.', code: 'invalid' });
             weave.linkBillingOrg(await billing.ensureOrg({ workspace: weave.billing(), createdBy }));
             const synced = await remirror(weave);
             billing.forget();
             return answer(synced?.refused?.length ? { refused: synced.refused } : {});
           }
-          return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/team', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
+          return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/organization', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
         }
 
         if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {

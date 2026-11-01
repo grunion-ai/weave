@@ -344,7 +344,7 @@ const clerkAt = (routes) => async (url, init = {}) => {
 const rpc = (method, params = {}) => ({ jsonrpc: '2.0', id: 1, method, params });
 
 test('billing on: a workspace made at /start opens on a trial, the AI app works, and /api/start names the trial and the wait', async () => {
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: clerkAt({}) });
+  const billing = createBilling({ secretKey: 'clerk-test', plan: 'seat', fetch: clerkAt({}) });
   const s = await serve({ openSignup: { on: true, limit: 1 }, billing });
   try {
     const { cookie } = await s.signIn({ sub: 'user_ada', email: 'ada@example.com', email_verified: true });
@@ -373,8 +373,8 @@ test('billing on: a workspace made at /start opens on a trial, the AI app works,
 });
 
 test('agent step: a call weave refused never counts as a connected AI app (Issue #915)', async () => {
-  const routes = { 'GET /users/user_bo/billing/subscription': [500, {}] };
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', trialDays: 0, fetch: clerkAt(routes) });
+  const routes = { 'GET /organizations/org_bo/billing/subscription': [500, {}] };
+  const billing = createBilling({ secretKey: 'clerk-test', plan: 'seat', trialDays: 0, fetch: clerkAt(routes) });
   const s = await serve({ openSignup: { on: true, limit: 1 }, billing });
   try {
     const { cookie } = await s.signIn({ sub: 'user_bo', email: 'bo@example.com', email_verified: true });
@@ -382,9 +382,12 @@ test('agent step: a call weave refused never counts as a connected AI app (Issue
     const host = s.at('bo.weave.test');
     const token = s.idp.mint({ sub: 'user_bo' });
     const seen = async () => (await s.apex('GET', '/api/start/workspaces/bo/agent', { cookie })).json().connected;
+    const bo = new Weave({ path: join(s.dir, 'bo.db') });
+    bo.linkBillingOrg('org_bo');
+    bo.store.close?.();
     assert.equal((await host('POST', '/mcp', { token, body: rpc('initialize') })).status, 503);
     assert.equal(await seen(), false, 'a 503 is not a connection');
-    delete routes['GET /users/user_bo/billing/subscription'];
+    delete routes['GET /organizations/org_bo/billing/subscription'];
     billing.forget();
     const read = await host('POST', '/mcp', { token, body: rpc('tools/list') });
     assert.equal(read.status, 200, 'after the trial an unseated Architect\'s agent still reads (Issue #916)');

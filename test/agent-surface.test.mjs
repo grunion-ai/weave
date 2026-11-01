@@ -99,7 +99,7 @@ const INTERNAL = {
   isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
-  linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/team links the Clerk organization it creates; an agent never links one by hand',
+  linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/organization links the Clerk organization it creates; an agent never links one by hand',
   fieldChangeSince: 'read helper (Feature #241): the field-config Activity entry a field update just wrote; PATCH /api/tables/:id/fields/:id, weave field update and weave_update_field answer with its activity and the formulas a repoint breaks',
   entityRevision: 'read helper (Issue #902): entity reads carry the opaque stored-row revision',
   conditionalWrite: 'HTTP concurrency boundary (Issue #902): POST /api/entities/:id/conditional applies the existing append or state verb, or both together as close, under an observed-revision write lock; the CLI and MCP doors keep the plain doc and state verbs, since a revision a caller never observed is not a conditional write',
