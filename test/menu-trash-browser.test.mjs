@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 const s = await launch('menu trash', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -24,16 +25,23 @@ if (s) {
     return page;
   };
 
-  const trashOnce = async (page, trigger, how = 'click') => {
+  const openMenu = async (page, trigger, how) => {
     await page.waitForSelector(trigger, { state: 'attached' });
     if (how === 'right') await page.locator(trigger).first().click({ button: 'right', force: true });
     else await page.locator(trigger).first().click({ force: true });
     await page.waitForSelector(MENU);
-    const row = page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' });
+    return page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' });
+  };
+
+  const trashOnce = async (page, trigger, how = 'click') => {
+    const row = await openMenu(page, trigger, how);
     assert.equal(await row.count(), 1, 'the menu ends in one Move to trash row');
-    assert.equal(await row.evaluate((r) => r.classList.contains('hold-btn') || !!r.querySelector('.hold-fill, .hold-hint')), false, 'the row is a plain click, no hold');
+    assert.equal(await row.evaluate((r) => r.classList.contains('hold-btn') && !!r.querySelector('.hold-fill')), true, 'the row is a hold');
+    assert.equal((await row.locator('.hold-hint').textContent()).trim().toLowerCase(), 'hold', 'and says so');
     assert.equal(await row.evaluate((r) => r.classList.contains('wv-menu-danger')), true, 'and it reads as destructive');
     await row.click();
+    assert.equal(await row.evaluate((r) => r.isConnected && !r.classList.contains('holding')), true, 'a click lets go before the sweep, and the menu stays open');
+    await hold(row);
     const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
     await toast.waitFor();
     assert.equal((await toast.locator('.wv-toast-msg').textContent()).trim(), 'Moved to trash');
@@ -61,7 +69,7 @@ if (s) {
   const hashIs = (page, want) => page.waitForFunction((w) => location.hash === w, want, { timeout: 5000 });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: a table goes to the trash in one click and Undo puts it back in its space (Feature #296, D6)`, async () => {
+    test(`${theme}: a table goes to the trash with a hold and Undo puts it back in its space (Feature #296, Feature #346)`, async () => {
       const name = uniq('Doomed');
       const db = weave.createTable({ space: 'Product', name });
       weave.createTable({ space: 'Product', name: uniq('After') });
@@ -82,7 +90,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a space goes to the trash in one click from its nav ⋮ and Undo puts it back in the sidebar (Feature #296, D6)`, async () => {
+    test(`${theme}: a space goes to the trash with a hold from its nav ⋮ and Undo puts it back in the sidebar (Feature #296, Feature #346)`, async () => {
       const name = uniq('Gone');
       weave.createSpace({ name });
       weave.createTable({ space: name, name: uniq('Inside') });
@@ -103,7 +111,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a space trashed from its own page reopens on Undo (Feature #296, D6)`, async () => {
+    test(`${theme}: a space trashed from its own page reopens on Undo (Feature #296, Feature #346)`, async () => {
       const name = uniq('Open');
       weave.createSpace({ name });
       const sp = weave.getSpace(name);
@@ -117,7 +125,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a record goes to the trash in one click and Undo reopens it (Feature #296, D6)`, async () => {
+    test(`${theme}: a record goes to the trash with a hold and Undo reopens it (Feature #296, Feature #346)`, async () => {
       const db = weave.getTable('Task');
       const e = weave.createEntity(db, { name: uniq('Row') });
       const page = await open(`#/entity/${e.id}`, theme);
@@ -132,7 +140,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a share page goes to the trash in one click and Undo puts it back on the workspace page (Feature #296, D6, Issue #768)`, async () => {
+    test(`${theme}: a share page goes to the trash with a hold and Undo puts it back on the workspace page (Feature #296, Feature #346, Issue #768)`, async () => {
       const name = uniq('Focus');
       weave.createView({ name: uniq('Before'), blocks: [{ table: 'Task' }] });
       const v = weave.createView({ name, blocks: [{ table: 'Task' }] });
@@ -153,7 +161,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a share page trashed from its workspace page row comes back to that row on Undo (Feature #296, D6)`, async () => {
+    test(`${theme}: a share page trashed from its workspace page row comes back to that row on Undo (Feature #296, Feature #346)`, async () => {
       const name = uniq('Row');
       const v = weave.createView({ name, blocks: [{ table: 'Task' }] });
       const page = await open('', theme);
@@ -169,7 +177,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: a field goes to the trash in one click and Undo puts the column back in place (Feature #296, D6, Issue #768)`, async () => {
+    test(`${theme}: a field goes to the trash with a hold and Undo puts the column back in place (Feature #296, Feature #346, Issue #768)`, async () => {
       const db = weave.createTable({ space: 'Ops', name: uniq('Grid') });
       weave.addField(db, { name: 'Stage', type: 'select', config: { options: ['Now', 'Later'] } });
       weave.addField(db, { name: 'Owner', type: 'text' });
@@ -235,7 +243,7 @@ if (s) {
     });
   }
 
-  test('the multi-select trash and the record menu give the same toast and the same Undo (Feature #296, D6)', async () => {
+  test('the multi-select trash and the record menu give the same toast and the same Undo (Feature #296, Feature #346)', async () => {
     const db = weave.createTable({ space: 'Ops', name: uniq('Pair') });
     const a = weave.createEntity(db, { name: 'Alpha' });
     const b = weave.createEntity(db, { name: 'Bravo' });
@@ -253,7 +261,7 @@ if (s) {
     try {
       await page.waitForSelector(`.wv-grid tr[data-eid="${a.id}"] .sel-box`, { state: 'attached' });
       await page.locator(`.wv-grid tr[data-eid="${a.id}"] .sel-box`).check();
-      await page.locator('.sel-puck .sel-act.danger').click();
+      await hold(page.locator('.sel-puck .sel-act.danger'));
       const bulk = await read();
       assert.ok(await eventually(() => !!weave.state.entities[a.id].deletedAt, true));
       await bulk.t.locator('.wv-toast-action').click();
@@ -263,7 +271,7 @@ if (s) {
       await page.goto(`${base}/#/table/${db.id}?e=${b.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await page.locator('#dock .view-header .crumb-row .dots-btn').click();
-      await page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' }).click();
+      await hold(page.locator(`${MENU} .wv-menu-row`, { hasText: 'Move to trash' }));
       const one = await read();
       assert.ok(await eventually(() => !!weave.state.entities[b.id].deletedAt, true));
       await one.t.locator('.wv-toast-action').click();

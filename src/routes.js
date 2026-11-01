@@ -758,7 +758,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         let m2;
         if ((m2 = path.match(/^\/api\/tables\/([^/]+)/))) return weave.findTable(decodeURIComponent(m2[1]))?.spaceId ?? null;
         if ((m2 = path.match(/^\/api\/spaces\/([^/]+)/))) return weave.findSpace(decodeURIComponent(m2[1]))?.id ?? null;
-        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.state.tables[weave.getEntity(decodeURIComponent(m2[1])).dbId]?.spaceId ?? null;
+        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.findTable(weave.getEntity(decodeURIComponent(m2[1])).dbId)?.spaceId ?? null;
       } catch {}
       return null;
     });
@@ -1929,6 +1929,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreSpace(m[1]));
         }
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members$/)) && rx.method === 'GET') return out(200, weave.spaceMembers(m[1]));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members\/([^/]+)$/))) {
           if (rx.method === 'PUT') return out(200, weave.setSpaceMember(m[1], m[2], { role: body?.role ?? null }));

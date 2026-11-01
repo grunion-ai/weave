@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let scratch, spare;
 const s = await launch('workspace delete', (weave) => {
@@ -39,13 +40,15 @@ if (s) {
     assert.equal((await page.locator('#modal h2').textContent()).trim(), 'Delete workspace');
     assert.match(await page.locator('#modal').textContent(), /permanently deletes .*cannot be undone/s, 'the dialog says it is permanent');
     assert.doesNotMatch(await page.locator('#modal').textContent(), /trash|restore/i, 'and promises no way back');
-    const go = page.locator('#modal button[type="submit"]');
+    const go = page.locator('#modal .ws-delete-go');
     assert.equal(await go.isDisabled(), true, 'Delete stays off before the name is typed');
     await page.fill('#modal input[name="confirm"]', name.slice(0, -1));
     assert.equal(await go.isDisabled(), true, 'a near miss keeps it off');
     await page.fill('#modal input[name="confirm"]', name);
     assert.equal(await go.isDisabled(), false, 'the exact name arms it');
     await go.click();
+    assert.ok(await page.locator('#modal').isVisible(), 'a click alone deletes nothing');
+    await hold(go);
   }
 
   test('the default workspace offers no workspace menu: no ⋮ on its page and its chip opens nothing (Feature #347)', async () => {
@@ -62,7 +65,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: a rail right-click deletes a sibling for good: typed dialog, no Undo, gone from the rail and its address (Feature #347)`, async () => {
+    test(`${theme}: a rail right-click deletes a sibling for good: typed dialog, a hold, no Undo, gone from the rail and its address (Feature #346, Feature #347)`, async () => {
       const page = await open('/', theme);
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);

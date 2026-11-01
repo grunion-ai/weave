@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 const svg = (fill) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fill}"/></svg>`);
 
@@ -58,7 +59,7 @@ if (s) {
       await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Delete workspace…' }).click();
       await page.fill('#modal input[name="confirm"]', 'scratch');
       const hop = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/auth/open/net');
-      await page.click('#modal button[type="submit"]');
+      await hold(page.locator('#modal .ws-delete-go'));
       assert.equal(new URL((await hop).url()).search, '', 'the hop to the next host carries nothing back');
       assert.ok(member.state.meta.deletedAt, 'scratch is deleted');
     } finally {

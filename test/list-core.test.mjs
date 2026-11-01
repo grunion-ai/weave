@@ -127,3 +127,16 @@ test('the footer reads X of N with the row term, then the completed count', () =
   assert.equal(core.footerText({ shown: 3, all: 8, done: 1, term }), '3 of 8 to-dos · 1 completed');
   assert.equal(core.footerText({ shown: 1, all: 1, term }), '1 of 1 to-do');
 });
+
+test('the Show more label names the next batch and the drawn count (Issue #1266)', () => {
+  const term = { singular: 'to-do', plural: 'to-dos' };
+  assert.equal(core.moreLabel({ shown: 200, all: 3980, cap: 200, term }), 'Show 200 more · 200 of 3980 to-dos');
+  assert.equal(core.moreLabel({ shown: 3900, all: 3980, cap: 200, term }), 'Show 80 more · 3900 of 3980 to-dos');
+  assert.equal(core.moreLabel({ shown: 3980, all: 3980, cap: 200, term }), 'Show 0 more · 3980 of 3980 to-dos');
+  assert.equal(core.moreLabel({ shown: 40, all: 41, cap: 40 }), 'Show 1 more · 40 of 41 rows');
+});
+
+test('the list and board caps are the ones the row measured (Issue #1266)', () => {
+  assert.equal(core.LIST_CAP, 200);
+  assert.equal(core.BOARD_CAP, 40);
+});

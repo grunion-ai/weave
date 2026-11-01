@@ -53,7 +53,7 @@ if (s) {
       await by.waitFor();
       assert.match(await by.getAttribute('href'), new RegExp(`#/entity/${dana.id}$`), 'the chip opens the Users row');
       assert.equal(await by.locator('.k-label').textContent(), 'Dana Quinn');
-      assert.equal(await by.locator('.av').textContent(), 'DQ', 'a person wears initials');
+      assert.equal(await by.locator('.actor-av').textContent(), 'DQ', 'a person wears initials');
       assert.equal(await by.getAttribute('title'), 'Dana Quinn · Architect · dana@example.com');
 
       const mod = page.locator('.fieldrow-system[data-field="Modified By"] .k-actor a');
@@ -61,6 +61,7 @@ if (s) {
       assert.match(await mod.getAttribute('href'), new RegExp(`#/entity/${agent.id}$`));
       assert.equal(await mod.locator('.mi-cpu').count(), 1, 'the agent badge identifies automation');
       assert.equal(await mod.locator('.av').count(), 0, 'an agent fallback does not use person initials');
+      assert.equal(await mod.locator('.actor-av .av-badge').count(), 1, 'the badge sits on the Users face');
       assert.match(await page.locator('.fieldrow-system[data-field="Modified By"] .k-actor-via').textContent(), /via MCP/);
       assert.doesNotMatch(await page.locator('body').innerText(), /VMH4hSRpVOhCwUno/);
     } finally { await page.close(); }

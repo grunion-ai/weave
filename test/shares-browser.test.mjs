@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, painted, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let task;
 let one;
@@ -49,6 +50,8 @@ if (s) {
       assert.deepEqual([g.scope.kind, g.scope.id, g.mode, g.visibility, g.label], ['entity', one.id, 'edit', 'public', 'vendor']);
       await page.locator('#modal .share-row .share-url', { hasText: `/s/${g.token}` }).waitFor();
       await page.locator('#modal .share-row .share-revoke').click();
+      assert.equal(weave.listShares().length, 1, 'a click alone revokes nothing');
+      await hold(page.locator('#modal .share-row .share-revoke'));
       assert.equal(await eventually(() => weave.listShares().length, 0), 0);
       await page.locator('#modal .share-hint', { hasText: 'No links yet' }).waitFor();
     } finally {

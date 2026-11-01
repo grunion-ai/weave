@@ -735,6 +735,20 @@ function applyPaneWidth(panel, pane) {
   const px = Number(localStorage.getItem(pane.key));
   pinPane(panel, px >= pane.min ? px : 0);
 }
+function fitPanes() {
+  const app = $('#app');
+  app.classList.remove('pane-over', 'table-yield');
+  const floats = !($('#view-pane').hidden && $('#share-pane').hidden);
+  if ($('#dock').hidden || dockCoversScreen.matches || (!floats && $('#side').hidden)) return;
+  const tight = () => app.scrollWidth > app.clientWidth;
+  if (tight()) app.classList.add('table-yield');
+  if (tight() && floats) app.classList.add('pane-over');
+}
+let fitPanesFrame = 0;
+const fitPanesSoon = () => { fitPanesFrame ||= requestAnimationFrame(() => { fitPanesFrame = 0; fitPanes(); }); };
+const paneWatch = new ResizeObserver(fitPanesSoon);
+for (const id of ['#main', '#share-pane', '#dock', '#side', '#view-pane']) paneWatch.observe($(id));
+addEventListener('resize', fitPanesSoon);
 function wirePaneGutter(panel, pane) {
   const grip = $(pane.grip);
   grip.hidden = false;
@@ -1355,7 +1369,18 @@ const ACCOUNT_ROLE_HUES = { Architect: 'purple', Editor: 'blue', Observer: 'slat
 function accountChip(me) {
   const name = accountDisplayName(me.account.name) || 'Signed in';
   const role = ACCOUNT_ROLE_LABELS[me.role] ?? me.role ?? '';
-  const avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  let avatar = el('span', { class: `av nav-account-av hue-${chipCore.hueForName(name)}`, 'aria-hidden': 'true' }, chipCore.initialsFor(name));
+  const people = workspaceUsers([me.account.name]);
+  const face = () => {
+    const u = people.rows.find((r) => r.name === me.account.name);
+    if (!u?.avatar || avatar.dataset.face) return;
+    const next = chipElFrom(chipView.avatarHtml(u.avatar, { cls: 'nav-account-av' }));
+    next.dataset.face = '1';
+    avatar.replaceWith(next);
+    avatar = next;
+  };
+  queueMicrotask(face);
+  if (!people.done) people.read?.then(face);
   return el('span', {
     class: 'nav-account-chip',
     title: `${name}${role ? `, ${role}` : ''} in ${accountWorkspaceName()}`,
@@ -1701,6 +1726,15 @@ function holdToConfirm(label, onConfirm, {
       await onConfirm();
     }, 80);
   });
+  return btn;
+}
+
+function holdIcon(icon, title, onConfirm, { rowClass, label = title } = {}) {
+  const btn = holdToConfirm('', onConfirm, { rowClass, holdingLabel: '' });
+  btn.classList.remove('text-danger');
+  btn.insertBefore(lucideEl(icon, 'wv-icon hold-icon'), btn.querySelector('.hold-label'));
+  btn.setAttribute('aria-label', label);
+  btn.title = title;
   return btn;
 }
 
@@ -2690,7 +2724,7 @@ function reopenAfterUndo(href, open, stayed) {
 
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
-    label: 'Move to trash', danger: true,
+    label: 'Move to trash', danger: true, hold: true, holdingLabel: 'Hold to delete…', hint: 'hold',
     run: () => {
       let where = null, landed = null;
       const settled = (async () => {
@@ -3570,8 +3604,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const box = el('span', { class: 'ms-box' });
     const all = val == null ? [] : Array.isArray(val) ? val : [val];
     const CAP = 3;
-    const current = compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
-    const hidden = all.length - current.length;
+    const pile = compact && all.length > 1 && all.every((s) => s.avatar);
+    const current = pile ? [] : compact && !fit && all.length > CAP ? all.slice(0, CAP) : all;
+    const hidden = pile ? 0 : all.length - current.length;
+    if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
     for (const s of current) {
       const onRemove = compact ? null : async () => {
         try {
@@ -3890,13 +3926,16 @@ function deleteWorkspaceDialog(w, after = null) {
     class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
     placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
   });
+  let held = false;
   modal('Delete workspace', [
     el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
       ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
-    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
+    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm, then hold Delete workspace'),
     input,
   ], async () => {
-    if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
+    const armed = held;
+    held = false;
+    if (!armed || input.value !== w.name) throw Object.assign(new Error('Hold Delete workspace to confirm'), { shown: true });
     const order = state.wsList ?? [];
     await api('DELETE', `/workspaces/${w.id}`);
     if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
@@ -3905,8 +3944,13 @@ function deleteWorkspaceDialog(w, after = null) {
     if (state.route?.page === 'settings') showSettings();
     else after?.();
   }, 'Delete workspace', 'btn-danger');
-  const go = $('#modal button[type="submit"]');
+  const submit = $('#modal button[type="submit"]');
+  const form = submit.form;
+  const go = holdToConfirm('Delete workspace', () => { held = true; form.requestSubmit(); },
+    { rowClass: 'btn btn-danger ws-delete-go', holdingLabel: 'Hold to delete…' });
+  go.classList.remove('text-danger');
   go.disabled = true;
+  submit.replaceWith(go);
   input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
 }
 
@@ -4098,17 +4142,13 @@ function viewStrip(db) {
     const name = el('a', { class: 'view-name', href: viewHref(db, v), draggable: 'false', ...(active ? { 'aria-current': 'true' } : {}) }, v.name);
     name.addEventListener('click', (e) => { if (active) e.preventDefault(); });
     const act = (cls, icon, label, run) => el('button', { class: `view-act ${cls}`, type: 'button', 'aria-label': `${label} ${v.name}`, title: label, onclick: run }, lucideEl(icon));
-    const del = holdToConfirm('', async () => {
+    const del = holdIcon('trash-2', 'Hold to delete', async () => {
       try { await api('DELETE', at(v.id)); } catch (err) { toast(err.message, true); return; }
       await loadSchema();
       if (cur?.id !== v.id) return showDatabase(db.id);
       const bare = `#/table/${db.id}`;
       if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
-    }, { rowClass: 'view-act view-del', holdingLabel: '' });
-    del.classList.remove('text-danger');
-    del.insertBefore(lucideEl('trash-2', 'wv-icon hold-icon'), del.querySelector('.hold-label'));
-    del.setAttribute('aria-label', `Hold to delete ${v.name}`);
-    del.title = 'Hold to delete';
+    }, { rowClass: 'view-act view-del', label: `Hold to delete ${v.name}` });
     const row = el('div', { class: 'view-tab view-row' + (active ? ' active' : ''), role: 'listitem', dataset: { view: v.id } },
       grip, name,
       i === 0 ? el('span', { class: 'view-first', title: 'This view opens with the table' }, 'Opens first') : null,
@@ -4441,6 +4481,10 @@ async function showDatabase(dbId, view) {
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
   if (!(state.route?.page === 'db' && state.route.dbId === dbId)) noteRecent({ kind: 'table', id: table.id, name: table.qualified ?? table.name, url: `${WS_PREFIX}/#/table/${table.id}` });
+  if (!(state.route?.page === 'db' && state.route.dbId === dbId && state.route.view === view)) {
+    const savedView = WeaveSpaceHome.viewRecent(table, view);
+    if (savedView) noteRecent(savedView);
+  }
   const db = viewed(table, pickTableView(table, view));
   if (tableSearch.dbId !== dbId || tableSearch.viewId !== db.view.id) {
     stopTableSearchTimer();
@@ -5297,6 +5341,7 @@ function sharePanelButton(context) {
     const close = () => { dispose(); closeSharePanel = null; button.setAttribute('aria-expanded', 'false'); button.focus({ preventScroll: true }); };
     const dispose = WeaveSharePanel.mount($('#share-pane'), context(), {
       el, icon: lucideEl, api, copy: copyText, notify: toast, close,
+      hold: (label, glyph, run) => holdIcon(glyph, `Hold to ${label.toLowerCase()}`, run, { rowClass: 'btn btn-sm btn-icon btn-ghost-secondary', label }),
       confirm: async (title, detail) => window.confirm(`${title}\n\n${detail}`),
     });
     closeSharePanel = close;
@@ -5679,6 +5724,25 @@ function groupSummaryEl(db, levels, node) {
   const text = VP.breakdown(node.rows, f);
   return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
+const drawnPast = new Map();
+let revealRow = null;
+function cappedEls(db, cap, key, items, draw) {
+  const memo = `${db.id}/${db.view?.id}/${db.view?.layout}/${key ?? ''}`;
+  const wanted = revealRow ? items.findIndex((i) => i.row.id === revealRow) + 1 : 0;
+  if (wanted > cap) drawnPast.set(memo, Math.max(wanted, drawnPast.get(memo) ?? 0));
+  let shown = Math.max(cap, drawnPast.get(memo) ?? 0);
+  if (!cap || items.length <= shown) return items.flatMap(draw);
+  const more = el('button', { class: 'btn btn-sm btn-ghost-secondary wv-more', type: 'button' });
+  const relabel = () => { more.textContent = listCore.moreLabel({ shown, all: items.length, cap, term: db.term }); };
+  more.addEventListener('click', () => {
+    more.before(...items.slice(shown, shown + cap).flatMap(draw));
+    shown = Math.min(items.length, shown + cap);
+    drawnPast.set(memo, shown);
+    if (shown >= items.length) more.remove(); else relabel();
+  });
+  relabel();
+  return [...items.slice(0, shown).flatMap(draw), more];
+}
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
@@ -5784,10 +5848,11 @@ function renderList(main, db, items, ctx) {
       }
       const release = gridHold();
       try {
-        await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        const made = await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        revealRow = made.id;
         await keepScroll(() => showDatabase(db.id, db.view.id));
         document.querySelector(`#main .list-add[data-key="${CSS.escape(where)}"] .list-add-name`)?.focus({ preventScroll: true });
-      } catch (err) { toast(err.message, true); } finally { release(); }
+      } catch (err) { toast(err.message, true); } finally { revealRow = null; release(); }
     });
     return form;
   };
@@ -5796,7 +5861,7 @@ function renderList(main, db, items, ctx) {
     const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
     const body = node.groups
       ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+      : [...cappedEls(db, listCore.LIST_CAP, node.key, node.items, (i) => rowEls(i, node.path)), addEl(node.path)];
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
@@ -5816,7 +5881,7 @@ function renderList(main, db, items, ctx) {
     ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  else { list.append(...cappedEls(db, listCore.LIST_CAP, '', arranged.items, (i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
   if (arranged.completed?.count) {
     const c = arranged.completed;
     const shut = listCore.isCollapsed(collapsed, c.key);
@@ -5826,7 +5891,7 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
         el('span', { class: 'list-group-label' }, c.label),
         el('span', { class: 'list-count' }, String(c.count))),
-      el('div', { class: 'list-group-body' }, ...c.items.flatMap((i) => rowEls(i, null))));
+      el('div', { class: 'list-group-body' }, ...cappedEls(db, listCore.LIST_CAP, c.key, c.items, (i) => rowEls(i, null))));
     sec.wvItems = c.items;
     list.append(sec);
   }
@@ -6141,7 +6206,9 @@ function renderBoard(main, db, items, ctx) {
   };
   const cardsEl = (node, completed) => {
     const items = node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; });
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...items.map((i) => tileEl(i, completed ? null : node.path)));
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...cappedEls(db, listCore.BOARD_CAP, node.key, items, (i) => [tileEl(i, completed ? null : node.path)]));
+    const more = cards.querySelector(':scope > .wv-more');
+    if (masonry && more) masonryRows.observe(more);
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     return cards;
   };
@@ -6768,6 +6835,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     trash: trashChosen,
   };
 
+  const holdAct = (c) => {
+    const btn = holdIcon(CMD_ICON[c.id].replace('lucide:', ''), `Hold to ${c.label.toLowerCase()}`, () => COMMANDS[c.id]?.(),
+      { rowClass: 'sel-act danger', label: c.label });
+    btn.append(el('span', { class: 'sel-tip' }, btn.title));
+    return btn;
+  };
   const drawPuck = () => {
     const sel = chosen();
     if (!sel.size) { puck.replaceChildren(); return; }
@@ -6782,8 +6855,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
       ...cmds.map((c) => [
         c.danger ? el('span', { class: 'sel-sep' }) : null,
-        el('button', {
-          class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
+        c.danger ? holdAct(c) : el('button', {
+          class: 'sel-act', type: 'button',
           title: c.label, 'aria-label': c.label,
           onclick: (ev) => COMMANDS[c.id]?.(ev.currentTarget),
         }, iconEl(CMD_ICON[c.id], 'wv-icon'), el('span', { class: 'sel-tip' }, c.label)),
@@ -8099,7 +8172,7 @@ function flushUsers(t) {
   return api('POST', `/tables/${t.id}/query`, { where: [['Name', 'in', want]] }).then((res) => {
     for (const u of res.items ?? []) {
       usersCache.rows.push({
-        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email,
+        id: u.id, name: u.name, kind: u.fields?.Kind, role: u.fields?.Role, email: u.fields?.Email, avatar: u.avatar ?? null,
         workspaceId: u.sysWorkspaceId ?? null, href: `${here ? '' : '/'}#/entity/${u.id}`,
       });
     }
@@ -8146,7 +8219,8 @@ function actorChipEl(actor, { link = true } = {}) {
   const chip = el('span', { class: 'k k-actor' });
   const paint = (users) => {
     const r = weaveActor.resolveActor(actor, users, { workspaceId: state.wsId });
-    const mark = r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
+    const mark = r.user?.avatar ? chipElFrom(chipView.avatarHtml(r.user.avatar, { cls: 'actor-av' }))
+      : r.kind === 'agent' ? lucideEl('cpu', 'wv-icon wv-icon-xs')
       : r.kind === 'person' ? el('span', { class: `av hue-${chipCore.hueForName(r.name)}` }, chipCore.initialsFor(r.name)) : null;
     const label = el('span', { class: 'k-label' }, r.name);
     const via = r.via ? el('span', { class: 'k-actor-via' }, `· via ${r.via}`) : null;
@@ -11331,12 +11405,9 @@ function shareDialog(kind, id, name) {
         el('code', { class: 'share-url' }, full),
         el('div', { class: 'share-row-actions' },
           el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
-          el('button', {
-            class: 'btn btn-sm share-revoke', type: 'button',
-            onclick: async () => {
-              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
-            },
-          }, 'Revoke')));
+          holdToConfirm('Revoke', async () => {
+            try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
+          }, { rowClass: 'btn btn-sm share-revoke', holdingLabel: 'Hold to revoke…' })));
     }));
   };
   modal(`Share ${name}`, [
@@ -11535,13 +11606,13 @@ async function inviteDialog() {
           el('span', {}, i.email), el('span', { class: 'pid' }, ROLE_LABELS[i.role] ?? i.role),
           el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `invited by ${i.invitedBy ?? 'unknown'} on ${day(i.createdAt)}`),
-          el('button', { class: 'btn btn-sm btn-ghost-danger', type: 'button', onclick: async () => {
+          holdToConfirm('Revoke', async () => {
             try {
               await api('DELETE', `/invites/${i.id}`);
               toast('Invite revoked');
               draw(accounts, await api('GET', '/invites'));
             } catch (err) { toast(err.message, true); }
-          } }, 'Revoke'))))
+          }, { rowClass: 'btn btn-sm btn-ghost-danger', holdingLabel: 'Hold to revoke…' }))))
         : el('div', { class: 'wv-members-empty' }, 'No pending invites.'),
     ].filter(Boolean));
   };
@@ -11554,17 +11625,18 @@ function currentWsName() {
 }
 
 const RECENT_KEY = `weave-recent:${WS_PREFIX || '/'}`;
+const RECENT_KEEP = 60;
 function readRecents() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY)) ?? []; } catch { return []; }
 }
 function noteRecent(item) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), item))); } catch {}
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(weavePalette.pushRecent(readRecents(), { ...item, at: Date.now() }, RECENT_KEEP))); } catch {}
 }
 function noteEntityRecent(entity) {
   const wf = allTables().find((d) => d.id === entity.dbId)?.fields.find((f) => f.type === 'workflow');
   const st = wf ? entity.fields?.[wf.name] : null;
   noteRecent({
-    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, publicId: entity.publicId,
+    kind: 'entity', id: entity.id, name: entity.name, db: entity.db, dbId: entity.dbId, publicId: entity.publicId,
     url: `/e/${entity.id}`,
     ...(st ? { chip: { state: { name: st, category: stateCategory(wf, st) } } } : {}),
   });
@@ -12418,10 +12490,8 @@ function wsLogoButton(w, hasLogo) {
     host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id ?? w.name)}`);
     host.replaceChildren(String(w.name ?? 'w').slice(0, 1).toUpperCase());
   } }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
-  const clear = hasLogo ? el('button', {
-    type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
-    onclick: () => removeWorkspaceLogo(w, after),
-  }, lucideEl('x')) : null;
+  const clear = hasLogo ? holdIcon('x', 'Hold to remove logo', () => removeWorkspaceLogo(w, after),
+    { rowClass: 'ws-logo-clear', label: 'Remove logo' }) : null;
   return el('span', { class: 'ws-logo' }, pick, clear);
 }
 

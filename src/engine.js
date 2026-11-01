@@ -371,6 +371,9 @@ const WORKFLOW_STATES = [
   { name: 'Ready', category: 'done' },
 ];
 const workflowActor = (rowId) => `workflow:${rowId}`;
+const actorWorkflow = (actor) => (String(actor ?? '').startsWith('workflow:') ? String(actor).slice('workflow:'.length) : null);
+const HOME_RUNS = 20;
+const HOME_RUN_ROWS = 50;
 const templated = (v) => typeof v === 'string' && v.includes('{{');
 const scheduleOut = (t) => ({ cron: t.cron, zone: t.zone, ...(t.where != null ? { where: t.where } : {}) });
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
@@ -8568,6 +8571,95 @@ export class Weave {
     return this.activityFeed({ entityId, limit: -1 }).items.find((r) => r.id === `${entityId}:${index}`);
   }
 
+  spaceHome(ref) {
+    return this.#framed(() => {
+      const sp = this.getSpace(ref);
+      const counts = this.#liveRowCounts();
+      return {
+        space: { id: sp.id, name: sp.name, icon: sp.icon || null, description: sp.description ?? '' },
+        tables: this.listTables(sp.id).map((db) => ({
+          id: db.id,
+          name: db.name,
+          icon: db.icon || null,
+          rowCount: counts.get(db.id) ?? 0,
+          views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'grid' })),
+        })),
+        runs: this.#spaceRuns(sp.id),
+      };
+    });
+  }
+
+  #spaceRuns(spaceId) {
+    const hidden = this.#hiddenSpaces();
+    const here = (e) => !e.deletedAt && this.state.tables[e.dbId]?.spaceId === spaceId && !this.#rowHidden(e, hidden);
+    const fired = [];
+    const writes = new Map();
+    for (const e of Object.values(this.state.entities)) {
+      const mine = here(e);
+      for (const a of e.activity ?? []) {
+        if (a.kind === 'automation-ran') { fired.push({ e, a }); continue; }
+        const workflow = mine && a.seq != null ? actorWorkflow(a.actor) : null;
+        if (!workflow) continue;
+        if (!writes.has(workflow)) writes.set(workflow, []);
+        writes.get(workflow).push({ e, seq: a.seq });
+      }
+    }
+    fired.sort((x, y) => (x.a.seq ?? 0) - (y.a.seq ?? 0) || (x.a.ts < y.a.ts ? -1 : 1));
+    const runs = [];
+    for (const { e, a } of fired) {
+      const workflow = a.detail?.workflow ?? null;
+      let run = runs.at(-1);
+      const sameRun = run && run.workflow === workflow && a.seq != null && a.seq === run.lastSeq + 1 && !run.failed && !run.rows.has(e);
+      if (!sameRun) {
+        run = { workflow, firstSeq: a.seq ?? 0, rows: new Set(), comments: [], failed: null, name: null, at: null, originId: this.state.tables[e.dbId]?.spaceId ?? null };
+        runs.push(run);
+      }
+      run.rows.add(e);
+      run.lastSeq = a.seq;
+      run.failed = a.detail?.failed ?? null;
+      run.name = a.detail?.name ?? null;
+      run.at = a.ts;
+      if (here(e) && (a.detail?.steps ?? []).some((s) => s && 'text' in s && !('field' in s))) run.comments.push(e);
+    }
+    const seen = new Map();
+    for (const list of writes.values()) list.sort((x, y) => x.seq - y.seq);
+    for (const run of runs) {
+      const list = writes.get(run.workflow) ?? [];
+      let i = seen.get(run.workflow) ?? 0;
+      run.changed = new Set(run.comments);
+      for (; i < list.length && list[i].seq < run.firstSeq; i++) run.changed.add(list[i].e);
+      seen.set(run.workflow, i);
+    }
+    const reg = this.#reg;
+    const newest = new Set();
+    const out = [];
+    for (let i = runs.length - 1; i >= 0 && out.length < HOME_RUNS; i--) {
+      const run = runs[i];
+      if (hidden?.has(run.originId)) continue;
+      let failedStep = run.failed ? { step: run.failed.step ?? null, error: run.failed.error ?? null } : null;
+      if (!failedStep && !newest.has(run.workflow)) {
+        const row = own(reg.state.entities, run.workflow);
+        const fields = row && !row.deletedAt ? reg.#readEntityIn(row.id).fields : null;
+        if (fields?.Health === 'Failed') failedStep = { step: null, error: fields['Health Reason'] ?? null };
+      }
+      newest.add(run.workflow);
+      if (!run.changed.size && !(failedStep && run.originId === spaceId)) continue;
+      out.push({
+        workflowId: run.workflow,
+        name: run.name,
+        originSpace: this.state.spaces[run.originId]?.name ?? null,
+        at: run.at,
+        outcome: failedStep ? 'attention' : 'success',
+        failedStep,
+        changedCount: run.changed.size,
+        changedRows: [...run.changed].slice(0, HOME_RUN_ROWS).map((e) => ({
+          id: e.id, publicId: e.publicId, name: this.entityName(e), table: this.state.tables[e.dbId].name,
+        })),
+      });
+    }
+    return out;
+  }
+
   #nextSeq() {
     this.state.meta.activitySeq = (this.state.meta.activitySeq ?? 0) + 1;
     return this.state.meta.activitySeq;
@@ -9063,7 +9155,10 @@ export class Weave {
     } finally {
       this.actor = person;
     }
-    for (const { e, outs } of ran) this.#logActivity(e, 'automation-ran', { name, workflow: rule.row.id, steps: outs });
+    ran.forEach(({ e, outs }, i) => this.#logActivity(e, 'automation-ran', {
+      name, workflow: rule.row.id, steps: outs,
+      ...(failure != null && i === ran.length - 1 ? { failed: { step: outs.length + 1, error: failure } } : {}),
+    }));
     reg.#stampRun(rule.row, failure, at);
     if (reg !== this) reg.save();
   }

@@ -802,6 +802,8 @@ A table with an avatar field puts the face first in the row's chip, inside its l
 
 **System/Users** carries an Avatar field. An agent account shows its face with a small chip badge in the corner, so a person and an agent with the same initials read apart.
 
+A compact to-many relation cell whose rows all have faces draws them as a pile: up to five overlapping faces, each a link to its row, then \`+N\`. Created by, Modified by, the activity feed and the identity panel show the face from the actor's **System/Users** row. A one-word name takes its initials from the parts between its dashes or underscores, so \`weave-fixer\` reads WF.
+
 ## Gotchas
 
 The avatar is never a chip segment or a card field: it is the face, drawn once. Formulas, filters and footers skip it, as they skip attachments.` },
@@ -1043,7 +1045,7 @@ The name and logo ride the icon rail on the far left, which is how you switch be
 
 ## Deleting
 
-Every menu deletes the same way: **Move to trash**, one click, for a table, a space, a record, a share page or a field. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
+Every menu deletes the same way: **Move to trash**, held until its fill sweeps across, for a table, a space, a record, a share page or a field. A click deletes nothing. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
 
 ## The space
 
@@ -1238,7 +1240,7 @@ Once a row is chosen, a bar sits at the bottom centre of the window saying how m
 | **Link to…** | pick a relation, search the far table, pick one row: every chosen row is linked to it |
 | **Duplicate** | copies each row's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
 | **⋯** | the overflow below |
-| **Move to trash** | past a hairline, on its own. It is instant: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
+| **Move to trash** | past a hairline, on its own. Hold it until its fill sweeps across: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
 
 | Under ⋯ | What it does |
 | --- | --- |
@@ -1382,7 +1384,7 @@ Actions run in order and each one yields an output the later ones can read. \`se
  { "type": "set-field", "field": "Account Ref", "value": "Account#{{steps.1.publicId}}" },
  { "type": "add-comment", "text": "Opened {{steps.1.name}}; ref {{steps.2.value}}" }]
 \`\`\`
-A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order.
+A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the row it stopped on.
 
 ## Decks
 
@@ -2609,6 +2611,7 @@ A list holds things to finish, in an order you set; a table holds records to com
 | A sort | Orders rows inside each group. The handle still moves rows between groups and nests them; clearing the sort brings the saved order back. |
 | The add row | Ends each innermost group. A row added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
 | A filter | Runs first. Matching ticked rows still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
+| Past 200 rows | Each group, and the Completed section, draws its first 200 rows and ends with **Show 200 more \u00b7 200 of 3,980 rows**, which adds the next 200 in place. The Board layout draws 40 cards a column and extends the same way (Issue #1266). |
 
 The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 

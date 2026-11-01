@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 
 let solo;
 const s = await launch('workspace delete, last workspace', (weave) => {
@@ -28,7 +29,7 @@ if (s) {
         await page.click('#main .view-header .dots-btn[title="Workspace actions"]');
         await page.locator('.wv-menu .wv-menu-row', { hasText: 'Delete workspace…' }).click();
         await page.fill('#modal input[name="confirm"]', 'solo');
-        await page.click('#modal button[type="submit"]');
+        await hold(page.locator('#modal .ws-delete-go'));
         await page.waitForURL((u) => u.pathname === '/');
         await page.waitForFunction(() => document.querySelector('#ws-name')?.textContent.trim() === 'weave');
         assert.ok(solo.state.meta.deletedAt, 'solo is deleted');

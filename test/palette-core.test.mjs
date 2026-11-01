@@ -96,6 +96,18 @@ test('groupJump moves to the first row of the next group and wraps; Shift goes b
   assert.equal(P.groupJump([], 0, 1), 0);
 });
 
+test('pushRecent keeps a longer list when asked', () => {
+  let list = [];
+  for (let i = 1; i <= 12; i++) list = P.pushRecent(list, { kind: 'entity', id: `e${i}`, name: `E${i}` }, 10);
+  assert.equal(list.length, 10);
+  assert.equal(list[0].id, 'e12');
+});
+
+test('a saved view recent names its table', () => {
+  assert.equal(P.whereText({ kind: 'table-view', id: 'v', name: 'Pipeline', table: 'Deal' }), 'Deal · view');
+  assert.equal(P.displayName({ kind: 'table-view', id: 'v', name: 'Pipeline', table: 'Deal' }), 'Pipeline');
+});
+
 test('pushRecent puts the newest first, drops the older copy and keeps eight', () => {
   let list = [];
   for (let i = 1; i <= 10; i++) list = P.pushRecent(list, { kind: 'entity', id: `e${i}`, name: `E${i}` });

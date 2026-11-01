@@ -1,5 +1,7 @@
 (function (root) {
   const GROUP_CAP = 5;
+  const LIST_CAP = 200;
+  const BOARD_CAP = 40;
   const GROUP_TYPES = ['select', 'multiselect', 'workflow', 'toggle', 'checkbox', 'relation', 'date'];
   const HEADINGS = ['label', 'chip'];
   const ORDERS = ['option', 'table', 'az'];
@@ -196,13 +198,18 @@
     return (levels ?? []).map((l) => (typeof l === 'string' ? `${l}::asc:` : `${l.field}:${l.order ?? ''}:${l.dir === 'desc' ? 'desc' : 'asc'}:${l.grain ?? ''}`)).join('>');
   }
 
+  function moreLabel({ shown, all, cap, term = { singular: 'row', plural: 'rows' } }) {
+    const next = Math.max(0, Math.min(cap, all - shown));
+    const noun = all === 1 ? term.singular : term.plural;
+    return `Show ${next} more \u00b7 ${shown} of ${all} ${noun}`;
+  }
   function groupLabel(levels, fieldOf) {
     return levels.map((l) => fieldOf(l.field)?.name ?? l.field).join(SEP);
   }
 
   root.weaveListCore = {
-    GROUP_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
+    GROUP_CAP, LIST_CAP, BOARD_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
     groupable, levelDefaults, normalizeLevel, compactLevel, parseGroup, dateBucket,
-    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, groupLabel, groupSig,
+    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, moreLabel, groupLabel, groupSig,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
