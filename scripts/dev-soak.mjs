@@ -132,6 +132,8 @@ export async function report({ sha, outcome, io }) {
   return status;
 }
 
+export const writableTable = (tables) => tables.find((t) => !String(t.qualified ?? '').startsWith('System/'));
+
 export async function smoke(page, { base, workspace, writeWorkspace, token }) {
   const ws = `${base}${workspace}`;
   let step = 'load';
@@ -168,7 +170,7 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
       const auth = { Authorization: `Bearer ${token}` };
       await page.setExtraHTTPHeaders(auth);
       const writable = await api('GET', `${wws}/api/tables`, undefined, auth);
-      const table = writable.find((t) => !t.system);
+      const table = writableTable(writable);
       if (!table) throw new Error(`${writeWorkspace} has no table to write to`);
       const made = await api('POST', `${wws}/api/tables/${table.id}/entities`, { Name: `dev-smoke ${new Date().toISOString()}` }, auth);
       await page.goto(`${wws}/#/table/${table.id}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
