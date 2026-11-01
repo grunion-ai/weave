@@ -8934,6 +8934,7 @@ async function showSpace(spaceId) {
     }),
   );
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showSpaceLauncher(main, space);
   if (!dockCoversScreen.matches) {
     const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
     if (loaded) return mountSpaceHome(main, space);

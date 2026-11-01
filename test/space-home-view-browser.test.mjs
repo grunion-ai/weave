@@ -246,11 +246,12 @@ if (s) {
     }
   });
 
-  test('below the phone breakpoint today\'s page stays', async () => {
+  test('below the phone breakpoint the launcher replaces the home', async () => {
     const page = await open('light', 390, ids.sales);
     try {
-      await page.locator('.space-tables .list-row').first().waitFor();
+      await page.locator('.launcher[data-ready]').waitFor({ state: 'attached' });
       assert.equal(await page.locator('.space-home').count(), 0);
+      assert.equal(await page.locator('.space-tables').count(), 0);
     } finally {
       await page.close();
     }
