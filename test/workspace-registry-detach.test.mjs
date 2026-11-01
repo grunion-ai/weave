@@ -205,6 +205,21 @@ test('detach projects each member space rollup into its owning workspace', () =>
   assert.equal(Object.values(root.getTable('System/Spaces').fields).filter(f => f.type === 'rollup').length, 0);
 });
 
+test('detach drops a registry rollup whose source table exists nowhere', () => {
+  const root = new Weave({ name: 'root' });
+  const w = new Weave({ name: 'one' });
+  w.createSpace({ name: 'Work' });
+  const table = w.createTable({ space: 'Work', name: 'Task' });
+  w.addField('System/Spaces', { name: 'Stale', type: 'rollup', config: { via: table.id, aggregate: 'count' } });
+  w.joinRegistry(root);
+  const stale = Object.values(root.getTable('System/Spaces').fields).find(f => f.type === 'rollup');
+  const gone = '00000000-0000-4000-8000-000000000000';
+  stale.config.via = gone;
+  assert.equal(detachHubRegistry(root, [w]).migrated, 1);
+  assert.equal(Object.values(w.getTable('System/Spaces').fields).filter(f => f.config?.via === gone).length, 0);
+  assert.ok(w.listEntities(w.getTable('System/Spaces').id).some(r => r.sysId === w.getSpace('Work').id));
+});
+
 test('detach preserves local select options missing from the root field', () => {
   const root = new Weave({ name: 'root' });
   const member = new Weave({ name: 'member' });

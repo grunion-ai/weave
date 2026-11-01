@@ -1084,7 +1084,7 @@ function detachedRegistryState(root, member, members) {
     for (const f of Object.values(t.fields)) {
       const targets = f.type === 'relation' ? (f.config.targetDbs ?? [f.config.targetDb]) : f.type === 'rollup' && f.config.via ? [f.config.via] : [];
       if (targets.some(id => id && !tables.some(r => r.id === id) && !state.tables[id])) {
-        if (f.type === 'rollup' && f.config.via && [root, ...members].some(w => w !== member && w.state.tables[f.config.via])) {
+        if (f.type === 'rollup' && f.config.via) {
           delete t.fields[f.id];
           t.fieldOrder = t.fieldOrder.filter(id => id !== f.id);
           continue;
