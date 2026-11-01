@@ -76,7 +76,7 @@ workspace file (see
 | Build | `weave_build` | spaces, tables, fields, relations and rows in one call (dryRun checks) |
 | Read and search | `weave_ontology` | short schema: outline, one table, changes |
 |  | `weave_schema` | the full schema as JSON |
-|  | `weave_query` | rows of one table, filtered (where), sorted, paged |
+|  | `weave_query` | rows of one table, filtered (where), sorted, 200 a page |
 |  | `weave_get_entity` | one row in full: values, document, comments, activity |
 |  | `weave_search` | find rows, tables and spaces by text; each hit has a permalink |
 | Write rows | `weave_create_entity` | create one row |
@@ -440,7 +440,7 @@ workspace. Every MCP tool has a command:
 
 | Read | Schema | Data |
 | --- | --- | --- |
-| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
+| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space` / `weave space update` / `weave space members` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` / `weave field restore` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |

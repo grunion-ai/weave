@@ -32,17 +32,21 @@ if (s) {
   const menuItems = (page) => page.locator('.ws-ctx .wv-menu-row').allTextContents();
   const closeMenu = async (page) => { await page.keyboard.press('Escape'); assert.equal(await page.locator('.ws-ctx').count(), 0); };
 
-  test('the tray menu is the workspace definition: no logo rows, the link preview switch in Share (Feature #296)', async () => {
+  test('the tray menu is the workspace definition: no logo rows, Delete alone, and none on the default (Feature #296, Feature #347)', async () => {
     const page = await open();
-    for (const name of ['main', 'scratch', 'blank']) {
+    for (const name of ['scratch', 'blank']) {
       await chip(page, name).click({ button: 'right' });
       await page.waitForSelector('.ws-ctx .wv-menu-row');
-      const items = await menuItems(page);
+      const items = (await menuItems(page)).map((t) => t.trim());
       assert.ok(!items.some((t) => /logo/i.test(t)), `${name} keeps logo rows out of the menu: ${items}`);
-      assert.equal(items.find((t) => t.trim() !== 'Invite people…')?.trim(), 'Link preview before sign-in', `${name} opens on the link preview switch after any invite row (Issue #759): ${items}`);
-      assert.equal(await page.locator('.ws-ctx .wv-menu-row', { hasText: 'Link preview before sign-in' }).getAttribute('role'), 'menuitemcheckbox', 'a switch row says so');
+      assert.deepEqual(items, ['Delete workspace…'], `${name} offers Delete alone: ${items}`);
       await closeMenu(page);
     }
+    await chip(page, 'main').click({ button: 'right' });
+    await chip(page, 'blank').click({ button: 'right' });
+    await page.waitForSelector('.ws-ctx .wv-menu-row');
+    assert.match(await page.locator('.ws-ctx').textContent(), /blank/, 'the default chip opened nothing, so the next menu is blank\'s');
+    await closeMenu(page);
     await page.close();
   });
 
@@ -115,15 +119,15 @@ if (s) {
   }
 
   test('a left click on the current chip opens the menu instead of reloading; siblings still switch', async () => {
-    const page = await open();
+    const page = await open(`/w/${scratch.state.meta.id}/`);
     const url = page.url();
-    await chip(page, 'main').click();
+    await chip(page, 'scratch').click();
     await page.waitForSelector('.ws-ctx .wv-menu-row');
-    assert.ok((await menuItems(page)).includes('Link preview before sign-in'), 'the current chip\'s click opens its menu');
+    assert.ok((await menuItems(page)).some((t) => t.trim() === 'Delete workspace…'), 'the current chip\'s click opens its menu');
     assert.equal(page.url(), url, 'no navigation');
     await closeMenu(page);
-    await chip(page, 'scratch').click();
-    await page.waitForURL(new RegExp(`/w/${scratch.state.meta.id}/`));
+    await chip(page, 'blank').click();
+    await page.waitForURL(new RegExp(`/w/${blank.state.meta.id}/`));
     await page.close();
   });
 }

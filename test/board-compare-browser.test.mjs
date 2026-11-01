@@ -86,6 +86,22 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('the footer picks slot holds only Compare and Clear, at every pick count under the cap', async () => {
+    seed();
+    const page = await open();
+    try {
+      const slot = page.locator('.board-footer .board-picks');
+      for (const [n, order] of [[1, [ids.desk]], [2, [ids.desk, ids.chair]], [4, [ids.desk, ids.chair, ids.mat, ids.rug]]]) {
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForSelector('.wv-board .tile');
+        for (const id of order) await pick(page, id);
+        assert.equal((await slot.textContent()).trim(), `Compare ${n}Clear`, `${n} picked: the slot carries the two buttons and nothing else`);
+        assert.doesNotMatch(await page.locator('.board-footer').textContent(), /null/, `${n} picked: no stray null in the footer`);
+      }
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
   test('a fifth pick is refused with a footer hint', async () => {
     seed();
     const page = await open();

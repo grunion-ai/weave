@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
 const red = (patch = {}) => ({ id: 900, name: 'tests', path: '.github/workflows/test.yml', event: 'push', head_branch: 'main', head_repository: { full_name: repo }, status: 'completed', conclusion: 'failure', run_attempt: 1, head_sha: sha(100), html_url: 'https://github.com/grunion-ai/weave/actions/runs/900', created_at: '2026-10-12T10:00:00Z', ...patch });
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 
-function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'] } = {}) {
+function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {} } = {}) {
   const head = commits.at(-1)?.sha;
   const run = given ?? red({ head_sha: head ?? sha(100) });
   const writes = [];
@@ -19,7 +19,8 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     log: (line) => logs.push(line),
     run: async () => run,
     greenAfter: async () => green,
-    failures: async () => ({ files, jobs: [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }] }),
+    failures: async () => ({ files, jobs, cancelled }),
+    openFlakes: async (names) => names.filter((n) => flakes[n]).map((n) => ({ file: n, publicId: flakes[n] })),
     rerunFailed: async (id) => writes.push(['rerun', id]),
     waitRun: async (id) => ({ ...run, id, run_attempt: 2 }),
     gate: async () => (Array.isArray(rerunGate) ? (rerunGate.length > 1 ? rerunGate.shift() : rerunGate[0]) : rerunGate),
@@ -43,6 +44,71 @@ test('only a failed first-attempt main push run of tests is eligible', () => {
   for (const patch of [{ event: 'workflow_dispatch' }, { head_branch: 'feature' }, { conclusion: 'success' }, { conclusion: 'cancelled' }, { status: 'in_progress' }, { name: 'dev' }, { path: '.github/workflows/dev.yml' }, { head_repository: { full_name: 'fork/weave' } }]) {
     assert.ok(eligible(red(patch)), JSON.stringify(patch));
   }
+});
+
+test('a main run that ended cancelled, skipped, neutral or any other non-failure is no signal: nothing written, the conclusion logged', async () => {
+  for (const conclusion of ['cancelled', 'skipped', 'neutral', 'timed_out', 'action_required', 'stale', 'startup_failure', 'success', null]) {
+    assert.equal(eligible(red({ conclusion })), `conclusion ${conclusion} is no signal`);
+    const f = fake({ run: red({ conclusion, run_attempt: 1 }) });
+    const out = await sheriff(900, f.io);
+    assert.equal(out.action, 'skip', String(conclusion));
+    assert.deepEqual(f.writes, [], String(conclusion));
+    assert.ok(f.logs.some((l) => l.includes(`conclusion ${conclusion} is no signal`)), f.logs.join('\n'));
+  }
+});
+
+test('the 2026-10-28 run, read after its rerun was cancelled, is no signal even when dispatched by hand', async () => {
+  const f = fake({ run: red({ id: 40726317119, conclusion: 'cancelled', run_attempt: 2 }) });
+  const out = await sheriff(40726317119, f.io, { dryRun: true });
+  assert.equal(out.action, 'skip');
+  assert.match(out.reason, /conclusion cancelled is no signal/);
+  assert.deepEqual(f.writes, []);
+});
+
+test('a failed run whose only red jobs were cancelled is no signal: no rerun, no bisect, no revert', async () => {
+  const f = fake({ jobs: [], cancelled: ['tests browser-1', 'tests browser-4'], files: [] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'skip');
+  assert.match(out.reason, /no job failed; tests browser-1, tests browser-4 cancelled/);
+  assert.deepEqual(f.writes, []);
+  const gateOnly = fake({ jobs: [], cancelled: [], files: [] });
+  assert.equal((await sheriff(900, gateOnly.io)).action, 'revert');
+  const mixed = fake({ cancelled: ['tests browser-4'] });
+  assert.equal((await sheriff(900, mixed.io)).action, 'revert');
+});
+
+test('a CI gate failure carried only by cancelled shards reads as cancelled, so a rerun or probe it ends gives no verdict', () => {
+  const job = (name, conclusion) => ({ name, conclusion });
+  assert.equal(gateVerdict([job('plan', 'success'), job('tests browser-1', 'cancelled'), job('tests unit-1', 'success'), job('CI gate', 'failure')]), 'cancelled');
+  assert.equal(gateVerdict([job('tests browser-1', 'cancelled'), job('tests browser-2', 'failure'), job('CI gate', 'failure')]), 'failure');
+  assert.equal(gateVerdict([job('tests browser-1', 'success'), job('CI gate', 'failure')]), 'failure');
+  assert.equal(gateVerdict([job('tests browser-1', 'success'), job('CI gate', 'success')]), 'success');
+  assert.equal(gateVerdict([job('tests browser-1', 'cancelled')]), null);
+  assert.equal(gateVerdict([]), null);
+  assert.equal(rerunVerdict(gateVerdict([job('tests browser-1', 'cancelled'), job('CI gate', 'failure')])), 'unknown');
+});
+
+test('a file the in-run retry turned green is not named as failing (Issue #1282)', () => {
+  const s = (file, success) => ({ file, success, counts: { failed: success ? 0 : 1 } });
+  assert.deepEqual(failingFiles([{ attempt: 1, summaries: [s('test/feedback-budget-browser.test.mjs', false), s('test/vitals-budget-browser.test.mjs', false), s('test/status-browser.test.mjs', false), s('test/feedback-budget-browser.test.mjs', true), s('test/vitals-budget-browser.test.mjs', false), s('test/status-browser.test.mjs', true)] }]), ['test/vitals-budget-browser.test.mjs']);
+  assert.deepEqual(failingFiles([{ attempt: 2, summaries: [s('test/a.test.mjs', true)] }, { attempt: 1, summaries: [s('test/a.test.mjs', false)] }]), []);
+});
+
+test('a red held only by files with an open flake row escalates instead of convicting a commit (Issue #1282)', async () => {
+  const file = 'test/feedback-budget-browser.test.mjs';
+  const f = fake({ files: [file], commits: [101, 102, 103].map((n) => commit(n)), badFrom: 1, flakes: { [file]: 1109 } });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.ok(!f.kinds().includes('revert'), f.kinds().join(','));
+  assert.ok(!f.kinds().includes('probe'), f.kinds().join(','));
+  assert.deepEqual(f.kinds(), ['rerun', 'flake', 'issue', 'alert']);
+  assert.match(out.reason, /open flake row #1109/);
+  assert.equal(f.writes.find((w) => w[0] === 'flake')[1].stayedRed, true);
+  assert.match(f.writes.find((w) => w[0] === 'issue')[1].description, /open flake row #1109/);
+  const untracked = fake({ files: [file, 'test/grid.test.mjs'], flakes: { [file]: 1109 } });
+  assert.equal((await sheriff(900, untracked.io)).action, 'revert');
+  const none = fake({ files: [], flakes: { [file]: 1109 } });
+  assert.equal((await sheriff(900, none.io)).action, 'revert');
 });
 
 test('an ineligible run, a rerun attempt or a main that went green again writes nothing', async () => {
@@ -259,7 +325,7 @@ test('workflows: tests takes a ref input for bisect probes and the sheriff answe
   assert.match(tests, /workflow_dispatch:\n    inputs:\n      ref:/);
   assert.match(tests, /run-name: \$\{\{ inputs\.ref && format\('tests at \{0\}', inputs\.ref\) \|\| '' \}\}/);
   assert.equal(tests.split('ref: ${{ inputs.ref || github.sha }}').length - 1, 3);
-  assert.match(tests, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.ref \}\}/);
+  assert.match(tests, /group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}-\$\{\{ inputs\.ref \|\| github\.sha \}\}/);
   assert.match(tests, /workflow_dispatch' && !inputs\.ref\)/);
   const yml = readFileSync('.github/workflows/sheriff.yml', 'utf8');
   assert.match(yml, /workflow_run:[^\n]*\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
@@ -282,4 +348,8 @@ test('missing tracker credentials reject both incident filing and flake recordin
   const io = realIO({});
   await assert.rejects(io.fileIssue({ name: 'incident', description: 'evidence' }), /WEAVE_TRACKER_TOKEN missing/);
   await assert.rejects(io.logFlake({ run: red(), files: ['test/grid.test.mjs'], jobs: [] }), /WEAVE_TRACKER_TOKEN missing/);
+  await assert.rejects(io.openFlakes(['test/grid.test.mjs']), /WEAVE_TRACKER_TOKEN missing/);
+  const logs = [];
+  assert.deepEqual(await dryIO({ ...io, log: (l) => logs.push(l) }).openFlakes(['test/grid.test.mjs']), []);
+  assert.match(logs.join('\n'), /could not read the flake rows/);
 });
