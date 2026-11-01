@@ -49,6 +49,14 @@ test('normalize stores lowercase, trims, derives the plural, and rejects junk', 
   assert.throws(() => T.normalize('deal'), /singular, plural/);
 });
 
+test('tally names a table\'s own term and never says rows', () => {
+  assert.equal(T.tally(1139, { singular: 'bug', plural: 'bugs', set: true }), '1,139 bugs');
+  assert.equal(T.tally(1, { singular: 'bug', plural: 'bugs', set: true }), '1 bug');
+  assert.equal(T.tally(1139, { singular: 'row', plural: 'rows', set: false }), '1,139');
+  assert.equal(T.tally(0, null), '0');
+  assert.equal(T.tally(1, undefined), '1');
+});
+
 test('count speaks the term, singular at one', () => {
   assert.equal(T.count(1, { singular: 'deal', plural: 'deals' }), '1 deal');
   assert.equal(T.count(3, { singular: 'deal', plural: 'deals' }), '3 deals');

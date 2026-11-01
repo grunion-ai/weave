@@ -217,6 +217,9 @@ if (s) {
       await box.locator('.home-map').waitFor();
       assert.match(await box.locator('.space-home-description').innerHTML(), /<strong>people<\/strong>/);
       assert.ok(await box.locator('.space-tables .list-row').count() >= 3);
+      const card = await box.locator('.space-tables').innerText();
+      assert.match(card, /2,501/);
+      assert.doesNotMatch(card.replaceAll(LONG.slice(0, 80), ''), /\brows?\b/i, card);
       assert.equal(await box.locator('details.wv-schema').count(), 1);
       await page.reload();
       await page.locator('details.space-home-overview[open] .home-map').waitFor();

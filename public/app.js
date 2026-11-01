@@ -9003,7 +9003,7 @@ function spaceTablesCard(space) {
     ...space.tables.map((t) => el('div', { class: 'list-row', dataset: { href: `#/table/${t.id}` }, onclick: () => { location.hash = `#/table/${t.id}`; } },
       el('span', {}, t.name),
       el('span', { class: 'spacer' }),
-      el('span', { class: 'pid' }, WeaveTerm.count(t.entityCount ?? 0, t.term)))),
+      el('span', { class: 'pid' }, WeaveTerm.tally(t.entityCount ?? 0, t.term)))),
     add ? el('div', { class: 'list-row list-row-add' }, add) : null);
 }
 
