@@ -712,8 +712,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, dlBtn, \.\.\.poseControls\)/,
-    'the Activity clock-arrow, the eye, ⋮ and the pose controls trail the crumb line (one entity surface)');
+  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
+    'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
   assert.match(body, /grid\.classList\.toggle\('side-open', refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
     'the column opens when it has references, never on comments (Feature #323) or an Activity switch (Feature #315)');
@@ -1034,15 +1034,13 @@ test('navigation schedules a skeleton of the destination (Feature #49, Issue #63
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
 });
 
-test('the Share dialog shows the link and no QR code (Feature #263)', () => {
+test('the share pane shows the link and no QR code (Feature #263)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
-  const start = app.indexOf('function shareDialog(');
-  assert.ok(start > 0, 'the Share dialog exists');
-  const share = app.slice(start, app.indexOf("'Create link')", start));
-  assert.match(share, /el\('code', \{ class: 'share-url' \}, full\)/, 'the dialog shows the full link');
-  assert.ok(share.includes("copyText(location.origin + WS_PREFIX + g.url, 'Link copied')"), 'minting a link copies it (Feature #194)');
+  const share = readFileSync(join(ROOT, 'public/share-panel.js'), 'utf8');
+  assert.match(share, /el\('a', \{ class: 'share-link-name', href: url\(link\)/, 'the pane shows the link');
+  assert.match(share, /action\('Copy link', 'copy', \(\) => copy\(url\(link\), 'Link copied'\)\)/, 'and copies it (Feature #194)');
   assert.doesNotMatch(share, /canvas|qr|scan/i, 'no QR code and no talk of scanning one');
   for (const gone of ['qrCanvas', 'leanQR', 'share-qr']) assert.ok(!app.includes(gone), `app.js still names ${gone}`);
   assert.ok(!html.includes('lean-qr'), 'the shell no longer loads lean-qr');

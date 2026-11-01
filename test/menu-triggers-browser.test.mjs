@@ -19,8 +19,8 @@ const s = await launch('menu triggers', (weave) => {
 }, { server: () => ({ workspaces: { scratch } }) });
 
 const ROWS = {
-  table: ['Add description…', 'Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
-  record: ['Duplicate', 'Share…', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
+  table: ['Add description…', 'Move to space…', 'Duplicate', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
+  record: ['Duplicate', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
   'share-page': ['Move to trash'],
