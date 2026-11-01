@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, engineOf, barsOnEngine, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
+import { launch, engineOf, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
+
+const barEngines = new Map();
+test.after(async () => {
+  for (const engine of barEngines.values()) await engine?.close().catch(() => {});
+});
+const barsOnEngine = async (name) => {
+  if (!barEngines.has(name)) {
+    const pw = await import('playwright');
+    barEngines.set(name, await pw[name].launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }).catch(() => null));
+  }
+  return barEngines.get(name);
+};
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
