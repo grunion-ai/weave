@@ -69,10 +69,20 @@ test('filterRuns picks by outcome, and all keeps everything', () => {
   assert.deepEqual(H.filterRuns(runs, 'success'), [runs[1]]);
 });
 
-test('runSubject reads origin to here, and the changed count', () => {
-  assert.equal(H.runSubject({ originSpace: 'Ops', changedCount: 1 }, 'Sales'), 'Ops → Sales · 1 row changed');
-  assert.equal(H.runSubject({ originSpace: 'Sales', changedCount: 2 }, 'Sales'), 'Sales · 2 rows changed');
-  assert.equal(H.runSubject({ originSpace: 'Sales', changedCount: 0 }, 'Sales'), 'Sales · no rows changed');
+test('runSubject reads origin to here, and what changed by table name', () => {
+  assert.equal(H.runSubject({ originSpace: 'Ops', changedTables: [{ table: 'Deal', count: 1 }] }, 'Sales'), 'Ops → Sales · Deal 1');
+  assert.equal(H.runSubject({ originSpace: 'Sales', changedTables: [{ table: 'Deal', count: 2 }, { table: 'Contact', count: 1200 }] }, 'Sales'), 'Sales · Deal 2, Contact 1,200');
+  assert.equal(H.runSubject({ originSpace: 'Sales', changedTables: [] }, 'Sales'), 'Sales · nothing changed');
+});
+
+test('rowsByTable keys recents by table name, the most recent table first', () => {
+  const rows = [row('a', 't1', { table: 'Deal' }), row('b', 't2', { table: 'Contact' }), row('c', 't1', { table: 'Deal' })];
+  assert.deepEqual(H.rowsByTable(rows).map((g) => [g.table, g.rows.map((r) => r.id)]), [['Deal', ['a', 'c']], ['Contact', ['b']]]);
+});
+
+test('homeSections names each recent row\'s table: current by id, from its qualified name for an older item', () => {
+  const out = H.homeSections(payload(), [row('a', 't2', { db: 'Sales/Old name' }), { kind: 'entity', id: 'b', name: 'B', db: 'Sales/Deal', publicId: 2, url: '/e/b' }]);
+  assert.deepEqual(out.rows.map((r) => r.table), ['Contact', 'Deal']);
 });
 
 test('runResult names the failed step, the reason alone when the step is not recorded, or success', () => {

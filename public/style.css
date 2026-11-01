@@ -2840,6 +2840,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .space-home-list { display: flex; flex-direction: column; }
 .space-home-row { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 8px 4px; border-bottom: 1px solid var(--tblr-border-color); }
 .space-home-text { flex: 1; min-width: 0; }
+.space-home-group + .space-home-group { margin-top: 14px; }
+.space-home-group-name { margin: 0 0 2px; font-size: var(--fs-meta); font-weight: 500; color: var(--tblr-secondary); }
 .space-home-filter { flex: 0 0 150px; width: 150px; }
 .space-home-filter .picker-face { padding-block: 2px; font-size: var(--fs-secondary); }
 .space-home-run { border-bottom: 1px solid var(--tblr-border-color); }

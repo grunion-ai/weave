@@ -37,7 +37,7 @@ const s = await launch('space home view', (weave) => {
     trigger: { type: 'entity-created' },
     actions: [{ type: 'add-comment', text: 'Started' }, { type: 'upsert-row', table: 'Ops/Task', key: 'Code', fields: { Code: 'row.Name.missing' } }],
   });
-  const partial = weave.createEntity(none.id, { Name: 'Partial run row' });
+  const partial = weave.createEntity(none.id, { Name: 'Partial item' });
   weave.deleteEntity(weave.createEntity(calm.id, { Name: 'Trashed row' }).id);
   ids = { sales: sales.id, ops: ops.id, quiet: quiet.id, empty: empty.id, deal: deal.id, none: none.id, task: task.id, pipeline: pipeline.id, northstar: northstar.id, stamp: stamp.id, half: half.id, partial: partial.id };
 });
@@ -118,6 +118,21 @@ if (s) {
     }
   });
 
+  test('the page keys what it lists by table name and never says rows', async () => {
+    const page = await open('light', 1280, ids.sales, recentsOf());
+    try {
+      await page.locator('.space-home-rows .space-home-row').waitFor();
+      assert.deepEqual(await page.locator('.space-home-rows .space-home-group-name').allInnerTexts(), ['Deal']);
+      assert.equal(await page.locator('.space-home-rows h2').innerText(), 'Recent');
+      assert.match(await page.locator('.space-home-rows .space-home-row .space-home-sub').first().innerText(), /^#1\b/);
+      await page.locator('.space-home-run summary').first().click();
+      const text = (await page.locator('.space-home').innerText()).replaceAll(LONG, '').replaceAll('upsert-row', '');
+      assert.doesNotMatch(text, /\brows?\b/i, text);
+    } finally {
+      await page.close();
+    }
+  });
+
   test('recents show only this space\'s tables; a recent view and row open', async () => {
     const page = await open('light', 1280, ids.sales, recentsOf());
     try {
@@ -125,11 +140,12 @@ if (s) {
       assert.equal(await page.locator('.space-home-view').count(), 1);
       assert.equal(await page.locator('.space-home-rows .space-home-row').count(), 1);
       assert.equal(await page.locator('.space-home', { hasText: 'From another space' }).count(), 0);
-      await page.locator('.space-home-rows .space-home-row').click();
-      await page.waitForFunction(() => document.querySelector('.entity-title, .view-title, #dock, .dock') !== null);
-      await page.goto(`${s.base}/#/space/${ids.sales}`);
       await page.locator('.space-home-view').click();
       await page.waitForFunction((want) => location.hash.endsWith(want), `/view/${ids.pipeline}`);
+      await page.goto(`${s.base}/#/space/${ids.sales}`);
+      const opened = page.waitForResponse((r) => r.url().includes(`/api/entities/${ids.northstar}`));
+      await page.locator('.space-home-rows .space-home-row').click();
+      await opened;
     } finally {
       await page.close();
     }
@@ -151,7 +167,7 @@ if (s) {
     try {
       const run = page.locator('.space-home-run', { hasText: 'Open deal from ops' });
       await run.waitFor();
-      assert.match(await run.locator('summary').innerText(), /Ops → Sales · 1 row changed/);
+      assert.match(await run.locator('summary').innerText(), /Ops → Sales · Deal 1/);
       assert.equal(await run.locator('.space-home-run-body').isVisible(), false, 'details start shut');
       await run.locator('summary').click();
       assert.match(await run.locator('.space-home-run-body').innerText(), /Renewal from ops/);
@@ -169,7 +185,7 @@ if (s) {
       assert.match(await run.locator('.space-home-result').innerText(), /^Step 2 failed/);
       await run.locator('summary').click();
       assert.match(await run.locator('.space-home-failure').innerText(), /Step 2 failed/);
-      await run.locator('.space-home-row', { hasText: 'Partial run row' }).click();
+      await run.locator('.space-home-row', { hasText: 'Partial item' }).click();
       await page.waitForResponse((r) => r.url().includes(`/api/entities/${ids.partial}`)).catch(() => {});
     } finally {
       await page.close();
