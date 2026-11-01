@@ -1116,7 +1116,7 @@ On a desktop or tablet, opening a space lands on one page, computed from what th
 
 On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
 
-At 600px and below, a space page opens as a launcher under its title and description: a search box for that space's rows, one tile per table with its row count, your recent views and rows, and automation runs that changed rows in the space, including runs that started elsewhere. A partial run shows its failed step, and tapping a run opens its details and the rows it changed. **About this space** opens the description, summaries and relation map. A section with nothing to show disappears. Add a table on a phone from the sidebar.
+At 600px and below, a space page opens as a launcher under its title and description: a search box for that space's records, one tile per table with its count, your recent views and records, and automation runs that changed records in the space, including runs that started elsewhere. A partial run shows its failed step, and tapping a run opens its details and the records it changed. **About this space** opens the description, summaries and relation map. A section with nothing to show disappears. Add a table on a phone from the sidebar.
 
 ## Icons and nouns
 

@@ -9,7 +9,6 @@ const minutesAgo = (n) => new Date(Date.now() - n * 60000).toISOString();
 const s = await launch('space launcher', (weave) => {
   const sales = weave.createSpace({ name: 'Sales', description: 'Pipeline, accounts and the people behind them.' });
   const deal = weave.createTable({ space: 'Sales', name: 'Deal' });
-  weave.updateTable(deal, { noun: 'deal' });
   const contact = weave.createTable({ space: 'Sales', name: 'Contact' });
   const account = weave.createTable({ space: 'Sales', name: 'Account' });
   const long = weave.createTable({ space: 'Sales', name: LONG });
@@ -32,9 +31,9 @@ const fullPayload = (ids) => ({
     ...ids.extra.map((id, i) => ({ id, name: `Extra ${i}`, icon: '', rowCount: i, views: [] })),
   ],
   runs: [
-    { workflowId: 'w1', name: 'Renewal follow-up', originSpace: 'Ops', at: minutesAgo(8), outcome: 'attention', failedStep: { step: 2, error: 'Email connection expired' }, changedCount: 1, changedRows: [{ id: ids.northstar, publicId: 1, name: 'Northstar renewal', table: 'Deal' }] },
-    { workflowId: 'w2', name: LONG, originSpace: 'Sales', at: minutesAgo(40), outcome: 'success', failedStep: null, changedCount: 120, changedRows: [{ id: ids.maya, publicId: 1, name: 'Maya Chen', table: 'Contact' }, { id: ids.harbor, publicId: 1, name: 'Harbor Labs', table: 'Account' }] },
-    { workflowId: 'w3', name: 'Stopped early', originSpace: 'Delivery', at: minutesAgo(70), outcome: 'attention', failedStep: { step: null, error: null }, changedCount: 0, changedRows: [] },
+    { workflowId: 'w1', name: 'Renewal follow-up', originSpace: 'Ops', at: minutesAgo(8), outcome: 'attention', failedStep: { step: 2, error: 'Email connection expired' }, changedCount: 1, changedTables: [{ table: 'Deal', count: 1 }], changedRows: [{ id: ids.northstar, publicId: 1, name: 'Northstar renewal', table: 'Deal' }] },
+    { workflowId: 'w2', name: LONG, originSpace: 'Sales', at: minutesAgo(40), outcome: 'success', failedStep: null, changedCount: 120, changedTables: [{ table: 'Contact', count: 70 }, { table: 'Account', count: 50 }], changedRows: [{ id: ids.maya, publicId: 1, name: 'Maya Chen', table: 'Contact' }, { id: ids.harbor, publicId: 1, name: 'Harbor Labs', table: 'Account' }] },
+    { workflowId: 'w3', name: 'Stopped early', originSpace: 'Delivery', at: minutesAgo(70), outcome: 'attention', failedStep: { step: null, error: null }, changedCount: 0, changedTables: [], changedRows: [] },
   ],
 });
 
@@ -86,20 +85,20 @@ if (s) {
       });
       assert.ok(order.header, 'the existing space header stays');
       assert.deepEqual(order.kids, ['search', 'tables', 'views', 'rows', 'runs', 'about']);
-      assert.deepEqual(order.heads, ['Recent views', 'Recent rows', 'Automation activity']);
+      assert.deepEqual(order.heads, ['Recent views', 'Recent', 'Automation activity']);
       assert.equal(order.desktop, 0, 'the desktop cards do not render on a phone');
       assert.deepEqual(page.failures, []);
       await page.close();
     });
 
-    test(`${engine}: one tile per table with its count in the table's own term`, async () => {
+    test(`${engine}: one tile per table with its count`, async () => {
       const page = await open(b, profile);
       await painted(page, '.launcher-tile');
       const tiles = await page.$$eval('.launcher-tile', (ns) => ns.map((n) => ({ name: n.querySelector('strong').textContent, count: n.querySelector('small').textContent, href: n.getAttribute('href') })));
       assert.equal(tiles.length, 9);
-      assert.deepEqual(tiles[0], { name: 'Deal', count: '48 deals', href: `#/table/${ids.deal}` });
-      assert.equal(tiles[1].count, '1 row');
-      assert.equal(tiles[2].count, '0 rows');
+      assert.deepEqual(tiles[0], { name: 'Deal', count: '48', href: `#/table/${ids.deal}` });
+      assert.equal(tiles[1].count, '1');
+      assert.equal(tiles[2].count, '0');
       await page.click(`.launcher-tile[href="#/table/${ids.contact}"]`);
       await page.waitForFunction((id) => location.hash === `#/table/${id}`, ids.contact);
       await page.close();
@@ -122,18 +121,18 @@ if (s) {
       await page.close();
     });
 
-    test(`${engine}: a partial run shows its failed step and opens details and affected rows`, async () => {
+    test(`${engine}: a partial run shows its failed step and opens its details and what it changed`, async () => {
       const page = await open(b, profile);
       await painted(page, '[data-part="runs"] .launcher-row');
       const first = page.locator('[data-part="runs"] .launcher-row').first();
-      assert.match(await first.innerText(), /Ops → Sales · 1 row changed/);
+      assert.match(await first.innerText(), /Ops → Sales · Deal 1/);
       assert.match(await first.locator('.launcher-outcome').innerText(), /Step 2 failed: Email connection expired/);
       await first.click();
       await painted(page, '.launcher-detail');
       assert.equal(await page.locator('.launcher-home').isVisible(), false);
       assert.equal(await page.locator('#main > .view-header').isVisible(), false);
       const body = await page.locator('.launcher-detail').innerText();
-      for (const want of ['Renewal follow-up', 'Partial completion', 'Started in', 'Ops', 'Affected space', 'Sales', 'Failed', 'Step 2: Email connection expired', 'Affected rows', 'Northstar renewal', 'Deal #1']) assert.ok(body.includes(want), `detail names ${want}`);
+      for (const want of ['Renewal follow-up', 'Partial completion', 'Started in', 'Ops', 'Affected space', 'Sales', 'Failed', 'Step 2: Email connection expired', 'Changed', 'Deal 1', 'Northstar renewal', 'Deal #1']) assert.ok(body.includes(want), `detail names ${want}`);
       await page.click('.launcher-detail .launcher-row');
       await page.waitForFunction((id) => location.hash.includes(`e=${id}`), ids.northstar);
       await page.waitForSelector('#dock', { state: 'attached' });
@@ -162,15 +161,15 @@ if (s) {
       await page.locator('[data-part="runs"] .launcher-row').nth(1).click();
       await painted(page, '.launcher-detail');
       const capped = await page.locator('.launcher-detail').innerText();
-      assert.match(capped, /Updated 120 rows/);
-      assert.match(capped, /Showing 2 of 120/);
+      assert.match(capped, /Contact 70, Account 50/);
+      assert.match(capped, /118 more changed/);
       await page.click('.launcher-return');
       await painted(page, '.launcher-home');
       await page.locator('[data-part="runs"] .launcher-row').nth(2).click();
       await painted(page, '.launcher-detail');
       const stopped = await page.locator('.launcher-detail').innerText();
-      assert.match(stopped, /No rows changed/);
-      assert.doesNotMatch(stopped, /Affected rows/);
+      assert.match(stopped, /Nothing changed/);
+      assert.doesNotMatch(stopped, /more changed/);
       await page.close();
     });
 
@@ -178,7 +177,7 @@ if (s) {
       const page = await open(b, profile, { real: true, seen: [] });
       await painted(page, '.launcher[data-ready]');
       const tiles = await page.$$eval('.launcher-tile', (ns) => ns.map((n) => [n.querySelector('strong').textContent, n.querySelector('small').textContent]));
-      assert.ok(tiles.some(([name, count]) => name === 'Deal' && count === '1 deal'), JSON.stringify(tiles));
+      assert.ok(tiles.some(([name, count]) => name === 'Deal' && count === '1'), JSON.stringify(tiles));
       assert.deepEqual(await page.$$eval('.launcher [data-part]', (ns) => ns.map((n) => n.dataset.part)), ['search', 'tables', 'about']);
       await page.click(`.launcher-tile[href="#/table/${ids.contact}"]`);
       await page.waitForFunction((id) => location.hash === `#/table/${id}`, ids.contact);
@@ -190,6 +189,7 @@ if (s) {
       await painted(page, '[data-part="views"] .launcher-row');
       const text = await page.locator('.launcher').innerText();
       assert.doesNotMatch(text, /Deleted view|Other space row/);
+      assert.doesNotMatch(text.replace(/1,?234,?567/, ''), /\brows?\b/i, 'the launcher labels by table name');
       assert.match(text, /Deal · Board/);
       assert.match(text, /Deal #48 · Proposal/);
       assert.equal(await page.locator('[data-part="views"] a.launcher-row').first().getAttribute('href'), `#/table/${ids.deal}/view/v1`);
