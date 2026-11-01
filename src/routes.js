@@ -1690,7 +1690,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if ((m = path.match(/^\/api\/keys\/([^/]+)\/share$/))) {
             const name = decodeURIComponent(m[1]);
             if (rx.method === 'POST') return out(200, weave.grantKey(name, body?.account));
-            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, body?.account));
+            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, (await rx.readBody())?.account));
           }
           if ((m = path.match(/^\/api\/keys\/(.+)$/))) {
             if (rx.method === 'DELETE') return out(200, weave.deleteKey(decodeURIComponent(m[1])));
