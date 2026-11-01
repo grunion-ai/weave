@@ -27,6 +27,9 @@ jobs:
   plan:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -38,8 +41,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.12.0"
+      - name: Read file timings from the newest green main run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-timings.mjs "$RUNNER_TEMP/ci-timings.json"
       - id: plan
+        env:
+          CI_TIMINGS: ${{ runner.temp }}/ci-timings.json
+          CI_MANIFEST: ci-plan/manifest.json
         run: echo "matrix=$(node scripts/ci-test.mjs plan)" >> "$GITHUB_OUTPUT"
+      - name: Keep the plan for the shards and the gate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plan-manifest
+          path: ci-plan/manifest.json
+          if-no-files-found: error
+          retention-days: 14
 
   test:
     name: tests ${{ matrix.id }}
@@ -48,7 +65,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 14
+      max-parallel: 16
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -76,9 +93,14 @@ jobs:
           if timeout 5m npx --no-install playwright install --with-deps chromium webkit; then exit 0; fi
           sudo dpkg --configure -a || true
           timeout 5m npx --no-install playwright install --with-deps chromium webkit
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: plan-manifest
+          path: ci-plan
       - name: Run complete shard
         env:
           SHARD: ${{ matrix.id }}
+          CI_MANIFEST: ci-plan/manifest.json
           WEAVE_TEST_QUEUE_WAIT_MS: "60000"
         run: node scripts/ci-test.mjs run "$SHARD"
       - name: Retain execution evidence
@@ -114,7 +136,13 @@ jobs:
         with:
           pattern: ci-*
           path: ci-results
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: plan-manifest
+          path: ci-plan
       - name: Verify exact commit and complete executed coverage
+        env:
+          CI_MANIFEST: ci-plan/manifest.json
         run: node scripts/ci-test.mjs aggregate ci-results
 
   compatibility:

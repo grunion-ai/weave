@@ -91,16 +91,27 @@ to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
-The `tests` workflow runs the full inventory on every main push. Its plan
-(`mainPlan` in `scripts/ci-test.mjs`) puts the unit files in two shards and
-sizes the browser lane by the suite: one shard per `BROWSER_FILES_PER_SHARD`
-(45) browser files, at most `BROWSER_SHARD_CAP` (12), and `max-parallel` runs
-every shard of a run at once; unit shards skip the browser download, as the
-PR unit shards do. A fixed four shards let the growing suite walk
-each one toward the test manager's twenty-minute job timeout: in the week to
-2026-11-01 four shards of about 87 files ran a median 12 and a p90 19.5
-minutes, and six shards died on the timeout (exit 124) on 2026-11-01 alone,
-each one a red main for the sheriff to rerun or bisect. Its final
+The `tests` workflow runs the full inventory on every main push. Its `plan`
+job reads every file's measured duration from the shard evidence of the
+newest green main push run (`scripts/ci-timings.mjs`, which needs
+`actions: read` on that job alone) and sizes each lane by it
+(`mainPlan` in `scripts/ci-test.mjs`): enough shards that each carries about
+`TARGET_SHARD_MS` (seven minutes) of wall time, at the parallelism that run
+measured, two to four unit shards and one to twelve browser shards, balanced
+heaviest file first. A file with no reading yet weighs its size at the lane's
+median milliseconds per byte. With no readings at all (the artifacts expired,
+the API answered an error) the plan falls back to two unit shards and one
+browser shard per 45 files, and the job writes a warning. The plan job saves
+the manifest as the `plan-manifest` artifact; every shard and the `CI gate`
+run against that saved plan, after checking it covers the test inventory at
+the commit lane by lane, so a newer green run landing mid-run cannot change
+what the gate expects. `max-parallel` runs every shard of a run at once, and
+unit shards skip the browser download, as the PR unit shards do. A fixed four
+browser shards had let the growing suite walk each one toward the test
+manager's twenty-minute job timeout: in the week to 2026-11-01 four shards of
+about 87 files ran a median 12 and a p90 19.5 minutes, and six shards died on
+the timeout (exit 124) on 2026-11-01 alone, each one a red main for the
+sheriff to rerun or bisect. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
 only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
