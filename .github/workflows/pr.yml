@@ -3,6 +3,7 @@ name: pr
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
 
 permissions:
   contents: read
@@ -19,6 +20,9 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -30,16 +34,39 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "24.12.0"
+      - name: Read file timings from the newest green main run
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-timings.mjs "$RUNNER_TEMP/ci-timings.json"
       - id: plan
-        run: echo "matrix=$(node scripts/ci-test.mjs pr-plan)" >> "$GITHUB_OUTPUT"
+        env:
+          FULL: ${{ github.event_name == 'merge_group' }}
+          CI_TIMINGS: ${{ runner.temp }}/ci-timings.json
+          CI_MANIFEST: ci-plan/manifest.json
+        run: |
+          if [ "$FULL" = true ]; then
+            echo "matrix=$(node scripts/ci-test.mjs plan)" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(node scripts/ci-test.mjs pr-plan)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Keep the full plan for the shards and the gate
+        if: github.event_name == 'merge_group'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: plan-manifest
+          path: ci-plan/manifest.json
+          if-no-files-found: error
+          retention-days: 7
 
   test:
     name: pr ${{ matrix.id }}
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: ${{ github.event_name == 'merge_group' && 30 || 15 }}
     strategy:
       fail-fast: false
+      max-parallel: 16
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -67,11 +94,23 @@ jobs:
           if timeout 5m npx --no-install playwright install --with-deps chromium webkit; then exit 0; fi
           sudo dpkg --configure -a || true
           timeout 5m npx --no-install playwright install --with-deps chromium webkit
+      - if: github.event_name == 'merge_group'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: plan-manifest
+          path: ci-plan
       - name: Run fast shard
         env:
           SHARD: ${{ matrix.id }}
+          FULL: ${{ github.event_name == 'merge_group' }}
+          CI_MANIFEST: ci-plan/manifest.json
           WEAVE_TEST_QUEUE_WAIT_MS: "60000"
-        run: node scripts/ci-test.mjs pr-run "$SHARD"
+        run: |
+          if [ "$FULL" = true ]; then
+            node scripts/ci-test.mjs run "$SHARD"
+          else
+            node scripts/ci-test.mjs pr-run "$SHARD"
+          fi
       - name: Retain execution evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -105,5 +144,18 @@ jobs:
         with:
           pattern: pr-*
           path: ci-results
+      - if: github.event_name == 'merge_group'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: plan-manifest
+          path: ci-plan
       - name: Verify exact commit and complete executed coverage
-        run: node scripts/ci-test.mjs pr-aggregate ci-results
+        env:
+          FULL: ${{ github.event_name == 'merge_group' }}
+          CI_MANIFEST: ci-plan/manifest.json
+        run: |
+          if [ "$FULL" = true ]; then
+            node scripts/ci-test.mjs aggregate ci-results
+          else
+            node scripts/ci-test.mjs pr-aggregate ci-results
+          fi

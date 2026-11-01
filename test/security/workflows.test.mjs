@@ -110,10 +110,11 @@ test('release validates main CI before checking out the tested SHA with write cr
 
 test('dev.yml gates ready pull requests in seconds and swaps dev on every main push', () => {
   const src = text('dev.yml');
-  assert.match(src, /^on:\n  pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n  push:\n    branches: \[main\]\n/m);
+  assert.match(src, /^on:\n  pull_request:\n    types: \[opened, synchronize, reopened, ready_for_review\]\n  push:\n    branches: \[main\]\n  merge_group:\n/m);
   const gate = src.slice(src.indexOf('  gate:'), src.indexOf('  deploy:'));
   const deploy = src.slice(src.indexOf('  deploy:'));
-  assert.match(gate, /name: Dev gate\n    if: github.event_name == 'pull_request' && !github.event.pull_request.draft\n/);
+  assert.match(gate, /name: Dev gate\n    if: github.event_name == 'merge_group' \|\| \(github.event_name == 'pull_request' && !github.event.pull_request.draft\)\n/, 'the merge queue waits on Dev gate too, so it must report on merge_group');
+  assert.match(gate, /group: dev-gate-\$\{\{ github.event.pull_request.number \|\| github.ref \}\}\n/);
   assert.match(gate, /timeout-minutes: [1-3]\n/);
   assert.match(gate, /node --check/);
   assert.match(gate, /\/api\/health/);
