@@ -201,7 +201,7 @@ Open any record and it docks beside its table, so the entity and the records aro
 | License | MIT, open source | Proprietary | Proprietary | Proprietary |
 | Where the data lives | A `.db` file you own | Vendor cloud | Vendor cloud | Vendor cloud |
 | Pricing | Free to self-host | Per seat, per month | Per seat, per month | Per seat, per month |
-| Record / record caps | Your disk | Plan-tiered | Plan-tiered | Plan-tiered |
+| Row / record caps | Your disk | Plan-tiered | Plan-tiered | Plan-tiered |
 | Agent access | MCP server, REST and CLI, against a file you own | Set by the vendor | Set by the vendor | Set by the vendor |
 | Runs offline | Yes | No | No | No |
 | Telemetry | None | Vendor-defined | Vendor-defined | Vendor-defined |
