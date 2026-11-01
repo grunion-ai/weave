@@ -102,7 +102,10 @@ if (s) {
 
   test('+ New table on the space page creates the table here, not a row in the last table visited', async () => {
     const page = await browser.newPage({ viewport: FIT });
-    await page.addInitScript(() => localStorage.setItem('weave-schema-open', '1'));
+    await page.addInitScript(() => {
+      localStorage.setItem('weave-schema-open', '1');
+      localStorage.setItem('weave-space-overview-open', '1');
+    });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid .add-entity-btn');
     const before = weave.listEntities(tasks.id).length;

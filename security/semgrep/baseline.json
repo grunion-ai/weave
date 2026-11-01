@@ -23,6 +23,7 @@
   "weave-html-sink-unescaped|public/app.js|span.innerHTML = `<svg viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"currentColor\" aria-hidden=\"true\">${mark}</svg>`;",
   "weave-html-sink-unescaped|public/app.js|span.innerHTML = window.LUCIDE_MOVING[name];",
   "weave-html-sink-unescaped|public/app.js|wrap.innerHTML = await res.text();",
+  "weave-html-sink-unescaped|public/space-home-view.js|try { prose.innerHTML = (await api('POST', '/markdown', { md: description })).html; } catch { prose.textContent = description; }",
   "weave-sql-built-from-variable|src/backup.js|db.exec(`VACUUM INTO '${dst.replace(/'/g, \"''\")}'`);",
   "weave-sql-built-from-variable|src/store.js|db.prepare(`DELETE FROM ${key} WHERE id = ?`).run(id);",
   "weave-sql-built-from-variable|src/store.js|db.prepare(`INSERT INTO ${key} (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json`).run(id, json);",

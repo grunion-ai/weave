@@ -8934,11 +8934,20 @@ async function showSpace(spaceId) {
     }),
   );
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  if (!dockCoversScreen.matches) {
+    const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
+    if (loaded) return mountSpaceHome(main, space);
+  }
+  await appendSpaceDetails(main, space);
+}
+
+async function appendSpaceDetails(parent, space, { withTables = true } = {}) {
+  const { spaceId } = space;
   const tiles = await spaceStatTiles(space);
-  if (tiles) main.append(tiles);
-  main.append(spaceTablesCard(space));
+  if (tiles) parent.append(tiles);
+  if (withTables) parent.append(spaceTablesCard(space));
   const card = await relationMapCard('Relation map', { spaceId });
-  if (card) main.append(card);
+  if (card) parent.append(card);
   const reg = registryTable('tables');
   if (reg) {
     const onSaved = async () => {
@@ -8948,7 +8957,7 @@ async function showSpace(spaceId) {
       restoreGridFocus();
     };
     const onAdd = () => tableTray({ spaceId, after: () => showSpace(spaceId) });
-    await schemaDisclosure(main, async (body) => {
+    await schemaDisclosure(parent, async (body) => {
       const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       const items = res.items.filter((i) => space.tables.some((t) => t.id === i.sysId));
       renderTable(body, reg, items, onSaved, onAdd);

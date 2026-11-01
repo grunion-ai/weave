@@ -1594,7 +1594,7 @@ test('the slash link glyph is the interlocked chain, drawn from the inventory', 
 });
 
 test('the space page renders the Tables registry as a real grid', () => {
-  const body = fnBody('showSpace');
+  const body = fnBody('appendSpaceDetails');
   assert.match(body, /registryTable\('tables'\)/, 'the space page finds the Tables registry');
   assert.match(body, /renderTable\(/, 'and renders it with the one grid renderer');
   assert.doesNotMatch(body, /space-table-row/, 'the hand-rolled table list is gone');
@@ -1618,7 +1618,7 @@ test('opening a registry row opens the structure it stands for', () => {
 });
 
 test('the space page scopes its registry grid by id, not by name', () => {
-  const body = fnBody('showSpace');
+  const body = fnBody('appendSpaceDetails');
   assert.match(body, /item\.sysId|i\.sysId/, 'rows are matched to the space through sysId');
   assert.doesNotMatch(body, /\.name === space\.space/, 'no name-join — two names can drift, ids cannot');
 });
