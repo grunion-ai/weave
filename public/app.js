@@ -11516,9 +11516,8 @@ const ROLE_LABELS = { editor: 'Editor, paid seat', observer: 'Observer, free', a
 function seatNote(billing) {
   if (!billing || billing.plan === 'comped') return null;
   const lead = billing.plan === 'trial' ? `The free trial runs until ${new Date(billing.trial.endsAt).toLocaleDateString()}: everyone can create and edit. After it, Editors and Architects need a plan.`
-    : billing.plan === 'team' ? 'Inviting an Editor or Architect adds a seat to the team plan.'
-    : billing.plan === 'solo' ? 'The solo plan covers one paid seat: a second Editor or Architect needs the team plan.'
-    : 'No plan covers this workspace yet, so Editors and Architects work as Observers.';
+    : billing.plan === 'paid' ? 'Inviting an Editor or Architect adds a $4.99 seat.'
+    : 'No seats are bought yet, so Editors and Architects work as Observers.';
   return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));
 }
 async function inviteDialog() {

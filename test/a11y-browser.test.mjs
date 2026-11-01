@@ -38,7 +38,7 @@ const doors = s && await launch('a11y doors', (w) => {
   w.setRequireAuth(true);
 }, { server: () => ({
   oidc: createOidc({ issuer: 'https://idp.a11y.example.test', clientId: 'test', clientSecret: 'test', name: 'Test' }),
-  billing: createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', issuer: ISSUER, publishableKey: null, fetch: nobody }),
+  billing: createBilling({ secretKey: 'sk_test_x', plan: 'seat', issuer: ISSUER, publishableKey: null, fetch: nobody }),
 }) });
 
 if (s && doors) {
