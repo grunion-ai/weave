@@ -42,6 +42,24 @@ export function gateVerdict(jobs = []) {
 
 export const flakeName = (file) => `Error: ${file} flakes on main`;
 
+export const REOPEN = { Issue: { from: 'Fixed', to: 'Open' }, Feature: { from: 'Shipped', to: 'Building' } };
+
+export function revertedRefs(culprits = []) {
+  const refs = [];
+  for (const c of culprits) {
+    for (const [, kind, ids] of subjectOf(c.message).matchAll(/\b(Issue|Feature)s?\s+((?:#\d+(?:\s*,\s*)?)+)/g)) {
+      for (const [, id] of ids.matchAll(/#(\d+)/g)) refs.push({ table: kind, publicId: Number(id) });
+    }
+  }
+  return refs.filter((r, i) => refs.findIndex((o) => o.table === r.table && o.publicId === r.publicId) === i);
+}
+
+export function reopenNote({ at, ref, culprit, revert }) {
+  const where = revert?.html_url ?? revert?.branch ?? 'a revert branch';
+  const pr = revert?.number ? `revert PR #${revert.number}` : `the revert on ${where}`;
+  return `Reopened ${at} by the sheriff: ${pr} takes ${short(culprit.sha)} (${subjectOf(culprit.message)}) back off main, so the fix this row records is not on main. Reland it as a new PR. ${where}`;
+}
+
 export function nextProbe(lo, hi) {
   return hi - lo > 1 ? Math.floor((lo + hi) / 2) : null;
 }
@@ -258,8 +276,22 @@ async function escalate(io, ctx, result, reason) {
 async function report(io, ctx, result, revert, outcome, action, note) {
   for (const pr of ctx.prs) await io.comment(pr.number, prComment(ctx, revert));
   const issue = await io.fileIssue({ name: issueName(ctx), description: issueDescription(ctx, revert, note) });
+  const reopened = action === 'revert' ? await reopenReverted(io, ctx, revert) : [];
   await io.alert(alertLine(ctx, outcome + (issue?.url ? `; Issue ${issue.url}` : '')));
-  return result(action, { reason: outcome, culprits: ctx.culprits.map((c) => c.sha), prs: ctx.prs.map((p) => p.number), probes: ctx.probes, revert, issue });
+  return result(action, { reason: outcome, culprits: ctx.culprits.map((c) => c.sha), prs: ctx.prs.map((p) => p.number), probes: ctx.probes, revert, issue, reopened });
+}
+
+async function reopenReverted(io, ctx, revert) {
+  const at = new Date().toISOString().slice(0, 10);
+  const reopened = [];
+  for (const culprit of ctx.culprits) {
+    for (const ref of revertedRefs([culprit])) {
+      const back = await io.reopenRow({ ...ref, line: reopenNote({ at, ref, culprit, revert }) });
+      if (back) reopened.push(back);
+      else io.log(`the revert of ${short(culprit.sha)} left ${ref.table} #${ref.publicId} alone`);
+    }
+  }
+  return reopened;
 }
 
 export function alertRequest(env, line) {
@@ -397,6 +429,15 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     },
     comment: async (number, text) => api(`${base}/issues/${number}/comments`, { method: 'POST', token: writeToken, body: { body: text } }),
     fileIssue: async ({ name, description }) => upsertIssue({ name, description, severity: 'High' }),
+    reopenRow: async ({ table, publicId, line }) => {
+      if (!env.WEAVE_TRACKER_TOKEN) throw new Error(`WEAVE_TRACKER_TOKEN missing; cannot reopen ${table} #${publicId}`);
+      const back = REOPEN[table];
+      const row = (await tracker(`/tables/${table}/query`, { method: 'POST', body: JSON.stringify({ where: [['publicId', '=', publicId]] }) })).items?.[0];
+      if (!row || row.fields?.Status !== back.from) return null;
+      await tracker(`/entities/${row.id}/doc`, { method: 'POST', body: JSON.stringify({ doc: `\n\n${line}` }) });
+      await tracker(`/entities/${row.id}/state`, { method: 'POST', body: JSON.stringify({ field: 'Status', state: back.to }) });
+      return { table, publicId, from: back.from, to: back.to };
+    },
     openFlakes: async (files) => {
       if (!env.WEAVE_TRACKER_TOKEN) throw new Error('WEAVE_TRACKER_TOKEN missing; cannot read the flake rows');
       const found = [];
@@ -433,6 +474,7 @@ export function dryIO(io) {
     comment: say('comment on PR'),
     fileIssue: async (spec) => { io.log(`dry run, would file Issue: ${spec.name}`); return null; },
     logFlake: say('log a flake'),
+    reopenRow: async (spec) => { io.log(`dry run, would reopen ${spec.table} #${spec.publicId} to ${REOPEN[spec.table].to}: ${spec.line}`); return null; },
     alert: async (line) => io.log(`dry run, would alert: ${line}`),
   };
 }
