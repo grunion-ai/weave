@@ -115,7 +115,7 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 14);
   assert.equal(SWEEP_JOURNEYS.length, 15);
-  assert.equal(OVERLAYS.length, 39);
+  assert.equal(OVERLAYS.length, 38);
   assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
