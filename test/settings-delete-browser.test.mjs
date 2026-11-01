@@ -86,7 +86,7 @@ if (s) {
         await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
         const card = page.locator('#main .settings-workspaces');
         const names = (await card.locator('.list-row-name').allTextContents()).map((t) => t.trim());
-        assert.deepEqual(names, ['scratch'], 'only a deletable workspace is offered: never the default or weave');
+        assert.deepEqual(names, ['main', 'scratch'], 'the initial mount has no deletion privilege; the docs workspace stays protected');
         const openDialog = async () => {
           await card.locator('.list-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
           await page.locator('#modal').waitFor();
@@ -146,7 +146,7 @@ if (s) {
     const page = await open('#/settings', 'dark');
     try {
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
-      await page.locator('#main .settings-workspaces .ws-delete-open').click();
+      await page.locator('#main .settings-workspaces .list-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
       await page.locator('#modal input[name="confirm"]').fill('scratch');
       await hold(page.locator('#modal .ws-delete-go'));
       await page.locator('#ws-list .ws-icon[title^="scratch "]').waitFor({ state: 'detached' });

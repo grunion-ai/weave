@@ -179,12 +179,29 @@ the supervisor's `watch` for `c<sha>` reports `ok: true`, no rollback
 happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that
 context. A failure posts `dev-soak` failure linking the run and sends one line
-to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
-older run. A soak that watched the commit pass and held dev for the whole
-window still succeeds when dev moves on the poll that completes it, so a busy
-main still yields commits promotion can take. A soak cut short before its
-window elapses posts `dev-soak` pending on that SHA, described as superseded,
-which reads apart from both a pass and a failure and which promotion skips.
+to `SHERIFF_ALERT_URL` and the job summary.
+
+A new main merge never ends or restarts a window, because the soak exists to
+review a batch. The job's concurrency keeps one running soak and one pending
+run, and a newer pending run replaces the older one (it shows as cancelled), so
+merges queue and the next window takes the newest commit. When dev moves to a
+newer commit and main's head differs from the soak's SHA, the run keeps its
+clock and its smoke schedule to the end of the window. Main is linear, so every
+later commit dev serves contains the soak's SHA. From then on the pid check and
+the SHA's own watch no longer apply. Each poll instead checks whatever release
+dev serves now for a rollback, a watch alert or `watch.ok === false`, and a
+release with no watch yet is fine. The run passes when the window has elapsed,
+at least one smoke ran, 5xx stayed within `DEV_SOAK_MAX_5XX` and none of those
+checks tripped, and it never waits for a watch. Its `dev-soak` success names
+the commit dev moved to. Dev serving another commit while main's head still
+equals the SHA stays a failure.
+
+A failure after a move cannot be pinned on the SHA, so it posts `dev-soak`
+pending described as superseded, with no alert, and promotion skips it. The
+queued soak on the newest commit catches a real break and alerts. A smoke, 5xx
+or health failure polls health once more first, so a swap the last poll missed
+counts as a move. A rollback of a later release counts as a move even when dev
+lands back on the soak's SHA. A rollback of the SHA itself is a failure.
 
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,

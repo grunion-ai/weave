@@ -48,7 +48,7 @@ const RESOURCE_PATHS = [...new Set(listRoutes()
 
 function build() {
   const dir = mkdtempSync(join(DIR, 'hub-'));
-  const at = (name) => { const w = new Weave({ path: join(dir, `${name}.db`) }); w.updateWorkspace({ name }); return w; };
+  const at = (name) => { const w = new Weave({ path: join(dir, `${name}.db`), keystorePath: join(dir, 'keystore.json') }); w.updateWorkspace({ name }); return w; };
   const root = at('root');
   root.createAccount({ name: 'root-architect', role: 'architect' });
   const alpha = at('alpha');
