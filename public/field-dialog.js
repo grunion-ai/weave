@@ -120,7 +120,7 @@ function termSection(state, onChange) {
   });
   reset.onclick = () => set(null);
   draw();
-  return dsection('Rows in this table are…',
+  return dsection('Records in this table are…',
     el('div', { class: 'term-row' }, face, reset),
     el('div', { class: 'term-row term-plural-row' }, el('span', { class: 'wv-tag' }, 'plural'), plur),
     preview);
@@ -273,8 +273,8 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
   const status = el('div', { class: 'fx-status' });
   const scanNote = el('span', { class: 'fx-scan' });
   const pickLabel = el('span', { class: 'fx-rowpick-lbl' });
-  const prevBtn = el('button', { type: 'button', class: 'prev', 'aria-label': 'Previous row', onclick: () => step(-1) }, '‹');
-  const nextBtn = el('button', { type: 'button', class: 'next', 'aria-label': 'Next row', onclick: () => step(1) }, '›');
+  const prevBtn = el('button', { type: 'button', class: 'prev', 'aria-label': 'Previous record', onclick: () => step(-1) }, '‹');
+  const nextBtn = el('button', { type: 'button', class: 'next', 'aria-label': 'Next record', onclick: () => step(1) }, '›');
   const rowpick = el('div', { class: 'fx-rowpick', hidden: '' }, prevBtn, pickLabel, nextBtn, scanNote);
   let rows = [], idx = 0, lastScan = null, lastType = null;
   let seq = 0, timer;
@@ -286,7 +286,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     const parts = [];
     if (lastScan?.nulls) parts.push(`${lastScan.nulls} row${lastScan.nulls === 1 ? '' : 's'} → null`);
     if (lastScan?.errors) parts.push(`${lastScan.errors} → #ERR`);
-    scanNote.textContent = parts.length ? `⚠ ${parts.join(' · ')}${lastScan.capped ? ' (first 200 rows)' : ''}` : '';
+    scanNote.textContent = parts.length ? `⚠ ${parts.join(' · ')}${lastScan.capped ? ' (first 200 records)' : ''}` : '';
   };
   const setType = (t) => { if (t !== lastType) { lastType = t; onType?.(t); } };
   const runCheck = async ({ scan = true } = {}) => {
@@ -400,7 +400,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
       disabled: x.excluded ? '' : undefined,
       'aria-label': x.excluded ? `${x.name}: ${x.excluded}` : undefined,
       onclick: () => { if (!x.excluded) insert(x.token); },
-    }, x.name), { sig: `${x.token} · ${x.type}`, doc: x.excluded ?? `The ${x.type} value of this row's ${x.name}.`, eg: x.excluded ? null : x.token }));
+    }, x.name), { sig: `${x.token} · ${x.type}`, doc: x.excluded ?? `The ${x.type} value of this record's ${x.name}.`, eg: x.excluded ? null : x.token }));
   const fnRows = fieldDialogCore.formulaFunctionGroups().map(({ group, fns }) =>
     el('div', { class: 'fx-chip-row fn-group' }, el('span', { class: 'fx-chip-lbl' }, group),
       ...fns.map((fn) => teach(el('button', { type: 'button', class: 'fx-chip fn', onclick: () => insert(`${fn.name}()`, 1) }, `${fn.name}()`),
@@ -555,7 +555,7 @@ function sparklineControls(n, redraw, changed, column = null) {
     sample.replaceChildren(sparkEl(style, series, n.color) ?? '');
     note.replaceChildren(own
       ? el('div', { class: 'hintnote cg-preview-from' }, `${column.seriesRow}: ${own.length} value${own.length === 1 ? '' : 's'}, oldest first`)
-      : el('div', { class: 'hintnote cg-preview-note' }, 'Example series. No row of this column holds a list yet.'));
+      : el('div', { class: 'hintnote cg-preview-note' }, 'Example series. No record of this column holds a list yet.'));
   };
   draw();
   if (column) column.loadSeries().then(draw, () => {});
@@ -576,7 +576,7 @@ function numberDisplayControls(n, redraw, changed, column = null) {
     value: fixed ? n.scale : '', placeholder: '100',
     oninput: (e) => { const v = Number(e.target.value); n.scale = e.target.value !== '' && v > 0 ? v : 'column'; drawPreview(); changed(); },
   });
-  const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample rows' });
+  const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample records' });
   const noteBox = el('div');
   const swatches = el('div');
   const drawPreview = () => {
@@ -626,18 +626,18 @@ function computedShowsAs(db, f, after) {
     href: '#',
     onclick: (e) => { e.preventDefault(); fieldDialog(far, source, after); },
   }, `Open ${source.name} settings`) : null;
-  const result = el('div', {}, el('span', { class: 'hintnote' }, 'Reading the rows…'));
+  const result = el('div', {}, el('span', { class: 'hintnote' }, 'Reading the records…'));
   api('POST', `/tables/${db.id}/query`, { limit: 50 }).then((res) => {
     const blank = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
     const row = (res.items ?? []).find((it) => !blank(it.raw?.[f.name]));
-    if (!row) return result.replaceChildren(el('span', { class: 'hintnote' }, 'No row has a value yet.'));
+    if (!row) return result.replaceChildren(el('span', { class: 'hintnote' }, 'No record has a value yet.'));
     const raw = row.raw[f.name];
     const text = row.fields?.[f.name];
     const drawn = f.rating && typeof raw === 'number' ? ratingEl(f.rating.max, f.rating.icon, raw, { color: f.rating.color })
       : f.rating && Array.isArray(raw) && raw.length ? ratingListEl(f.rating, raw, { label: f.name })
       : numberGraphicFor(f, row, text) ?? (Array.isArray(text) ? text.join(', ') : String(text ?? raw));
     result.replaceChildren(el('span', { class: 'hintnote' }, `${row.name || 'Untitled'}: `), drawn);
-  }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The rows could not be read.')));
+  }).catch(() => result.replaceChildren(el('span', { class: 'hintnote' }, 'The records could not be read.')));
   return [
     dsection('Result', result),
     dsection('Shows as',
@@ -726,11 +726,11 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
       }),
       el('span', { class: 'fx-mark' }, 'ƒ'), 'Formula',
       el('span', { class: 'fx-hint' }, isEdit && existing.type === 'formula'
-        ? 'untick to freeze each row’s result into plain text'
-        : 'compute this field from the row’s other fields instead of typing it'));
+        ? 'untick to freeze each record’s result into plain text'
+        : 'compute this field from the record’s other fields instead of typing it'));
     let note = '';
     if (isEdit && state.type !== existing.type && !state.computed) {
-      note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every row's value is migrated in place.`);
+      note = el('div', { class: 'modal-note migrate-note' }, `Saving converts this ${existing.type} field to ${state.type}; every record's value is migrated in place.`);
     } else if (isEdit && !migratable) {
       note = el('div', { class: 'modal-note' }, existing.role === 'name' ? 'a name is text, or a formula (ƒ below)'
         : existing.type === 'view' ? `the ${existing.shape ?? existing.role}: how every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular} appears ${existing.role === 'card' ? 'as a tile' : 'inline'} — rename it, configure it, never delete it`
@@ -820,7 +820,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           { id: 'round', label: 'round', title: 'People and agents' },
           { id: 'square', label: 'square', title: 'Organisations and logos' },
         ], state.avatarShape ?? 'round', (v) => { state.avatarShape = v; changed(); })));
-        kids.push(el('div', { class: 'modal-note full' }, 'The row\'s face on its chip, card and header. With no photo it shows initials on the name\'s colour. One per table.'));
+        kids.push(el('div', { class: 'modal-note full' }, 'The record\'s face on its chip, card and header. With no photo it shows initials on the name\'s colour. One per table.'));
       } else if (t === 'attachments') {
         const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
@@ -900,7 +900,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
             out.push(dsection('Target field', tSel));
           }
           out.push(el('div', { class: 'modal-note full' },
-            `The whole ${over.name} table, read on this space’s row — the figure the grid’s Σ row shows under that column. Other spaces read nothing.`));
+            `The whole ${over.name} table, read on this space’s record — the figure the grid’s Σ row shows under that column. Other spaces read nothing.`));
           return out;
         };
         if (isEdit) {
@@ -944,7 +944,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         const body = el('div', { class: 'date-default' });
         const seg = segCtl([
           { id: 'none', label: 'None' },
-          { id: 'today', label: dyn, title: 'The day the row is created' },
+          { id: 'today', label: dyn, title: 'The day the record is created' },
           { id: 'specific', label: 'Specific…' },
         ], kind, (k) => {
           state.default = k === 'none' ? '' : k === 'today' ? dyn : (kind === 'specific' ? state.default : dc.todayIso());
@@ -1027,7 +1027,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
       } else if (fdc.DEFAULTABLE.includes(t)) {
         kids.push(dsection('Default', el('input', {
           class: 'form-control', value: state.default ?? '',
-          placeholder: t === 'checkbox' ? 'true / false' : 'Default value for new rows (optional)',
+          placeholder: t === 'checkbox' ? 'true / false' : 'Default value for new records (optional)',
           oninput: (e) => { state.default = e.target.value; changed(); },
         })));
       }

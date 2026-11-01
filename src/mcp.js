@@ -72,7 +72,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_query',
-    description: 'Query entities in a table. 200 rows a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while rows remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+    description: 'Query entities in a table. 200 a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while more remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -83,11 +83,11 @@ export const TOOLS = [
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
         fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
-        relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). full: every row embeds its related rows\' summaries.' },
+        relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related record\'s summary is sent once, in chips (keyed by id). full: every record embeds its related records\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
-        trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
-        countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
-        search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
+        trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s records are in the trash' },
+        countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted records before where and search' },
+        search: { type: 'string', description: 'Only the records weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
         view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
         groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
       },
@@ -136,7 +136,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect row counts in every chip it wears); `where` narrows the rows with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the row count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces row (weave_add_field, config.via).',
+    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
     inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
   },
   {
@@ -146,13 +146,13 @@ export const TOOLS = [
   },
   {
     name: 'weave_bulk',
-    description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each row is its own attempt: done names what landed, failed names what did not and why. Each row keeps its own undo step.',
+    description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each record is its own attempt: done names what landed, failed names what did not and why. Each record keeps its own undo step.',
     inputSchema: { type: 'object', properties: {
       ids: { type: 'array', items: { type: 'string' } },
       op: { type: 'string', enum: ['set', 'link', 'move', 'rollup'] },
       values: { type: 'object', description: 'set: the values to write; rollup: the parent\'s values' },
       field: { type: 'string', description: 'link / rollup: the relation field' },
-      targets: { type: 'array', items: { type: 'string' }, description: 'link: the rows to link to' },
+      targets: { type: 'array', items: { type: 'string' }, description: 'link: the records to link to' },
       table: { type: 'string', description: 'move: the destination; rollup: overrides the relation\'s target table' },
       name: { type: 'string', description: 'rollup: the new parent\'s name' },
     }, required: ['ids', 'op'] },
@@ -204,7 +204,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_search',
-    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity rows only; every matching workspace, space, table and view is always returned.',
+    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
   {
@@ -223,7 +223,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_field',
-    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry row only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a row. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
+    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry record only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a record. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -232,7 +232,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_check_formula',
-    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has rows, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific row. scan: true evaluates over up to 200 rows and adds scan: {rows, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on row 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
+    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has records, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific record. scan: true evaluates over up to 200 records and adds scan: {records, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on record 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' }, scan: { type: 'boolean' } },
@@ -241,7 +241,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_add_relation',
-    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at rows of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
+    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at records of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
@@ -250,7 +250,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a System/Workflows row; its Script holds the rule as JSON. enabled (default true) is the row\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live row of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a row of another table matched on its key field (text, number, url or email); source paths read row.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
+    description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
@@ -259,7 +259,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_export_csv',
-    description: 'Export a table as CSV: one row per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
+    description: 'Export a table as CSV: one record per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
@@ -269,7 +269,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_attach_file',
-    description: 'Attach a file to a row, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
+    description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
     inputSchema: {
       type: 'object',
       properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
@@ -298,12 +298,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_template_list',
-    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces row). Each is a space record: id, name, description, icon.',
+    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'weave_template_use',
-    description: 'Copy a template space\'s schema, never its rows, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
+    description: 'Copy a template space\'s schema, never its records, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
     inputSchema: {
       type: 'object',
       properties: { space: { type: 'string' }, workspace: { type: 'string' }, name: { type: 'string' } },
@@ -312,17 +312,17 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_space',
-    description: 'Move a space to the trash (recoverable — its tables and rows go dark with it). Pass hard: true to purge it and every table in it for good.',
+    description: 'Move a space to the trash (recoverable — its tables and records go dark with it). Pass hard: true to purge it and every table in it for good.',
     inputSchema: { type: 'object', properties: { space: { type: 'string' }, hard: { type: 'boolean' } }, required: ['space'] },
   },
   {
     name: 'weave_restore_space',
-    description: 'Restore a trashed space; its tables and rows come back with it.',
+    description: 'Restore a trashed space; its tables and records come back with it.',
     inputSchema: { type: 'object', properties: { space: { type: 'string' } }, required: ['space'] },
   },
   {
     name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one row is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
+    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one record is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -338,7 +338,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. hideEmpty: no empty groups. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. hideEmpty: no empty groups. order: #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -353,27 +353,27 @@ export const TOOLS = [
   },
   {
     name: 'weave_move_table',
-    description: 'Move a table into another space. Only its home changes — every row, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
+    description: 'Move a table into another space. Only its home changes — every record, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' }, position: { type: 'number' } }, required: ['db', 'space'] },
   },
   {
     name: 'weave_duplicate_table',
-    description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Rows are not copied — the copy starts empty.',
+    description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Records are not copied — the copy starts empty.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
     name: 'weave_delete_table',
-    description: 'Move a table to the trash (recoverable — its rows go dark with it). Pass hard: true to purge table and rows for good.',
+    description: 'Move a table to the trash (recoverable — its records go dark with it). Pass hard: true to purge table and records for good.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db'] },
   },
   {
     name: 'weave_restore_table',
-    description: 'Restore a table out of the trash: the table, its rows and their relations come back exactly as they were.',
+    description: 'Restore a table out of the trash: the table, its records and their relations come back exactly as they were.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
   {
     name: 'weave_update_field',
-    description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links rows by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
+    description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links records by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
@@ -382,7 +382,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_rollback_field',
-    description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry. A type change rolls back with its values: rows unchanged since are restored, a row edited since keeps its edit (converted back) and a row made since is converted; only the newest type change of a field keeps its values. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}, plus {restored, left, converted} for a type change.',
+    description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry. A type change rolls back with its values: records unchanged since are restored, a record edited since keeps its edit (converted back) and a record made since is converted; only the newest type change of a field keeps its values. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}, plus {restored, left, converted} for a type change.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, field: { type: 'string' }, activity: { type: 'string', description: 'The entry id, <tableId>:f<n>' } },
@@ -391,7 +391,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_delete_field',
-    description: 'Move a field to the trash: the column leaves the table and its values leave the rows, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
+    description: 'Move a field to the trash: the column leaves the table and its values leave the records, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
     inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db', 'field'] },
   },
   {
@@ -410,12 +410,12 @@ export const TOOLS = [
   },
   {
     name: 'weave_build',
-    description: 'Build in ONE call: spaces, tables, fields, relations and rows. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Rows are values by field name; a relation value is the target row\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; rows append, so pass skipExistingRows:true to skip rows whose Name is already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
-      + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"rows":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"rows":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
-      + 'dryRun:true first is cheap: it checks the whole spec, rows included, returns every error with its path, and writes nothing. Any error means nothing is written.',
+    description: 'Build in ONE call: spaces, tables, fields, relations and records. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Records are values by field name; a relation value is the target record\'s Name. Re-sending the whole spec is safe: existing spaces, tables and same-typed fields are reused; records append; skipExistingRows:true skips Names already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
+      + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"records":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"records":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
+      + 'dryRun:true first is cheap: it checks the whole spec, returns every error with its path, and writes nothing. Any error means nothing is written.',
     inputSchema: {
       type: 'object',
-      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, rows?, fieldOrder? (leading names), hidden? (names), sort? ("Amount desc")}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a row whose Name the table already holds (for a re-run)' } },
+      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, records?, fieldOrder? (leading names), hidden? (names), sort? ("Amount desc")}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a record whose Name the table already holds (for a re-run)' } },
       required: ['spec'],
     },
   },
@@ -446,7 +446,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_automations',
-    description: 'Automations already on a table, read from their System/Workflows rows: action list | describe (rules in prose) | update (patch: name, enabled = the row\'s On) | delete (to the trash). Create one with weave_create_automation.',
+    description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
@@ -480,7 +480,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor; space scopes the token to one space, and a token never reaches past the account that made it — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
+    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor; space scopes the token to one space, and a token never reaches past the account that made it — observer reads and comments, editor writes records, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
     inputSchema: {
       type: 'object',
       properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, space: { type: 'string', description: 'create only: scope the token to this one space' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
@@ -510,7 +510,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_registry',
-    description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose rows ARE the schema. The registry lives once, at the weave root — the default workspace — and every row carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
+    description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
     inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
   },
   {
@@ -538,7 +538,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_form_submit',
-    description: 'Submit one row through a System/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
+    description: 'Submit one record through a System/Forms form without write access to its table. form is its id or name; values accepts stable input keys, field IDs, aliases, names or labels. Reuse idempotencyKey when retrying the same request: it returns the original receipt; changed input with the same key is refused. Server-filled and unlisted fields are refused. Bug forms take note and categories (slow, broken-ui, wrong-data, error).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -565,15 +565,15 @@ export const CORE_TOOLS = new Set([
   'weave_import_csv', 'weave_vocabulary', 'weave_workspace', 'weave_search', 'weave_build', 'weave_call',
 ]);
 export const SUMMARY = {
-  weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
+  weave_build: 'spaces, tables, fields, relations and records in one call (dryRun checks)',
   weave_ontology: 'short schema: outline, one table, changes',
   weave_schema: 'the full schema as JSON',
-  weave_query: 'rows of one table, filtered (where), sorted, 200 a page',
-  weave_get_entity: 'one row in full: values, document, comments, activity',
-  weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
-  weave_create_entity: 'create one row',
-  weave_update_entity: 'change one row\'s values',
-  weave_import_csv: 'many rows into one table from CSV text',
+  weave_query: 'records of one table, where and sort, 200 a page',
+  weave_get_entity: 'one record in full: values, document, comments, activity',
+  weave_search: 'find records, tables and spaces by text; each hit has a permalink',
+  weave_create_entity: 'create one record',
+  weave_update_entity: 'change one record\'s values',
+  weave_import_csv: 'many records from CSV text',
   weave_create_space: 'create a space',
   weave_create_table: 'create a table in a space',
   weave_add_field: 'add a field to a table',
@@ -582,20 +582,20 @@ export const SUMMARY = {
   weave_workspace: 'read or rename the workspace, set its description or logo',
   weave_vocabulary: 'allowed values; several sections and icon queries in one call',
   weave_call: 'run any other tool by name; help describes one',
-  weave_delete_entity: 'trash a row (hard: true purges)',
-  weave_restore_entity: 'restore a trashed row',
-  weave_trash: 'list trashed rows',
+  weave_delete_entity: 'trash a record (hard: true purges)',
+  weave_restore_entity: 'restore a trashed record',
+  weave_trash: 'list trashed records',
   weave_stats: 'summarise a table\'s columns',
-  weave_undo: 'revert the last row edits (list: true previews)',
-  weave_bulk: 'set, link, move or roll up many rows in one write',
-  weave_set_state: 'move a row to a workflow state',
-  weave_link: 'link rows through a relation field',
-  weave_unlink: 'unlink rows from a relation field',
-  weave_get_doc: 'a row\'s document as markdown',
-  weave_set_doc: 'replace or append a row\'s document',
+  weave_undo: 'revert the last record edits (list: true previews)',
+  weave_bulk: 'set, link, move or roll up many records in one write',
+  weave_set_state: 'move a record to a workflow state',
+  weave_link: 'link records through a relation field',
+  weave_unlink: 'unlink records from a relation field',
+  weave_get_doc: 'a record\'s document as markdown',
+  weave_set_doc: 'replace or append a record\'s document',
   weave_doc_revisions: 'a document\'s revisions',
   weave_doc_restore: 'write a past revision back',
-  weave_add_comment: 'comment on a row',
+  weave_add_comment: 'comment on a record',
   weave_delete_comment: 'delete a comment',
   weave_check_formula: 'validate and preview a formula',
   weave_create_automation: 'create an automation rule',
@@ -611,7 +611,7 @@ export const SUMMARY = {
   weave_update_table: 'rename, icon, noun, field order, system fields, Σ row',
   weave_table_view: 'read and write a table\'s views',
   weave_move_table: 'move a table to another space',
-  weave_duplicate_table: 'copy a table\'s schema, no rows',
+  weave_duplicate_table: 'copy a table\'s schema, no records',
   weave_delete_table: 'trash a table (hard: true purges)',
   weave_restore_table: 'restore a trashed table',
   weave_rollback_field: 'restore a field\'s earlier config',
@@ -629,7 +629,7 @@ export const SUMMARY = {
   weave_export_json: 'the workspace as JSON',
   weave_import_json: 'replace the workspace from a JSON export',
   weave_forms: 'create, configure and pause table forms',
-  weave_form_submit: 'one row through a form',
+  weave_form_submit: 'one record through a form',
 };
 TOOLS.push({
   name: 'weave_call',
@@ -645,16 +645,16 @@ TOOLS.push({
 });
 
 const TITLES = {
-  weave_ontology: 'Read schema outline', weave_schema: 'Read full schema', weave_query: 'Query rows',
-  weave_get_entity: 'Read row', weave_create_entity: 'Create row', weave_update_entity: 'Update row',
-  weave_delete_entity: 'Delete row', weave_restore_entity: 'Restore row', weave_trash: 'List trash',
-  weave_stats: 'Summarize table', weave_undo: 'Undo edits', weave_bulk: 'Edit rows in bulk',
-  weave_set_state: 'Set workflow state', weave_link: 'Link rows', weave_unlink: 'Unlink rows',
+  weave_ontology: 'Read schema outline', weave_schema: 'Read full schema', weave_query: 'Query records',
+  weave_get_entity: 'Read record', weave_create_entity: 'Create record', weave_update_entity: 'Update record',
+  weave_delete_entity: 'Delete record', weave_restore_entity: 'Restore record', weave_trash: 'List trash',
+  weave_stats: 'Summarize table', weave_undo: 'Undo edits', weave_bulk: 'Edit records in bulk',
+  weave_set_state: 'Set workflow state', weave_link: 'Link records', weave_unlink: 'Unlink records',
   weave_get_doc: 'Read document', weave_set_doc: 'Write document', weave_doc_revisions: 'List document revisions',
   weave_doc_restore: 'Restore document revision', weave_add_comment: 'Add comment', weave_delete_comment: 'Delete comment',
   weave_search: 'Search workspace', weave_create_space: 'Create space', weave_create_table: 'Create table',
   weave_add_field: 'Add field', weave_check_formula: 'Check formula', weave_add_relation: 'Add relation',
-  weave_create_automation: 'Create automation', weave_export_csv: 'Export table as CSV', weave_import_csv: 'Import CSV rows',
+  weave_create_automation: 'Create automation', weave_export_csv: 'Export table as CSV', weave_import_csv: 'Import CSV records',
   weave_attach_file: 'Attach file', weave_vocabulary: 'Look up allowed values', weave_update_space: 'Update space',
   weave_template_list: 'List templates', weave_template_use: 'Use template', weave_delete_space: 'Delete space',
   weave_restore_space: 'Restore space', weave_update_table: 'Update table', weave_table_view: 'Read or write table views',
@@ -715,7 +715,7 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
-const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users row needs an architect token' : 'Writing a row of a system table needs an architect token');
+const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users record needs an architect token' : 'Writing a record of a system table needs an architect token');
 function refuseUsersWrite(weave, ref, caller) {
   if (!caller || mayAdminister(weave, caller.role)) return;
   let system = null;
@@ -954,7 +954,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       if (args.action === 'list') return listForms(weave);
       if (args.action === 'get') return getFormDefinition(weave, args.form);
       if (args.action === 'create') {
-        if (args.definition?.kind !== undefined) throw new Error('Form management creates row forms');
+        if (args.definition?.kind !== undefined) throw new Error('Form management creates record forms');
         return createForm(weave, args.definition);
       }
       if (args.action === 'update') return updateForm(weave, args.form, args.definition);

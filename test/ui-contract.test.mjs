@@ -1715,7 +1715,7 @@ test('dock: the panel is styled as the table\'s twin, its own scroller, and ligh
 test('dock: the Handbook ledger page teaches the new contract', () => {
   const hb = readFileSync(join(ROOT, 'src/handbook.js'), 'utf8');
   const section = hb.slice(hb.indexOf('## The grid reads as a record'), hb.indexOf('## Working on many rows at once'));
-  assert.match(section, /link opens the row in the \*\*dock\*\* beside the table/);
+  assert.match(section, /link opens the record in the \*\*dock\*\* beside the table/);
   assert.match(section, /⌘-click a row .* own browser tab/);
   assert.match(section, /document chip in a cell opens its entity in the dock/, 'a doc chip docks, and the page says so');
   assert.doesNotMatch(section, /side peek/, 'the retired peek is gone from the page');

@@ -7,7 +7,7 @@ export const DOCS_WORKSPACE = 'weave';
 export const BUG_FORM_NAME = 'Report a bug';
 export const FORM_FLOORS = ['Observer', 'Anonymous'];
 export const FORM_KINDS = ['Row', 'Bug report'];
-export const FORMS_DESCRIPTION = 'Every form in this workspace, as a row: the table it files into, the fields it shows in order with their labels and defaults, the fields the server fills, whether it is on, and who may submit. Submitting a form creates exactly one row in its table, written by the submitter, who needs no write access to that table.';
+export const FORMS_DESCRIPTION = 'Every form in this workspace, as a row: the table it files into, the fields it shows in order with their labels and defaults, the fields the server fills, whether it is on, and who may submit. Submitting a form creates exactly one record in its table, written by the submitter, who needs no write access to that table.';
 
 const COLUMNS = [
   ['Fields', 'text'],
@@ -256,7 +256,7 @@ export function updateForm(w, ref, patch = {}) {
     const db = w.getTable(patch.table);
     if (db.system) throw new WeaveError('A form needs a table outside the system registry', 'invalid');
     const row = reg.listEntities(sysTable(reg, 'tables').id).find(e => e.sysId === db.id);
-    if (!row) throw new WeaveError('The table has no registry row', 'not-found');
+    if (!row) throw new WeaveError('The table has no registry record', 'not-found');
     values.Table = row.id;
   }
   const before = structuredClone(reg.state);
@@ -277,7 +277,7 @@ export function createForm(w, settings = {}) {
   if (db.system) throw new WeaveError('A form needs a table outside the system registry', 'invalid');
   const tablesT = sysTable(reg, 'tables');
   const tablesRow = tablesT && reg.listEntities(tablesT.id).find((e) => e.sysId === db.id);
-  if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no System/Tables row to point a form at`, 'not-found');
+  if (!tablesRow) throw new WeaveError(`${w.qualifiedName(db)} has no System/Tables record to point a form at`, 'not-found');
   ({ fields, hidden } = normalizeDefinition(w, db, name, fields, hidden, kind));
   const row = reg.createEntity(formsT.id, {
     name,

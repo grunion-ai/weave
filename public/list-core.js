@@ -189,7 +189,7 @@
     return out;
   }
 
-  function footerText({ shown, all, done = null, term = { singular: 'row', plural: 'rows' } }) {
+  function footerText({ shown, all, done = null, term = { singular: 'record', plural: 'records' } }) {
     const noun = all === 1 ? term.singular : term.plural;
     return `${shown} of ${all} ${noun}` + (done == null ? '' : ` · ${done} completed`);
   }
@@ -198,7 +198,7 @@
     return (levels ?? []).map((l) => (typeof l === 'string' ? `${l}::asc:` : `${l.field}:${l.order ?? ''}:${l.dir === 'desc' ? 'desc' : 'asc'}:${l.grain ?? ''}`)).join('>');
   }
 
-  function moreLabel({ shown, all, cap, term = { singular: 'row', plural: 'rows' } }) {
+  function moreLabel({ shown, all, cap, term = { singular: 'record', plural: 'records' } }) {
     const next = Math.max(0, Math.min(cap, all - shown));
     const noun = all === 1 ? term.singular : term.plural;
     return `Show ${next} more \u00b7 ${shown} of ${all} ${noun}`;

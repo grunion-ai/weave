@@ -114,7 +114,7 @@
     return [...out.values()];
   }
 
-  function countText(rows, term = { singular: 'row', plural: 'rows' }) {
+  function countText(rows, term = { singular: 'record', plural: 'records' }) {
     const n = liveRows(rows).length;
     return `${n.toLocaleString('en-US')} ${n === 1 ? term.singular : term.plural}`;
   }

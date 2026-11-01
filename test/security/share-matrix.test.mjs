@@ -13,7 +13,7 @@ const NARROW = new Set(['entity', 'entities', 'view']);
 const LADDER_MODES = SHARE_MODES.filter(mode => mode !== 'submit');
 const LADDER_KINDS = SHARE_KINDS.filter(kind => kind !== 'entities');
 const INVALID = SHARE_MODES.flatMap(mode => SHARE_KINDS.filter(kind => (kind === 'entities' && mode !== 'read') || (mode === 'submit' && kind !== 'table')).map(kind => ({ mode, kind })));
-const OUTSIDE = 'A share link reaches the rows, documents and files in its scope, nothing else';
+const OUTSIDE = 'A share link reaches the records, documents and files in its scope, nothing else';
 
 function seed() {
   const w = new Weave();
@@ -79,18 +79,18 @@ function probes(kind, mode) {
     { name: 'POST a comment', method: 'POST', path: (s) => `/api/entities/${s.one.id}/comments`, body: { text: 'by share' }, expect: refused('Comments by share link are not built yet'), write: true },
     {
       name: 'PATCH the row', method: 'PATCH', path: (s) => `/api/entities/${s.one.id}`, body: { Owner: `patched by ${mode}` }, write: true,
-      expect: rung >= RUNG.edit ? { status: 200 } : refused(`A ${mode} link cannot change rows; that takes edit`),
+      expect: rung >= RUNG.edit ? { status: 200 } : refused(`A ${mode} link cannot change records; that takes edit`),
       effect: (s) => assert.equal(s.w.readEntity(s.one.id).fields.Owner, `patched by ${mode}`),
     },
     {
       name: 'POST a row', method: 'POST', path: (s) => `/api/tables/${s.task.id}/entities`, body: { Name: `made by ${mode}` }, write: true,
-      expect: ['entity', 'entities'].includes(kind) ? refused('This share link reaches one row; it cannot add rows beside it')
-        : rung >= RUNG.manage ? { status: 201 } : refused(`A ${mode} link cannot add rows; that takes manage`),
+      expect: ['entity', 'entities'].includes(kind) ? refused('This share link reaches one record; it cannot add records beside it')
+        : rung >= RUNG.manage ? { status: 201 } : refused(`A ${mode} link cannot add records; that takes manage`),
       effect: (s) => assert.ok(s.w.listEntities(s.task.id).some((e) => s.w.entityName(e) === `made by ${mode}`)),
     },
     {
       name: 'DELETE the row', method: 'DELETE', path: (s) => `/api/entities/${s.one.id}`, write: true,
-      expect: rung >= RUNG.manage ? { status: 200 } : refused(`A ${mode} link cannot delete rows; that takes manage`),
+      expect: rung >= RUNG.manage ? { status: 200 } : refused(`A ${mode} link cannot delete records; that takes manage`),
       effect: (s) => assert.ok(s.w.getEntity(s.one.id).deletedAt),
     },
   ];

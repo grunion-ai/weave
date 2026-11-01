@@ -139,7 +139,7 @@ if (s) {
         await page.waitForSelector('.activity-rollback');
         assert.match(await page.locator('.fieldrow', { hasText: 'Values' }).first().innerText(), /2 values from before this change kept/);
         await page.click('.activity-rollback');
-        await page.waitForFunction((n) => [...document.querySelectorAll('#wv-toasts .wv-toast-msg')].some((m) => m.textContent.startsWith(`${n} rolled back: 1 value back, 1 edited since, kept, 1 newer row converted`)), name, { timeout: 10000 });
+        await page.waitForFunction((n) => [...document.querySelectorAll('#wv-toasts .wv-toast-msg')].some((m) => m.textContent.startsWith(`${n} rolled back: 1 value back, 1 edited since, kept, 1 newer record converted`)), name, { timeout: 10000 });
         assert.equal(weave.getField(t.id, f.id).type, 'select');
         assert.equal(weave.getEntity(kept.id).values[f.id], 'g-a', 'the option id came back');
         assert.equal(weave.getEntity(edited.id).values[f.id], 'g-b', 'the edit stands');

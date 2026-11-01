@@ -165,7 +165,7 @@ test('resending the whole spec is a no-op for structure; skipExistingRows skips 
   assert.ok(again.existing.includes('space Budget'));
   assert.ok(again.existing.includes('table Budget/Transaction'));
   assert.ok(again.existing.includes('field Budget/Transaction.Account'));
-  assert.ok(again.existing.includes('row Budget/Account: Amex Gold'));
+  assert.ok(again.existing.includes('record Budget/Account: Amex Gold'));
   assert.equal(w.query('Transaction', {}).total, 2);
   assert.equal(w.build(SPEC()).created.rows, 5);
   assert.equal(w.query('Transaction', {}).total, 4);
