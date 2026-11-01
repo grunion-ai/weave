@@ -63,9 +63,19 @@ export function failingFiles(results) {
   return [...last].filter(([, failed]) => failed).map(([file]) => file).sort();
 }
 
+export function timedOutShards(results) {
+  const newest = new Map();
+  for (const result of results) {
+    const held = newest.get(result.id);
+    if (!held || Number(result.attempt ?? 1) > Number(held.attempt ?? 1)) newest.set(result.id, result);
+  }
+  return [...newest.values()].filter((r) => r.timedOut === true).map((r) => r.id).sort();
+}
+
 const prList = (prs) => prs.length > 3 ? `${prs.slice(0, 3).map((p) => `#${p.number}`).join(', ')} and ${prs.length - 3} more` : prs.map((p) => `#${p.number}`).join(', ');
 
-export function issueName({ files, prs, culprits, run }) {
+export function issueName({ files, prs, culprits, run, timedOut = [] }) {
+  if (!files.length && timedOut.length) return `Error: tests shards ${timedOut.join(', ')} time out on main at ${short(run.head_sha)}`;
   const test = files[0] ?? 'the tests suite';
   const more = files.length > 1 ? ` (+${files.length - 1} more)` : '';
   const after = prs.length === 1 ? `PR #${prs[0].number}` : prs.length ? `PRs ${prList(prs)}` : `commit ${short(culprits[0]?.sha ?? run.head_sha)}`;
@@ -79,7 +89,7 @@ export function revertTitle({ culprits, prs, probes = [] }) {
 }
 
 function evidence(ctx) {
-  const { run, files, jobs, probes, base, commits, culprits, prs } = ctx;
+  const { run, files, jobs, probes, base, commits, culprits, prs, timedOut = [] } = ctx;
   const lines = [
     `Red run: ${run.html_url} (head ${short(run.head_sha)})`,
     `Rerun of the failed jobs: ${run.html_url}/attempts/2`,
@@ -89,6 +99,7 @@ function evidence(ctx) {
     '',
     'Failing tests:',
     ...(files.length ? files.map((f) => `- ${f}`) : ['- none recorded in the shard results']),
+    ...(timedOut.length ? ['', `Shards that hit the test manager timeout: ${timedOut.join(', ')}`] : []),
     '',
     'Failed jobs:',
     ...(jobs.length ? jobs.map((j) => `- ${j.name} ${j.html_url}`) : ['- none listed']),
@@ -189,6 +200,11 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
   const ctx = { run, files, jobs, base, commits, culprits: [], probes: [], prs: [], self: io.self };
+  const latest = await io.failures(run);
+  ctx.timedOut = latest.timedOut ?? [];
+  if (ctx.timedOut.length && !(latest.files ?? []).length) {
+    return escalate(io, ctx, result, `shards ${ctx.timedOut.join(', ')} hit the test manager timeout and no test recorded a failure, before and after the rerun; a timeout names no culprit (a hang or a shard too heavy for its job), so the sheriff neither bisects nor reverts`);
+  }
   const tracked = files.length ? await io.openFlakes(files) : [];
   if (files.length && tracked.length === files.length) {
     await io.logFlake({ run, files, jobs, stayedRed: true });
@@ -333,7 +349,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
         const results = [];
         const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f.endsWith('.json')) { try { results.push(JSON.parse(readFileSync(p, 'utf8'))); } catch {} } } };
         walk(dir);
-        return { jobs, cancelled, files: failingFiles(results) };
+        return { jobs, cancelled, files: failingFiles(results), timedOut: timedOutShards(results) };
       } finally { rmSync(dir, { recursive: true, force: true }); }
     },
     openReverts: async () => api(`${base}/pulls?state=open&per_page=100`).filter((p) => p.head.ref.startsWith(BRANCH_PREFIX)).map((p) => ({ number: p.number, shas: culpritsOf(p.body) })),

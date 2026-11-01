@@ -154,7 +154,7 @@ async function main() {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, WEAVE_CI_REPORT: report },
   });
   const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const result = { ...shard, commit, manifest: digest(manifest), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1), code: child.status ?? 1, durationMs: Date.now() - start, summaries: events.filter(e => e.type === 'summary').map(e => e.data), skips: events.filter(e => e.type === 'skip').map(e => e.data) };
+  const result = { ...shard, commit, manifest: digest(manifest), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1), code: child.status ?? 1, timedOut: child.status === 124, durationMs: Date.now() - start, summaries: events.filter(e => e.type === 'summary').map(e => e.data), skips: events.filter(e => e.type === 'skip').map(e => e.data) };
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${id}.json`), JSON.stringify(result, null, 2) + '\n');
   rmSync(dir, { recursive: true, force: true });
