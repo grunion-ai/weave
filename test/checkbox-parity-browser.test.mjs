@@ -129,10 +129,11 @@ if (s) {
       await page.keyboard.press('ArrowDown');
       assert.equal(await page.evaluate(() => document.activeElement?.matches('.foot-row input[type="checkbox"]') && document.activeElement.closest('.foot-row').dataset.agg), 'avg', 'ArrowDown walks to the next checkbox');
       await page.keyboard.press('Escape');
-      await page.locator('#ws-list .ws-icon').first().click({ button: 'right' });
-      const setting = page.locator('.ws-ctx .wv-menu-row', { hasText: 'Link preview before sign-in' });
+      await page.goto(`${base}/#/settings`, { waitUntil: 'networkidle' });
+      const setting = page.locator('#main .settings-link-preview .wv-toggle');
       await setting.waitFor();
-      assert.equal(await setting.locator('.switch .switch-knob').count(), 1, 'a setting stays a switch');
+      assert.equal(await setting.getByRole('switch', { name: 'Link preview before sign-in' }).count(), 1, 'a setting stays a labelled switch');
+      assert.equal(await setting.locator('.wv-toggle-knob').count(), 1, 'it draws as a switch');
     } finally { await page.close(); }
   });
 

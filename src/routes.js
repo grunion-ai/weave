@@ -317,7 +317,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
       const target = hub.get(wsM[1]) ?? hub.entries().find(([, w]) => w.state.meta.id === wsM[1])?.[1] ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
-      if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
+      if (!target || target.state.meta.deletedAt) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
       path = wsM[2] || '/';
@@ -1226,7 +1226,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
               } else engine = [c.holder, root].find((e) => (account = e.accountForIdentity(who)));
-              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && !e.state.meta.deletedAt && (account = e.accountForIdentity(who)));
+              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && (account = e.accountForIdentity(who)));
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
