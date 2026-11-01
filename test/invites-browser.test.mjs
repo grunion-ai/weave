@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 import { createOidc } from '../src/oidc.js';
 
 const s = await launch('members and invites', (weave) => {
@@ -74,6 +75,8 @@ if (s) {
       assert.match(await row.textContent(), /Observer, free/);
       assert.deepEqual(weave.listInvites().map((i) => [i.email, i.role]), [[`${theme}@example.com`, 'observer']]);
       await row.locator('button', { hasText: 'Revoke' }).click();
+      assert.equal(weave.listInvites().length, 1, 'a click alone revokes nothing');
+      await hold(row.locator('button', { hasText: 'Revoke' }));
       await row.waitFor({ state: 'detached' });
       assert.deepEqual(await eventually(() => weave.listInvites().length, 0), 0);
       assert.deepEqual(await strayNull(page), [], 'no stray null after a revoke');

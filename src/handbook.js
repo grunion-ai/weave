@@ -1043,7 +1043,7 @@ The name and logo ride the icon rail on the far left, which is how you switch be
 
 ## Deleting
 
-Every menu deletes the same way: **Move to trash**, one click, for a table, a space, a record, a share page or a field. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
+Every menu deletes the same way: **Move to trash**, held until its fill sweeps across, for a table, a space, a record, a share page or a field. A click deletes nothing. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
 
 ## The space
 
@@ -1238,7 +1238,7 @@ Once a row is chosen, a bar sits at the bottom centre of the window saying how m
 | **Link to…** | pick a relation, search the far table, pick one row: every chosen row is linked to it |
 | **Duplicate** | copies each row's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
 | **⋯** | the overflow below |
-| **Move to trash** | past a hairline, on its own. It is instant: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
+| **Move to trash** | past a hairline, on its own. Hold it until its fill sweeps across: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
 
 | Under ⋯ | What it does |
 | --- | --- |

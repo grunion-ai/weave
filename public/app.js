@@ -1737,6 +1737,15 @@ function holdToConfirm(label, onConfirm, {
   return btn;
 }
 
+function holdIcon(icon, title, onConfirm, { rowClass, label = title } = {}) {
+  const btn = holdToConfirm('', onConfirm, { rowClass, holdingLabel: '' });
+  btn.classList.remove('text-danger');
+  btn.insertBefore(lucideEl(icon, 'wv-icon hold-icon'), btn.querySelector('.hold-label'));
+  btn.setAttribute('aria-label', label);
+  btn.title = title;
+  return btn;
+}
+
 function rememberGridFocus() {
   const at = document.activeElement;
   const cell = at?.closest?.('tr[data-eid] > td');
@@ -2723,7 +2732,7 @@ function reopenAfterUndo(href, open, stayed) {
 
 function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   return {
-    label: 'Move to trash', danger: true,
+    label: 'Move to trash', danger: true, hold: true, holdingLabel: 'Hold to delete…', hint: 'hold',
     run: () => {
       let where = null, landed = null;
       const settled = (async () => {
@@ -3923,13 +3932,16 @@ function deleteWorkspaceDialog(w, after = null) {
     class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
     placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
   });
+  let held = false;
   modal('Delete workspace', [
     el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
       ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
-    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm'),
+    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm, then hold Delete workspace'),
     input,
   ], async () => {
-    if (input.value !== w.name) throw Object.assign(new Error('The name does not match'), { shown: true });
+    const armed = held;
+    held = false;
+    if (!armed || input.value !== w.name) throw Object.assign(new Error('Hold Delete workspace to confirm'), { shown: true });
     const order = state.wsList ?? [];
     await api('DELETE', `/workspaces/${w.id}`);
     if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
@@ -3938,8 +3950,13 @@ function deleteWorkspaceDialog(w, after = null) {
     if (state.route?.page === 'settings') showSettings();
     else after?.();
   }, 'Delete workspace', 'btn-danger');
-  const go = $('#modal button[type="submit"]');
+  const submit = $('#modal button[type="submit"]');
+  const form = submit.form;
+  const go = holdToConfirm('Delete workspace', () => { held = true; form.requestSubmit(); },
+    { rowClass: 'btn btn-danger ws-delete-go', holdingLabel: 'Hold to delete…' });
+  go.classList.remove('text-danger');
   go.disabled = true;
+  submit.replaceWith(go);
   input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
 }
 
@@ -4131,17 +4148,13 @@ function viewStrip(db) {
     const name = el('a', { class: 'view-name', href: viewHref(db, v), draggable: 'false', ...(active ? { 'aria-current': 'true' } : {}) }, v.name);
     name.addEventListener('click', (e) => { if (active) e.preventDefault(); });
     const act = (cls, icon, label, run) => el('button', { class: `view-act ${cls}`, type: 'button', 'aria-label': `${label} ${v.name}`, title: label, onclick: run }, lucideEl(icon));
-    const del = holdToConfirm('', async () => {
+    const del = holdIcon('trash-2', 'Hold to delete', async () => {
       try { await api('DELETE', at(v.id)); } catch (err) { toast(err.message, true); return; }
       await loadSchema();
       if (cur?.id !== v.id) return showDatabase(db.id);
       const bare = `#/table/${db.id}`;
       if (location.hash === bare) showDatabase(db.id, null); else location.hash = bare;
-    }, { rowClass: 'view-act view-del', holdingLabel: '' });
-    del.classList.remove('text-danger');
-    del.insertBefore(lucideEl('trash-2', 'wv-icon hold-icon'), del.querySelector('.hold-label'));
-    del.setAttribute('aria-label', `Hold to delete ${v.name}`);
-    del.title = 'Hold to delete';
+    }, { rowClass: 'view-act view-del', label: `Hold to delete ${v.name}` });
     const row = el('div', { class: 'view-tab view-row' + (active ? ' active' : ''), role: 'listitem', dataset: { view: v.id } },
       grip, name,
       i === 0 ? el('span', { class: 'view-first', title: 'This view opens with the table' }, 'Opens first') : null,
@@ -5330,6 +5343,7 @@ function sharePanelButton(context) {
     const close = () => { dispose(); closeSharePanel = null; button.setAttribute('aria-expanded', 'false'); button.focus({ preventScroll: true }); };
     const dispose = WeaveSharePanel.mount($('#share-pane'), context(), {
       el, icon: lucideEl, api, copy: copyText, notify: toast, close,
+      hold: (label, glyph, run) => holdIcon(glyph, `Hold to ${label.toLowerCase()}`, run, { rowClass: 'btn btn-sm btn-icon btn-ghost-secondary', label }),
       confirm: async (title, detail) => window.confirm(`${title}\n\n${detail}`),
     });
     closeSharePanel = close;
@@ -6823,6 +6837,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     trash: trashChosen,
   };
 
+  const holdAct = (c) => {
+    const btn = holdIcon(CMD_ICON[c.id].replace('lucide:', ''), `Hold to ${c.label.toLowerCase()}`, () => COMMANDS[c.id]?.(),
+      { rowClass: 'sel-act danger', label: c.label });
+    btn.append(el('span', { class: 'sel-tip' }, btn.title));
+    return btn;
+  };
   const drawPuck = () => {
     const sel = chosen();
     if (!sel.size) { puck.replaceChildren(); return; }
@@ -6837,8 +6857,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('span', { class: 'sel-count' }, L.countLabel(sel.size, db.term)),
       ...cmds.map((c) => [
         c.danger ? el('span', { class: 'sel-sep' }) : null,
-        el('button', {
-          class: 'sel-act' + (c.danger ? ' danger' : ''), type: 'button',
+        c.danger ? holdAct(c) : el('button', {
+          class: 'sel-act', type: 'button',
           title: c.label, 'aria-label': c.label,
           onclick: (ev) => COMMANDS[c.id]?.(ev.currentTarget),
         }, iconEl(CMD_ICON[c.id], 'wv-icon'), el('span', { class: 'sel-tip' }, c.label)),
@@ -11386,12 +11406,9 @@ function shareDialog(kind, id, name) {
         el('code', { class: 'share-url' }, full),
         el('div', { class: 'share-row-actions' },
           el('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(full, 'Link copied') }, 'Copy'),
-          el('button', {
-            class: 'btn btn-sm share-revoke', type: 'button',
-            onclick: async () => {
-              try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
-            },
-          }, 'Revoke')));
+          holdToConfirm('Revoke', async () => {
+            try { await api('DELETE', `/shares/${g.id}`); toast('Link revoked'); await fill(); } catch (err) { toast(err.message, true); }
+          }, { rowClass: 'btn btn-sm share-revoke', holdingLabel: 'Hold to revoke…' })));
     }));
   };
   modal(`Share ${name}`, [
@@ -11590,13 +11607,13 @@ async function inviteDialog() {
           el('span', {}, i.email), el('span', { class: 'pid' }, ROLE_LABELS[i.role] ?? i.role),
           el('span', { class: 'spacer' }),
           el('span', { class: 'pid' }, `invited by ${i.invitedBy ?? 'unknown'} on ${day(i.createdAt)}`),
-          el('button', { class: 'btn btn-sm btn-ghost-danger', type: 'button', onclick: async () => {
+          holdToConfirm('Revoke', async () => {
             try {
               await api('DELETE', `/invites/${i.id}`);
               toast('Invite revoked');
               draw(accounts, await api('GET', '/invites'));
             } catch (err) { toast(err.message, true); }
-          } }, 'Revoke'))))
+          }, { rowClass: 'btn btn-sm btn-ghost-danger', holdingLabel: 'Hold to revoke…' }))))
         : el('div', { class: 'wv-members-empty' }, 'No pending invites.'),
     ].filter(Boolean));
   };
@@ -12473,10 +12490,8 @@ function wsLogoButton(w, hasLogo) {
     host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id ?? w.name)}`);
     host.replaceChildren(String(w.name ?? 'w').slice(0, 1).toUpperCase());
   } }) : String(w.name ?? 'w').slice(0, 1).toUpperCase());
-  const clear = hasLogo ? el('button', {
-    type: 'button', class: 'ws-logo-clear', title: 'Remove logo', 'aria-label': 'Remove logo',
-    onclick: () => removeWorkspaceLogo(w, after),
-  }, lucideEl('x')) : null;
+  const clear = hasLogo ? holdIcon('x', 'Hold to remove logo', () => removeWorkspaceLogo(w, after),
+    { rowClass: 'ws-logo-clear', label: 'Remove logo' }) : null;
   return el('span', { class: 'ws-logo' }, pick, clear);
 }
 

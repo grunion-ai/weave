@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { hold } from './lib/hold.mjs';
 let table, entry;
 const s = await launch('Share beta panel', w => {
   w.createSpace({ name: 'Work' });
@@ -8,7 +9,7 @@ const s = await launch('Share beta panel', w => {
   entry = w.createEntity(table.id, { Name: 'First request' });
 });
 if (s) {
-  for (const theme of ['light', 'dark']) test(`Share panel: scoped creation, expiration, copy, preview and regeneration (${theme})`, async () => {
+  for (const theme of ['light', 'dark']) test(`Share panel: scoped creation, expiration, copy, preview, regeneration and hold to delete (${theme}, Feature #346)`, async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: theme });
     const requests = [];
     let links = [];
@@ -49,6 +50,16 @@ if (s) {
       page.once('dialog', async dialog => { assert.match(dialog.message(), /old URL stops working/); await dialog.accept(); });
       await page.getByRole('button', { name: 'Regenerate link', exact: true }).click();
       await page.waitForFunction(() => document.querySelector('.share-link-name')?.href.endsWith('/s/next-token'));
+      const del = page.getByRole('button', { name: 'Delete link', exact: true });
+      assert.equal(await del.getAttribute('title'), 'Hold to delete link');
+      await del.click();
+      assert.equal(requests.filter(r => r.method === 'DELETE').length, 0, 'a click alone deletes nothing');
+      await hold(del);
+      await page.waitForSelector('.share-link', { state: 'detached' });
+      assert.equal(requests.filter(r => r.method === 'DELETE').length, 1, 'the hold deletes the link');
+      await page.click('.share-add');
+      await page.getByRole('button', { name: 'Create link', exact: true }).click();
+      await page.waitForSelector('.share-link');
       await page.getByRole('button', { name: 'Close share panel' }).click();
       await page.locator(`tr.entity-row[data-eid="${entry.id}"] input[type="checkbox"]`).check();
       await page.click('.table-share-btn');
