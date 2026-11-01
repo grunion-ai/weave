@@ -96,6 +96,12 @@
 .wv-card-head:has(> .wv-card-av) { justify-content: flex-start; gap: 10px; }
 .wv-card-head:has(> .wv-card-av) > .wv-card-title { flex: 1 1 auto; min-width: 0; }
 .wv-prose .k-rel .wv-av { vertical-align: -3px; margin-right: 4px; }
+.wv-face-pile { display: inline-flex; align-items: center; vertical-align: middle; }
+.wv-face-pile > a { display: inline-flex; border-radius: 50%; text-decoration: none; }
+.wv-face-pile > a + a { margin-left: -1px; }
+.wv-face-pile > a > .wv-av { --wv-av-size: 20px; box-shadow: 0 0 0 1px var(--tblr-bg-surface); }
+.wv-face-pile > a:hover { position: relative; z-index: 1; }
+.wv-face-pile > .k-more { margin-left: 4px; padding-block: 0; }
 .hue-slate  { --fill: rgba(0, 5, 20, .05);      --text: #60646c; --dot: transparent; }
 .hue-blue   { --fill: rgba(71, 105, 235, .12);  --text: #3a5bc7; --dot: #4769eb; }
 .hue-green  { --fill: rgba(46, 160, 67, .14);   --text: #1a6b48; --dot: #2ea043; }
