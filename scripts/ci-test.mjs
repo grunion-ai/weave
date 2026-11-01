@@ -11,6 +11,8 @@ export const UNIT_SHARDS = 2;
 export const BROWSER_FILES_PER_SHARD = 45;
 export const BROWSER_SHARD_CAP = 12;
 export const browserShards = count => Math.max(1, Math.min(BROWSER_SHARD_CAP, Math.ceil(count / BROWSER_FILES_PER_SHARD)));
+export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
+export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
 export const TARGET_SHARD_MS = 7 * 60 * 1000;
 export const UNIT_SHARD_CAP = 4;
 export const DEFAULT_PARALLELISM = 1.5;
@@ -157,8 +159,8 @@ export function newestAttempts(results) {
 }
 
 export function mainPlan(root = ROOT, timings = null) {
-  const files = testFiles(root);
-  const groups = lanes(files, root);
+  const groups = gating(lanes(testFiles(root), root));
+  const files = [...groups.unit, ...groups.browser];
   const size = file => statSync(join(root, file)).size;
   const ms = { unit: laneMs(groups.unit, timings, size), browser: laneMs(groups.browser, timings, size) };
   const weight = file => (ms.unit?.get(file) ?? ms.browser?.get(file) ?? size(file));
@@ -171,13 +173,13 @@ function readJson(path) {
 
 export function loadManifest(path, root = ROOT) {
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
-  return checkInventory(manifest, lanes(testFiles(root), root));
+  return checkInventory(manifest, gating(lanes(testFiles(root), root)));
 }
 
 function currentPrPlan() {
   const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
   const diff = execFileSync('git', ['diff', '-W', '--no-renames', 'HEAD^1', 'HEAD', '--', 'public', 'src', 'bin'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf, diff);
+  return prPlan(gating(lanes(testFiles(ROOT), ROOT)), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf, diff);
 }
 
 async function main() {

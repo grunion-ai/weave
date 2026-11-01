@@ -17,7 +17,7 @@ test('alertRequest sends no Authorization header when no token is set', () => {
   assert.equal(init.body, 'weave sheriff: red');
 });
 
-for (const workflow of ['sheriff', 'dev-soak', 'promote']) {
+for (const workflow of ['sheriff', 'dev-soak', 'promote', 'budgets']) {
   test(`${workflow} workflow hands SHERIFF_ALERT_TOKEN from the Actions secret to the script`, () => {
     const yml = readFileSync(new URL(`../.github/workflows/${workflow}.yml`, import.meta.url), 'utf8');
     assert.match(yml, /^\s+SHERIFF_ALERT_TOKEN: \$\{\{ secrets\.SHERIFF_ALERT_TOKEN \}\}$/m);
@@ -25,9 +25,9 @@ for (const workflow of ['sheriff', 'dev-soak', 'promote']) {
 }
 
 test('no script posts to SHERIFF_ALERT_URL without alertRequest', () => {
-  for (const file of ['sheriff', 'dev-soak']) {
+  for (const [file, line] of [['sheriff', 'line'], ['dev-soak', 'line'], ['ci-trend', 'alert']]) {
     const src = readFileSync(new URL(`../scripts/${file}.mjs`, import.meta.url), 'utf8');
     assert.doesNotMatch(src, /fetch\(env\.SHERIFF_ALERT_URL, \{ method/);
-    assert.match(src, /fetch\(env\.SHERIFF_ALERT_URL, alertRequest\(env, line\)\)/);
+    assert.ok(src.includes(`fetch(env.SHERIFF_ALERT_URL, alertRequest(env, ${line}))`), `${file} posts through alertRequest`);
   }
 });
