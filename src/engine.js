@@ -2505,6 +2505,12 @@ export class Weave {
     return f;
   }
 
+  #sameGrouping(db, view) {
+    if (!view.group?.length) return [];
+    const sig = ListCore.groupSig(view.group);
+    return db.tableViews.filter((v) => v.id !== view.id && v.group?.length && ListCore.groupSig(v.group) === sig);
+  }
+
   #checkGroup(db, input) {
     let levels;
     try { levels = ListCore.parseGroup(input); } catch (err) { throw new WeaveError(err.message, 'invalid'); }
@@ -2554,10 +2560,13 @@ export class Weave {
       else throw new WeaveError(`subtotals is all, top or none: which group levels carry a Σ row — got ${JSON.stringify(patch.subtotals)}`, 'invalid');
     }
     if (patch.group !== undefined) {
-      const before = (next.group ?? []).map((l) => l.field).join('|');
+      const before = ListCore.groupSig(next.group);
       const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
       if (g.length) next.group = g; else delete next.group;
-      if (patch.collapsed === undefined && g.map((l) => l.field).join('|') !== before) delete next.collapsed;
+      if (patch.collapsed === undefined && ListCore.groupSig(g) !== before) {
+        const twin = this.#sameGrouping(db, next)[0];
+        if (Array.isArray(twin?.collapsed)) next.collapsed = [...twin.collapsed]; else delete next.collapsed;
+      }
     }
     if (patch.completedBy !== undefined) {
       if (patch.completedBy == null || patch.completedBy === '') delete next.completedBy;
@@ -2733,6 +2742,11 @@ export class Weave {
       throw new WeaveError('position is a whole number: 0 is the first place in the strip (the default)', 'invalid');
     }
     const created = i < 0;
+    if (patch.collapsed !== undefined) {
+      for (const v of this.#sameGrouping(db, next)) {
+        if (Array.isArray(next.collapsed)) v.collapsed = [...next.collapsed]; else delete v.collapsed;
+      }
+    }
     if (created) { views.push(next); i = views.length - 1; } else views[i] = next;
     const to = patch.default === true ? 0 : patch.position != null ? Math.min(patch.position, views.length - 1) : i;
     if (to !== i) { views.splice(i, 1); views.splice(to, 0, next); i = to; }
