@@ -14,8 +14,8 @@ if (s) {
   const { base, browser } = s;
   const GAP = 16;
   const box = (page, sel) => page.$eval(sel, (e) => { const b = e.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right) }; });
-  const open = async (hash) => {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  const open = async (hash, width = 1600) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await openPane(page, 'filters');
@@ -40,7 +40,7 @@ if (s) {
     } finally { await page.close(); }
   });
   test('with the context pane open too the view pane is still last (Feature #340)', async () => {
-    const page = await open(`#/table/${jobs.id}?e=${row.id}`);
+    const page = await open(`#/table/${jobs.id}?e=${row.id}`, 1800);
     try {
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await page.click('#dock .activity-btn');
