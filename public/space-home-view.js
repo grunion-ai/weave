@@ -52,17 +52,16 @@ function spaceHomeViews(views) {
 
 function spaceHomeRows(rows) {
   return el('section', { class: 'space-home-section space-home-rows', dataset: { section: 'rows' } },
-    spaceHomeHead('Recent', 'Opened by you'),
-    ...WeaveSpaceHome.rowsByTable(rows.slice(0, SPACE_HOME_ROWS)).map((group) => el('div', { class: 'space-home-group' },
-      el('h3', { class: 'space-home-group-name' }, group.table),
-      el('div', { class: 'space-home-list' }, ...group.rows.map((r) => {
-        const status = r.chip?.state?.name;
-        return spaceHomeEntityLink(r,
-          el('span', { class: 'space-home-text' },
-            el('strong', { class: 'space-home-title', title: r.name }, r.name),
-            el('small', { class: 'space-home-sub' }, status ? `#${r.publicId} · ${status}` : `#${r.publicId}`)),
-          spaceHomeTime(r.at));
-      })))));
+    spaceHomeHead('Recent rows', 'Opened by you'),
+    el('div', { class: 'space-home-list' }, ...rows.slice(0, SPACE_HOME_ROWS).map((r) => {
+      const where = weavePalette.whereText(r);
+      const status = r.chip?.state?.name;
+      return spaceHomeEntityLink(r,
+        el('span', { class: 'space-home-text' },
+          el('strong', { class: 'space-home-title', title: r.name }, r.name),
+          el('small', { class: 'space-home-sub' }, status ? `${where} · ${status}` : where)),
+        spaceHomeTime(r.at));
+    })));
 }
 
 function spaceHomeRun(run, spaceName) {
@@ -85,7 +84,7 @@ function spaceHomeRun(run, spaceName) {
         el('span', { class: 'space-home-text' },
           el('strong', { class: 'space-home-title', title: r.name }, r.name),
           el('small', { class: 'space-home-sub' }, `${r.table} #${r.publicId}`)))),
-      more > 0 ? el('p', { class: 'space-home-more' }, `${more.toLocaleString()} more changed`) : null,
+      more > 0 ? el('p', { class: 'space-home-more' }, `${more.toLocaleString()} more ${more === 1 ? 'row' : 'rows'} changed`) : null,
       el('a', {
         class: 'space-home-open-workflow',
         href: `#/entity/${run.workflowId}`,
@@ -121,7 +120,7 @@ function spaceHomeRuns(runs, spaceName) {
     filter.classList.add('space-home-filter');
   }
   return el('section', { class: 'space-home-section space-home-runs', dataset: { section: 'runs' } },
-    spaceHomeHead('Automation runs', `Changes in ${spaceName} · includes runs from other spaces`, filter),
+    spaceHomeHead('Automation runs', `Changed rows in ${spaceName} · includes runs from other spaces`, filter),
     list);
 }
 

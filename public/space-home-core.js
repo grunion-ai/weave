@@ -1,4 +1,6 @@
 (() => {
+  const plural = (n) => `${n} ${n === 1 ? 'row' : 'rows'} changed`;
+
   function homeSections(payload, recents) {
     const { space, tables = [], runs = [] } = payload ?? {};
     const byId = new Map(tables.map((t) => [t.id, t]));
@@ -9,9 +11,7 @@
       const now = byId.get(r.tableId)?.views?.find((v) => v.id === r.id);
       return now ? [{ ...r, name: now.name, layout: now.layout, table: byId.get(r.tableId).name }] : [];
     });
-    const rows = list
-      .filter((r) => r.kind === 'entity' && (r.dbId ? byId.has(r.dbId) : qualified.has(r.db)))
-      .map((r) => ({ ...r, table: byId.get(r.dbId)?.name ?? String(r.db).split('/').pop() }));
+    const rows = list.filter((r) => r.kind === 'entity' && (r.dbId ? byId.has(r.dbId) : qualified.has(r.db)));
     const out = {};
     if (tables.length) out.tables = tables;
     if (views.length) out.views = views;
@@ -25,17 +25,7 @@
 
   function runSubject(run, spaceName) {
     const where = run.originSpace && run.originSpace !== spaceName ? `${run.originSpace} → ${spaceName}` : spaceName;
-    const changed = (run.changedTables ?? []).map((t) => `${t.table} ${t.count.toLocaleString('en-US')}`).join(', ');
-    return `${where} · ${changed || 'nothing changed'}`;
-  }
-
-  function rowsByTable(rows) {
-    const groups = new Map();
-    for (const r of rows) {
-      if (!groups.has(r.table)) groups.set(r.table, []);
-      groups.get(r.table).push(r);
-    }
-    return [...groups].map(([table, list]) => ({ table, rows: list }));
+    return `${where} · ${run.changedCount ? plural(run.changedCount) : 'no rows changed'}`;
   }
 
   function runResult(run) {
@@ -52,5 +42,5 @@
     return { kind: 'table-view', id: v.id, name: v.name, tableId: table.id, table: table.name, layout: v.layout ?? 'table', url: `#/table/${table.id}/view/${v.id}` };
   }
 
-  globalThis.WeaveSpaceHome = { homeSections, filterRuns, runSubject, rowsByTable, runResult, viewRecent };
+  globalThis.WeaveSpaceHome = { homeSections, filterRuns, runSubject, runResult, viewRecent };
 })();

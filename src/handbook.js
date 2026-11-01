@@ -1110,7 +1110,7 @@ Editors and observers see guidance to ask a workspace architect for the first ta
 
 Then the home page shows the relation map.
 
-On a desktop or tablet, opening a space lands on one page, computed from what the workspace already holds. It runs from the space's tables and their counts, through the saved views and records you opened recently in this browser, keyed by table name, to the automation runs that changed something here, wherever the automation started. A section with nothing in it disappears. Open a run to see what it changed; a run that stopped partway names the step that failed, where weave recorded it. A run that started in a space you cannot open stays off your list.
+On a desktop or tablet, opening a space lands on one page, computed from what the workspace already holds. It runs from the space's tables and their row counts, through the saved views and rows you opened recently in this browser, to the automation runs that changed rows here, wherever the automation started. A section with nothing in it disappears. Open a run to see the rows it changed; a run that stopped partway names the step that failed, where weave recorded it. A run that started in a space you cannot open stays off your list.
 
 **Space overview** at the foot of the page holds the description, the space's rollups, its relation map, its tables with **+ New table** for architects, and the **Schema** disclosure. Opened, it stays open in that browser until you close it.
 

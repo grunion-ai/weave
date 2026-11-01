@@ -8644,11 +8644,6 @@ export class Weave {
       }
       newest.add(run.workflow);
       if (!run.changed.size && !(failedStep && run.originId === spaceId)) continue;
-      const changedTables = new Map();
-      for (const e of run.changed) {
-        const table = this.state.tables[e.dbId].name;
-        changedTables.set(table, (changedTables.get(table) ?? 0) + 1);
-      }
       out.push({
         workflowId: run.workflow,
         name: run.name,
@@ -8657,7 +8652,6 @@ export class Weave {
         outcome: failedStep ? 'attention' : 'success',
         failedStep,
         changedCount: run.changed.size,
-        changedTables: [...changedTables].map(([table, count]) => ({ table, count })),
         changedRows: [...run.changed].slice(0, HOME_RUN_ROWS).map((e) => ({
           id: e.id, publicId: e.publicId, name: this.entityName(e), table: this.state.tables[e.dbId].name,
         })),

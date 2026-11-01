@@ -55,7 +55,6 @@ test('a run in the space lists its rows, its time and a success outcome', () => 
   assert.ok(Date.parse(run.at) > 0);
   assert.equal(run.changedCount, 1);
   assert.deepEqual(run.changedRows, [{ id: row.id, publicId: row.publicId, name: 'Northstar', table: 'Deal' }]);
-  assert.deepEqual(run.changedTables, [{ table: 'Deal', count: 1 }]);
 });
 
 test('runs read newest first and each firing is its own run', () => {
@@ -85,7 +84,6 @@ test('a scheduled run over many rows groups into one run, and a thousand rows st
   assert.equal(runs.length, 1);
   assert.equal(runs[0].changedCount, 1200);
   assert.equal(runs[0].changedRows.length, 50);
-  assert.deepEqual(runs[0].changedTables, [{ table: 'Deal', count: 1200 }], 'the count by table is exact past the row cap');
 });
 
 test('the payload keeps the newest twenty runs', () => {
