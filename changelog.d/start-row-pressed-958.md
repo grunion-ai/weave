@@ -1,0 +1,1 @@
+- The chosen workspace row sinks and darkens the moment it is tapped, in both themes, so the opening state is visible as well as named (Issue #958).
