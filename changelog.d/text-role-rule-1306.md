@@ -1,0 +1,4 @@
+- One rule per text role across every surface and density (Issue #1306): titles balance, prose wraps evenly and folds on a whole line, table cells show the line count their density sets with the full value on hover, and long unbroken values stay in their box. `DESIGN.md` and the Handbook guide "How text behaves" hold the rule; `public/style.css` holds the tokens.
+- A description with a paragraph gap inside its fold no longer loses the bottom of its last line above Show more (Issue #1306).
+- A plain text value takes two lines at Spacious, Name included, and rests as text until you click it (Issue #447).
+- The related subtable on a record page fits its card: a stray 1% column width no longer inflated it to 19,931 px, and a long value ends in an ellipsis (Issue #1260).

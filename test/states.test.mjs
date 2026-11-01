@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, Weave } from '../src/engine.js';
-import { CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
+import { DENSITIES, CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
 import { SWEEP_JOURNEYS } from './lib/cutoff.mjs';
@@ -15,8 +15,8 @@ test('the catalog spans route, layout, open state, data seed, width and theme', 
   assert.deepEqual(OPENS, ['journey', 'rest', 'overlay', 'hover', 'drag']);
   assert.deepEqual(CELLS, ['desktop', 'phone']);
   assert.deepEqual(THEMES, ['light', 'dark']);
-  assert.deepEqual(Object.keys(SEEDS).sort(), ['a11y', 'grid', 'messy', 'touch']);
-  assert.deepEqual(Object.keys(PROBES).sort(), ['a11y', 'budgets', 'cutoff', 'flicker', 'touch']);
+  assert.deepEqual(Object.keys(SEEDS).sort(), ['a11y', 'grid', 'messy', 'prose', 'touch']);
+  assert.deepEqual(Object.keys(PROBES).sort(), ['a11y', 'budgets', 'cutoff', 'endings', 'flicker', 'touch']);
 });
 
 test('every state names a known open state, layout, route, seed, cell and theme', () => {
@@ -186,4 +186,18 @@ test('every seed builds the handles the shared states read, so their routes reso
       }
     }
   }
+});
+
+test('the line-ending probe walks every layout at all three densities, on phone and desktop (Issue #1306)', () => {
+  assert.deepEqual(DENSITIES, ['compact', 'comfortable', 'spacious']);
+  const entries = plan('endings');
+  for (const cell of CELLS) {
+    for (const layout of LAYOUTS) {
+      for (const density of DENSITIES) {
+        assert.ok(entries.some((p) => p.cell === cell && p.state.layout === layout && p.density === density && p.state.open !== 'overlay'), `no ${layout} state at ${density} on ${cell}`);
+      }
+    }
+  }
+  assert.ok(entries.filter((p) => !p.state.layout).every((p) => p.density === null), 'a page with no grid has no density to walk');
+  for (const probe of ['cutoff', 'flicker', 'budgets', 'a11y', 'touch']) assert.ok(plan(probe).every((p) => p.density === null), `${probe} walks each state once`);
 });

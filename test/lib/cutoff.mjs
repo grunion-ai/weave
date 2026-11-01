@@ -1,8 +1,9 @@
 import { cellsOf, walk } from './journeys.mjs';
 import { OVERLAYS, overlaysFor } from './overlays.mjs';
-import { ROUTES, SEEDS, journeyOf, plan, statesOf, walked } from './states.mjs';
+import { DENSITIES, ROUTES, SEEDS, journeyOf, plan, statesOf, walked } from './states.mjs';
 
 export const KINDS = ['clipped', 'ellipsis', 'line-clamp', 'field-value', 'field-placeholder'];
+export const ENDING_KINDS = ['sliced-line', 'lone-word', 'unreadable'];
 export const DESKTOP = 'desktop';
 export const NOTE = '_';
 
@@ -11,10 +12,11 @@ export const CELLS = {
   phone: { engine: 'webkit', device: 'iPhone 15', viewport: { width: 390, height: 844 } },
 };
 
-export function probe(rootSelector = null) {
+export function probe(target = null) {
+  const { root: rootSelector = null, endings = false } = target && typeof target === 'object' ? target : { root: target };
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'OPTION', 'OPTGROUP', 'SELECT', 'DATALIST', 'IFRAME', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'BR', 'HR']);
   const NOT_TEXT = new Set(['checkbox', 'radio', 'hidden', 'range', 'color', 'file', 'submit', 'button', 'reset', 'image', 'password', 'date', 'time', 'datetime-local', 'month', 'week']);
-  const BY_DESIGN = '.crumb-cur > .crumb-nm';
+  const BY_DESIGN = '.crumb-cur > .crumb-nm, .phone-lead > .k-state';
   const MIRRORED = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'fontVariant', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent', 'lineHeight', 'tabSize', 'wordBreak', 'overflowWrap',
     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
   const styles = new Map();
@@ -42,7 +44,7 @@ export function probe(rootSelector = null) {
   const unseen = (e) => {
     const own = e.getBoundingClientRect();
     if (!own.width || !own.height || style(e).visibility !== 'visible') return true;
-    if (own.right <= 0 || own.bottom <= 0 || own.left >= innerWidth || own.top >= innerHeight) return true;
+    if (own.right <= 0 || own.bottom <= 0 || own.left >= innerWidth || (!endings && own.top >= innerHeight)) return true;
     for (let x = e; x && x.nodeType === 1; x = x.parentElement) {
       const cs = style(x);
       if (Number(cs.opacity) === 0) return true;
@@ -74,7 +76,7 @@ export function probe(rootSelector = null) {
     m.remove();
     return over;
   };
-  const textOverflow = (e, own) => {
+  const clipBoxes = (e) => {
     const boxes = [];
     let alongX = true;
     let alongY = true;
@@ -89,6 +91,10 @@ export function probe(rootSelector = null) {
       if (scrolls(cs.overflowX)) alongX = false;
       if (scrolls(cs.overflowY)) alongY = false;
     }
+    return boxes;
+  };
+  const textOverflow = (e, own) => {
+    const boxes = clipBoxes(e);
     if (!boxes.length) return 0;
     let worst = 0;
     const range = document.createRange();
@@ -104,11 +110,72 @@ export function probe(rootSelector = null) {
     }
     return worst;
   };
+  const SLICE = 2;
+  const slicedBy = (e, own) => {
+    const boxes = clipBoxes(e).filter((b) => b.cutY);
+    if (!boxes.length) return 0;
+    let worst = 0;
+    const range = document.createRange();
+    for (const node of own) {
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) {
+        if (!r.width || !r.height) continue;
+        for (const { box } of boxes) {
+          if (r.top >= box.bottom - 1 || r.bottom <= box.top + 1) break;
+          worst = Math.max(worst, r.bottom - box.bottom > SLICE ? r.bottom - box.bottom : 0, box.top - r.top > SLICE ? box.top - r.top : 0);
+        }
+      }
+    }
+    return worst;
+  };
+  const NOT_PROSE = 'button, label, summary, nav, pre, code, td, th, h1, h2, h3, h4, h5, h6, [role="menuitem"], [role="option"], .k, .wv-grid, .crumb';
+  const PROSE_DISPLAY = new Set(['block', 'list-item', 'flow-root', '-webkit-box']);
+  const words = (e, n) => {
+    const nodes = [];
+    const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) nodes.push(t);
+    const out = [];
+    for (let i = nodes.length - 1; i >= 0 && out.length < n; i--) {
+      const hits = [...nodes[i].textContent.matchAll(/\S+/g)];
+      for (let j = hits.length - 1; j >= 0 && out.length < n; j--) {
+        const range = document.createRange();
+        range.setStart(nodes[i], hits[j].index);
+        range.setEnd(nodes[i], hits[j].index + hits[j][0].length);
+        out.unshift(range);
+      }
+    }
+    return out;
+  };
+  const loneWord = (e, cs) => {
+    if (!PROSE_DISPLAY.has(cs.display) || clamped(cs) || cs.whiteSpace === 'pre' || cs.whiteSpace === 'nowrap' || e.closest(NOT_PROSE)) return 0;
+    if (e.textContent.trim().split(/\s+/).length < 5) return 0;
+    const [before, last] = words(e, 2);
+    if (!last) return 0;
+    const a = [...before.getClientRects()].filter((r) => r.width).at(-1);
+    const b = [...last.getClientRects()].filter((r) => r.width)[0];
+    if (!a || !b || b.top <= a.top + 1) return 0;
+    if (a.width + b.width + 4 > e.clientWidth) return 0;
+    return b.width;
+  };
+  const flat = (s) => String(s).replace(/\s+/g, '');
+  const readable = (e, text) => {
+    const want = flat(text);
+    for (let x = e; x && x !== document.body; x = x.parentElement) {
+      const title = x.getAttribute('title');
+      if (title && flat(title).includes(want)) return true;
+      if (x.parentElement?.querySelector(':scope > .view-desc-more')) return true;
+    }
+    return false;
+  };
 
   const roots = rootSelector ? [...document.querySelectorAll(rootSelector)] : [document.body];
   const out = [];
   const visited = new Set();
   const push = (kind, e, text, px) => out.push({ kind, selector: selector(e), text: clean(text), px: Math.round(px) });
+  const cut = (kind, e, text, px) => {
+    if (!endings) push(kind, e, text, px);
+    else if (!readable(e, text)) push('unreadable', e, text, px);
+  };
   for (const root of roots) {
     for (const e of [root, ...root.querySelectorAll('*')]) {
       if (visited.has(e)) continue;
@@ -125,20 +192,26 @@ export function probe(rootSelector = null) {
         const kind = e.value ? 'field-value' : 'field-placeholder';
         const text = e.value || e.placeholder;
         const over = text ? mirrorOverflow(e, cs, text) : 0;
-        if (over > 1) push(kind, e, text, over);
+        if (over > 1) cut(kind, e, text, over);
         continue;
       }
+      if (endings && own.length) {
+        const slice = slicedBy(e, own);
+        if (slice) push('sliced-line', e, e.textContent, slice);
+        const lone = loneWord(e, cs);
+        if (lone) push('lone-word', e, e.textContent, lone);
+      }
       if (ellipsis && e.scrollWidth - e.clientWidth > 1 && e.textContent.trim()) {
-        push('ellipsis', e, e.textContent, e.scrollWidth - e.clientWidth);
+        cut('ellipsis', e, e.textContent, e.scrollWidth - e.clientWidth);
         continue;
       }
       if (clamp && e.scrollHeight - e.clientHeight > 1 && e.textContent.trim()) {
-        push('line-clamp', e, e.textContent, e.scrollHeight - e.clientHeight);
+        cut('line-clamp', e, e.textContent, e.scrollHeight - e.clientHeight);
         continue;
       }
       if (!own.length) continue;
       const over = textOverflow(e, own);
-      if (over > 1) push('clipped', e, e.textContent, over);
+      if (over > 1) cut('clipped', e, e.textContent, over);
     }
   }
   return out;
@@ -226,14 +299,14 @@ export async function settle(page) {
   await frames(page, 2);
 }
 
-export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell) } = {}) {
+export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell), target = (root) => root } = {}) {
   const findings = [];
   const failed = [];
   const timings = [];
   const read = async (page, where, root = null) => {
     await settle(page);
     const t0 = performance.now();
-    const got = await page.evaluate(probe, root);
+    const got = await page.evaluate(probe, target(root));
     timings.push(performance.now() - t0);
     for (const f of got) findings.push({ ...f, cell, where });
   };
@@ -280,4 +353,33 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
     await page.close();
   }
   return { findings, failed, timings };
+}
+
+export const proseSeed = SEEDS.prose;
+export const endingPrint = (f) => `${f.kind}|${String(f.selector).replace(UUID, '#').replace(/\d+/g, '#')}|${f.cell}|${f.density}`;
+
+export function setDensity(weave, density) {
+  for (const table of weave.listTables()) {
+    for (const view of weave.tableView(table).views) weave.tableView(`${table.id}/${view.name}`, { density });
+  }
+}
+
+export async function sweepEndings(browser, cell, ctx, { page, densities = DENSITIES } = {}) {
+  const findings = [];
+  const failed = [];
+  const entries = walked('endings').filter((p) => p.cell === cell);
+  for (const density of densities) {
+    setDensity(ctx.weave, density);
+    const mine = entries.filter((p) => p.density === density || (p.density === null && density === 'comfortable'));
+    const got = await sweepCell(browser, cell, ctx, {
+      page,
+      journeys: statesOf(mine, 'journey'),
+      overlays: statesOf(mine, 'overlay'),
+      rests: statesOf(mine, 'rest'),
+      target: (root) => ({ root, endings: true }),
+    });
+    for (const f of got.findings) findings.push({ ...f, density });
+    for (const f of got.failed) failed.push({ ...f, density });
+  }
+  return { findings, failed };
 }

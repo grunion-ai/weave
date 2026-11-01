@@ -61,7 +61,7 @@ if (s) {
         await tableIcon.click();
         await page.locator('.view-desc-more').waitFor();
         const measure = await page.locator('.view-desc-body').evaluate((n) => ({ height: n.clientHeight, line: parseFloat(getComputedStyle(n).lineHeight) }));
-        assert.ok(measure.height <= measure.line * 3 + 1);
+        assert.ok(measure.height <= measure.line * 3 + 5, 'three whole lines and the paragraph margins around them');
         await page.locator('.view-desc-more').click();
         assert.equal(await page.locator('.view-desc-more').textContent(), 'Show less');
         await page.locator('.view-desc-more').click();

@@ -57,6 +57,20 @@ The status surface uses the native system stack throughout. Its wordmark is live
 
 The page heading is 30px, section headings 17px, and incident titles 16px. Secondary timestamps and monitoring details run from 11px to 13px. Incident update prose is 14px with a 68ch maximum width. Day details use tabular numerals.
 
+## Text
+
+Every text in weave, on every surface and at every view density, has one role. The role decides how a line wraps and what happens when it runs out of room. Tokens in `public/style.css` hold each rule, and `test/line-endings-gate-browser.test.mjs` holds the tokens to it.
+
+| Role | Wrap | Overflow | Token |
+| --- | --- | --- | --- |
+| Page and section titles | `text-wrap: balance` | Wrap, never cut | `--wv-wrap-title` |
+| Prose and descriptions | `text-wrap: pretty` | Clamp on whole lines | `--wv-wrap-prose`, `--wv-lines-prose`, `--wv-lines-note` |
+| Table cells | 1 line at compact and comfortable, 2 at spacious | Ellipsis with the full value on hover | `--wv-lines` |
+| Chips and states | 1 line in dense rows, wrap on tiles and record pages | A state name stays readable in full somewhere on screen | `--wv-lines` |
+| Long unbroken values | `overflow-wrap: anywhere` | Never push the layout wider | `--wv-break-long` |
+
+A clamp always ends on a whole line: `.clamped` counts lines, so a paragraph gap inside the fold can never slice the last one. `max-height` never clamps text. The same text keeps its role between densities; only its line count changes, and `data-density` sets that count through `--wv-lines`. `public/chip.css` also ships alone on shared pages, so it spells `overflow-wrap: anywhere` out instead of reading the token.
+
 ## Layout
 
 The centered shell has an 816px maximum width, including 28px horizontal padding. Sections follow one vertical reading path. The overall summary precedes the services panel; active incidents sit above resolved incident history. Dividers separate service rows and incident entries.
@@ -91,5 +105,6 @@ Focus outlines remain visible on links, buttons, and disclosure summaries. A ref
 - Do preserve the incumbent rope geometry, strand pairs, and cool slate surfaces.
 - Do pair status colors with labels and retain keyboard access to daily history.
 - Do distinguish recorded-check uptime from unmonitored time.
+- Do give new text one of the roles under Text. Set a line count through `--wv-lines` or `.clamped`, never a fixed height.
 - Don't fabricate historical measurements or turn missing data into healthy periods.
 - Don't introduce runtime dependencies, a build step, or visitor incident submission through this surface.

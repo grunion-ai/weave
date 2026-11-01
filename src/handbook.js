@@ -2626,6 +2626,29 @@ The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the rows the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. \`layout\` is \`table\` or \`list\`; a read carries it once someone has chosen one, and \`null\` clears the choice. The List layout takes \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`), shared by every view of the table with the same group levels, \`hideEmpty\` (\`true\` leaves out groups with no rows) and \`order\` (the manual order as row #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **System/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
   },
   {
+    name: 'How text behaves',
+    audience: 'Both',
+    order: 20.75,
+    doc: `# How text behaves
+
+Every piece of text in weave has one role, and the role decides what a line does when it runs out of room. The rule is the same on every surface and at every view density, so a new screen inherits it.
+
+| Role | How it wraps | When it runs out of room |
+| --- | --- | --- |
+| Page and section titles | Balanced lines | Wraps. A title is never cut. |
+| Prose and descriptions | Even lines, with no single word left alone on the last one | Folds on a whole line, with **Show more** beside it. |
+| Table cells | The line count the density sets: one at Compact and Comfortable, two at Spacious | Ends in an ellipsis. Hover the cell for the full value. |
+| Chips and states | One line in a dense row, wrapped on a tile or a record page | A state name stays readable in full somewhere on screen. |
+| Long unbroken values | Break anywhere | Stay inside their box and never push the page wider. |
+
+**Density changes the line count, not the role.** Switching a table from Comfortable to Spacious gives its cells a second line. The text is still a table cell, and it still ends in an ellipsis with the full value on hover.
+
+**A fold ends on a whole line.** A description folds to five lines on a workspace or space page and three under a table title. The count is of lines, so a gap between paragraphs cannot cut the last line in half.
+
+To read a table cell's full value on a phone, where nothing hovers, open the row: the record page wraps every value.
+`,
+  },
+  {
     name: 'Chip and card anatomy',
     audience: 'Both',
     order: 21,

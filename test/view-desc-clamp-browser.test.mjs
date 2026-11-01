@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
+import { WRAPPED_DESCRIPTION } from './lib/states.mjs';
 
 const LONG = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long description.`).join('\n\n');
 const SHORT = 'One line only.';
@@ -9,15 +10,17 @@ const s = await launch('view-desc-clamp', (weave) => {
   const longSpace = weave.createSpace({ name: 'Long', description: LONG });
   const longTable = weave.createTable({ space: 'Long', name: 'Glossary', description: LONG });
   const shortTable = weave.createTable({ space: 'Long', name: 'Terse', description: SHORT });
+  const gapSpace = weave.createSpace({ name: 'Gaps', description: WRAPPED_DESCRIPTION });
+  const gapTable = weave.createTable({ space: 'Gaps', name: 'Gapped', description: WRAPPED_DESCRIPTION });
   weave.updateWorkspace({ description: LONG });
-  return { longSpace, longTable, shortTable };
+  return { longSpace, longTable, shortTable, gapSpace, gapTable };
 });
 
 if (s) {
-  const { base, browser, longSpace, longTable, shortTable } = s;
+  const { base, browser, longSpace, longTable, shortTable, gapSpace, gapTable } = s;
 
-  async function open(hash) {
-    const page = await browser.newPage();
+  async function open(hash, on = browser, options = {}) {
+    const page = await on.newPage(options);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     if (hash.startsWith('#/table/')) await page.click('.view-title-row .desc-info');
     await page.waitForSelector('.view-desc .view-desc-body');
@@ -52,11 +55,45 @@ if (s) {
         const lines = label === 'a table page' ? 3 : 5;
         assert.ok(r.clamped, 'the body wears the clamp');
         assert.ok(r.full > r.shown, `there is hidden text (${r.shown} of ${r.full}px shown)`);
-        assert.ok(r.shown <= r.lineHeight * lines + 1, `shows at most the folded lines: ${r.shown}px at ${r.lineHeight}px/line`);
+        assert.ok(r.shown <= (r.lineHeight + 6) * lines, `shows at most the folded lines and their gaps: ${r.shown}px at ${r.lineHeight}px/line`);
         assert.ok(r.shown >= r.lineHeight * (lines - 1), `shows the folded lines, not fewer: ${r.shown}px`);
         assert.equal(r.more, 'Show more');
       } finally { await page.close(); }
     });
+  }
+
+  const lineBoxes = (page) => page.evaluate(() => {
+    const body = document.querySelector('.view-desc .view-desc-body');
+    const box = body.getBoundingClientRect();
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    const lines = [];
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      range.selectNodeContents(t);
+      for (const r of range.getClientRects()) if (r.width) lines.push({ top: r.top - box.top, bottom: r.bottom - box.top });
+    }
+    return { height: box.height, lines };
+  });
+
+  const handset = await engineOf('webkit');
+  for (const [cell, on, options] of [['desktop', browser, { viewport: { width: 1440, height: 900 } }], ['phone', handset, { ...phoneProfile().page, viewport: { width: 390, height: 844 } }]]) {
+    for (const [label, hash, want] of [
+      ['a space page', () => `#/space/${gapSpace.id}`, 5],
+      ['a table page', () => `#/table/${gapTable.id}`, 3],
+    ]) {
+      test(`${cell}, ${label}: paragraph gaps inside the fold leave every line whole (Issue #1306)`, async (t) => {
+        if (!on) return t.skip('webkit cannot launch here');
+        const page = await open(hash(), on, options);
+        try {
+          const { height, lines } = await lineBoxes(page);
+          const shown = lines.filter((l) => l.top < height);
+          for (const l of shown) assert.ok(l.bottom <= height + 1, `a line runs from ${l.top} to ${l.bottom} and the box ends at ${height}`);
+          assert.equal(new Set(shown.map((l) => Math.round(l.top))).size, want, `the fold shows ${want} whole lines`);
+          assert.ok(lines.length > shown.length, 'text remains below the fold');
+          assert.equal(await page.locator('.view-desc-more').textContent(), 'Show more');
+        } finally { await page.close(); }
+      });
+    }
   }
 
   test('Show more reveals the whole description and becomes Show less; a second click folds it back', async () => {
