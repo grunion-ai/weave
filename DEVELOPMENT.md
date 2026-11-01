@@ -141,11 +141,16 @@ A green rerun is a flake: it appends a line to the Issue row
 `Error: <test file> flakes on main`, creating it if none is open, and stops. A
 second red finds the commits since the last main run whose `CI gate` succeeded
 and bisects them by dispatching `tests` with its `ref` input, at most four
-runs. Completed runs for a commit are reused for free. It checks once more that
+runs. Completed runs for a commit are reused for free. A probe that goes red on
+a test file other than the one holding main red says nothing about this red, so
+the sheriff escalates with both file lists instead of narrowing to that commit.
+It checks once more that
 main has not gone green on its own, then opens a `sheriff/revert-<sha>` PR with
 squash auto-merge, comments on the original PR, files
 `Error: <test> fails on main after PR #<n>` with the run links, and writes
-one alert line to the job summary and `SHERIFF_ALERT_URL`. Past the cap it
+one alert line to the job summary and `SHERIFF_ALERT_URL`. The test it names is
+a file still red after the in-run retry; a file whose shard ended before its
+retry answered is listed under its own heading in the evidence instead. Past the cap it
 reverts what is still suspect. A revert whose range took no bisect probe, the
 single-commit range among them, says so in its subject, so main's history shows
 how much evidence the revert carried. It never reverts a revert, never acts on a

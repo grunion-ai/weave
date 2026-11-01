@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
 const red = (patch = {}) => ({ id: 900, name: 'tests', path: '.github/workflows/test.yml', event: 'push', head_branch: 'main', head_repository: { full_name: repo }, status: 'completed', conclusion: 'failure', run_attempt: 1, head_sha: sha(100), html_url: 'https://github.com/grunion-ai/weave/actions/runs/900', created_at: '2026-10-12T10:00:00Z', ...patch });
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 
-function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {} } = {}) {
+function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, unresolved = [], probeRed = null } = {}) {
   const head = commits.at(-1)?.sha;
   const run = given ?? red({ head_sha: head ?? sha(100) });
   const writes = [];
@@ -19,7 +19,8 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     log: (line) => logs.push(line),
     run: async () => run,
     greenAfter: async () => green,
-    failures: async () => ({ files, jobs, cancelled }),
+    failures: async () => ({ files, jobs, cancelled, unresolved }),
+    probeFiles: async () => probeRed ?? files,
     openFlakes: async (names) => names.filter((n) => flakes[n]).map((n) => ({ file: n, publicId: flakes[n] })),
     rerunFailed: async (id) => writes.push(['rerun', id]),
     waitRun: async (id) => ({ ...run, id, run_attempt: 2 }),
@@ -28,7 +29,7 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     range: async (from, to) => { assert.equal(from, sha(1)); assert.equal(to, head ?? run.head_sha); return commits; },
     openReverts: async () => reverts,
     known: async (s) => known[s] ?? null,
-    probe: async (s) => { writes.push(['probe', s]); return { conclusion: index(s) >= badFrom ? 'failure' : 'success', url: `https://github.com/grunion-ai/weave/actions/runs/p${index(s)}` }; },
+    probe: async (s) => { writes.push(['probe', s]); return { conclusion: index(s) >= badFrom ? 'failure' : 'success', url: `https://github.com/grunion-ai/weave/actions/runs/p${index(s)}`, id: 7000 + index(s) }; },
     pullsFor: async (s) => [{ number: Number.parseInt(s, 16), html_url: `https://github.com/grunion-ai/weave/pull/${Number.parseInt(s, 16)}` }],
     openRevert: async (spec) => { writes.push(['revert', spec]); return branchExists ? { exists: true } : conflict ? { conflict: true, error: 'CONFLICT (content)' } : { number: 500, html_url: 'https://github.com/grunion-ai/weave/pull/500', branch: spec.branch, armed: true }; },
     comment: async (n, body) => writes.push(['comment', n, body]),
@@ -92,6 +93,37 @@ test('a file the in-run retry turned green is not named as failing (Issue #1282)
   const s = (file, success) => ({ file, success, counts: { failed: success ? 0 : 1 } });
   assert.deepEqual(failingFiles([{ attempt: 1, summaries: [s('test/feedback-budget-browser.test.mjs', false), s('test/vitals-budget-browser.test.mjs', false), s('test/status-browser.test.mjs', false), s('test/feedback-budget-browser.test.mjs', true), s('test/vitals-budget-browser.test.mjs', false), s('test/status-browser.test.mjs', true)] }]), ['test/vitals-budget-browser.test.mjs']);
   assert.deepEqual(failingFiles([{ attempt: 2, summaries: [s('test/a.test.mjs', true)] }, { attempt: 1, summaries: [s('test/a.test.mjs', false)] }]), []);
+});
+
+test('a file whose shard died before its retry answered is unresolved, never named as what blocked main (Issue #1282)', () => {
+  const s = (file, success) => ({ file, success, counts: { failed: success ? 0 : 1 } });
+  const killed = [
+    { id: 'browser-1', attempt: 1, code: 0, summaries: [s('test/phone-new-row-sheet-browser.test.mjs', false), s('test/phone-new-row-sheet-browser.test.mjs', true)] },
+    { id: 'browser-2', attempt: 1, code: 124, summaries: [s('test/feedback-budget-browser.test.mjs', false), s('test/status-browser.test.mjs', false)] },
+    { id: 'browser-4', attempt: 1, code: 1, summaries: [s('test/vitals-budget-browser.test.mjs', false), s('test/vitals-budget-browser.test.mjs', false)] },
+  ];
+  assert.deepEqual(failingFiles(killed), ['test/vitals-budget-browser.test.mjs']);
+  assert.deepEqual(unresolvedFiles(killed), ['test/feedback-budget-browser.test.mjs', 'test/status-browser.test.mjs']);
+  assert.deepEqual(unresolvedFiles([{ summaries: [s('test/a.test.mjs', false), s('test/a.test.mjs', false)] }]), []);
+  assert.deepEqual(unresolvedFiles([{ summaries: [s('test/a.test.mjs', true)] }]), []);
+});
+
+test('a bisect probe red on a different file than the run under investigation is no evidence: escalate, never narrow (Issue #1282)', async () => {
+  const f = fake({
+    files: ['test/phone-new-row-sheet-browser.test.mjs'],
+    commits: [101, 102, 103, 104].map((n) => commit(n)),
+    badFrom: 1,
+    probeRed: ['test/feedback-budget-browser.test.mjs'],
+  });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.ok(!f.kinds().includes('revert'), f.kinds().join(','));
+  assert.match(out.reason, /test\/feedback-budget-browser\.test\.mjs/);
+  assert.match(out.reason, /test\/phone-new-row-sheet-browser\.test\.mjs/);
+  const matching = fake({ files: ['test/grid.test.mjs'], commits: [101, 102, 103, 104].map((n) => commit(n)), badFrom: 1, probeRed: ['test/grid.test.mjs'] });
+  assert.equal((await sheriff(900, matching.io)).action, 'revert');
+  const unnamed = fake({ files: ['test/grid.test.mjs'], commits: [101, 102, 103, 104].map((n) => commit(n)), badFrom: 1, probeRed: [] });
+  assert.equal((await sheriff(900, unnamed.io)).action, 'revert');
 });
 
 test('a red held only by files with an open flake row escalates instead of convicting a commit (Issue #1282)', async () => {
@@ -306,7 +338,7 @@ test('helpers: probes, reverts, markers, failing files, titles and a push that n
   assert.ok(!isRevert('grid: tab order (#12)'));
   assert.equal(revertBranch([commit(1)]), `sheriff/revert-${sha(1).slice(0, 10)}`);
   assert.deepEqual(culpritsOf(`x\nSheriff-Culprit: ${sha(1)}\nSheriff-Culprit: ${sha(2)}\n`), [sha(1), sha(2)]);
-  assert.deepEqual(failingFiles([{ summaries: [{ file: 'test/b.test.mjs', counts: { failed: 1 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }, { file: 'test/c.test.mjs', counts: { failed: 0 } }] }, {}]), ['test/a.test.mjs', 'test/b.test.mjs']);
+  assert.deepEqual(failingFiles([{ summaries: [{ file: 'test/b.test.mjs', counts: { failed: 1 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }, { file: 'test/c.test.mjs', counts: { failed: 0 } }, { file: 'test/b.test.mjs', counts: { failed: 2 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }] }, {}]), ['test/a.test.mjs', 'test/b.test.mjs']);
   assert.equal(issueName({ files: ['test/a.test.mjs', 'test/b.test.mjs'], prs: [{ number: 7 }], culprits: [commit(1)] }), 'Error: test/a.test.mjs (+1 more) fails on main after PR #7');
   assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }], probes: [{ sha: sha(1), conclusion: 'failure' }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red`);
   assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red (1 commit in range, no bisect probe)`);

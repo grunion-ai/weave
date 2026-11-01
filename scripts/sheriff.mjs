@@ -55,12 +55,20 @@ export function culpritsOf(body = '') {
   return [...String(body).matchAll(/^Sheriff-Culprit: ([0-9a-f]{40})$/gm)].map((m) => m[1]);
 }
 
-export function failingFiles(results) {
-  const last = new Map();
+function fileRuns(results) {
+  const seen = new Map();
   for (const result of [...results].sort((a, b) => Number(a.attempt ?? 1) - Number(b.attempt ?? 1))) {
-    for (const s of result.summaries ?? []) if (s.file) last.set(s.file, s.success === false || s.counts?.failed > 0);
+    for (const s of result.summaries ?? []) if (s.file) seen.set(s.file, { red: s.success === false || s.counts?.failed > 0, runs: (seen.get(s.file)?.runs ?? 0) + 1 });
   }
-  return [...last].filter(([, failed]) => failed).map(([file]) => file).sort();
+  return seen;
+}
+
+export function failingFiles(results) {
+  return [...fileRuns(results)].filter(([, v]) => v.red && v.runs > 1).map(([file]) => file).sort();
+}
+
+export function unresolvedFiles(results) {
+  return [...fileRuns(results)].filter(([, v]) => v.red && v.runs === 1).map(([file]) => file).sort();
 }
 
 const prList = (prs) => prs.length > 3 ? `${prs.slice(0, 3).map((p) => `#${p.number}`).join(', ')} and ${prs.length - 3} more` : prs.map((p) => `#${p.number}`).join(', ');
@@ -89,6 +97,7 @@ function evidence(ctx) {
     '',
     'Failing tests:',
     ...(files.length ? files.map((f) => `- ${f}`) : ['- none recorded in the shard results']),
+    ...(ctx.unresolved?.length ? ['', 'Red with no retry verdict, because the shard ended before its retry answered:', ...ctx.unresolved.map((f) => `- ${f}`)] : []),
     '',
     'Failed jobs:',
     ...(jobs.length ? jobs.map((j) => `- ${j.name} ${j.html_url}`) : ['- none listed']),
@@ -163,7 +172,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   if (green && !dryRun) return result('skip', { reason: `main went green again at ${short(green.sha)}` });
   if (green) io.log(`main went green again at ${short(green.sha)}; a live sheriff stops here, the dry run goes on`);
 
-  const { files, jobs, cancelled = [] } = await io.failures(run);
+  const { files, jobs, cancelled = [], unresolved = [] } = await io.failures(run);
   if (!jobs.length && cancelled.length) return result('skip', { reason: `no job failed; ${cancelled.join(', ')} cancelled, which is no signal` });
   if (Number(run.run_attempt) === 1) await io.rerunFailed(run.id);
   let rerun = await io.waitRun(run.id, 2);
@@ -188,7 +197,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
-  const ctx = { run, files, jobs, base, commits, culprits: [], probes: [], prs: [], self: io.self };
+  const ctx = { run, files, jobs, unresolved, base, commits, culprits: [], probes: [], prs: [], self: io.self };
   const tracked = files.length ? await io.openFlakes(files) : [];
   if (files.length && tracked.length === files.length) {
     await io.logFlake({ run, files, jobs, stayedRed: true });
@@ -199,7 +208,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   const held = (await io.openReverts()).find((pr) => pr.shas.some((sha) => commits.some((c) => c.sha === sha)));
   if (held) return result('skip', { reason: `revert PR #${held.number} already covers this range` });
 
-  let lo = -1, hi = commits.length - 1, dispatched = 0, stopped = null;
+  let lo = -1, hi = commits.length - 1, dispatched = 0, stopped = null, mismatch = null;
   for (let mid = nextProbe(lo, hi); mid !== null; mid = nextProbe(lo, hi)) {
     const sha = commits[mid].sha;
     let probe = await io.known(sha);
@@ -211,7 +220,14 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
     }
     ctx.probes.push({ sha, ...probe });
     if (probe.conclusion === 'success') lo = mid;
-    else if (probe.conclusion === 'failure') hi = mid;
+    else if (probe.conclusion === 'failure') {
+      const red = files.length && probe.id ? await io.probeFiles(probe.id) : [];
+      if (red.length && !red.some((f) => files.includes(f))) {
+        mismatch = `the bisect probe at ${short(sha)} went red on ${red.join(', ')}, not on ${files.join(', ')}, so it is no evidence about this red`;
+        break;
+      }
+      hi = mid;
+    }
     else { stopped = `probe at ${short(sha)} ended ${probe.conclusion}`; break; }
   }
   ctx.culprits = commits.slice(lo + 1, hi + 1);
@@ -220,6 +236,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   for (const c of ctx.culprits) for (const pr of await io.pullsFor(c.sha)) seen.set(pr.number, pr);
   ctx.prs = [...seen.values()];
   if (stopped) io.log(stopped);
+  if (mismatch) return escalate(io, ctx, result, mismatch);
 
   const reverts = ctx.culprits.filter((c) => isRevert(c.message));
   if (reverts.length) return escalate(io, ctx, result, `the culprit range holds a revert (${reverts.map((c) => short(c.sha)).join(', ')}); the sheriff never reverts a revert`);
@@ -279,6 +296,16 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     if (!res.ok) throw new Error(`tracker ${path}: HTTP ${res.status}`);
     return res.json();
   };
+  const shardResults = (id) => {
+    const dir = mkdtempSync(join(tmpdir(), 'sheriff-'));
+    try {
+      try { run('gh', ['run', 'download', String(id), '-R', repo, '-p', 'ci-*', '-D', dir]); } catch {}
+      const results = [];
+      const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f.endsWith('.json')) { try { results.push(JSON.parse(readFileSync(p, 'utf8'))); } catch {} } } };
+      walk(dir);
+      return results;
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  };
   const upsertIssue = async ({ name, description, severity, line }) => {
     if (!env.WEAVE_TRACKER_TOKEN) throw new Error(`WEAVE_TRACKER_TOKEN missing; not filed: ${name}`);
     const open = (await tracker('/tables/Issue/query', { method: 'POST', body: JSON.stringify({ where: [['Name', '=', name], ['Status', '=', 'Open']] }) })).items ?? [];
@@ -327,19 +354,14 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       const all = api(`${base}/actions/runs/${r.id}/attempts/1/jobs?per_page=100`).jobs.filter((j) => j.name !== 'CI gate');
       const jobs = all.filter((j) => j.conclusion === 'failure').map((j) => ({ name: j.name, html_url: j.html_url }));
       const cancelled = all.filter((j) => j.conclusion === 'cancelled').map((j) => j.name);
-      const dir = mkdtempSync(join(tmpdir(), 'sheriff-'));
-      try {
-        try { run('gh', ['run', 'download', String(r.id), '-R', repo, '-p', 'ci-*', '-D', dir]); } catch {}
-        const results = [];
-        const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f.endsWith('.json')) { try { results.push(JSON.parse(readFileSync(p, 'utf8'))); } catch {} } } };
-        walk(dir);
-        return { jobs, cancelled, files: failingFiles(results) };
-      } finally { rmSync(dir, { recursive: true, force: true }); }
+      const results = shardResults(r.id);
+      return { jobs, cancelled, files: failingFiles(results), unresolved: unresolvedFiles(results) };
     },
+    probeFiles: async (id) => failingFiles(shardResults(id)),
     openReverts: async () => api(`${base}/pulls?state=open&per_page=100`).filter((p) => p.head.ref.startsWith(BRANCH_PREFIX)).map((p) => ({ number: p.number, shas: culpritsOf(p.body) })),
     known: async (sha) => {
       const done = [...runs(`head_sha=${sha}&event=push&status=completed&per_page=20`), ...runs('event=workflow_dispatch&status=completed&per_page=100').filter((d) => d.display_title === probeTitle(sha))];
-      for (const r of done) { const g = gate(r.id); if (g === 'success' || g === 'failure') return { conclusion: g, url: r.html_url }; }
+      for (const r of done) { const g = gate(r.id); if (g === 'success' || g === 'failure') return { conclusion: g, url: r.html_url, id: r.id }; }
       return null;
     },
     probe: async (sha) => {
@@ -355,7 +377,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
         if (!id) throw new Error(`dispatched tests at ${sha} but found no run`);
       }
       const r = await waitRun(id, 1);
-      return { conclusion: gate(id) ?? r.conclusion, url: r.html_url };
+      return { conclusion: gate(id) ?? r.conclusion, url: r.html_url, id };
     },
     pullsFor: async (sha) => api(`${base}/commits/${sha}/pulls`).filter((p) => p.merged_at).map((p) => ({ number: p.number, html_url: p.html_url, title: p.title })),
     openRevert: async ({ branch, shas, title, body, message }) => {
