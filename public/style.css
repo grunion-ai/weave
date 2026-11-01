@@ -89,6 +89,7 @@
 
 * { box-sizing: border-box; }
 @supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; } }
+@media (pointer: coarse) { * { scrollbar-width: thin; } }
 @media not (pointer: coarse) { @supports selector(::-webkit-scrollbar) { *, pre, .modal-body { scrollbar-color: auto; } } }
 ::-webkit-scrollbar, .modal-body::-webkit-scrollbar, pre::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; box-shadow: none; min-height: 32px; min-width: 32px; background-color: color-mix(in srgb, var(--tblr-scrollbar-color, var(--tblr-body-color)) 20%, transparent); }

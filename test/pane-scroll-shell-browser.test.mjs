@@ -187,7 +187,12 @@ if (s) {
       radius: parseFloat(cs.borderTopRightRadius) || parseFloat(cs.borderBottomRightRadius) || 0,
     };
   }, q);
-  const pixelsOf = async (engine, png) => {
+  const stripOf = async (engine, page, q, axis) => {
+    await page.evaluate(() => document.querySelector('.bug-fab')?.style.setProperty('display', 'none'));
+    const box = await page.locator(q).boundingBox();
+    const v = axis === 'v';
+    const clip = v ? { x: box.x + box.width - 8, y: box.y, width: 8, height: box.height } : { x: box.x, y: box.y + box.height - 8, width: box.width, height: 8 };
+    const png = await page.screenshot({ clip, animations: 'disabled' });
     const blank = await engine.newPage();
     const img = await blank.evaluate(async (b64) => {
       const image = new Image();
@@ -201,7 +206,7 @@ if (s) {
       return { w: image.width, h: image.height, data: [...ctx.getImageData(0, 0, image.width, image.height).data] };
     }, png.toString('base64'));
     await blank.close();
-    return img;
+    return { ...img, at: (x, y) => img.data.slice((y * img.w + x) * 4, (y * img.w + x) * 4 + 3) };
   };
   const longestRun = (length, inked) => {
     let best = null;
@@ -218,18 +223,14 @@ if (s) {
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   };
   const thumbGaps = async (engine, page, q, axis) => {
-    await page.evaluate(() => document.querySelector('.bug-fab')?.style.setProperty('display', 'none'));
-    const png = await page.locator(q).screenshot({ animations: 'disabled' });
-    const img = await pixelsOf(engine, png);
-    const at = (x, y) => img.data.slice((y * img.w + x) * 4, (y * img.w + x) * 4 + 3);
-    const box = await page.locator(q).boundingBox();
-    const scale = img.w / box.width;
+    const img = await stripOf(engine, page, q, axis);
+    const scale = axis === 'v' ? img.w / 8 : img.h / 8;
     const v = axis === 'v';
     const length = v ? img.h : img.w;
     const line = Math.round(4 * scale);
-    const ground = v ? at(img.w - 1, Math.floor(img.h / 2)) : at(Math.floor(img.w / 2), img.h - 1);
+    const ground = v ? img.at(img.w - 1, Math.floor(img.h / 2)) : img.at(Math.floor(img.w / 2), img.h - 1);
     const run = longestRun(length, (i) => {
-      const p = v ? at(img.w - line, i) : at(i, img.h - line);
+      const p = v ? img.at(img.w - line, i) : img.at(i, img.h - line);
       return p.some((c, k) => Math.abs(c - ground[k]) > 2);
     });
     return run && { before: run.start / scale, after: (length - run.start - run.length) / scale, length: run.length / scale };
@@ -276,12 +277,8 @@ if (s) {
       assert.deepEqual([bar.v, bar.h], [8, 8], `8px each way: ${JSON.stringify(bar)}`);
       assert.ok((await thumbGaps(engine, page, q, 'v')).before >= 8, 'the vertical thumb starts past the corner');
       assert.ok((await thumbGaps(engine, page, q, 'h')).before >= 8, 'the horizontal thumb starts past the corner');
-      const png = await page.locator(q).screenshot({ animations: 'disabled' });
-      const img = await pixelsOf(engine, png);
-      const box = await page.locator(q).boundingBox();
-      const scale = img.w / box.width;
-      const corner = (x, y) => img.data.slice((y * img.w + x) * 4, (y * img.w + x) * 4 + 3);
-      const inCorner = corner(img.w - Math.round(4 * scale), img.h - Math.round(4 * scale));
+      const img = await stripOf(engine, page, q, 'h');
+      const inCorner = img.at(img.w - 4, img.h - 4);
       const panel = await page.evaluate(() => {
         const c = document.createElement('canvas').getContext('2d');
         c.fillStyle = getComputedStyle(document.querySelector('#main')).backgroundColor;
