@@ -1,18 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, engineOf, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
-
-const barEngines = new Map();
-test.after(async () => {
-  for (const engine of barEngines.values()) await engine?.close().catch(() => {});
-});
-const barsOnEngine = async (name) => {
-  if (!barEngines.has(name)) {
-    const pw = await import('playwright');
-    barEngines.set(name, await pw[name].launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }).catch(() => null));
-  }
-  return barEngines.get(name);
-};
+import { barsOnEngine } from './lib/bars-engine.mjs';
+import { decodePng } from './lib/png.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
@@ -199,26 +189,11 @@ if (s) {
       radius: parseFloat(cs.borderTopRightRadius) || parseFloat(cs.borderBottomRightRadius) || 0,
     };
   }, q);
-  const stripOf = async (engine, page, q, axis) => {
+  const stripOf = async (page, q, axis) => {
     await page.evaluate(() => document.querySelector('.bug-fab')?.style.setProperty('display', 'none'));
     const box = await page.locator(q).boundingBox();
-    const v = axis === 'v';
-    const clip = v ? { x: box.x + box.width - 8, y: box.y, width: 8, height: box.height } : { x: box.x, y: box.y + box.height - 8, width: box.width, height: 8 };
-    const png = await page.screenshot({ clip, animations: 'disabled' });
-    const blank = await engine.newPage();
-    const img = await blank.evaluate(async (b64) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${b64}`;
-      await image.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = image.width;
-      canvas.height = image.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(image, 0, 0);
-      return { w: image.width, h: image.height, data: [...ctx.getImageData(0, 0, image.width, image.height).data] };
-    }, png.toString('base64'));
-    await blank.close();
-    return { ...img, at: (x, y) => img.data.slice((y * img.w + x) * 4, (y * img.w + x) * 4 + 3) };
+    const clip = axis === 'v' ? { x: box.x + box.width - 8, y: box.y, width: 8, height: box.height } : { x: box.x, y: box.y + box.height - 8, width: box.width, height: 8 };
+    return decodePng(await page.screenshot({ clip, animations: 'disabled' }));
   };
   const longestRun = (length, inked) => {
     let best = null;
@@ -234,18 +209,16 @@ if (s) {
     await page.evaluate(([sel, t, l]) => document.querySelector(sel).scrollTo({ top: t < 0 ? 1e9 : t, left: l < 0 ? 1e9 : l, behavior: 'instant' }), [q, top, left]);
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   };
-  const thumbGaps = async (engine, page, q, axis) => {
-    const img = await stripOf(engine, page, q, axis);
-    const scale = axis === 'v' ? img.w / 8 : img.h / 8;
+  const thumbGaps = async (page, q, axis) => {
+    const img = await stripOf(page, q, axis);
     const v = axis === 'v';
-    const length = v ? img.h : img.w;
-    const line = Math.round(4 * scale);
-    const ground = v ? img.at(img.w - 1, Math.floor(img.h / 2)) : img.at(Math.floor(img.w / 2), img.h - 1);
+    const length = v ? img.height : img.width;
+    const ground = v ? img.at(img.width - 1, Math.floor(img.height / 2)) : img.at(Math.floor(img.width / 2), img.height - 1);
     const run = longestRun(length, (i) => {
-      const p = v ? img.at(img.w - line, i) : img.at(i, img.h - line);
+      const p = v ? img.at(img.width - 4, i) : img.at(i, img.height - 4);
       return p.some((c, k) => Math.abs(c - ground[k]) > 2);
     });
-    return run && { before: run.start / scale, after: (length - run.start - run.length) / scale, length: run.length / scale };
+    return run && { before: run.start, after: length - run.start - run.length, length: run.length };
   };
 
   for (const name of ['chromium', 'webkit']) {
@@ -267,11 +240,11 @@ if (s) {
           const { radius } = await barOf(page, q);
           assert.equal(radius, 16, `${q} is the 16px card`);
           await scrollPane(page, q, 0);
-          const top = await thumbGaps(engine, page, q, 'v');
+          const top = await thumbGaps(page, q, 'v');
           assert.ok(top && top.length > 10, `${q} paints a thumb at the top: ${JSON.stringify(top)}`);
           assert.ok(top.before >= radius, `${q} thumb starts ${top.before}px below the corner, wanted at least ${radius}px: ${JSON.stringify(top)}`);
           await scrollPane(page, q, -1);
-          const end = await thumbGaps(engine, page, q, 'v');
+          const end = await thumbGaps(page, q, 'v');
           assert.ok(end.after >= radius, `${q} thumb stops ${end.after}px above the corner, wanted at least ${radius}px: ${JSON.stringify(end)}`);
           await scrollPane(page, q, 0);
         }
@@ -287,10 +260,10 @@ if (s) {
       const bar = await barOf(page, q);
       assert.ok(bar.spareV > 100 && bar.spareH > 100, `the grid scrolls both ways: ${JSON.stringify(bar)}`);
       assert.deepEqual([bar.v, bar.h], [8, 8], `8px each way: ${JSON.stringify(bar)}`);
-      assert.ok((await thumbGaps(engine, page, q, 'v')).before >= 8, 'the vertical thumb starts past the corner');
-      assert.ok((await thumbGaps(engine, page, q, 'h')).before >= 8, 'the horizontal thumb starts past the corner');
-      const img = await stripOf(engine, page, q, 'h');
-      const inCorner = img.at(img.w - 4, img.h - 4);
+      assert.ok((await thumbGaps(page, q, 'v')).before >= 8, 'the vertical thumb starts past the corner');
+      assert.ok((await thumbGaps(page, q, 'h')).before >= 8, 'the horizontal thumb starts past the corner');
+      const img = await stripOf(page, q, 'h');
+      const inCorner = img.at(img.width - 4, img.height - 4);
       const panel = await page.evaluate(() => {
         const c = document.createElement('canvas').getContext('2d');
         c.fillStyle = getComputedStyle(document.querySelector('#main')).backgroundColor;
