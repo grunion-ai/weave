@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP, timedOutShards } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
 const red = (patch = {}) => ({ id: 900, name: 'tests', path: '.github/workflows/test.yml', event: 'push', head_branch: 'main', head_repository: { full_name: repo }, status: 'completed', conclusion: 'failure', run_attempt: 1, head_sha: sha(100), html_url: 'https://github.com/grunion-ai/weave/actions/runs/900', created_at: '2026-10-12T10:00:00Z', ...patch });
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 
-function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {} } = {}) {
+function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, timedOut = [] } = {}) {
   const head = commits.at(-1)?.sha;
   const run = given ?? red({ head_sha: head ?? sha(100) });
   const writes = [];
@@ -19,7 +19,7 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     log: (line) => logs.push(line),
     run: async () => run,
     greenAfter: async () => green,
-    failures: async () => ({ files, jobs, cancelled }),
+    failures: async () => ({ files, jobs, cancelled, timedOut }),
     openFlakes: async (names) => names.filter((n) => flakes[n]).map((n) => ({ file: n, publicId: flakes[n] })),
     rerunFailed: async (id) => writes.push(['rerun', id]),
     waitRun: async (id) => ({ ...run, id, run_attempt: 2 }),
@@ -109,6 +109,28 @@ test('a red held only by files with an open flake row escalates instead of convi
   assert.equal((await sheriff(900, untracked.io)).action, 'revert');
   const none = fake({ files: [], flakes: { [file]: 1109 } });
   assert.equal((await sheriff(900, none.io)).action, 'revert');
+});
+
+test('a shard result that ended on the test manager timeout is named, newest attempt per shard', () => {
+  const r = (id, attempt, timedOut) => ({ id, attempt, timedOut });
+  assert.deepEqual(timedOutShards([r('browser-2', 1, true), r('browser-1', 1, false), r('browser-3', 1, true), r('browser-3', 2, false)]), ['browser-2']);
+  assert.deepEqual(timedOutShards([r('browser-1', 2, true), r('browser-1', 1, false)]), ['browser-1']);
+  assert.deepEqual(timedOutShards([{ id: 'unit-1', code: 1 }]), []);
+});
+
+test('a red held only by shards that hit the test manager timeout, with no failing test recorded, escalates without a bisect or a revert', async () => {
+  const f = fake({ files: [], timedOut: ['browser-1', 'browser-2'], commits: [101, 102, 103].map((n) => commit(n)), badFrom: 1 });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.deepEqual(f.kinds(), ['rerun', 'issue', 'alert']);
+  assert.match(out.reason, /browser-1, browser-2 hit the test manager timeout/);
+  assert.match(out.reason, /no test recorded a failure/);
+  const issue = f.writes.find((w) => w[0] === 'issue')[1];
+  assert.match(issue.name, /^Error: tests shards browser-1, browser-2 time out on main at [0-9a-f]{10}$/);
+  const named = fake({ files: ['test/grid.test.mjs'], timedOut: ['browser-1'] });
+  assert.equal((await sheriff(900, named.io)).action, 'revert', 'a failing test beside the timeout is still a conviction');
+  const passed = fake({ files: [], timedOut: ['browser-1'], rerunGate: 'success' });
+  assert.equal((await sheriff(900, passed.io)).action, 'flake', 'a timeout the rerun cleared is a flake like any other');
 });
 
 test('an ineligible run, a rerun attempt or a main that went green again writes nothing', async () => {

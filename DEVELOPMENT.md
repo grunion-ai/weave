@@ -137,6 +137,14 @@ the next red main run to judge that commit. The `tests` concurrency group
 cancels a rerun whenever a newer main commit pushes, and the cancelled rerun
 used to read as a second red.
 
+A red that stays red only because shards hit the test manager's job timeout
+(`scripts/ci-test.mjs` records `timedOut` in a shard's evidence when the
+manager exits 124), with no test recorded as failing, names no culprit: the
+shard may hold a hang or simply too much work for its job. The sheriff then
+neither bisects nor reverts. It files `Error: tests shards <ids> time out on
+main at <sha>` with the evidence, writes one alert line and fails its job, so
+a person looks.
+
 A green rerun is a flake: it appends a line to the Issue row
 `Error: <test file> flakes on main`, creating it if none is open, and stops. A
 second red finds the commits since the last main run whose `CI gate` succeeded
