@@ -81,6 +81,15 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /install --with-deps chromium webkit/);
 });
 
+test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const concurrency = workflow.match(/\nconcurrency:\n  group: (.+)\n  cancel-in-progress: (\S+)\n/);
+  assert.ok(concurrency, 'test.yml carries one workflow-level concurrency block');
+  assert.match(concurrency[1], /\$\{\{ inputs\.ref \|\| github\.sha \}\}/, 'the group names the commit under test, so two main pushes never queue behind one lane');
+  assert.equal(concurrency[2], 'false', 'a running gate is never cancelled by the next merge');
+});
+
 const browserFiles = ['test/chip-browser.test.mjs', 'test/chip-width-browser.test.mjs', 'test/grid-keymap-browser.test.mjs', 'test/oidc-login-browser.test.mjs', ...SMOKE];
 const sources = { 'test/oidc-login-browser.test.mjs': "import { startIdp } from './lib/idp.mjs'; const src = '../src/oidc.js';" };
 const read = file => sources[file] ?? '';

@@ -35,9 +35,10 @@ export function judge(health, { sha, first = null }) {
 }
 
 export function describe(outcome) {
-  const text = outcome.state === 'success'
-    ? `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`
-    : outcome.reason;
+  const passed = `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`;
+  const text = outcome.state === 'success' ? passed
+    : outcome.state === 'superseded' ? `superseded: ${outcome.reason}`
+      : outcome.reason;
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
 
@@ -48,6 +49,7 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
   let rounds = 0;
   let misses = 0;
   let retries = 0;
+  let watchPassed = false;
   let nextSmoke = start;
   const end = (state, reason) => ({ state, reason, rounds, retries, fivexx, ms: clock.now() - start });
   for (;;) {
@@ -74,11 +76,13 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
       misses = 0;
       const j = judge(health.body, { sha, first });
       if (j.verdict === 'moved') {
+        if (watchPassed && rounds > 0 && clock.now() - start >= cfg.soakMs) return end('success', `watch passed over the full window; ${j.reason}`);
         const head = await io.mainHead();
         return head && head !== sha ? end('superseded', `main moved to ${short(head)}; ${j.reason}`) : end('failure', j.reason);
       }
       if (j.verdict === 'fail') return end('failure', j.reason);
       first ??= health.body.supervisor;
+      if (j.verdict === 'ok') watchPassed = true;
       const elapsed = clock.now() - start;
       if (elapsed >= cfg.soakMs && rounds > 0 && j.verdict === 'ok') return end('success', j.reason);
       if (elapsed >= cfg.soakMs + cfg.graceMs) return end('failure', `watch still open ${Math.round(elapsed / 60_000)} min after the swap`);
@@ -90,13 +94,10 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
 }
 
 export async function report({ sha, outcome, io }) {
-  if (outcome.state === 'superseded') {
-    io.log(`dev-soak ${short(sha)}: superseded, ${outcome.reason}; the newer commit's run posts its own status`);
-    return null;
-  }
-  const status = { state: outcome.state, context: CONTEXT, description: describe(outcome), target_url: io.runUrl };
+  const state = outcome.state === 'superseded' ? 'pending' : outcome.state;
+  const status = { state, context: CONTEXT, description: describe(outcome), target_url: io.runUrl };
   await io.status(sha, status);
-  if (outcome.state !== 'success') await io.alert(`weave dev-soak: ${short(sha)} failed: ${outcome.reason} ${io.runUrl ?? ''}`.trim());
+  if (outcome.state === 'failure') await io.alert(`weave dev-soak: ${short(sha)} failed: ${outcome.reason} ${io.runUrl ?? ''}`.trim());
   return status;
 }
 
@@ -105,8 +106,8 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
   let step = 'load';
   const counted = { fivexx: 0 };
   page.on('response', (r) => { if (r.url().startsWith(base) && r.status() >= 500) counted.fivexx++; });
-  const api = async (method, url, data) => {
-    const r = await page.request.fetch(url, { method, data, timeout: 20_000 });
+  const api = async (method, url, data, headers) => {
+    const r = await page.request.fetch(url, { method, data, headers, timeout: 20_000 });
     if (r.status() >= 500) counted.fivexx++;
     if (!r.ok()) throw new Error(`${method} ${url.slice(base.length)} answered ${r.status()}`);
     return r.json();
@@ -133,14 +134,16 @@ export async function smoke(page, { base, workspace, writeWorkspace, token }) {
     if (token) {
       step = 'create row';
       const wws = `${base}${writeWorkspace}`;
-      const writable = await api('GET', `${wws}/api/tables`);
+      const auth = { Authorization: `Bearer ${token}` };
+      await page.setExtraHTTPHeaders(auth);
+      const writable = await api('GET', `${wws}/api/tables`, undefined, auth);
       const table = writable.find((t) => !t.system);
       if (!table) throw new Error(`${writeWorkspace} has no table to write to`);
-      const made = await api('POST', `${wws}/api/tables/${table.id}/entities`, { Name: `dev-smoke ${new Date().toISOString()}` });
+      const made = await api('POST', `${wws}/api/tables/${table.id}/entities`, { Name: `dev-smoke ${new Date().toISOString()}` }, auth);
       await page.goto(`${wws}/#/table/${table.id}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.waitForSelector(`tr[data-eid="${made.id}"]`, { timeout: 20_000 });
       step = 'delete row';
-      await api('DELETE', `${wws}/api/entities/${made.id}?hard=1`);
+      await api('DELETE', `${wws}/api/entities/${made.id}?hard=1`, undefined, auth);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#main', { timeout: 20_000 });
       await page.waitForSelector(`tr[data-eid="${made.id}"]`, { state: 'detached', timeout: 20_000 });
@@ -191,7 +194,7 @@ function realIO(cfg, env = process.env) {
     smoke: async () => {
       const { chromium } = await import('playwright');
       browser ??= await chromium.launch();
-      const context = await browser.newContext({ extraHTTPHeaders: smokeToken ? { Authorization: `Bearer ${smokeToken}` } : {} });
+      const context = await browser.newContext();
       try {
         const page = await context.newPage();
         const result = await smoke(page, { ...cfg, token: smokeToken });

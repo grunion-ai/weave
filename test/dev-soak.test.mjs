@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CONTEXT, DEFAULTS, judge, describe, soak, report, config } from '../scripts/dev-soak.mjs';
+import { CONTEXT, DEFAULTS, judge, describe, soak, report, config, smoke } from '../scripts/dev-soak.mjs';
 
 const SHA = 'a'.repeat(40);
 const NEWER = 'b'.repeat(40);
@@ -134,6 +134,29 @@ test('soak: dev moving to a newer main commit mid-soak is superseded, not a fail
   assert.equal(outcome.state, 'superseded');
 });
 
+test('soak: a commit that held dev for the whole window with a passing watch succeeds when dev then moves', async () => {
+  const clock = fakeClock();
+  const t0 = clock.at();
+  const io = fakeIO({
+    head: NEWER,
+    healthAt: () => ({ status: 200, body: clock.at() - t0 >= DEFAULTS.soakMs ? health({ commit: NEWER }) : health({ ok: true }) }),
+  });
+  const outcome = await soak({ sha: SHA, io, clock });
+  assert.equal(outcome.state, 'success');
+  assert.ok(clock.at() - t0 >= DEFAULTS.soakMs);
+});
+
+test('soak: a passing watch cut short before the window has elapsed is still superseded', async () => {
+  const clock = fakeClock();
+  const t0 = clock.at();
+  const io = fakeIO({
+    head: NEWER,
+    healthAt: () => ({ status: 200, body: clock.at() - t0 >= 5 * MIN ? health({ commit: NEWER }) : health({ ok: true }) }),
+  });
+  const outcome = await soak({ sha: SHA, io, clock });
+  assert.equal(outcome.state, 'superseded');
+});
+
 test('soak: dev serving another commit while main still names ours is a failure', async () => {
   const io = fakeIO({ head: SHA, healthAt: () => ({ status: 200, body: health({ commit: NEWER }) }) });
   const outcome = await soak({ sha: SHA, io, clock: fakeClock() });
@@ -165,10 +188,14 @@ test('report: failure posts failure with the run link and alerts', async () => {
   assert.match(io.calls.alerts[0], /aaaaaaaaaa failed: worker restarted .*actions\/runs\/7/);
 });
 
-test('report: superseded posts nothing, so the newer commit owns the status', async () => {
+test('report: superseded posts its own pending status, told apart from a pass, and never alerts', async () => {
   const io = fakeIO({ healthAt: () => null });
-  assert.equal(await report({ sha: SHA, outcome: { state: 'superseded', reason: 'main moved' }, io }), null);
-  assert.equal(io.calls.statuses.length, 0);
+  const status = await report({ sha: SHA, outcome: { state: 'superseded', reason: 'main moved to bbbbbbbbbb; dev serves bbbbbbbbbb, not aaaaaaaaaa' }, io });
+  assert.equal(status.state, 'pending');
+  assert.equal(io.calls.statuses.length, 1);
+  assert.equal(io.calls.statuses[0].context, CONTEXT);
+  assert.equal(io.calls.statuses[0].target_url, io.runUrl);
+  assert.match(io.calls.statuses[0].description, /^superseded: main moved to bbbbbbbbbb/);
   assert.equal(io.calls.alerts.length, 0);
 });
 
@@ -183,6 +210,48 @@ test('config reads the dev URL, workspaces and timings from the environment', ()
   assert.equal(c.soakMs, 60_000);
   assert.equal(c.max5xx, 2);
   assert.equal(config({}).soakMs, 15 * MIN);
+});
+
+function fakePage() {
+  const seen = [];
+  let pageHeaders = {};
+  const answer = (url) => {
+    if (url.endsWith('/api/tables')) return [{ id: 't1' }];
+    if (url.endsWith('/query')) return { items: [{ id: 'e1', doc: 'body' }] };
+    return { id: 'e2' };
+  };
+  return {
+    seen,
+    on: () => {},
+    setExtraHTTPHeaders: async (headers) => { pageHeaders = headers; },
+    goto: async (url) => { seen.push({ url, auth: pageHeaders.Authorization }); },
+    reload: async () => {},
+    evaluate: async () => {},
+    waitForSelector: async () => {},
+    waitForFunction: async () => {},
+    request: {
+      fetch: async (url, init) => {
+        seen.push({ url, auth: init.headers?.Authorization });
+        return { status: () => 200, ok: () => true, json: async () => answer(url) };
+      },
+    },
+  };
+}
+
+test('smoke: the write token reaches only the write workspace', async () => {
+  const page = fakePage();
+  const result = await smoke(page, { base: 'https://dev.example', workspace: '/w/weave', writeWorkspace: '/w/smoke', token: 'wv_smoke' });
+  assert.deepEqual(result, { ok: true, fivexx: 0, steps: 6 });
+  const read = page.seen.filter((s) => s.url.includes('/w/weave'));
+  const write = page.seen.filter((s) => s.url.includes('/w/smoke'));
+  assert.ok(read.length && write.length);
+  assert.deepEqual(read.filter((s) => s.auth), []);
+  assert.deepEqual(write.filter((s) => s.auth !== 'Bearer wv_smoke'), []);
+});
+
+test('smoke: the browser context carries no token of its own', () => {
+  const source = readFileSync(new URL('../scripts/dev-soak.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /newContext\(\{[^}]*Authorization/);
 });
 
 test('the dev-soak workflow follows Deploy dev on main, cancels superseded runs and may write statuses', () => {

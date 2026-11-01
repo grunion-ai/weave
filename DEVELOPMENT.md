@@ -96,6 +96,12 @@ The `tests` workflow runs the full inventory on every main push. Its final
 only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
 a missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
+Each main push holds its own concurrency lane, keyed by the commit under test.
+A shared lane keeps one pending run at a time, so the next merge cancelled the
+gate queued behind it: eight merges in the half hour from 18:32Z on 2026-10-25
+left nine consecutive main gates cancelled and the deploy watcher two hours
+behind the tip (Issue #1181). A merge rate above the gate's nineteen-minute
+runtime now costs parallel runs instead of a stalled deploy.
 
 Local runs are for debugging: `npm test -- --targeted <file...>` reproduces a
 red shard, and CI owns verification. Never invoke bare `node --test`; empty
@@ -174,13 +180,18 @@ happened, the worker's pid never changed and dev answered no 5xx. It then
 posts the commit status `dev-soak` (success) on that SHA; promotion reads that
 context. A failure posts `dev-soak` failure linking the run and sends one line
 to `SHERIFF_ALERT_URL` and the job summary. A newer main commit cancels the
-older run, and a soak that sees dev move to newer main posts nothing.
+older run. A soak that watched the commit pass and held dev for the whole
+window still succeeds when dev moves on the poll that completes it, so a busy
+main still yields commits promotion can take. A soak cut short before its
+window elapses posts `dev-soak` pending on that SHA, described as superseded,
+which reads apart from both a pass and a failure and which promotion skips.
 
 With the `DEV_SMOKE_TOKEN` secret (an editor `wv_` token on dev) the smoke
 also creates a row through the API, sees it in the grid, and hard-deletes it,
 in the workspace named by the `DEV_SMOKE_WORKSPACE` variable (default
-`/w/smoke`, which needs at least one table). Without it the smoke covers the
-anonymous read surface only. Run one smoke locally with
+`/w/smoke`, which needs at least one table). The token goes only to that
+workspace, since a token from another workspace answers 401 even on a public
+page. Without it the smoke covers the anonymous read surface only. Run one smoke locally with
 `node scripts/dev-soak.mjs smoke`, or soak a commit dev serves with
 `gh workflow run dev-soak -f sha=<sha>`.
 

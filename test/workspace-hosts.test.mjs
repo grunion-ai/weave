@@ -321,6 +321,7 @@ test('rail hop: only a target workspace session can produce its host handoff (Is
     assert.deepEqual([shut.status, shut.headers.location], [302, 'http://other.weave.test/'], 'a session that does not open other hands nothing over');
     assert.equal((await net('GET', '/api/auth/open/ACME', { cookie: both })).headers.location.startsWith('http://acme.weave.test/api/auth/handoff?code='), true, 'the slug is case-blind');
     assert.equal((await net('GET', '/api/auth/open/nosuch', { cookie })).status, 404);
+
   } finally { s.stop(); }
 });
 

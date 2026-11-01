@@ -63,16 +63,19 @@ test('DELETE /api/keys/:name/share refuses an unknown key and a caller who is no
   }
 });
 
-test('Issue #1086: DELETE /api/keys/:name/share with a named account answers 200 and revokes nothing', async () => {
-  const { w, rootId, bob, call, stop } = await serve();
+test('DELETE /api/keys/:name/share with a named account revokes that account and keeps the rest', async () => {
+  const { w, bob, call, stop } = await serve();
   try {
+    w.createAccount({ name: 'carol', role: 'writer' });
     assert.deepEqual((await call('POST', '/api/keys/stripe/share', { body: { account: 'bob' } })).json, { name: 'stripe', shared: ['bob'] });
+    assert.deepEqual((await call('POST', '/api/keys/stripe/share', { body: { account: 'carol' } })).json, { name: 'stripe', shared: ['bob', 'carol'] });
+    assert.equal((await call('POST', '/api/keys/stripe/reveal', { token: bob })).status, 200, 'shared, bob reads it');
     const revoked = await call('DELETE', '/api/keys/stripe/share', { body: { account: 'bob' } });
     assert.equal(revoked.status, 200);
-    assert.deepEqual(revoked.json, { name: 'stripe', shared: ['bob'] }, 'Issue #1086: the DELETE body is never read, so bob stays on the list');
-    assert.equal((await call('POST', '/api/keys/stripe/reveal', { token: bob })).status, 200, 'Issue #1086: bob still reads the secret');
-    w.actor = `account:${rootId}`;
-    assert.deepEqual(w.revokeKey('stripe', 'bob'), { name: 'stripe', shared: [] }, 'the engine call the route wraps does revoke');
+    assert.deepEqual(revoked.json, { name: 'stripe', shared: ['carol'] });
+    const listed = (await call('GET', '/api/keys')).json.find((k) => k.name === 'stripe');
+    assert.deepEqual(listed.shared, ['carol'], 'the list no longer names bob');
+    assert.equal((await call('POST', '/api/keys/stripe/reveal', { token: bob })).status, 403, 'revoked, bob is refused');
   } finally {
     stop();
   }

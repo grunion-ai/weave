@@ -317,7 +317,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
     if (wsM && wsM[1] !== 'undefined') {
       const target = hub.get(wsM[1]) ?? hub.entries().find(([, w]) => w.state.meta.id === wsM[1])?.[1] ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
-      if (!target) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
+      if (!target || target.state.meta.deletedAt) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
       weave = target;
       wsPrefix = `/w/${wsM[1]}`;
       path = wsM[2] || '/';
@@ -1705,7 +1705,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if ((m = path.match(/^\/api\/keys\/([^/]+)\/share$/))) {
             const name = decodeURIComponent(m[1]);
             if (rx.method === 'POST') return out(200, weave.grantKey(name, body?.account));
-            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, body?.account));
+            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, (await rx.readBody())?.account));
           }
           if ((m = path.match(/^\/api\/keys\/(.+)$/))) {
             if (rx.method === 'DELETE') return out(200, weave.deleteKey(decodeURIComponent(m[1])));

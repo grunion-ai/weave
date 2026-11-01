@@ -146,6 +146,22 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
   } finally { h.stop(); }
 });
 
+test('routes: a login whose only workspace was deleted still opens the docs workspace as an Observer (Feature #347)', async () => {
+  const h = await oidcHub();
+  try {
+    assert.equal((await h.s.call('DELETE', '/api/workspaces/alpha')).status, 200, 'alpha, the login\'s only workspace, is deleted');
+    const back = await h.signIn('weave');
+    assert.equal(back.status, 302, 'the sign-in still lands on the docs workspace');
+    assert.equal(back.headers.get('location'), '/w/weave/');
+    const me = await h.call('GET', '/w/weave/api/auth/me');
+    assert.equal(me.status, 200);
+    assert.equal((await me.json()).role, 'observer');
+    assert.equal((await h.call('POST', '/w/weave/api/tables/Development%2FIssue/query', { body: {} })).status, 200, 'an Observer reads');
+    assert.equal((await h.call('POST', '/w/weave/api/tables/Development%2FIssue/entities', { body: { name: 'direct' } })).status, 403, 'and writes nothing');
+    assert.notEqual((await h.call('GET', '/w/alpha/api/workspace')).status, 200, 'the deleted workspace stays shut');
+  } finally { h.stop(); }
+});
+
 test('routes: a login no workspace on the hub knows is still refused at the docs workspace', async () => {
   const h = await oidcHub();
   try {
