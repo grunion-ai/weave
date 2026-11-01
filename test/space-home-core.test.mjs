@@ -14,7 +14,7 @@ const payload = (over = {}) => ({
   ...over,
 });
 const row = (id, dbId, over = {}) => ({ kind: 'entity', id, name: id, db: 'Sales/Deal', dbId, publicId: 1, url: `/e/${id}`, at: 5, ...over });
-const view = (id, tableId, over = {}) => ({ kind: 'table-view', id, name: id, tableId, table: 'Deal', layout: 'grid', url: `#/table/${tableId}/view/${id}`, at: 7, ...over });
+const view = (id, tableId, over = {}) => ({ kind: 'table-view', id, name: id, tableId, table: 'Deal', layout: 'table', url: `#/table/${tableId}/view/${id}`, at: 7, ...over });
 
 test('homeSections keeps recents from this space\'s tables and splits views from rows', () => {
   const out = H.homeSections(payload(), [
@@ -88,4 +88,6 @@ test('viewRecent notes a saved view the reader asked for, never the table\'s def
   assert.equal(H.viewRecent(table, undefined), null);
   assert.equal(H.viewRecent(table, 'blank'), null);
   assert.equal(H.viewRecent(table, 'gone'), null);
+  const plain = { ...table, views: [...table.views, { id: 'v2', name: 'Closing' }] };
+  assert.equal(H.viewRecent(plain, 'v2').layout, 'table', 'a saved view with no layout is a table');
 });

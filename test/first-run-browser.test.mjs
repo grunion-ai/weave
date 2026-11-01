@@ -116,6 +116,7 @@ if (full) {
 
   test('a space page lists its tables plainly and folds the Tables grid under Schema', async () => {
     const page = await open(full, `#/space/${full.product.id}`);
+    await page.click('details.space-home-overview > summary');
     await page.waitForSelector('.space-tables .list-row');
     const names = await page.locator('.space-tables .list-row:not(.list-row-add) > span:first-child').allTextContents();
     assert.deepEqual(names.sort(), ['Project', 'Task']);

@@ -39,6 +39,7 @@ test('the home payload names the space and counts each table\'s live rows', () =
     [contact.id, 'Contact', null, 0],
   ]);
   assert.deepEqual(home.runs, []);
+  assert.deepEqual(home.tables[0].views.map((v) => v.layout), ['table']);
 });
 
 test('a run in the space lists its rows, its time and a success outcome', () => {

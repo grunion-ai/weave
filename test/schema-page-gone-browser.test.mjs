@@ -51,6 +51,7 @@ if (s) {
 
   test('the same from a space page: the Tables registry redraws in place', async () => {
     const page = await schemaOpen();
+    await page.addInitScript(() => localStorage.setItem('weave-space-overview-open', '1'));
     await page.goto(`${base}/#/space/${sales.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await addField(page, 'Owner');

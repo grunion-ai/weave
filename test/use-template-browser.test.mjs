@@ -81,7 +81,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
       await page.goto(`${base}/#/space/${root.getSpace('Plain').id}`, { waitUntil: 'load' });
-      await page.waitForSelector('.space-tables');
+      await page.waitForSelector('.space-home');
       assert.equal(await page.locator('.use-template-btn').count(), 0);
     } finally { await page.close(); }
   });
