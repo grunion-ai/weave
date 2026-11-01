@@ -546,7 +546,7 @@ const OVERLAY_STATES = [
   { name: 'activity', route: 'entity', cells: DESKTOP, root: 'aside.wv-activity', act: (page, ctx, cell) => tap(page, '#main .activity-btn', cell) },
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
-  { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Row actions"]`, cell) },
+  { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Record actions"]`, cell) },
   { name: 'share-row', route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },

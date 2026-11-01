@@ -4273,7 +4273,7 @@ async function openPrefill(dbId, query) {
       class: 'btn btn-sm wv-prefill-copy', type: 'button',
       onclick: (ev) => copyText(weavePrefill.link(prefillBase(db), prefillValues(ev.currentTarget.form, fields)), 'Create link copied'),
     }, 'Copy create link'));
-  tray(`New ${db.term?.singular ?? 'record'}`, [body], async () => {
+  tray(`New ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`, [body], async () => {
     const made = await api('POST', `/tables/${db.id}/entities`, { values: prefillValues(body.closest('form'), fields) });
     await loadSchema();
     location.hash = `#/table/${db.id}?e=${made.id}`;
@@ -4305,7 +4305,7 @@ function setFilterTotal(db, x, n) {
   const c = filterCounts.get(db.id);
   const out = document.querySelector(':is(.table-filter-popover, #view-pane) .filter-total');
   if (!out || !c || out.closest('.chip-pop, #view-pane')?.tableId !== db.id) return;
-  const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'records'}`;
+  const text = `${c.x} of ${c.n} ${db.term?.plural ?? WeaveTerm.DEFAULT.plural}`;
   if (out.textContent !== text) out.textContent = text;
   out.classList.remove('stale');
 }
@@ -11443,7 +11443,7 @@ async function showHome() {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
       el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
       el('span', { class: 'spacer' }),
-      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? (db.term?.singular ?? 'record') : (db.term?.plural ?? 'records')}`));
+      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? (db.term?.singular ?? WeaveTerm.DEFAULT.singular) : (db.term?.plural ?? WeaveTerm.DEFAULT.plural)}`));
   });
   main.replaceChildren(
     viewHeader({

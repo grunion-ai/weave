@@ -71,7 +71,7 @@ test('completedBy takes a checkbox or toggle; nest takes a to-one link to the sa
   assert.throws(() => w.tableView('To-do/X', { nest: 'Children' }), /one parent/);
   assert.throws(() => w.tableView('To-do/X', { layout: 'grid' }), /table, list or board/);
   const t = w.createEntity('Trip', { name: 'Japan' });
-  assert.throws(() => w.tableView('To-do/X', { order: [t.id] }), /not a row of/);
+  assert.throws(() => w.tableView('To-do/X', { order: [t.id] }), /not a record of/);
 });
 
 test('null clears a key, Table keeps the list keys, and from copies them', () => {

@@ -106,8 +106,8 @@ test('the roles survive a reload by id, through a rename', () => {
 
 test('neither view field can be deleted, retyped, or created by hand', () => {
   const { w, tasks } = build();
-  assert.throws(() => w.deleteField(tasks, 'Chip'), /every row has a chip/i);
-  assert.throws(() => w.deleteField(tasks, 'Card'), /every row has a card/i);
+  assert.throws(() => w.deleteField(tasks, 'Chip'), /every record has a chip/i);
+  assert.throws(() => w.deleteField(tasks, 'Card'), /every record has a card/i);
   assert.throws(() => w.updateField(tasks, 'Chip', { type: 'text' }), /fixed/i);
   assert.throws(() => w.addField(tasks, { name: 'Tile', type: 'view' }), /minted/i);
   assert.throws(() => w.updateField(tasks, 'Chip', { config: { shape: 'card' } }), /shape/i);

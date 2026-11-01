@@ -28,8 +28,8 @@ if (empty) {
       assert.equal((await page.locator('.wv-start .wv-start-new').textContent()).trim(), '+ New table');
       assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
       const lead = await page.locator('.wv-start-lead').textContent();
-      assert.match(lead, /\brows\b/);
-      assert.doesNotMatch(lead, /\brecords?\b/, 'row, never record (Issue #605)');
+      assert.match(lead, /\brecords\b/);
+      assert.doesNotMatch(lead, /\brows?\b/, 'record, never row');
       await page.waitForSelector('details.wv-schema');
       assert.equal(await page.locator('details.wv-schema').evaluate((d) => d.open), false);
       assert.equal(await page.locator('.wv-grid').count(), 0, 'no grid on the first screen');
@@ -120,7 +120,7 @@ if (full) {
     await page.waitForSelector('.space-tables .list-row');
     const names = await page.locator('.space-tables .list-row:not(.list-row-add) > span:first-child').allTextContents();
     assert.deepEqual(names.sort(), ['Project', 'Task']);
-    assert.match(await page.locator('.space-tables').textContent(), /\d+ (rows|tasks|projects)/);
+    assert.match(await page.locator('.space-tables').textContent(), /\d+ (records|tasks|projects)/);
     assert.equal(await page.locator('.wv-grid').count(), 0);
     await page.click('details.wv-schema > summary');
     await page.waitForSelector('details.wv-schema .wv-grid tbody tr.entity-row');

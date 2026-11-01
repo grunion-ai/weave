@@ -93,7 +93,7 @@ function seedShowcaseBase(w) {
       Definition: { type: 'checkbox', config: {} },
       Owner: mia.id, Peers: [ada.id, leo.id, mia.id],
     }, stage: 'Backlog', review: 'Pending' },
-    { name: 'Blank record', values: {} , stage: 'Dropped', review: 'Pending' },
+    { name: 'Blank row', values: {} , stage: 'Dropped', review: 'Pending' },
   ];
   for (const r of rows) {
     const e = w.createEntity(ft, { name: r.name, values: r.values });
