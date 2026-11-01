@@ -9,6 +9,7 @@ const workspace = new Weave();
 workspace.state.meta.name = 'scratch';
 
 const s = await launch('phone crumb copy target', (weave) => {
+  weave.state.meta.name = 'main';
   weave.markOnboarded();
   workspace.markOnboarded();
   workspace.createSpace({ name: 'Development' });
@@ -19,7 +20,7 @@ if (s) {
   const base = `${s.base}/w/${workspace.state.meta.id}`;
   const rename = async (name) => {
     const res = await fetch(`${base}/api/workspace`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-    assert.equal(res.ok, true);
+    assert.equal(res.ok, true, await res.text());
   };
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
   const webkit = await engineOf('webkit');
