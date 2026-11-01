@@ -149,7 +149,8 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
 test('routes: a login whose only workspace was deleted still opens the docs workspace as an Observer (Feature #347)', async () => {
   const h = await oidcHub();
   try {
-    assert.equal((await h.s.call('DELETE', '/api/workspaces/alpha')).status, 200, 'alpha, the login\'s only workspace, is deleted');
+    const { token } = h.alpha.w.createAccount({ name: 'alpha-owner', role: 'architect' });
+    assert.equal((await h.s.call('DELETE', '/api/workspaces/alpha', { token })).status, 200, 'alpha, the login\'s only workspace, is deleted by its own Architect');
     const back = await h.signIn('weave');
     assert.equal(back.status, 302, 'the sign-in still lands on the docs workspace');
     assert.equal(back.headers.get('location'), '/w/weave/');
