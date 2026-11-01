@@ -75,7 +75,7 @@ export const GROUPS = [
   [{ field: 'Symptom' }],
   [{ field: 'Area' }, { field: 'Severity' }, { field: 'Status', dir: 'desc' }, { field: 'Symptom' }, { field: 'Fixed in' }],
 ];
-export const LAYOUTS = ['table', 'list'];
+export const LAYOUTS = ['table'];
 export const ROLLUP_MODES = [[false, 'all'], [true, 'all'], [true, 'top'], [true, 'none']];
 export const HIDDEN = [[], ['Severity', 'Area']];
 

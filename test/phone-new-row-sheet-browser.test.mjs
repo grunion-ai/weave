@@ -16,7 +16,6 @@ const s = await launch('phone new-row sheet', (weave) => {
   const tasks = weave.createTable({ space: 'Handbook', name: 'Tasks' });
   const todos = weave.createTable({ space: 'Handbook', name: 'Todo' });
   weave.createEntity(todos, { name: 'Call Acme' });
-  weave.tableView(`${todos.id}/Standard`, { layout: 'list' });
   return { issues: issues.id, guides: guides.id, notes: notes.id, tasks: tasks.id, todos: todos.id };
 });
 
@@ -201,13 +200,13 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`on a phone a cold load of a list view shows + without waiting on the workspace list (${engine}, Issue #1006)`, async () => {
+    test(`on a phone a cold load of a table view shows + without waiting on the workspace list (${engine}, Issue #1006)`, async () => {
       const page = await make();
       try {
         await page.route('**/api/workspaces*', async (r) => { await new Promise((ok) => setTimeout(ok, 6000)); await r.continue().catch(() => {}); });
         await page.goto(`${base}/#/table/${todos}`);
-        await page.waitForSelector('#main .list-row');
-        assert.equal(await until(() => page.evaluate(() => document.querySelector('.phone-bar .phone-new')?.hidden), (h) => h === false, { timeout: 3000 }), false, 'the + is up once the list paints');
+        await page.waitForSelector('#main .wv-grid');
+        assert.equal(await until(() => page.evaluate(() => document.querySelector('.phone-bar .phone-new')?.hidden), (h) => h === false, { timeout: 3000 }), false, 'the + is up once the table paints');
         assert.equal(await page.getAttribute('.phone-bar .phone-new', 'aria-label'), 'New todo');
       } finally { await page.close(); }
     });

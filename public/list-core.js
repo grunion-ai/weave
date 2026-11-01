@@ -1,6 +1,5 @@
 (function (root) {
   const GROUP_CAP = 5;
-  const LIST_CAP = 200;
   const BOARD_CAP = 40;
   const GROUP_TYPES = ['select', 'multiselect', 'workflow', 'toggle', 'checkbox', 'relation', 'date'];
   const HEADINGS = ['label', 'chip'];
@@ -21,7 +20,7 @@
   }
 
   function normalizeLevel(f, raw = {}) {
-    if (!groupable(f)) throw new Error(`'${f?.name}' cannot group a list: group by a select, workflow, toggle, checkbox, link or date field`);
+    if (!groupable(f)) throw new Error(`'${f?.name}' cannot group a view: group by a select, workflow, toggle, checkbox, link or date field`);
     const out = levelDefaults(f.type);
     if (raw.heading != null) {
       if (!HEADINGS.includes(raw.heading)) throw new Error(`heading is label or chip, got ${JSON.stringify(raw.heading)}`);
@@ -62,7 +61,7 @@
     if (out.some((x) => !x || x.field == null || String(x.field).trim() === '')) {
       throw new Error('group is a list of levels: a field name, or {field, heading, order, dir, grain}');
     }
-    if (out.length > GROUP_CAP) throw new Error(`A list groups at most ${GROUP_CAP} levels deep, got ${out.length}`);
+    if (out.length > GROUP_CAP) throw new Error(`A view groups at most ${GROUP_CAP} levels deep, got ${out.length}`);
     return out;
   }
 
@@ -89,26 +88,7 @@
       .sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.r);
   }
 
-  function nestItems(rows, nest) {
-    if (!nest) return rows.map((row) => ({ row, depth: 0, children: [] }));
-    const here = new Set(rows.map((r) => r.id));
-    const kids = new Map();
-    const roots = [];
-    for (const r of rows) {
-      if (r.parent && r.parent !== r.id && here.has(r.parent)) {
-        if (!kids.has(r.parent)) kids.set(r.parent, []);
-        kids.get(r.parent).push(r);
-      } else roots.push(r);
-    }
-    const seen = new Set();
-    const grow = (row, depth) => {
-      seen.add(row.id);
-      return { row, depth, children: (kids.get(row.id) ?? []).filter((c) => !seen.has(c.id)).map((c) => grow(c, depth + 1)) };
-    };
-    const out = roots.map((r) => grow(r, 0));
-    for (const r of rows) if (!seen.has(r.id)) out.push(grow(r, 0));
-    return out;
-  }
+  const leaves = (rows) => rows.map((row) => ({ row, depth: 0, children: [] }));
 
   const countRows = (rows) => new Set(rows.filter((r) => !r.ghost && !r.deleted).map((r) => r.id)).size;
 
@@ -126,7 +106,7 @@
     });
   }
 
-  function arrange(rows, { levels = [], completedBy = false, nest = false, manual = null, showEmpty = false } = {}) {
+  function arrange(rows, { levels = [], completedBy = false, manual = null, showEmpty = false } = {}) {
     const ordered = applyManual(rows, manual);
     const isDone = (r) => completedBy && r.done && !r.ghost;
     const active = ordered.filter((r) => !isDone(r));
@@ -144,15 +124,15 @@
       return sortBuckets([...buckets.values()], level).map(({ rows: members, ...b }) => {
         const here = [...path, b];
         const node = { key: here.map((p) => p.label).join(SEP), label: b.label, value: b.key, level: depth, path: here, count: countRows(members), rows: members };
-        if (depth === levels.length - 1) node.items = nestItems(members, nest);
+        if (depth === levels.length - 1) node.items = leaves(members);
         else node.groups = build(depth + 1, members, here);
         return node;
       });
     };
     const out = { shown: countRows(ordered), done: countRows(finished) };
     if (levels.length) out.groups = build(0, active, []);
-    else out.items = nestItems(active, nest);
-    if (completedBy) out.completed = { key: COMPLETED, label: COMPLETED, count: countRows(finished), items: nestItems(finished, nest) };
+    else out.items = leaves(active);
+    if (completedBy) out.completed = { key: COMPLETED, label: COMPLETED, count: countRows(finished), items: leaves(finished) };
     return out;
   }
 
@@ -172,15 +152,6 @@
     const at = out.indexOf(targetId);
     if (at < 0) out.push(dragId); else out.splice(after ? at + 1 : at, 0, dragId);
     return out;
-  }
-
-  function locate(items, id, parent = null) {
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].row.id === id) return { siblings: items, index: i, parent };
-      const hit = locate(items[i].children, id, items[i]);
-      if (hit) return hit;
-    }
-    return null;
   }
 
   function changedLevels(fromPath, toPath) {
@@ -208,8 +179,8 @@
   }
 
   root.weaveListCore = {
-    GROUP_CAP, LIST_CAP, BOARD_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
+    GROUP_CAP, BOARD_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
     groupable, levelDefaults, normalizeLevel, compactLevel, parseGroup, dateBucket,
-    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, moreLabel, groupLabel, groupSig,
+    applyManual, arrange, isCollapsed, toggleCollapsed, moveInOrder, changedLevels, footerText, moreLabel, groupLabel, groupSig,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

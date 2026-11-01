@@ -139,7 +139,7 @@ if (s) {
     test(`${cell}: board and list group heads wrap a long workflow state name instead of cutting it (Issue #1157)`, async (t) => {
       const m = matrix[cell];
       if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here`);
-      for (const state of ['sink-board', 'sink-list']) {
+      for (const state of ['sink-board']) {
         const page = await m.browser.newPage(m.page);
         try {
           await page.goto(ROUTES[state].url(s, cell), { waitUntil: 'networkidle' });
@@ -152,7 +152,7 @@ if (s) {
             range.selectNodeContents([...e.childNodes].find((n) => n.nodeType === 3));
             return { lines: new Set([...range.getClientRects()].filter((r) => r.width).map((r) => Math.round(r.top))).size, over: e.scrollWidth - e.clientWidth };
           });
-          const heads = await page.evaluate(probe, '.board-group-head, .list-group-head');
+          const heads = await page.evaluate(probe, '.board-group-head');
           assert.deepEqual(tally(heads), {}, `${state} ${cell}: a group head still cuts its label`);
           assert.ok(shape.over <= 1, `${state} ${cell}: the label hides ${shape.over}px of its text`);
           if (state === 'sink-board' || cell === 'phone') assert.ok(shape.lines >= 2, `${state} ${cell}: the long state name sits on ${shape.lines} line`);

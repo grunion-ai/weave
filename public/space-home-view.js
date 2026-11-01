@@ -4,7 +4,7 @@ const SPACE_OVERVIEW_OPEN_KEY = 'weave-space-overview-open';
 const SPACE_HOME_VIEWS = 3;
 const SPACE_HOME_ROWS = 6;
 const SPACE_HOME_RUNS = 6;
-const VIEW_LAYOUT_ICONS = { table: 'table', list: 'list', board: 'kanban' };
+const VIEW_LAYOUT_ICONS = { table: 'table', board: 'kanban' };
 
 function spaceHomeTime(at) {
   if (at == null) return null;

@@ -70,25 +70,6 @@ test('checked rows leave their group for Completed; with no completedBy a tick i
   assert.equal(plain.completed, undefined);
 });
 
-test('nest puts a child under its parent inside one group; a ghost parent shows and does not count', () => {
-  const rows = [
-    row('p', 'japan', 'P1', { ghost: true }),
-    row('c1', 'japan', 'P1', { parent: 'p' }),
-    row('c2', 'japan', 'P1', { parent: 'c1' }),
-    row('x', 'japan', 'P2', { parent: 'p' }),
-  ];
-  const out = core.arrange(rows, { levels: levels(), nest: true });
-  const p1 = out.groups[0].groups[0];
-  assert.deepEqual(ids(p1.items), ['p']);
-  assert.deepEqual(ids(p1.items[0].children), ['c1']);
-  assert.equal(p1.items[0].children[0].children[0].depth, 2);
-  assert.equal(p1.count, 2, 'the dimmed parent is not counted');
-  assert.deepEqual(ids(out.groups[0].groups[1].items), ['x'], 'a child whose parent is in another group is a root of its own group');
-  assert.equal(out.shown, 3);
-  const loop = core.nestItems([{ id: 'a', parent: 'b' }, { id: 'b', parent: 'a' }], true);
-  assert.equal(loop.length, 1, 'a cycle still draws every row once');
-});
-
 test('the manual order wins with no sort; rows it never saw keep their incoming order after it', () => {
   const rows = [row('a'), row('b'), row('c'), row('d')];
   assert.deepEqual(ids(core.arrange(rows, { manual: ['c', 'a'] }).items), ['c', 'a', 'b', 'd']);
@@ -112,12 +93,7 @@ test('collapsed: Completed folds by default; a toggle writes the whole list', ()
   assert.equal(core.isCollapsed([], 'Completed'), false);
 });
 
-test('locate finds siblings and parent; changedLevels names every level a drag changes', () => {
-  const items = core.nestItems([{ id: 'a' }, { id: 'b', parent: 'a' }, { id: 'c', parent: 'a' }, { id: 'd' }], true);
-  const hit = core.locate(items, 'c');
-  assert.equal(hit.index, 1);
-  assert.equal(hit.parent.row.id, 'a');
-  assert.equal(core.locate(items, 'd').parent, null);
+test('changedLevels names every level a drag changes', () => {
   assert.deepEqual(core.changedLevels([{ key: 'japan' }, { key: 'P1' }], [{ key: 'peru' }, { key: 'P1' }]), [0]);
   assert.deepEqual(core.changedLevels([{ key: 'japan' }, { key: 'P1' }], [{ key: 'peru' }, { key: 'P3' }]), [0, 1]);
 });
@@ -136,7 +112,6 @@ test('the Show more label names the next batch and the drawn count (Issue #1266)
   assert.equal(core.moreLabel({ shown: 40, all: 41, cap: 40 }), 'Show 1 more · 40 of 41 rows');
 });
 
-test('the list and board caps are the ones the row measured (Issue #1266)', () => {
-  assert.equal(core.LIST_CAP, 200);
+test('the board cap is the one the row measured (Issue #1266)', () => {
   assert.equal(core.BOARD_CAP, 40);
 });

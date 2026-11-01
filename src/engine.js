@@ -40,7 +40,7 @@ const Term = globalThis.WeaveTerm;
 const ListCore = globalThis.weaveListCore;
 const ViewPane = globalThis.weaveViewPane;
 const BoardCore = globalThis.weaveBoardCore;
-const LAYOUTS = ['table', 'list', 'board'];
+const LAYOUTS = ['table', 'board'];
 const PhoneRow = globalThis.weavePhoneRow;
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
@@ -2094,7 +2094,7 @@ export class Weave {
         const copy = { ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) };
         if (copy.widths) copy.widths = Object.fromEntries(Object.entries(copy.widths).map(([k, px]) => [mapId(k), px]));
         if (copy.group) copy.group = copy.group.map((l) => ({ ...l, field: mapId(l.field) }));
-        for (const k of ['completedBy', 'nest']) if (copy[k]) copy[k] = mapId(copy[k]);
+        if (copy.completedBy) copy.completedBy = mapId(copy.completedBy);
         delete copy.parked;
         delete copy.order;
         return copy;
@@ -2461,7 +2461,6 @@ export class Weave {
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ field: db.fields[l.field].name, ...ListCore.compactLevel(db.fields[l.field].type, l) }));
     if (group.length) out.group = group;
     if (db.fields[v.completedBy]) out.completedBy = db.fields[v.completedBy].name;
-    if (db.fields[v.nest]) out.nest = db.fields[v.nest].name;
     if (Array.isArray(v.collapsed)) out.collapsed = [...v.collapsed];
     if (v.hideEmpty) out.hideEmpty = true;
     const order = (v.order ?? []).map((id) => own(this.state.entities, id)).filter((e) => e && !e.deletedAt && e.dbId === db.id).map((e) => e.publicId);
@@ -2539,7 +2538,7 @@ export class Weave {
     if (patch.layout !== undefined) {
       if (patch.layout == null || patch.layout === '') delete next.layout;
       else if (LAYOUTS.includes(patch.layout)) next.layout = patch.layout;
-      else throw new WeaveError(`layout is table, list or board — got ${JSON.stringify(patch.layout)}`, 'invalid');
+      else throw new WeaveError(`layout is table or board — got ${JSON.stringify(patch.layout)}`, 'invalid');
     }
     if (patch.groups !== undefined) {
       if (patch.groups == null || patch.groups === '') delete next.groups;
@@ -2579,15 +2578,6 @@ export class Weave {
         next.completedBy = f.id;
       }
     }
-    if (patch.nest !== undefined) {
-      if (patch.nest == null || patch.nest === '') delete next.nest;
-      else {
-        const f = this.#listField(db, patch.nest);
-        if (f.type !== 'relation' || f.config.targetDbs || f.config.targetDb !== db.id) throw new WeaveError(`nest is a link from ${db.name} to itself (a Parent link): '${f.name}' is not one`, 'invalid');
-        if (f.config.many) throw new WeaveError(`nest needs one parent per row: '${f.name}' links many`, 'invalid');
-        next.nest = f.id;
-      }
-    }
     if (patch.collapsed !== undefined) {
       if (patch.collapsed == null) delete next.collapsed;
       else {
@@ -2598,7 +2588,7 @@ export class Weave {
     if (patch.order !== undefined) {
       if (patch.order == null) delete next.order;
       else {
-        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of rows, as #ids, in the order the list shows them', 'invalid');
+        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of rows, as #ids, in the order the view shows them', 'invalid');
         const ids = [...new Set(patch.order.map((ref) => this.#orderRow(db, ref)))];
         if (ids.length) next.order = ids; else delete next.order;
       }
@@ -2617,7 +2607,7 @@ export class Weave {
   }
 
   #writeView(db, name, patch) {
-    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'group', 'completedBy', 'nest', 'collapsed', 'hideEmpty', 'order', 'phoneRow'];
+    const KNOWN = ['name', 'fields', 'show', 'hide', 'move', 'filters', 'sort', 'search', 'default', 'position', 'from', 'delete', 'widths', 'frozen', 'density', 'deleted', 'rollups', 'subtotals', 'layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'group', 'completedBy', 'collapsed', 'hideEmpty', 'order', 'phoneRow'];
     const unknown = Object.keys(patch).filter((k) => patch[k] !== undefined && !KNOWN.includes(k));
     if (unknown.length) throw new WeaveError(`Unknown view key${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')} — a view takes ${KNOWN.join(', ')}`, 'invalid');
     const views = db.tableViews;
@@ -3520,7 +3510,7 @@ export class Weave {
       if (vDoc.hideEmpty) out.hideEmpty = true;
       for (const k of ['layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'subtotals']) if (vDoc[k]) out[k] = vDoc[k];
       if (Array.isArray(vDoc.group)) out.group = vDoc.group.filter((l) => has(typeof l === 'string' ? l : l?.field));
-      for (const k of ['completedBy', 'nest']) if (vDoc[k] && has(vDoc[k])) out[k] = vDoc[k];
+      if (vDoc.completedBy && has(vDoc.completedBy)) out.completedBy = vDoc.completedBy;
       const pr = vDoc.phoneRow;
       if (pr && typeof pr === 'object') out.phoneRow = PhoneRow.compact({ lead: pr.lead != null && has(pr.lead) ? pr.lead : null, chips: (pr.chips ?? []).filter(has), labels: pr.labels, wrap: pr.wrap });
       for (const k of ['filters', 'sort', 'widths']) if (out[k] && !Object.keys(out[k]).length) delete out[k];
@@ -3553,7 +3543,7 @@ export class Weave {
       if (!!vDoc.hideEmpty !== !!have?.hideEmpty) patch.hideEmpty = !!vDoc.hideEmpty;
       for (const k of ['layout', 'groups', 'picture', 'fit', 'frame', 'flow', 'subtotals']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
       if (JSON.stringify(vDoc.group ?? []) !== JSON.stringify(have?.group ?? [])) patch.group = vDoc.group ?? null;
-      for (const k of ['completedBy', 'nest']) if ((vDoc[k] ?? null) !== (have?.[k] ?? null)) patch[k] = vDoc[k] ?? null;
+      if ((vDoc.completedBy ?? null) !== (have?.completedBy ?? null)) patch.completedBy = vDoc.completedBy ?? null;
       if (JSON.stringify(vDoc.phoneRow ?? null) !== JSON.stringify(have?.phoneRow ?? null)) {
         patch.phoneRow = vDoc.phoneRow ? { lead: vDoc.phoneRow.lead ?? null, chips: vDoc.phoneRow.chips ?? [], labels: !!vDoc.phoneRow.labels, wrap: !!vDoc.phoneRow.wrap } : null;
       }
@@ -5321,7 +5311,7 @@ export class Weave {
         Density: v.density ?? '',
         'Show Deleted': !!v.deleted,
         'Rollup Row': typeof v.rollups === 'boolean' ? v.rollups : db.hideRollups === false,
-        Layout: v.layout ?? '',
+        Layout: LAYOUTS.includes(v.layout) ? v.layout : '',
         Groups: v.groups ?? '',
         Picture: v.picture ?? '',
         Group: (v.group ?? []).map((l) => db.fields[l.field]?.name).filter(Boolean).join(ListCore.SEP),
@@ -8198,7 +8188,7 @@ export class Weave {
       if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
-    const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !grouped.hideEmpty && !filtered && !String(search ?? '').trim() }) : null;
+    const groups = grouped ? this.#viewGroups(db, grouped, rows) : null;
     rows = rows.slice(offset, limit == null || limit < 0 ? undefined : offset + limit);
     const nextOffset = rows.length && offset + rows.length < total ? offset + rows.length : null;
     const items = rows.map((e) => {
@@ -8233,7 +8223,7 @@ export class Weave {
     return rows.map((r) => ({ id: r.id, publicId: r.publicId, name: r.name }));
   }
 
-  #viewGroups(db, v, rows, { showEmpty = false } = {}) {
+  #viewGroups(db, v, rows) {
     const ids = (v.group ?? []).map((l) => l.field).filter((id) => db.fields[id]);
     const group = (v.group ?? []).filter((l) => db.fields[l.field]).map((l) => ({ ...l, field: db.fields[l.field].name }));
     const shapes = ids.map((id) => this.#groupFieldShape(db.fields[id]));
@@ -8241,7 +8231,7 @@ export class Weave {
     const byId = new Map(rows.map((e) => [e.id, e]));
     const items = rows.map((e) => ({ ...this.#readEntityIn(e.id, { pick, chips: Object.create(null) }), deleted: !!e.deletedAt }));
     const levels = ViewPane.levelsFor(group, shapes, { domains: ids.map((id) => this.#groupTargets(db.fields[id])), items });
-    const m = ViewPane.model(ViewPane.rowsFor(items, levels), { levels, showEmpty });
+    const m = ViewPane.model(ViewPane.rowsFor(items, levels), { levels });
     const live = (list) => ViewPane.liveRows(list).map((r) => byId.get(r.id)).filter(Boolean);
     return {
       groups: m.nodes.map((n) => ({

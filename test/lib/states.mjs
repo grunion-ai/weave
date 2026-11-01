@@ -3,7 +3,7 @@ import { openBugReport } from './bug-report.mjs';
 import { openPane } from './view-pane.mjs';
 import { hold } from './hold.mjs';
 
-export const LAYOUTS = ['table', 'list', 'board'];
+export const LAYOUTS = ['table', 'board'];
 export const OPENS = ['journey', 'rest', 'overlay', 'hover', 'drag'];
 export const CELLS = ['desktop', 'phone'];
 export const THEMES = ['light', 'dark'];
@@ -20,7 +20,6 @@ const TOUCH = ['touch'];
 
 const views = (weave, table) => ({
   board: weave.tableView(`${table.id}/Board`, { layout: 'board', group: ['Status'] }).id,
-  list: weave.tableView(`${table.id}/List`, { layout: 'list', group: ['Status'] }).id,
 });
 
 function grid(weave) {
@@ -201,7 +200,6 @@ export const ROUTES = {
   home: { url: (c) => `${c.base}/#/`, ready: at('#main') },
   table: { url: (c) => `${c.base}/#/table/${c.table}`, ready: at(ROW) },
   board: { url: (c) => `${c.base}/#/table/${c.table}/view/${c.board}`, ready: at('.wv-board .tile') },
-  list: { url: (c) => `${c.base}/#/table/${c.table}/view/${c.list}`, ready: at('.wv-list .list-row') },
   entity: {
     url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.table}?e=${c.ids[3]}` : `${c.base}/#/entity/${c.ids[3]}`),
     ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Status"]' : '.entity-fields .fieldrow[data-field="Status"]'),
@@ -210,7 +208,6 @@ export const ROUTES = {
   'issue-table': { url: (c) => `${c.base}/#/table/${c.issue.id}`, ready: at(ROW) },
   'sink-table': { url: (c) => `${c.base}/#/table/${c.sink.table}`, ready: at(ROW) },
   'sink-board': { url: (c) => `${c.base}/#/table/${c.sink.table}/view/${c.sink.board}`, ready: at('.wv-board .tile') },
-  'sink-list': { url: (c) => `${c.base}/#/table/${c.sink.table}/view/${c.sink.list}`, ready: at('.wv-list .list-row') },
   'sink-row': {
     url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.sink.table}?e=${c.sink.row}` : `${c.base}/#/entity/${c.sink.row}`),
     ready: (cell) => (cell === 'phone' ? '#dock:not([hidden]) .fieldrow[data-field="Status"]' : '.entity-fields .fieldrow[data-field="Status"]'),
@@ -599,9 +596,7 @@ const TOUCH_STATES = [
 
 const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
-  { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
-  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
   { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1152, 1161], touch: [1165, 1166, 1167, 1168] } },
 ];
