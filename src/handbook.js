@@ -1382,7 +1382,7 @@ Actions run in order and each one yields an output the later ones can read. \`se
  { "type": "set-field", "field": "Account Ref", "value": "Account#{{steps.1.publicId}}" },
  { "type": "add-comment", "text": "Opened {{steps.1.name}}; ref {{steps.2.value}}" }]
 \`\`\`
-A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order.
+A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the row it stopped on.
 
 ## Decks
 

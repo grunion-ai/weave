@@ -73,6 +73,7 @@
   }
   function whereText(hit) {
     if (hit.kind === 'entity') return `${lastSegment(hit.db)} #${hit.publicId}`;
+    if (hit.kind === 'table-view') return `${hit.table} · view`;
     if (hit.kind === 'table') {
       const space = String(hit.name ?? '').includes('/') ? String(hit.name).split('/').slice(0, -1).join('/') : '';
       return space ? `${space} · table` : 'table';
@@ -92,9 +93,9 @@
   }
 
   const RECENT_MAX = 8;
-  function pushRecent(list, item) {
+  function pushRecent(list, item, max = RECENT_MAX) {
     const key = (r) => `${r.kind}:${r.id}`;
-    return [item, ...(Array.isArray(list) ? list : []).filter((r) => key(r) !== key(item))].slice(0, RECENT_MAX);
+    return [item, ...(Array.isArray(list) ? list : []).filter((r) => key(r) !== key(item))].slice(0, max);
   }
 
   root.weavePalette = { plainText, excerpt, highlight, groupHits, displayName, whereText, groupJump, pushRecent, RECENT_MAX };

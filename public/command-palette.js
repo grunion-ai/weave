@@ -10,13 +10,14 @@ function navigateToResult(hit) {
   else if (hit.kind === 'table') location.hash = `#/table/${hit.id}`;
   else if (hit.kind === 'space') location.hash = `#/space/${hit.id}`;
   else if (hit.kind === 'view') location.hash = `#/view/${hit.id}`;
+  else if (hit.kind === 'table-view') location.hash = hit.url;
   else location.hash = '#/';
 }
 
 function paletteIcon(hit, group) {
   if (hit.avatar) return chipElFrom(chipView.avatarHtml(hit.avatar, { cls: 'cmdk-ic cmdk-av' }));
   const name = hit.kind === 'table' ? 'table'
-    : hit.kind === 'view' ? 'eye'
+    : hit.kind === 'view' || hit.kind === 'table-view' ? 'eye'
     : hit.kind === 'space' ? 'layout-grid'
     : hit.kind === 'workspace' ? 'house'
     : group === 'docs' ? 'file-text' : 'file';
@@ -166,7 +167,7 @@ function openCommandK({
     ].filter((g) => g.hits.length));
   };
   const showRecent = () => {
-    const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind));
+    const recent = readRecents().filter((h) => !kinds || kinds.includes(h.kind)).slice(0, P.RECENT_MAX);
     render('', recent.length ? [{ key: 'recent', label: 'Recent', hits: recent }] : [], 'Records and tables you open show up here.');
   };
   const searchUrl = (q) => (scope

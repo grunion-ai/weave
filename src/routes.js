@@ -1916,6 +1916,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           return out(200, weave.restoreSpace(m[1]));
         }
+        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members$/)) && rx.method === 'GET') return out(200, weave.spaceMembers(m[1]));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members\/([^/]+)$/))) {
           if (rx.method === 'PUT') return out(200, weave.setSpaceMember(m[1], m[2], { role: body?.role ?? null }));
