@@ -87,8 +87,9 @@ if (s) {
   test('the ⋮ on the workspace page deletes the workspace you stand in and opens the next one on the rail (Feature #347)', async () => {
     const scratchId = await idOf('scratch');
     const spareId = await idOf('spare');
-    const page = await open(`/w/${scratchId}/`);
+    const page = await open(`/w/${spareId}/`);
     try {
+      await page.goto(`${base}/w/${scratchId}/`);
       await page.click('#main .view-header .dots-btn[title="Workspace actions"]');
       await page.waitForSelector('.wv-menu .wv-menu-row');
       assert.deepEqual(await menuRows(page), ['Delete workspace…']);

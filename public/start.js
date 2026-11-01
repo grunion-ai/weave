@@ -222,6 +222,8 @@
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
   const workspaceOf = (next) => /^\/w\/([^/?#]+)\//.exec(next ?? '')?.[1] ?? null;
   const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?next=${encodeURIComponent(next)}`;
+  const startLink = (next) => (/^\/api\/start\/open\/[^/?#\\]+(?:\?[^#\\]*)?$/.test(next ?? '') ? next : null);
+  const returnOf = (next) => (workspaceOf(next) || startLink(next) ? next : null);
 
   let clerk = null;
   const inject = (src, attrs = {}) => new Promise((resolve, reject) => {
@@ -250,12 +252,12 @@
     let mode = entry.mode === 'signup' ? 'signup' : 'signin';
     const pane = me.clerk;
     const onboard = signInHref(['skip', 'new', 'resume'].includes(entry.setup) ? `/start?setup=${entry.setup}` : entry.pick ? PICK : '/start');
-    const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : onboard;
+    const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : startLink(entry.next) ? signInHref(entry.next) : onboard;
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
     const switchLead = make('span', {});
-    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}${workspaceOf(entry.next) ? `&next=${encodeURIComponent(entry.next)}` : ''}`); show(); } });
+    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}${returnOf(entry.next) ? `&next=${encodeURIComponent(entry.next)}` : ''}`); show(); } });
     const toggle = make('p', { class: 'switch', hidden: true }, switchLead, ' ', switchGo);
     const show = async () => {
       title.textContent = mode === 'signup' ? COPY.account.title : COPY.account.signInTitle;
@@ -793,14 +795,18 @@
       location.replace(workspaceSignIn(q.next));
       return;
     }
+    if (me.signedIn && startLink(q.next)) {
+      location.replace(q.next);
+      return;
+    }
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
     s = q.setup === 'resume' ? resume(me, saved) : begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : workspaceOf(q.next) ? `/start?next=${encodeURIComponent(q.next)}${q.mode === 'signup' ? '&mode=signup' : ''}` : q.mode === 'signup' ? '/start?mode=signup' : '/start');
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : returnOf(q.next) ? `/start?next=${encodeURIComponent(q.next)}${q.mode === 'signup' ? '&mode=signup' : ''}` : q.mode === 'signup' ? '/start?mode=signup' : '/start');
     if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;
     saveDraft();
 
-    globalThis.WeaveConsent?.start(me.analytics);
+    try { globalThis.WeaveConsent?.start(me.analytics); } catch (err) { console.warn('analytics did not start', err); }
     render();
     if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
   }

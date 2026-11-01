@@ -125,8 +125,35 @@
   }
 
   function nextCollapsed(prev, next, collapsed) {
-    const sig = (levels) => (levels ?? []).map(fieldOf).join('|');
-    return sig(prev) === sig(next) ? collapsed : null;
+    return core().groupSig(prev) === core().groupSig(next) ? collapsed : null;
+  }
+
+  function crumbs(node) {
+    return (node?.path ?? []).slice(0, -1).map((p) => String(p.label));
+  }
+
+  function crumbText(node) {
+    const c = crumbs(node);
+    return c.length ? `${c.join(core().SEP)} ›` : '';
+  }
+
+  const BREAKDOWN_TYPES = ['select', 'workflow'];
+
+  function breakdownField(fields, levels, level) {
+    const grouped = new Set((levels ?? []).slice(0, level + 1).map((l) => l.f?.name ?? fieldOf(l)));
+    return (fields ?? []).find((f) => BREAKDOWN_TYPES.includes(f.type) && !grouped.has(f.name)) ?? null;
+  }
+
+  function breakdown(rows, f) {
+    if (!f) return '';
+    const counts = new Map();
+    for (const r of liveRows(rows)) {
+      const v = (r.item ?? r).fields?.[f.name];
+      if (!isEmpty(v)) for (const x of [].concat(v)) counts.set(String(x), (counts.get(String(x)) ?? 0) + 1);
+    }
+    const order = f.type === 'workflow' ? (f.states ?? []).map((st) => st.name) : (f.options ?? []).map((o) => (typeof o === 'string' ? o : o.name));
+    const names = [...order.filter((o) => counts.has(o)), ...[...counts.keys()].filter((k) => !order.includes(k))];
+    return names.map((n) => `${n} ${counts.get(n).toLocaleString('en-US')}`).join(', ');
   }
 
   function subtotalAt(level, { rollups, subtotals = 'all' }) {
@@ -173,7 +200,7 @@
   root.weaveViewPane = {
     SORT_CAP, GROUP_CAP, SUBTOTALS, SUBTOTAL_LABELS, SORT_LEVELS, SECTIONS,
     isEmpty, normalize, comparator, groupKeys, groupDomain, boolKey, levelsFor, rowsFor, passes, filterLabels, liveRows,
-    countText, nodeCount, nextCollapsed, subtotalAt, model, activeFilters, directionWords,
+    countText, nodeCount, nextCollapsed, crumbs, crumbText, breakdownField, breakdown, subtotalAt, model, activeFilters, directionWords,
     get NO_VALUE() { return NO_VALUE(); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

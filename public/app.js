@@ -3091,6 +3091,7 @@ function entityAvatarEl(entity, db, refresh) {
   });
 }
 function relationChipEl(f, s, { onRemove = null } = {}) {
+  if (s.locked) return el('span', { class: 'k k-rel k-locked', title: 'A row in a private space you are not a member of' }, iconEl('lucide:lock', 'wv-icon wv-icon-xs'), el('span', {}, s.name || 'Private'));
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [], ...(s.avatar ? { avatar: s.avatar } : {}) };
   return viewChipEl(v, {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
@@ -4051,7 +4052,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
-    layout: null, groups: null, picture: null, group: null, completedBy: null, nest: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, fit: null, frame: null, flow: null, group: null, completedBy: null, nest: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -5606,7 +5607,8 @@ async function readAndDrawList(db, dbId, search) {
   const sort = gridSort(db);
   const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
     ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
-    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
+    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n)),
+    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(breakdownFields(db), s.levels, i)?.name))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
   const showDeleted = !board && showsDeleted(db);
@@ -5630,7 +5632,15 @@ async function readAndDrawList(db, dbId, search) {
     sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
 }
 let listWrites = Promise.resolve();
+function shareCollapsed(db, collapsed) {
+  const sig = listCore.groupSig(db.view?.group);
+  if (!sig) return;
+  for (const v of allTables().find((t) => t.id === db.id)?.views ?? []) {
+    if (v.id !== db.view.id && listCore.groupSig(v.group) === sig) v.collapsed = Array.isArray(collapsed) ? [...collapsed] : undefined;
+  }
+}
 function listViewWrite(db, patch) {
+  if (patch.collapsed !== undefined) shareCollapsed(db, patch.collapsed);
   listWrites = listWrites.catch(() => {}).then(() => api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch))
     .then(() => loadSchema()).catch((err) => toast(err.message, true));
   return listWrites;
@@ -5675,6 +5685,18 @@ function listHeadingEl(s, depth, node) {
   if (f?.type === 'select' || f?.type === 'multiselect') hue = (f.optionsFull ?? []).find((o) => o.name === node.label)?.hue || 'slate';
   if (f?.type === 'workflow') { const st = f.states?.find((x) => x.name === node.label); if (st) hue = chipCore.stateHue(st, st.category); }
   return el('span', { class: `list-group-label hue-${hue}` + (node.value === '' ? ' is-none' : '') }, el('span', { class: 'list-dot', 'aria-hidden': 'true' }), node.label);
+}
+function groupCrumbEl(node) {
+  const text = VP.crumbText(node);
+  return text ? el('span', { class: 'group-crumb' }, text) : null;
+}
+function breakdownFields(db) {
+  return (allTables().find((t) => t.id === db.id) ?? db).fields;
+}
+function groupSummaryEl(db, levels, node) {
+  const f = VP.breakdownField(breakdownFields(db), levels, node.level);
+  const text = VP.breakdown(node.rows, f);
+  return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
@@ -5797,10 +5819,12 @@ function renderList(main, db, items, ctx) {
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
+        groupCrumbEl(node),
         headingEl(depth, node),
-        el('span', { class: 'list-count' }, String(node.count))),
+        el('span', { class: 'list-count' }, String(node.count)),
+        sums ? null : groupSummaryEl(db, s.levels, node)),
       el('div', { class: 'list-group-body' }, ...body),
-      sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? sumEl(node.label, node.rows, depth, sums.sums.get(node.key)) : null);
+      ...(sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? [sumEl(node.label, node.rows, depth, sums.sums.get(node.key))] : []));
     sec.wvPath = node.path;
     sec.wvItems = node.items ?? null;
     return sec;
@@ -5940,9 +5964,23 @@ function boardCardFields(db) {
   return db.fields.filter((f) => shown.has(f.name) && f !== name && f.role !== 'name' && f.name !== cover?.name && f.type !== 'document' && f.type !== 'view');
 }
 const PICTURE_LABELS = { off: 'Off', small: 'Small', medium: 'Medium', large: 'Large' };
+const FIT_OPTIONS = [
+  { id: 'crop', label: 'Crop', title: 'Fill the card shape, trimming the edges' },
+  { id: 'fit', label: 'Fit', title: 'The whole picture inside the card shape' },
+  { id: 'original', label: 'Original', title: 'The card takes the picture\'s own shape' },
+  { id: 'capped', label: 'Capped', title: 'The picture\'s own shape, between 2:3 tall and 2:1 wide' },
+];
+const masonryRows = new ResizeObserver((entries) => {
+  for (const { target: t } of entries) {
+    if (!t.isConnected) { masonryRows.unobserve(t); continue; }
+    const gap = parseFloat(getComputedStyle(t.parentElement).columnGap) || 0;
+    t.style.gridRowEnd = `span ${Math.ceil((t.getBoundingClientRect().height + gap) / 2)}`;
+  }
+});
 function boardControls(db, put) {
   const v = db.view ?? {};
   const cover = boardCore.coverField(db);
+  const fit = boardCore.fitOf(v);
   const by = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
   const columns = { groups: 'side', picture: 'off', sort: [], ...(!(v.group ?? []).length && by ? { group: [by.name] } : {}) };
   const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
@@ -5953,8 +5991,15 @@ function boardControls(db, put) {
     row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
     row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
       boardCore.pictureOf(db, v), (picture) => put({ picture }))),
-  ];
+    row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
+    fit === 'crop' || fit === 'fit' ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
+    fit === 'original' || fit === 'capped' ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
+  ].filter(Boolean);
 }
+const coverSize = (e) => {
+  e.target.style.setProperty('--nw', `${e.target.naturalWidth}px`);
+  e.target.style.setProperty('--nh', `${e.target.naturalHeight}px`);
+};
 const TILE_FORM = 'button, input, select, textarea, [contenteditable], .picker-wrap';
 const TILE_HANDS_OFF = `${TILE_FORM}, .tile-field, .tile-pick`;
 const boardPicks = { dbId: null, ids: [], full: false };
@@ -6021,6 +6066,9 @@ function renderBoard(main, db, items, ctx) {
   const groups = boardCore.groupsOf(v);
   const picture = boardCore.pictureOf(db, v);
   const size = boardCore.widths(picture);
+  const fit = boardCore.fitOf(v);
+  const flow = boardCore.flowOf(v);
+  const masonry = picture !== 'off' && (fit === 'original' || fit === 'capped') && flow === 'masonry';
   const fields = boardCardFields(db);
   if (picksState.dbId !== db.id) Object.assign(picksState, { dbId: db.id, ids: [], full: false });
   const known = new Set((everyone ?? items).map((it) => it.id));
@@ -6073,7 +6121,7 @@ function renderBoard(main, db, items, ctx) {
       dataset: { eid: it.id, href: `#/entity/${it.id}` }, 'aria-label': label,
     },
       picture === 'off' ? null : el('div', { class: 'tile-cover' + (file ? '' : ' is-empty') },
-        file ? el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
+        file ? el('img', { loading: 'lazy', decoding: 'async', onload: coverSize, src: previewUrl(file), alt: '', draggable: 'false' }) : iconEl('lucide:image', 'wv-icon')),
       el('div', { class: 'tile-body' },
         el('div', { class: 'tile-head' },
           el('label', { class: 'tile-pick', title: 'Pick to compare' },
@@ -6084,6 +6132,7 @@ function renderBoard(main, db, items, ctx) {
           el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
     card.wvPath = path;
     card.wvItem = node;
+    if (masonry) masonryRows.observe(card);
     RO().guard(card);
     fileDropZone(card, (files) => dropCover(it, files));
     card.addEventListener('click', (e) => {
@@ -6179,8 +6228,8 @@ function renderBoard(main, db, items, ctx) {
     } }, lucideEl('chevron-right')), listHeadingEl(s, 0, c), el('span', { class: 'list-count' }, String(c.count)));
   const board = el('div', {
     class: 'wv-board', 'aria-label': `${db.name} · ${v.name}`,
-    dataset: { groups: levels.length ? groups : 'stacked', picture, ...(lanes ? { lanes: 'true' } : {}) },
-    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
+    dataset: { groups: levels.length ? groups : 'stacked', picture, fit, flow, ...(lanes ? { lanes: 'true' } : {}) },
+    style: `--card-w:${size.card}px;--col-w:${size.column}px;--phone-cols:${size.phone};--frame:${boardCore.frameOf(v).replace(':', ' / ')}` + (lanes ? `;--cols:${grid.columns.length}` : ''),
   }, ...(lanes
     ? [...grid.columns.map(columnHead), ...grid.lanes.map(laneEl)]
     : stacked.map((node) => groupEl(node, 0))));
@@ -6858,9 +6907,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       el('td', { colspan: String(colCount + sysTail.length + phone.chips.filter((x) => !cols.includes(x)).length) },
         el('div', { class: 'group-head-in', style: `--level:${n.level}` },
           el('button', { class: 'group-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${n.key}`, onclick: () => foldGroup(n.key) }, lucideEl('chevron-right')),
+          groupCrumbEl(n),
           el('span', { class: 'group-head-field' }, level.f.name),
           listHeadingEl({ levels: grouping.levels }, n.level, n),
-          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)))));
+          el('span', { class: 'group-count' }, VP.nodeCount(n.rows, db.term)),
+          grouping.rollups ? null : groupSummaryEl(db, grouping.levels, n))));
   };
   const buildSumRow = (s) => {
     const grand = s.kind === 'grand';
@@ -6885,6 +6936,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const live = new Map();
   const built = new Map();
   const win = { start: 0, end: 0 };
+  let pinned = null;
 
   const CR = globalThis.WeaveColumnResize;
   const gid = `g${++GRID_SEQ}`;
@@ -7372,6 +7424,11 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       headH: table.tHead?.offsetHeight ?? 0,
     };
   };
+  const pinFor = (start) => {
+    if (!slots || start <= 0 || start >= slots.length || slots[start].kind === 'grand') return -1;
+    for (let i = start; i >= 0; i--) if (slots[i].kind === 'head' && slots[i].node.level === 0) return i < start ? i : -1;
+    return -1;
+  };
   const paint = (w) => {
     let changed = false;
     for (const [i, tr] of live) {
@@ -7379,8 +7436,16 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         tr.remove(); live.delete(i); changed = true;
       }
     }
-    setPad(topSpacer, w.topPad); setPad(bottomSpacer, w.bottomPad);
+    const pin = pinFor(w.start);
+    const pinTr = pin < 0 ? null : rowFor(pin);
+    if (pinned && pinned !== pinTr) { pinned.remove(); changed = true; }
+    pinned = pinTr;
+    setPad(topSpacer, w.topPad - (pinTr ? rowH() : 0)); setPad(bottomSpacer, w.bottomPad);
     let cursor = topSpacer.isConnected ? topSpacer : null;
+    if (pinTr) {
+      if (!pinTr.isConnected || pinTr.previousElementSibling !== cursor) { cursor ? cursor.after(pinTr) : tbody.prepend(pinTr); changed = true; }
+      cursor = pinTr;
+    }
     for (let i = w.start; i < w.end; i++) {
       let tr = live.get(i);
       if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; }
@@ -7401,6 +7466,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const rewindow = () => {
     if (!tbody?.isConnected) return;
     const g = geometry();
+    const headH = `${g.headH}px`;
+    if (table.style.getPropertyValue('--wv-thead-h') !== headH) table.style.setProperty('--wv-thead-h', headH);
     const w = GW().windowFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), total: reach() });
     if (pager) {
       const next = GW().feedFor({ scrollTop: g.scrollTop, viewportH: g.viewportH, rowH: rowH(), loaded: reach(), total: total() });
@@ -7505,7 +7572,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const levels = (db.sort ?? []).filter((x) => x?.field);
     if (levels.length && !pager) sortedItems.sort(VP.comparator(levels, clientSortValue, (a, b) => (a.publicId ?? 0) - (b.publicId ?? 0)));
     slots = grouping ? groupSlots() : null;
-    live.clear(); built.clear();
+    live.clear(); built.clear(); pinned = null;
     win.start = 0; win.end = 0;
     tbody = el('tbody');
     topSpacer = spacer(); bottomSpacer = spacer();
@@ -12309,12 +12376,15 @@ async function buildWsRail() {
       if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
+    const railed = list.filter((w) => w.name !== 'weave');
     listBox.replaceChildren(
-      ...list.filter((w) => w.name !== 'weave').map((w) => {
+      ...[...railed.filter((w) => w === cur), ...railed.filter((w) => w !== cur)].map((w) => {
+        const expired = `${w.name}: session expired, click to sign in`;
         const chip = el('a', {
-          class: 'ws-icon' + (w.logo && !w.held ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : '') + (w.held ? ' ws-held' : ''),
+          class: 'ws-icon' + (w.held ? ' ws-held' : w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
           href: w.held ? w.open : wsHref(w),
-          title: w.held ? `${w.name} — opens with your sign-in` : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          title: w.held ? expired : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
+          ...(w.held ? { 'aria-label': expired } : {}),
         }, w.logo && !w.held
           ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
             const host = e.currentTarget.parentElement;

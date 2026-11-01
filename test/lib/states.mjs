@@ -489,7 +489,6 @@ const OVERLAY_STATES = [
   { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
   { name: 'personal-menu', route: 'home', cells: DESKTOP, root: '.nav-personal-menu', act: (page, ctx, cell) => tap(page, '#sidebar .nav-identity-more', cell) },
   { name: 'new-workspace', route: 'home', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
-  { name: 'workspace-menu', route: 'home', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', route: 'home', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#nav .dots-btn[title="Task actions"]', cell) },
   {
     name: 'bug-report', route: 'home', cells: BOTH, root: '#bug-panel',
