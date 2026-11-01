@@ -7,7 +7,9 @@ const s = await launch('phone record crumb', (weave) => {
   weave.createSpace({ name: 'Sales' });
   const deals = weave.createTable({ space: 'Sales', name: 'Deal' });
   const row = weave.createEntity(deals, { name: NAME });
-  return { peek: `#/table/${deals.id}?e=${row.id}`, page: `#/entity/${row.id}` };
+  const apps = weave.createTable({ space: 'Sales', name: 'Underwriting Applications' });
+  const app = weave.createEntity(apps, { name: NAME });
+  return { peek: `#/table/${deals.id}?e=${row.id}`, page: `#/entity/${row.id}`, longPeek: `#/table/${apps.id}?e=${app.id}` };
 });
 
 const crumb = (page, scope) => page.evaluate((sc) => {
@@ -24,7 +26,7 @@ const crumb = (page, scope) => page.evaluate((sc) => {
 }, scope);
 
 if (s) {
-  const { base, browser, peek, page: full } = s;
+  const { base, browser, peek, page: full, longPeek } = s;
   const phone = await phoneBrowser();
   const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 } })]];
   if (phone) engines.push(['webkit iPhone 15', () => phonePage(phone)]);
@@ -56,6 +58,25 @@ if (s) {
         assert.deepEqual(c.cut, []);
       } finally { await page.close(); }
     });
+  }
+
+  for (const [table, hash] of [['a short table', peek], ['a long table', longPeek]]) {
+    for (const width of [360, 375, 390]) {
+      test(`at ${width}px the docked crumb of ${table} keeps its number whole and clear of Copy permalink (Issue #765)`, async () => {
+        const page = await open(() => browser.newPage({ viewport: { width, height: 844 } }), hash, '#dock:not([hidden]) textarea.name-edit');
+        try {
+          const m = await page.evaluate(() => {
+            const row = document.querySelector('#dock .crumb-row');
+            const box = (sel) => row.querySelector(sel).getBoundingClientRect();
+            const pid = row.querySelector('.crumb-cur .crumb-pid');
+            return { chip: box('.crumb-cur').right, pid: box('.crumb-cur .crumb-pid').right, copy: box('.crumb-copy').left, pidCut: pid.scrollWidth > pid.clientWidth + 1 };
+          });
+          assert.equal(m.pidCut, false, 'the number is whole');
+          assert.ok(m.pid <= m.chip + 0.5, `the number stays inside its chip: ${JSON.stringify(m)}`);
+          assert.ok(m.chip <= m.copy + 0.5, `the chip stops before Copy permalink: ${JSON.stringify(m)}`);
+        } finally { await page.close(); }
+      });
+    }
   }
 
   test('on a desktop the record crumb keeps its name (Issue #982)', async () => {
