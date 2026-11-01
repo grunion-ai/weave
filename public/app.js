@@ -5712,6 +5712,25 @@ function groupSummaryEl(db, levels, node) {
   const text = VP.breakdown(node.rows, f);
   return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
+const drawnPast = new Map();
+let revealRow = null;
+function cappedEls(db, cap, key, items, draw) {
+  const memo = `${db.id}/${db.view?.id}/${db.view?.layout}/${key ?? ''}`;
+  const wanted = revealRow ? items.findIndex((i) => i.row.id === revealRow) + 1 : 0;
+  if (wanted > cap) drawnPast.set(memo, Math.max(wanted, drawnPast.get(memo) ?? 0));
+  let shown = Math.max(cap, drawnPast.get(memo) ?? 0);
+  if (!cap || items.length <= shown) return items.flatMap(draw);
+  const more = el('button', { class: 'btn btn-sm btn-ghost-secondary wv-more', type: 'button' });
+  const relabel = () => { more.textContent = listCore.moreLabel({ shown, all: items.length, cap, term: db.term }); };
+  more.addEventListener('click', () => {
+    more.before(...items.slice(shown, shown + cap).flatMap(draw));
+    shown = Math.min(items.length, shown + cap);
+    drawnPast.set(memo, shown);
+    if (shown >= items.length) more.remove(); else relabel();
+  });
+  relabel();
+  return [...items.slice(0, shown).flatMap(draw), more];
+}
 function renderList(main, db, items, ctx) {
   const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
   const v = db.view;
@@ -5817,10 +5836,11 @@ function renderList(main, db, items, ctx) {
       }
       const release = gridHold();
       try {
-        await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        const made = await api('POST', `/tables/${db.id}/entities`, { name: text, values });
+        revealRow = made.id;
         await keepScroll(() => showDatabase(db.id, db.view.id));
         document.querySelector(`#main .list-add[data-key="${CSS.escape(where)}"] .list-add-name`)?.focus({ preventScroll: true });
-      } catch (err) { toast(err.message, true); } finally { release(); }
+      } catch (err) { toast(err.message, true); } finally { revealRow = null; release(); }
     });
     return form;
   };
@@ -5829,7 +5849,7 @@ function renderList(main, db, items, ctx) {
     const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
     const body = node.groups
       ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...node.items.flatMap((i) => rowEls(i, node.path)), addEl(node.path)];
+      : [...cappedEls(db, listCore.LIST_CAP, node.key, node.items, (i) => rowEls(i, node.path)), addEl(node.path)];
     sec.append(
       el('div', { class: 'list-group-head', style: `--level:${depth}` },
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
@@ -5849,7 +5869,7 @@ function renderList(main, db, items, ctx) {
     ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
   const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
   if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...arranged.items.flatMap((i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
+  else { list.append(...cappedEls(db, listCore.LIST_CAP, '', arranged.items, (i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
   if (arranged.completed?.count) {
     const c = arranged.completed;
     const shut = listCore.isCollapsed(collapsed, c.key);
@@ -5859,7 +5879,7 @@ function renderList(main, db, items, ctx) {
         el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
         el('span', { class: 'list-group-label' }, c.label),
         el('span', { class: 'list-count' }, String(c.count))),
-      el('div', { class: 'list-group-body' }, ...c.items.flatMap((i) => rowEls(i, null))));
+      el('div', { class: 'list-group-body' }, ...cappedEls(db, listCore.LIST_CAP, c.key, c.items, (i) => rowEls(i, null))));
     sec.wvItems = c.items;
     list.append(sec);
   }
@@ -6174,7 +6194,9 @@ function renderBoard(main, db, items, ctx) {
   };
   const cardsEl = (node, completed) => {
     const items = node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; });
-    const cards = el('div', { class: 'board-cards', role: 'list' }, ...items.map((i) => tileEl(i, completed ? null : node.path)));
+    const cards = el('div', { class: 'board-cards', role: 'list' }, ...cappedEls(db, listCore.BOARD_CAP, node.key, items, (i) => [tileEl(i, completed ? null : node.path)]));
+    const more = cards.querySelector(':scope > .wv-more');
+    if (masonry && more) masonryRows.observe(more);
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     return cards;
   };
