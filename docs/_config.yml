@@ -1,11 +1,11 @@
 # GitHub Pages configuration for the docs/ site.
 # Only this folder is published; the repo root is not.
-title: weave documentation
+title: "weave: self-hosted work database for people and AI agents"
+tagline: Tables, relations, boards, forms and documents in one SQLite file
+image: /social-preview.png
 description: >-
-  weave is an open-source, self-hosted alternative to Airtable, Fibery, Notion
-  databases, and ClickUp, built so that AI agents are first-class users.
-  Connected tables, relations, workflows, formulas, rollups, and per-entity
-  markdown documents in one SQLite file. Zero dependencies, no build step, MIT.
+  Open-source, self-hosted work database for people and AI agents: connected
+  tables, kanban boards, forms and markdown documents in one SQLite file. MIT.
 theme: jekyll-theme-primer
 plugins:
   - jekyll-seo-tag       # <title>, meta description, Open Graph, JSON-LD
@@ -13,7 +13,5 @@ plugins:
   - jekyll-relative-links # rewrites relative .md links to their .html pages
 lang: en
 author: Grunion AI
-twitter:
-  card: summary
 exclude:
   - screenshots/README.md
