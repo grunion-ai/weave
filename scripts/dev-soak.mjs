@@ -22,8 +22,10 @@ export const short = (sha) => String(sha ?? '').slice(0, 10);
 export function judge(health, { sha, first = null }) {
   const sup = health?.supervisor;
   if (!health?.ok || !sup) return { verdict: 'fail', reason: 'dev /api/health has no supervisor block' };
+  const rollback = sup.lastSwap?.rollback;
+  if (rollback && sup.lastSwap.from !== `c${sha}`) return { verdict: 'moved', reason: `dev rolled ${sup.lastSwap.from} back to ${short(sup.commit)}: ${rollback}` };
   if (sup.commit !== sha) {
-    if (sup.lastSwap?.rollback) return { verdict: 'fail', reason: `dev rolled back to ${short(sup.commit)}: ${sup.lastSwap.rollback}` };
+    if (rollback) return { verdict: 'fail', reason: `dev rolled back to ${short(sup.commit)}: ${rollback}` };
     return { verdict: 'moved', reason: `dev serves ${short(sup.commit)}, not ${short(sha)}` };
   }
   const watch = sup.watch;
@@ -34,8 +36,19 @@ export function judge(health, { sha, first = null }) {
   return watch.ok === true ? { verdict: 'ok', reason: 'watch passed' } : { verdict: 'watching', reason: `watching until ${watch.until}` };
 }
 
+export function judgeBatch(health) {
+  const sup = health?.supervisor;
+  if (!health?.ok || !sup) return { verdict: 'fail', reason: 'dev /api/health has no supervisor block' };
+  if (sup.lastSwap?.rollback) return { verdict: 'fail', reason: `dev rolled back to ${short(sup.commit)}: ${sup.lastSwap.rollback}` };
+  const watch = sup.watch?.release === sup.release ? sup.watch : null;
+  if (watch?.alert) return { verdict: 'fail', reason: `watch alert on ${short(sup.commit)}: ${watch.alert}` };
+  if (watch?.ok === false) return { verdict: 'fail', reason: `watch failed on ${short(sup.commit)}: ${watch.reason ?? 'no reason given'}` };
+  return { verdict: 'ok', reason: `dev serves ${short(sup.commit)}` };
+}
+
 export function describe(outcome) {
-  const passed = `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, watch passed, ${outcome.fivexx} 5xx`;
+  const held = outcome.movedTo ? `batch held as dev moved to ${short(outcome.movedTo)}` : 'watch passed';
+  const passed = `${outcome.rounds} smokes over ${Math.round(outcome.ms / 60_000)} min${outcome.retries ? ` (${outcome.retries} retried)` : ''}, ${held}, ${outcome.fivexx} 5xx`;
   const text = outcome.state === 'success' ? passed
     : outcome.state === 'superseded' ? `superseded: ${outcome.reason}`
       : outcome.reason;
@@ -49,9 +62,22 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
   let rounds = 0;
   let misses = 0;
   let retries = 0;
-  let watchPassed = false;
   let nextSmoke = start;
-  const end = (state, reason) => ({ state, reason, rounds, retries, fivexx, ms: clock.now() - start });
+  let movedTo = null;
+  const end = (state, reason) => ({ state, reason, rounds, retries, fivexx, ms: clock.now() - start, ...(movedTo ? { movedTo } : {}) });
+  const noteMove = async (sup) => {
+    const head = await io.mainHead();
+    if (head && head !== sha) movedTo = sup.commit;
+    return movedTo;
+  };
+  const superseded = (reason) => end('superseded', `after dev left ${short(sha)}: ${reason}`);
+  const unattributed = async (reason) => {
+    if (!movedTo) {
+      const last = await io.health();
+      if (last.body && judge(last.body, { sha }).verdict === 'moved') await noteMove(last.body.supervisor);
+    }
+    return movedTo ? superseded(reason) : end('failure', reason);
+  };
   for (;;) {
     if (clock.now() >= nextSmoke && clock.now() - start < cfg.soakMs) {
       let smoke = await io.smoke();
@@ -62,30 +88,35 @@ export async function soak({ sha, io, clock, cfg = DEFAULTS }) {
         retries++;
         smoke = await io.smoke();
         fivexx += smoke.fivexx ?? 0;
-        if (!smoke.ok) return end('failure', `smoke ${rounds} failed at ${smoke.step} twice: ${smoke.error}`);
+        if (!smoke.ok) return unattributed(`smoke ${rounds} failed at ${smoke.step} twice: ${smoke.error}`);
       }
       nextSmoke = start + rounds * cfg.smokeEveryMs;
     }
     const health = await io.health();
     if (health.status >= 500) fivexx++;
-    if (fivexx > cfg.max5xx) return end('failure', `${fivexx} 5xx responses from dev during the soak`);
+    if (fivexx > cfg.max5xx) return unattributed(`${fivexx} 5xx responses from dev during the soak`);
     if (health.status !== 200 || !health.body) {
       misses++;
-      if (misses >= cfg.maxMisses) return end('failure', `dev /api/health failed ${misses} times in a row (${health.error ?? health.status})`);
+      if (misses >= cfg.maxMisses) return unattributed(`dev /api/health failed ${misses} times in a row (${health.error ?? health.status})`);
     } else {
       misses = 0;
-      const j = judge(health.body, { sha, first });
-      if (j.verdict === 'moved') {
-        if (watchPassed && rounds > 0 && clock.now() - start >= cfg.soakMs) return end('success', `watch passed over the full window; ${j.reason}`);
-        const head = await io.mainHead();
-        return head && head !== sha ? end('superseded', `main moved to ${short(head)}; ${j.reason}`) : end('failure', j.reason);
-      }
-      if (j.verdict === 'fail') return end('failure', j.reason);
-      first ??= health.body.supervisor;
-      if (j.verdict === 'ok') watchPassed = true;
       const elapsed = clock.now() - start;
-      if (elapsed >= cfg.soakMs && rounds > 0 && j.verdict === 'ok') return end('success', j.reason);
-      if (elapsed >= cfg.soakMs + cfg.graceMs) return end('failure', `watch still open ${Math.round(elapsed / 60_000)} min after the swap`);
+      if (!movedTo) {
+        const j = judge(health.body, { sha, first });
+        if (j.verdict === 'fail') return end('failure', j.reason);
+        if (j.verdict === 'moved' && !(await noteMove(health.body.supervisor))) return end('failure', j.reason);
+        if (!movedTo) {
+          first ??= health.body.supervisor;
+          if (elapsed >= cfg.soakMs && rounds > 0 && j.verdict === 'ok') return end('success', j.reason);
+          if (elapsed >= cfg.soakMs + cfg.graceMs) return end('failure', `watch still open ${Math.round(elapsed / 60_000)} min after the swap`);
+        }
+      }
+      if (movedTo) {
+        const batch = judgeBatch(health.body);
+        if (batch.verdict === 'fail') return superseded(batch.reason);
+        movedTo = health.body.supervisor.commit;
+        if (elapsed >= cfg.soakMs && rounds > 0) return end('success', `window held through ${short(movedTo)}`);
+      }
     }
     const now = clock.now();
     const due = Math.min(now - start < cfg.soakMs ? nextSmoke : Infinity, now + cfg.healthEveryMs);

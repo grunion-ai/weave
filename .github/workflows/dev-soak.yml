@@ -35,7 +35,7 @@ jobs:
       statuses: write
     concurrency:
       group: dev-soak-${{ github.event.workflow_run.head_branch || github.ref_name }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
