@@ -7,9 +7,9 @@
 <link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
 <link rel="alternate icon" href="/brand/favicon.ico">
 <style>
-  :root { --fs-h1: 24px; --fs-body: 15px; --fs-small: 13px; --bg: #eceff3; --card: #ffffff; --fg: #1d273b; --muted: #5f6474; --line: #dce1e7; --ok: #2b8a3e; --bad: #c92a2a; --accent: #206bc4; }
+  :root { --accent-ink: #fff; --fs-h1: 24px; --fs-body: 15px; --fs-small: 13px; --bg: #eceff3; --card: #ffffff; --fg: #1d273b; --muted: #5f6474; --line: #dce1e7; --ok: #2b8a3e; --bad: #c92a2a; --accent: #206bc4; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0f1115; --card: #181b21; --fg: #dce1e7; --muted: #8a97ab; --line: #2c3340; --ok: #69db7c; --bad: #ff8787; --accent: #4dabf7; }
+    :root { --bg: #0f1115; --card: #181b21; --fg: #dce1e7; --muted: #8a97ab; --line: #2c3340; --ok: #69db7c; --bad: #ff8787; --accent: #4dabf7; --accent-ink: #0f1115; }
   }
   body { margin: 0; background: var(--bg); color: var(--fg); font: var(--fs-body)/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   main { max-width: 640px; margin: 8vh auto; padding: 0 16px; }
@@ -24,7 +24,7 @@
   .seats .seat-mail { overflow-wrap: anywhere; }
   .state-ok { color: var(--ok); }
   .state-bad { color: var(--bad); }
-  .btn { display: inline-block; padding: 7px 16px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  .btn { display: inline-block; padding: 7px 16px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 600; cursor: pointer; }
   .btn[disabled] { opacity: .5; cursor: default; }
   #checkout:empty { display: none; }
   .foot { margin-top: 16px; font-size: var(--fs-small); }
