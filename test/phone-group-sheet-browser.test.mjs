@@ -11,7 +11,7 @@ const s = await launch('phone group sheet', (weave) => {
   weave.addField(todo.id, { name: 'Severity', type: 'select', config: { options: ['Low', 'High'] } });
   weave.addField(todo.id, { name: 'Area', type: 'select', config: { options: ['Home', 'Work'] } });
   for (let i = 0; i < 4; i++) weave.createEntity(todo.id, { name: `Task ${i}`, values: { Severity: i % 2 ? 'High' : 'Low', Area: i < 2 ? 'Home' : 'Work' } });
-  weave.tableView(`${todo.id}/Standard`, { layout: 'list', group: [{ field: 'Severity' }, { field: 'Area' }] });
+  weave.tableView(`${todo.id}/Standard`, { layout: 'board', group: [{ field: 'Severity' }, { field: 'Area' }] });
   return { list: `#/table/${todo.id}`, id: todo.id };
 });
 
@@ -26,7 +26,7 @@ if (s) {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${list}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .wv-list');
+    await page.waitForSelector('#main .wv-board');
     return page;
   };
   const box = (page, selector) => page.evaluate((q) => {

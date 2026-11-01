@@ -29,15 +29,13 @@ export function seedReorder(weave) {
   weave.addField(card, { name: 'Notes', type: 'document' });
   const cardId = weave.createEntity(card, { name: 'Sensor', values: { Vendor: 'v', Batch: 'b', Stage: 's' } }).id;
 
-  const todo = weave.createTable({ space: 'Drag', name: 'Todo' });
-  for (const name of ['Alpha', 'Bravo', 'Charlie']) weave.createEntity(todo, { name });
 
   const flow = weave.createTable({ space: 'Drag', name: 'Flow' });
   weave.addField(flow, { name: 'Status', type: 'workflow' });
   weave.addField(flow, { name: 'Color', type: 'select', config: { options: [{ name: 'Red' }, { name: 'Green' }, { name: 'Blue' }] } });
   const flowId = weave.createEntity(flow, { name: 'Row' }).id;
 
-  return { grid, eye, tall, tabs, pick, card, cardId, todo, flow, flowId };
+  return { grid, eye, tall, tabs, pick, card, cardId, flow, flowId };
 }
 
 const firstView = (weave, db) => weave.tableView(db).views[0];
@@ -49,7 +47,7 @@ const listKeys = (page, container, item, key) => page.evaluate(([c, i, k]) => {
   const box = document.querySelector(c);
   if (!box) return null;
   return [...box.querySelectorAll(i)].filter((n) => n.getClientRects().length && !n.closest('.wv-reorder-lift')).map((n) => {
-    const name = k === 'value' ? n.querySelector('.opt-name')?.value : k === 'text' ? n.querySelector('.list-title')?.textContent.trim() : n.dataset[k];
+    const name = k === 'value' ? n.querySelector('.opt-name')?.value : n.dataset[k];
     return n.classList.contains('wv-reorder-slot') ? `[${name}]` : name;
   });
 }, [container, item, key]);
@@ -92,7 +90,7 @@ async function tool(page, button) {
 }
 
 export function surfaces({ weave, base, ids }) {
-  const { grid, eye, tabs, pick, card, cardId, todo, flowId } = ids;
+  const { grid, eye, tabs, pick, card, cardId, flowId } = ids;
   return [
     {
       name: 'grid column headers',
@@ -183,7 +181,7 @@ export function surfaces({ weave, base, ids }) {
     {
       name: 'group levels',
       axis: 'y',
-      reset: () => weave.tableView(viewRef(weave, pick), { layout: 'list', group: [{ field: 'Size' }, { field: 'Tier' }] }),
+      reset: () => weave.tableView(viewRef(weave, pick), { group: [{ field: 'Size' }, { field: 'Tier' }] }),
       open: async (page) => {
         await page.goto(`${base}/#/table/${pick.id}`, { waitUntil: 'networkidle' });
         await viewTool(page, '.table-group-btn', 'group');
@@ -269,28 +267,6 @@ export function surfaces({ weave, base, ids }) {
       midway: ['@values', '[Notes]', 'Brief'],
       after: ['@values', 'Notes', 'Brief'],
       cancel: { from: 'Brief', onto: '@values', side: 'before' },
-    },
-    {
-      name: 'list view rows',
-      axis: 'y',
-      reset: () => weave.tableView(viewRef(weave, todo), { layout: 'list', group: [], sort: [], order: null }),
-      open: async (page) => {
-        await page.goto(`${base}/#/table/${todo.id}`, { waitUntil: 'networkidle' });
-        await page.waitForSelector('.wv-list .list-row');
-      },
-      handle: (page, key) => page.locator(`.wv-list .list-row:has(.list-title:text-is("${key}")) .list-grip`),
-      target: (page, key) => page.locator(`.wv-list .list-row:has(.list-title:text-is("${key}"))`),
-      keys: (page) => listKeys(page, '.wv-list', '.list-row', 'text'),
-      saved: () => {
-        const order = firstView(weave, todo).order ?? [];
-        const byPid = new Map(weave.listEntities(todo.id).map((e) => [e.publicId, weave.readEntity(e.id).name]));
-        return order.map((p) => byPid.get(p)).filter(Boolean);
-      },
-      start: ['Alpha', 'Bravo', 'Charlie'],
-      move: { from: 'Charlie', onto: 'Alpha', side: 'before' },
-      midway: ['[Charlie]', 'Alpha', 'Bravo'],
-      after: ['Charlie', 'Alpha', 'Bravo'],
-      cancel: { from: 'Alpha', onto: 'Bravo', side: 'after' },
     },
   ];
 }
