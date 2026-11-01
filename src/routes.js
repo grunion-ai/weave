@@ -768,7 +768,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         let m2;
         if ((m2 = path.match(/^\/api\/tables\/([^/]+)/))) return weave.findTable(decodeURIComponent(m2[1]))?.spaceId ?? null;
         if ((m2 = path.match(/^\/api\/spaces\/([^/]+)/))) return weave.findSpace(decodeURIComponent(m2[1]))?.id ?? null;
-        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.state.tables[weave.getEntity(decodeURIComponent(m2[1])).dbId]?.spaceId ?? null;
+        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.findTable(weave.getEntity(decodeURIComponent(m2[1])).dbId)?.spaceId ?? null;
       } catch {}
       return null;
     });
