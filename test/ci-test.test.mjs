@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, browserShards, mainPlan, BROWSER_FILES_PER_SHARD, BROWSER_SHARD_CAP, UNIT_SHARDS, UNIT_SHARD_CAP, TARGET_SHARD_MS, DEFAULT_PARALLELISM, laneMs, laneShards, checkInventory, loadManifest } from '../scripts/ci-test.mjs';
+import { timingsFrom } from '../scripts/ci-timings.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
@@ -77,8 +78,140 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
-  assert.match(workflow, /max-parallel: 6/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+});
+
+test('the main browser lane takes one shard per BROWSER_FILES_PER_SHARD files, so a growing suite never walks a shard into the job timeout', () => {
+  assert.equal(browserShards(0), 1);
+  assert.equal(browserShards(1), 1);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD), 1);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD + 1), 2);
+  assert.equal(browserShards(348), 8);
+  assert.equal(browserShards(BROWSER_FILES_PER_SHARD * BROWSER_SHARD_CAP), BROWSER_SHARD_CAP);
+  assert.equal(browserShards(100000), BROWSER_SHARD_CAP);
+  assert.ok(BROWSER_FILES_PER_SHARD >= 20 && BROWSER_FILES_PER_SHARD <= 60, 'four shards of about 87 files ran a median 12 and a p90 19.5 of the 20 minutes the test manager allows');
+});
+
+test('the main plan of this repository sizes its browser lane by the suite and covers every file once', async () => {
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const files = testFiles();
+  const { unit, browser } = lanes(files);
+  const shards = mainPlan();
+  assert.deepEqual(shards.flatMap((s) => s.files).sort(), [...files].sort());
+  assert.equal(shards.filter((s) => s.lane === 'unit').length, Math.min(UNIT_SHARDS, unit.length));
+  assert.equal(shards.filter((s) => s.lane === 'browser').length, browserShards(browser.length));
+});
+
+test('main unit shards skip the browser download, as the PR unit shards already do', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
+  assert.match(job, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@/);
+  assert.match(job, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
+});
+
+test('max-parallel runs every shard the main plan can make at once, so no shard queues behind another of its own run', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:'));
+  const parallel = job.match(/max-parallel: (\d+)\n/);
+  assert.ok(parallel, 'the tests job declares max-parallel');
+  assert.ok(Number(parallel[1]) >= UNIT_SHARD_CAP + BROWSER_SHARD_CAP, `max-parallel ${parallel[1]} queues shards of a plan that can make ${UNIT_SHARD_CAP + BROWSER_SHARD_CAP}`);
+});
+
+const minutes = (n) => n * 60 * 1000;
+
+test('measured file timings weigh their files, and a new file is estimated from its size at the lane\'s median rate', () => {
+  const size = (file) => ({ 'a': 100, 'b': 200, 'c': 300, 'new': 1000 })[file];
+  assert.equal(laneMs(['a', 'b'], null, size), null);
+  assert.equal(laneMs(['a', 'b'], { files: {} }, size), null);
+  const ms = laneMs(['a', 'b', 'c', 'new'], { files: { a: 1000, b: 4000, c: 3000 } }, size);
+  assert.equal(ms.get('a'), 1000);
+  assert.equal(ms.get('b'), 4000);
+  assert.equal(ms.get('new'), 1000 * 10, 'rates are 10, 20 and 10 ms a byte; the median is 10');
+  assert.equal(laneMs(['a'], { files: { a: 0 } }, size), null, 'a zero or missing reading is no measurement');
+});
+
+test('a timed lane takes as many shards as its measured work needs to finish near the target, within its floor and cap', () => {
+  const files = Array.from({ length: 10 }, (_, i) => `f${i}`);
+  const each = (ms) => new Map(files.map((f) => [f, ms]));
+  assert.equal(laneShards('browser', files, null, null), browserShards(files.length), 'no timings: the file-count rule');
+  assert.equal(laneShards('unit', files, null, null), UNIT_SHARDS);
+  assert.equal(laneShards('browser', files, each(TARGET_SHARD_MS / 10), { parallelism: { browser: 1 } }), 1);
+  assert.equal(laneShards('browser', files, each(TARGET_SHARD_MS), { parallelism: { browser: 2 } }), 5);
+  assert.equal(laneShards('browser', files, each(TARGET_SHARD_MS), {}), Math.ceil(10 / DEFAULT_PARALLELISM));
+  assert.equal(laneShards('browser', files, each(minutes(600)), { parallelism: { browser: 1 } }), BROWSER_SHARD_CAP);
+  assert.equal(laneShards('unit', files, each(1), { parallelism: { unit: 1 } }), UNIT_SHARDS, 'the unit lane never drops below two shards');
+  assert.equal(laneShards('unit', files, each(minutes(600)), { parallelism: { unit: 1 } }), UNIT_SHARD_CAP);
+});
+
+test('the main plan sizes and balances each lane from the timings it is given', () => {
+  const unit = Array.from({ length: 20 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
+  const browser = Array.from({ length: 40 }, (_, i) => `test/b${String(i).padStart(2, '0')}-browser.test.mjs`);
+  const timings = { files: Object.fromEntries([...unit.map((f) => [f, 1000]), ...browser.map((f, i) => [f, i === 0 ? minutes(6) : minutes(1)])]), parallelism: { unit: 1, browser: 1 } };
+  const size = () => 100;
+  const ms = { unit: laneMs(unit, timings, size), browser: laneMs(browser, timings, size) };
+  const shards = plan([...unit, ...browser], { unit, browser }, (f) => ms.unit.get(f) ?? ms.browser.get(f), laneShards('unit', unit, ms.unit, timings), laneShards('browser', browser, ms.browser, timings));
+  const browserShardsPlanned = shards.filter((s) => s.lane === 'browser');
+  assert.equal(browserShardsPlanned.length, Math.ceil(minutes(45) / TARGET_SHARD_MS));
+  const loads = browserShardsPlanned.map((s) => s.files.reduce((n, f) => n + ms.browser.get(f), 0));
+  assert.ok(Math.max(...loads) <= TARGET_SHARD_MS, `the heaviest shard carries ${Math.max(...loads) / 60000} minutes`);
+  assert.equal(browserShardsPlanned.find((s) => s.files.includes(browser[0])).files.length, 2, 'the six-minute file shares its shard with a single one-minute file');
+});
+
+test('shard evidence becomes per-file timings and a measured parallelism per lane, newest attempt first', () => {
+  const result = (id, lane, attempt, durationMs, summaries) => ({ id, lane, attempt, durationMs, summaries });
+  const timings = timingsFrom([
+    result('browser-1', 'browser', 1, 1000, [{ file: 'test/x-browser.test.mjs', duration_ms: 9999 }]),
+    result('browser-1', 'browser', 2, 1000, [{ file: 'test/x-browser.test.mjs', duration_ms: 1500 }, { file: 'test/y-browser.test.mjs', duration_ms: 500 }]),
+    result('unit-1', 'unit', 1, 2000, [{ file: 'test/u.test.mjs', duration_ms: 3000 }, { file: 'test/u.test.mjs', duration_ms: 1000 }, { file: '', duration_ms: 5 }]),
+  ]);
+  assert.deepEqual(timings.files, { 'test/x-browser.test.mjs': 1500, 'test/y-browser.test.mjs': 500, 'test/u.test.mjs': 3000 });
+  assert.deepEqual(timings.parallelism, { browser: 2, unit: 2 });
+  assert.deepEqual(timingsFrom([]), { files: {}, parallelism: {} });
+});
+
+test('a saved manifest must cover this commit\'s test inventory lane by lane, or the shard and the gate refuse it', () => {
+  const groups = { unit: ['test/a.test.mjs', 'test/b.test.mjs'], browser: ['test/c-browser.test.mjs'] };
+  const good = [{ id: 'unit-1', lane: 'unit', files: ['test/a.test.mjs', 'test/b.test.mjs'] }, { id: 'browser-1', lane: 'browser', files: ['test/c-browser.test.mjs'] }];
+  assert.equal(checkInventory(good, groups), good);
+  assert.throws(() => checkInventory(good.slice(1), groups), /unit lane/);
+  assert.throws(() => checkInventory([...good, { id: 'unit-2', lane: 'unit', files: ['test/new.test.mjs'] }], groups), /unit lane/);
+  assert.throws(() => checkInventory([{ ...good[0], lane: 'browser' }, good[1]], groups), /lane/);
+});
+
+test('the plan command writes the manifest the shards and the gate then load, unchanged', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const dir = tempDir('weave-ci-plan-');
+  const out = join(dir, 'plan', 'manifest.json');
+  const timings = join(dir, 'timings.json');
+  writeFileSync(timings, '{"files":{},"parallelism":{}}');
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const child = spawnSync(process.execPath, ['scripts/ci-test.mjs', 'plan'], { env: { ...env, CI_TIMINGS: timings, CI_MANIFEST: out }, encoding: 'utf8' });
+  assert.equal(child.status, 0, child.stderr);
+  const saved = JSON.parse(readFileSync(out, 'utf8'));
+  assert.deepEqual(JSON.parse(child.stdout).include, saved.map(({ id, lane }) => ({ id, lane })));
+  assert.deepEqual(loadManifest(out), saved);
+  assert.deepEqual(saved, mainPlan(undefined, { files: {}, parallelism: {} }));
+});
+
+test('test.yml plans once with timings and every shard and the gate judge that saved plan', async () => {
+  const { readFileSync } = await import('node:fs');
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = (name, next) => workflow.slice(workflow.indexOf(`  ${name}:\n`), next ? workflow.indexOf(`  ${next}:\n`) : undefined);
+  const planJob = job('plan', 'test');
+  assert.match(planJob, /permissions:\n      contents: read\n      actions: read\n/, 'reading the last green run\'s artifacts needs actions: read on the plan job alone');
+  assert.match(planJob, /node scripts\/ci-timings\.mjs "\$RUNNER_TEMP\/ci-timings\.json"/);
+  assert.match(planJob, /CI_TIMINGS: \$\{\{ runner\.temp \}\}\/ci-timings\.json\n          CI_MANIFEST: ci-plan\/manifest\.json\n/);
+  assert.match(planJob, /name: plan-manifest\n          path: ci-plan\/manifest\.json\n/);
+  for (const name of ['test', 'gate']) {
+    const body = job(name, name === 'test' ? 'gate' : 'compatibility');
+    assert.match(body, /name: plan-manifest\n          path: ci-plan\n/, `${name} downloads the saved plan`);
+    assert.match(body, /CI_MANIFEST: ci-plan\/manifest\.json\n/, `${name} judges against the saved plan`);
+  }
+  assert.ok(!'plan-manifest'.startsWith('ci-'), 'the gate\'s ci-* evidence pattern never picks up the plan');
 });
 
 test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {

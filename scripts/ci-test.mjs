@@ -7,8 +7,45 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
+export const UNIT_SHARDS = 2;
+export const BROWSER_FILES_PER_SHARD = 45;
+export const BROWSER_SHARD_CAP = 12;
+export const browserShards = count => Math.max(1, Math.min(BROWSER_SHARD_CAP, Math.ceil(count / BROWSER_FILES_PER_SHARD)));
+export const TARGET_SHARD_MS = 7 * 60 * 1000;
+export const UNIT_SHARD_CAP = 4;
+export const DEFAULT_PARALLELISM = 1.5;
+
+export function laneMs(files, timings, size) {
+  const measured = file => {
+    const ms = timings?.files?.[file];
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  };
+  const rates = files.filter(measured).map(file => measured(file) / Math.max(1, size(file))).sort((a, b) => a - b);
+  if (!rates.length) return null;
+  const rate = rates[Math.floor(rates.length / 2)];
+  return new Map(files.map(file => [file, measured(file) ?? Math.max(1, size(file)) * rate]));
+}
+
+export function laneShards(lane, files, ms, timings) {
+  if (!ms) return lane === 'unit' ? UNIT_SHARDS : browserShards(files.length);
+  const parallelism = timings?.parallelism?.[lane] > 0 ? timings.parallelism[lane] : DEFAULT_PARALLELISM;
+  const total = files.reduce((sum, file) => sum + ms.get(file), 0);
+  const cap = lane === 'unit' ? UNIT_SHARD_CAP : BROWSER_SHARD_CAP;
+  const floor = lane === 'unit' ? Math.min(UNIT_SHARDS, files.length) : 1;
+  return Math.max(floor, Math.min(cap, Math.ceil(total / parallelism / TARGET_SHARD_MS)));
+}
+
+export function checkInventory(manifest, groups) {
+  for (const lane of ['unit', 'browser']) {
+    const planned = manifest.filter(s => s.lane === lane).flatMap(s => s.files).sort();
+    if (JSON.stringify(planned) !== JSON.stringify([...groups[lane]].sort())) throw new Error(`Manifest ${lane} lane does not match the test inventory at this commit`);
+  }
+  if (manifest.some(s => s.lane !== 'unit' && s.lane !== 'browser')) throw new Error('Manifest names an unknown lane');
+  return manifest;
+}
+
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export function plan(files, groups, weight, unitCount = 2, browserCount = 4) {
+export function plan(files, groups, weight, unitCount = UNIT_SHARDS, browserCount = 4) {
   if (!files.length) throw new Error('Empty CI selection');
   if (JSON.stringify([...files].sort()) !== JSON.stringify([...groups.unit, ...groups.browser].sort())) throw new Error('Lane coverage mismatch');
   return Object.entries(groups).flatMap(([lane, selected]) => {
@@ -119,9 +156,22 @@ export function newestAttempts(results) {
   return [...newest.values()];
 }
 
-function currentPlan() {
-  const files = testFiles(ROOT);
-  return plan(files, lanes(files, ROOT), weightOf);
+export function mainPlan(root = ROOT, timings = null) {
+  const files = testFiles(root);
+  const groups = lanes(files, root);
+  const size = file => statSync(join(root, file)).size;
+  const ms = { unit: laneMs(groups.unit, timings, size), browser: laneMs(groups.browser, timings, size) };
+  const weight = file => (ms.unit?.get(file) ?? ms.browser?.get(file) ?? size(file));
+  return plan(files, groups, weight, laneShards('unit', groups.unit, ms.unit, timings), laneShards('browser', groups.browser, ms.browser, timings));
+}
+
+function readJson(path) {
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+export function loadManifest(path, root = ROOT) {
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  return checkInventory(manifest, lanes(testFiles(root), root));
 }
 
 function currentPrPlan() {
@@ -134,9 +184,17 @@ async function main() {
   const [mode, id, out = 'ci-results'] = process.argv.slice(2);
   const pr = mode?.startsWith('pr-');
   const command = pr ? mode.slice(3) : mode;
-  const manifest = pr ? currentPrPlan() : currentPlan();
+  const saved = !pr && command !== 'plan' && process.env.CI_MANIFEST;
+  const manifest = pr ? currentPrPlan() : saved ? loadManifest(saved) : mainPlan(ROOT, process.env.CI_TIMINGS ? readJson(process.env.CI_TIMINGS) : null);
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-  if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
+  if (command === 'plan') {
+    if (!pr && process.env.CI_MANIFEST) {
+      mkdirSync(resolve(process.env.CI_MANIFEST, '..'), { recursive: true });
+      writeFileSync(process.env.CI_MANIFEST, JSON.stringify(manifest) + '\n');
+    }
+    console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) }));
+    return;
+  }
   if (command === 'aggregate') {
     const results = readdirSync(id, { recursive: true }).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(join(id, f), 'utf8')));
     const summary = validate(manifest, newestAttempts(results), commit);
