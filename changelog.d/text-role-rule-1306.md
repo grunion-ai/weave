@@ -2,3 +2,5 @@
 - A description with a paragraph gap inside its fold no longer loses the bottom of its last line above Show more (Issue #1306).
 - A plain text value takes two lines at Spacious, Name included, and rests as text until you click it (Issue #447).
 - The related subtable on a record page fits its card: a stray 1% column width no longer inflated it to 19,931 px, and a long value ends in an ellipsis (Issue #1260).
+- A cut value now has a way to be read: grid inputs, phone row names, search results, date ranges, document previews and the field description hint carry the full text on hover (Issue #1306).
+- A long workflow state stays on one line leading a phone grid row and reads in full on the record page (Issue #1152).
