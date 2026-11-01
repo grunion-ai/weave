@@ -150,7 +150,7 @@ test('routes: a login whose only workspace was deleted still opens the docs work
   const h = await oidcHub();
   try {
     const { token } = h.alpha.w.createAccount({ name: 'alpha-owner', role: 'architect' });
-    assert.equal((await h.s.call('DELETE', '/api/workspaces/alpha', { token })).status, 200, 'alpha, the login\'s only workspace, is deleted by its own Architect');
+    assert.equal((await h.s.call('DELETE', '/w/alpha/api/workspaces/alpha', { token })).status, 200, 'alpha, the login\'s only workspace, is deleted by its own Architect');
     const back = await h.signIn('weave');
     assert.equal(back.status, 302, 'the sign-in still lands on the docs workspace');
     assert.equal(back.headers.get('location'), '/w/weave/');

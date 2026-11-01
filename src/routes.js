@@ -1220,7 +1220,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
               } else if ((account = c.holder.accountForIdentity(who))) engine = c.holder;
-              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && !e.state.meta.deletedAt && (account = e.accountForIdentity(who)));
+              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && (account = e.accountForIdentity(who)));
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;

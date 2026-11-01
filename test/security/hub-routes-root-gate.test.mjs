@@ -103,9 +103,11 @@ test('a creator gets a separate account on the new workspace, and source credent
   const token = created.json.owner.token;
   assert.equal((await call('DELETE', '/api/workspaces/fresh', { token: admin })).status, 401);
   assert.equal((await call('DELETE', '/w/fresh/api/workspaces/fresh', { token })).status, 200);
-  assert.equal((await call('POST', '/w/fresh/api/workspaces/fresh/restore', { token })).status, 200);
-  assert.equal((await call('DELETE', '/w/fresh/api/workspaces/fresh?hard=1', { token })).status, 200);
-  assert.equal(existsSync(join(dir, 'fresh.db')), false);
+  assert.equal((await call('POST', '/w/fresh/api/workspaces/fresh/restore', { token })).status, 404, 'a deleted workspace answers nothing to its former Architect');
+  assert.equal(existsSync(join(dir, 'fresh.db')), true, 'the file stays behind the tombstone');
+  const other = await call('POST', '/api/workspaces', { token: admin, body: { name: 'other' } });
+  assert.equal((await call('DELETE', '/w/other/api/workspaces/other?hard=1', { token: other.json.owner.token })).status, 200);
+  assert.equal(existsSync(join(dir, 'other.db')), false);
 });
 
 test('a reader or writer of the root, signed in by session, cannot open a walled member or find it in search (Issue #985)', async () => {
