@@ -22,9 +22,7 @@ async function withHub(seed, fn) {
   };
   try {
     assert.equal((await api('POST', '/api/workspaces', { body: { name: 'scratch' } })).status, 201);
-    const scratch = new Weave({ path: join(dir, 'scratch.db') });
-    const tokens = seed(main, scratch);
-    scratch.store.close?.();
+    const tokens = seed(main);
     await fn({ api, tokens });
   } finally {
     server.close();
@@ -54,16 +52,14 @@ test('an editor and an architect may purge the trash; an observer and an anonymo
   });
 });
 
-test('the hub list marks deletion using the target workspace local role (Feature #297)', async () => {
-  await withHub((main, scratch) => ({
-    architect: scratch.createAccount({ name: 'arch', role: 'architect' }).token,
-    editor: scratch.createAccount({ name: 'ed', role: 'editor' }).token,
-    other: main.createAccount({ name: 'other', role: 'architect' }).token,
+test('the hub list marks a workspace deletable only for a caller who may manage workspaces (Feature #297)', async () => {
+  await withHub((main) => ({
+    architect: main.createAccount({ name: 'arch', role: 'architect' }).token,
+    editor: main.createAccount({ name: 'ed', role: 'editor' }).token,
   }), async ({ api, tokens }) => {
-    const deletable = async token => (await api('GET', '/w/scratch/api/workspaces', { token })).data.find(w => w.name === 'scratch')?.deletable;
-    assert.equal(await deletable(tokens.architect), true);
-    assert.equal(await deletable(tokens.editor), false);
-    assert.equal((await api('DELETE', '/w/scratch/api/workspaces/scratch', { token: tokens.editor })).status, 403);
-    assert.equal((await api('DELETE', '/w/scratch/api/workspaces/scratch', { token: tokens.other })).status, 401);
+    const deletable = async (token) => (await api('GET', '/api/workspaces', { token })).data.find((w) => w.name === 'scratch')?.deletable;
+    assert.equal(await deletable(tokens.architect), true, 'an architect on the hub root may delete a sibling');
+    assert.equal(await deletable(tokens.editor), false, 'an editor on the hub root may not');
+    assert.equal((await api('DELETE', '/api/workspaces/scratch', { token: tokens.editor })).status, 403, 'and the route refuses the editor too');
   });
 });

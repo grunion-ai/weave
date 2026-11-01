@@ -76,13 +76,13 @@ if (s) {
     route.fulfill({ response: res, body: (await res.text()).replace(/<meta name="weave-workspace"[^>]*>/, '') });
   });
 
-  test('a workspace boots with one local schema and concurrent metadata reads', async () => {
+  test('a member workspace boots with its schema, the root registry and /workspace in flight together', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const prefix = `/w/${uno.state.meta.id}`;
-    const seen = await bootWhileSchemaPending(page, prefix, [`${prefix}/api/workspace`, `${prefix}/api/health`]);
-    assert.equal(page.__concurrent, true, `/workspace and /health are requested while the local schema is pending (saw ${JSON.stringify(seen)})`);
+    const seen = await bootWhileSchemaPending(page, prefix, ['/api/schema', `${prefix}/api/workspace`, `${prefix}/api/health`]);
+    assert.equal(page.__concurrent, true, `root schema, /workspace and /health must be requested while the member schema is pending (saw ${JSON.stringify(seen)})`);
     assert.equal(seen.filter((p) => p === `${prefix}/api/schema`).length, 1, 'the member schema once');
-    assert.equal(seen.filter((p) => p === '/api/schema').length, 0, 'no unrelated schema request');
+    assert.equal(seen.filter((p) => p === '/api/schema').length, 1, 'the root registry once');
     await page.close();
   });
 
@@ -96,13 +96,13 @@ if (s) {
     }
   });
 
-  test('a shell without the workspace marker still uses only the local schema', async () => {
+  test('a shell without the workspace marker falls back to reading the registry beside the schema', async () => {
     for (const prefix of [`/w/${uno.state.meta.id}`, '/w/root']) {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await stripMarker(page);
-      const seen = await bootWhileSchemaPending(page, prefix, [`${prefix}/api/workspace`]);
-      assert.equal(page.__concurrent, true, `${prefix}: an unmarked shell sends workspace metadata with the schema (saw ${JSON.stringify(seen)})`);
-      assert.equal(seen.filter((p) => p === '/api/schema').length, 0, `${prefix}: no unrelated registry request`);
+      const seen = await bootWhileSchemaPending(page, prefix, ['/api/schema', `${prefix}/api/workspace`]);
+      assert.equal(page.__concurrent, true, `${prefix}: an unmarked shell still sends the registry read with the schema (saw ${JSON.stringify(seen)})`);
+      assert.equal(seen.filter((p) => p === '/api/schema').length, 1, `${prefix}: the registry once`);
       await page.close();
     }
   });

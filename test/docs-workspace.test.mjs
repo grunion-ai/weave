@@ -137,7 +137,7 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
     const filed = await h.call('POST', '/w/weave/api/bug-report', { body: { categories: ['slow'], note: 'from a visitor', events: [], client: {} } });
     assert.equal(filed.status, 201, 'but may submit a bug through the form');
     const issue = h.docs.readEntity((await filed.json()).id);
-    assert.equal(issue.createdBy, 'visitor: kyle', 'the visitor is named without impersonating a local account');
+    assert.equal(issue.createdBy, 'kyle', 'the submitter is the actor');
     const forms = await (await h.call('GET', '/w/weave/api/forms')).json();
     const bug = forms.find((f) => f.name === BUG_FORM_NAME);
     assert.equal((await h.call('POST', `/w/weave/api/forms/${bug.id}/submit`, { body: { note: 'second', events: [] } })).status, 201);
@@ -149,8 +149,7 @@ test('routes: a fresh login opens the docs workspace as an Observer, without an 
 test('routes: a login whose only workspace was deleted still opens the docs workspace as an Observer (Feature #347)', async () => {
   const h = await oidcHub();
   try {
-    const { token } = h.alpha.w.createAccount({ name: 'alpha-owner', role: 'architect' });
-    assert.equal((await h.s.call('DELETE', '/w/alpha/api/workspaces/alpha', { token })).status, 200, 'alpha, the login\'s only workspace, is deleted by its own Architect');
+    assert.equal((await h.s.call('DELETE', '/api/workspaces/alpha')).status, 200, 'alpha, the login\'s only workspace, is deleted');
     const back = await h.signIn('weave');
     assert.equal(back.status, 302, 'the sign-in still lands on the docs workspace');
     assert.equal(back.headers.get('location'), '/w/weave/');

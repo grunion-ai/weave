@@ -64,11 +64,11 @@ for (const [where, prefix] of [['the hub root', ''], ['a member workspace', '/w/
   });
 }
 
-test('an open accountless workspace does not inherit another workspace access policy', async () => {
+test('a member workspace with no accounts of its own is guarded by the accounts on the hub root', async () => {
   const { call, member } = build({ rootAccounts: true });
   const r = await probe(call, '/w/member');
-  assert.deepEqual(r, { read: 200, row: 201, space: 201, mcp: 200 });
-  assert.equal(member.listEntities(member.getTable('Dev/Task').id).length, 2);
+  assert.deepEqual(r, { read: 200, row: 401, space: 401, mcp: 401 });
+  assert.equal(member.listEntities(member.getTable('Dev/Task').id).length, 1);
 });
 
 test('under the cap an anonymous caller still comments, and /api/auth/me answers 401 rather than crashing', async () => {

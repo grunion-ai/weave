@@ -13,11 +13,9 @@ const s = await launch('workspace logo from the rail', (weave) => {
   weave.state.meta.name = 'main';
   weave.setWorkspaceLogo({ name: 'main.svg', mime: 'image/svg+xml', bytes: svg('red') });
   scratch = new Weave();
-  scratch.markOnboarded();
   scratch.state.meta.name = 'scratch';
   scratch.setWorkspaceLogo({ name: 'scratch.svg', mime: 'image/svg+xml', bytes: svg('blue') });
   blank = new Weave();
-  blank.markOnboarded();
   blank.state.meta.name = 'blank';
 }, { server: () => ({ workspaces: { scratch, blank } }) });
 

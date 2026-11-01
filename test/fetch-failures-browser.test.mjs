@@ -25,11 +25,15 @@ test('no new silent catch in app.js: a new one toasts or rethrows (Issues #265, 
   assert.ok(silent.length <= 50, `${silent.length} catches neither toast nor rethrow; 50 did when comments went (Issue #661), each with its reason reviewed. A new catch toasts or rethrows:\n${silent.map((c) => `app.js:${c.line} ${c.text.split('\n')[0].trim()}`).join('\n')}`);
 });
 
-test('schema loading awaits the local API and lets a failure reach its caller', () => {
+test('the registry catch surfaces the failure instead of emptying the rail (Issue #265)', () => {
   const body = fnBody('loadSchema');
-  assert.match(body, /state\.schema = await api\('GET', '\/schema'\)/);
-  assert.match(body, /finally \{ schemaLoading = false; \}/);
-  assert.doesNotMatch(body, /readRegistry|fetch\('\/api\/schema'/);
+  const c = body.slice(body.indexOf('readRegistry()'));
+  assert.match(c, /catch \(err\) \{[\s\S]*?toast\(/, 'a failed root-schema fetch toasts');
+  const read = fnBody('readRegistry');
+  assert.match(read, /fetch\('\/api\/schema'/, 'the registry is the root schema');
+  assert.match(read, /if \(!res\.ok\) throw/, 'and a non-2xx answer counts as a failure, not an empty registry');
+  assert.match(read, /res\.status === 401 \|\| res\.status === 403\) return \[\]/,
+    'but no access to the root is an answer: an empty registry, no toast');
 });
 
 test('a record or view that fails to open says so before falling back home (Issue #265)', () => {

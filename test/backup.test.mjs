@@ -685,18 +685,3 @@ test('an archive taken by release v0.4.100 restores with today\'s code and reads
   assert.equal(w.readEntity(w.findEntity('Finance/Invoice', 'INV-0043').id).raw.Amount, 99);
   closeAll(w);
 });
-
-test('full backups preserve hub routing aliases without putting them in single-workspace exports', async () => {
-  const { dir, alpha, beta } = seedDataDir();
-  rmSync(join(dir, 'keystore.key'));
-  const routes = { 'removed.db': 'alpha.db' };
-  writeFileSync(join(dir, '_hub.json'), JSON.stringify(routes));
-  closeAll(alpha, beta);
-  const full = await backup({ dataDir: dir, out: tmp('hub-full'), env: {} });
-  assert.ok(readTar(full.path).some(e => e.name === '_hub.json'));
-  const target = tmp('hub-restored');
-  await restore({ source: full.path, dataDir: target, env: {} });
-  assert.deepEqual(JSON.parse(readFileSync(join(target, '_hub.json'), 'utf8')), routes);
-  const single = await backup({ dataDir: dir, workspace: 'alpha', out: tmp('hub-single'), env: {} });
-  assert.equal(readTar(single.path).some(e => e.name === '_hub.json'), false);
-});

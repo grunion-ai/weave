@@ -321,7 +321,6 @@ export async function backup({
     const blobs = [...(workspace ? [...referenced].filter((id) => present.has(id)) : present)].sort();
     for (const id of blobs) entries.push(t.add({ name: `files/${id}`, path: join(filesDir, id) }));
     result.files = blobs.length;
-    if (!workspace && existsSync(join(dataDir, '_hub.json'))) entries.push(t.add({ name: '_hub.json', path: join(dataDir, '_hub.json') }));
     const ks = keystorePath(env, dataDir);
     if (existsSync(ks)) entries.push(t.add({ name: 'keystore.json', path: ks }));
     const manifest = {

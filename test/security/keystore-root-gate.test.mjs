@@ -32,11 +32,17 @@ function build() {
   return { hub, root, open, mem, call: client(hub), admin, writer, reader, memAdmin };
 }
 
-test('no accounts: HTTP keys require authentication even on a local server', async () => {
+test('no accounts anywhere: keys stay open to the local operator, as today', async () => {
   freshKeystore();
   const root = new Weave();
+  root.updateWorkspace({ name: 'solo' });
   const call = client(createWorkspaceHub(root));
-  for (const [method, path] of [['POST', '/api/keys'], ['GET', '/api/keys'], ['POST', '/api/keys/k/reveal'], ['DELETE', '/api/keys/k']]) assert.equal((await call(method, path, { body: { name: 'k', value: 'v' } })).status, 401);
+  assert.equal((await call('POST', '/api/keys', { body: { name: 'k', value: 'v' } })).status, 201);
+  assert.equal((await call('GET', '/api/keys')).status, 200);
+  const r = await call('POST', '/api/keys/k/reveal');
+  assert.equal(r.status, 200);
+  assert.equal(r.json.value, 'v');
+  assert.equal((await call('DELETE', '/api/keys/k')).status, 200);
 });
 
 test('no credentials, root has accounts: every key route is refused through an account-less member', async () => {
@@ -70,15 +76,15 @@ test('reader and writer of the root are not key admins; the writer reveals and m
   assert.equal((await call('DELETE', '/api/keys/w', { token: writer.token })).status, 200);
 });
 
-test('an architect sees only its own workspace keys', async () => {
+test('an admin of a member workspace only is not a key admin', async () => {
   const { call, memAdmin, root } = build();
-  assert.deepEqual((await call('GET', '/w/mem/api/keys', { token: memAdmin.token })).json, []);
-  assert.equal((await call('POST', '/w/mem/api/keys/k/reveal', { token: memAdmin.token })).status, 403);
-  assert.equal((await call('DELETE', '/w/mem/api/keys/k', { token: memAdmin.token })).status, 403);
+  assert.equal((await call('GET', '/w/mem/api/keys', { token: memAdmin.token })).status, 401);
+  assert.equal((await call('POST', '/w/mem/api/keys/k/reveal', { token: memAdmin.token })).status, 401);
+  assert.equal((await call('DELETE', '/w/mem/api/keys/k', { token: memAdmin.token })).status, 401);
   assert.equal(root.hasKey('k'), true);
 });
 
-test('an architect session and key ownership stay local', async () => {
+test('the root admin manages keys at the root, and through a member with a root session', async () => {
   const { call, admin, root } = build();
   assert.equal((await call('GET', '/api/keys', { token: admin.token })).status, 200);
   const r = await call('POST', '/api/keys/k/reveal', { token: admin.token });
@@ -86,17 +92,18 @@ test('an architect session and key ownership stay local', async () => {
   assert.equal(r.json.value, 's3cret');
   const { token: session } = root.createSession('root-admin');
   const viaMember = await call('POST', '/w/open/api/keys/k/reveal', { cookie: session });
-  assert.equal(viaMember.status, 401);
-  assert.equal((await call('POST', '/api/keys', { token: admin.token, body: { name: 'w', value: 'admin-set' } })).status, 403, 'architects cannot overwrite another account key');
-  assert.equal((await call('DELETE', '/w/open/api/keys/w', { cookie: session })).status, 401);
+  assert.equal(viaMember.status, 200);
+  assert.equal(viaMember.json.value, 's3cret');
+  assert.equal((await call('POST', '/api/keys', { token: admin.token, body: { name: 'w', value: 'admin-set' } })).status, 201, 'an admin may overwrite any key');
+  assert.equal((await call('DELETE', '/w/open/api/keys/w', { cookie: session })).status, 200);
 });
 
-test('engine: a sibling account id is not a local key holder', () => {
+test('engine: a member engine decides reveal against the root accounts', () => {
   const { open, admin } = build();
   open.actor = 'someone';
   assert.throws(() => open.revealKey('k'), /not shared with you/);
   open.actor = 'root-admin';
   assert.throws(() => open.revealKey('k'), /not shared with you/, 'a name is not an account (Issue #497)');
   open.actor = `account:${admin.account.id}`;
-  assert.throws(() => open.revealKey('k'), /not shared with you/);
+  assert.equal(open.revealKey('k'), 's3cret');
 });

@@ -145,7 +145,7 @@ if (s) {
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`], ['Users', `/#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 
@@ -157,7 +157,7 @@ if (s) {
       const page = await browser.newPage();
       await page.goto(`${base}/w/${ws.state.meta.id}/#/`, { waitUntil: 'networkidle' });
       await page.click('#sidebar .nav-system a[href^="#/table/"]');
-      await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${ws.getTable('System/Workflows').id}$`));
+      await page.waitForURL(new RegExp(`/w/${ws.state.meta.id}/#/table/${wfId}$`));
       await page.waitForSelector('#main .wv-grid tbody tr');
       const text = await page.textContent('#main .wv-grid');
       await page.close();

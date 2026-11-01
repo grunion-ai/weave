@@ -25,7 +25,7 @@ async function fixture(t, { hub = false } = {}) {
     const response = await fetch(base + (hub ? '/w/acme' : '') + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, data: await response.json() };
   };
-  return { ...f, other, root, base, call };
+  return { ...f, other, root, call };
 }
 
 const spec = table => ({ name: 'Public intake', table: table.id, fields: [{ field: 'Name', key: 'subject', label: 'Subject', required: true }], hidden: { Source: 'secret default' }, floor: 'Anonymous' });
@@ -79,31 +79,18 @@ test('invalid mixed updates are atomic and built-in bug forms cannot be edited',
 test('engine management confines definitions and updates to their owning workspace', () => {
   const a = workspace('a');
   const b = workspace('b');
+  a.w.registryHost = b.w;
+  b.w.members = [a.w];
   const form = Forms.createForm(b.w, spec(b.table));
   assert.throws(() => Forms.getFormDefinition(a.w, form.id), e => e.code === 'not-found');
   assert.throws(() => Forms.updateForm(a.w, form.id, { enabled: false }), e => e.code === 'not-found');
   assert.equal(Forms.getForm(b.w, form.id).enabled, true);
 });
 
-test('a member architect manages local forms and cannot reach another workspace configuration', async t => {
-  const { w, root, other, table, tokens, base, call } = await fixture(t, { hub: true });
-  const rootForm = Forms.createForm(root, spec(root.getTable('Intake/Request')));
-  const otherForm = Forms.createForm(other.w, spec(other.table));
-  assert.equal((await call('GET', '/api/forms/manage')).status, 200);
-  const made = await call('POST', '/api/forms', spec(table));
-  assert.equal(made.status, 201);
-  assert.equal(Forms.getForm(w, made.data.id).tableId, table.id);
-  const listed = await call('GET', '/api/forms/manage');
-  assert.deepEqual(listed.data.forms.map(f => f.id), [made.data.id]);
-  for (const foreign of [rootForm, otherForm]) {
-    assert.equal((await call('GET', `/api/forms/${foreign.id}`)).status, 404);
-    assert.equal((await call('PATCH', `/api/forms/${foreign.id}`, { enabled: false })).status, 404);
-  }
-  const headers = { Authorization: `Bearer ${tokens.architect}` };
-  assert.equal((await fetch(`${base}/api/forms/manage`, { headers })).status, 401);
-  assert.equal((await fetch(`${base}/w/other/api/forms/manage`, { headers })).status, 401);
-  assert.equal(Forms.getForm(root, rootForm.id).enabled, true);
-  assert.equal(Forms.getForm(other.w, otherForm.id).enabled, true);
+test('a member architect cannot change or read private form configuration on the root registry', async t => {
+  const { table, call } = await fixture(t, { hub: true });
+  assert.equal((await call('GET', '/api/forms/manage')).status, 403);
+  assert.equal((await call('POST', '/api/forms', spec(table))).status, 403);
 });
 
 test('accountless management respects the auth wall and retains local open access', async t => {
@@ -121,7 +108,7 @@ test('accountless management respects the auth wall and retains local open acces
   assert.ok(!(await refused.text()).includes('private default'));
 });
 
-test('an accountless root auth wall remains protected while members manage their own forms', async t => {
+test('an accountless root auth wall blocks a member architect from managing forms', async t => {
   const root = new Weave({ name: 'root' });
   root.setRequireAuth(true);
   const member = workspace('acme');
@@ -129,10 +116,6 @@ test('an accountless root auth wall remains protected while members manage their
   t.after(() => new Promise(resolve => server.close(resolve)));
   const url = `http://127.0.0.1:${server.address().port}/w/acme/api/forms`;
   const headers = { Authorization: `Bearer ${member.tokens.architect}`, 'Content-Type': 'application/json' };
-  assert.equal((await fetch(`${url}/manage`, { headers })).status, 200);
-  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(spec(member.table)) })).status, 201);
-  const rootUrl = `http://127.0.0.1:${server.address().port}/api/forms/manage`;
-  assert.equal((await fetch(rootUrl)).status, 401);
-  assert.equal((await fetch(rootUrl, { headers })).status, 401);
-  assert.equal(Forms.listForms(root).length, 0);
+  assert.equal((await fetch(`${url}/manage`, { headers })).status, 403);
+  assert.equal((await fetch(url, { method: 'POST', headers, body: JSON.stringify(spec(member.table)) })).status, 403);
 });

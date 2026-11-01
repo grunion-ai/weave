@@ -10,11 +10,9 @@ const s = await launch('workspace letter tile', (weave) => {
   weave.createSpace({ name: 'Notes' });
   holding = new Weave();
   holding.state.meta.name = 'holding';
-  holding.markOnboarded();
   holding.createSpace({ name: 'Notes' });
   sandbox = new Weave();
   sandbox.state.meta.name = 'sandbox';
-  sandbox.markOnboarded();
 }, { server: () => ({ workspaces: { holding, sandbox } }) });
 
 const channel = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
