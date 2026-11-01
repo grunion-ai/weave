@@ -1,1 +1,0 @@
-- MCP sign-in requests profile and offline access so dynamically registered connectors can sign in and renew tokens with Clerk’s default scopes (Issue #948).

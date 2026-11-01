@@ -1,1 +1,0 @@
-- The View pane now sits rightmost, after the entity and context panes, with the same 16px gap every pane keeps between neighbours (Feature #340).

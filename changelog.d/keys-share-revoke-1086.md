@@ -1,1 +1,0 @@
-- Fix: `DELETE /api/keys/:name/share` with `{"account":"bob"}` now revokes that account's share; the body was never read, so the call answered 200 and left the share in place (Issue #1086).

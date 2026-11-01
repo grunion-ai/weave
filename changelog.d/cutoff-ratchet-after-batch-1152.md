@@ -1,1 +1,0 @@
-- The cut-off baseline tightens after the board, chip and breadcrumb fixes: on linux the mention chip label row drops from 42 to 41 on desktop and leaves the phone cell, where two CI runs in a row measured none, so the gate now fails on any return of that cut-off (Issues #1152, #1161).
