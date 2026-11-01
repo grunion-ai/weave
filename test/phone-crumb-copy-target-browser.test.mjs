@@ -1,16 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Weave } from '../src/engine.js';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
 
 const WORDS = 'Personal Workspace for the Quarterly Planning Offsite Team';
 const IPHONE = phoneProfile()?.page ?? null;
+const workspace = new Weave();
+workspace.state.meta.name = 'scratch';
 
 const s = await launch('phone crumb copy target', (weave) => {
-  weave.createSpace({ name: 'Development' });
-  weave.createTable({ space: 'Development', name: 'Issue' });
-});
+  weave.markOnboarded();
+  workspace.markOnboarded();
+  workspace.createSpace({ name: 'Development' });
+  workspace.createTable({ space: 'Development', name: 'Issue' });
+}, { server: () => ({ workspaces: { scratch: workspace } }) });
 if (s) {
-  const { base, browser } = s;
+  const { browser } = s;
+  const base = `${s.base}/w/${workspace.state.meta.id}`;
   const rename = async (name) => {
     const res = await fetch(`${base}/api/workspace`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     assert.equal(res.ok, true);
