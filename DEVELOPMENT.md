@@ -160,7 +160,13 @@ run reached no retry verdict on any file and at least one file was red without
 one, as a shard killed by its own timeout leaves it, the sheriff convicts
 nothing: it escalates with that list and logs a `no-verdict` line on each of
 those files' flake rows, because a shard that ended before its retry answered
-says nothing about the commits under it (Issue #1322). Past the cap it
+says nothing about the commits under it (Issue #1322). A timed-out shard can
+also leave no red file at all, when the manager killed it before any of its
+files answered: `scripts/ci-test.mjs` records `timedOut` in a shard's evidence
+when the manager exits 124, and a red held only by timed-out shards, with no
+file red and none unverdicted, escalates the same way under `Error: tests
+shards <ids> time out on main at <sha>`, since the gate conclusion alone
+names no culprit. Past the cap it
 reverts what is still suspect. A revert whose range took no bisect probe, the
 single-commit range among them, says so in its subject, so main's history shows
 how much evidence the revert carried. It never reverts a revert, never acts on a
