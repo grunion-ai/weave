@@ -9,7 +9,11 @@ import { tempDir } from './lib/temp.mjs';
 
 const KIT = fileURLToPath(new URL('../brand/kit/', import.meta.url));
 const manifest = JSON.parse(readFileSync(join(KIT, 'manifest.json'), 'utf8'));
+const labels = JSON.parse(readFileSync(join(KIT, 'labels.json'), 'utf8'));
 const svgOf = (a) => readFileSync(join(KIT, a.svg), 'utf8');
+const pngSize = (file) => { const b = readFileSync(file); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+const rendered = (s) => s.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+const readmeSection = (title) => readFileSync(join(KIT, 'README.md'), 'utf8').split(`\n## ${title}\n`)[1].split('\n## ')[0];
 const RING_WORDS_ABSENT = new Set(['badge-small', 'badge-small-ink', 'badge-release', 'badge-footer-light', 'badge-footer-dark']);
 
 test('every manifest asset has its SVG and PNG, and every SVG is listed', () => {
@@ -60,6 +64,41 @@ test('the kit carries the inline and stacked lockups, each placing the canonical
   }
 });
 
+test('every PNG is rendered at the scale the manifest states, and no scale is under 2x', () => {
+  for (const a of manifest.assets) {
+    assert.ok(Number.isInteger(a.scale) && a.scale >= 2, `${a.id} renders at ${a.scale}x`);
+    assert.deepEqual(pngSize(join(KIT, a.png)), [a.width * a.scale, a.height * a.scale], `${a.png} is not ${a.scale}x of ${a.width} × ${a.height}`);
+  }
+  const by = (family) => manifest.assets.find((a) => a.family === family).scale;
+  assert.deepEqual([by('icon'), by('lockup'), by('badge'), by('poster'), by('pattern')], [4, 3, 2, 2, 2]);
+});
+
+test('the kit carries the 1280 × 640 GitHub social preview with its own line', () => {
+  const a = manifest.assets.find((x) => x.id === 'poster-github');
+  assert.equal(a.family, 'poster');
+  assert.deepEqual([a.width, a.height], [1280, 640]);
+  assert.ok(svgOf(a).includes(`>${labels.githubLine}</text>`), 'poster-github draws labels.githubLine');
+  assert.ok(a.use.some((u) => /GitHub/.test(u)), 'guide.json names the GitHub use');
+});
+
+test('the kit page shows every asset with its files and pixel sizes, and carries the README recipes and rules', () => {
+  const page = readFileSync(join(KIT, 'index.html'), 'utf8');
+  for (const a of manifest.assets) {
+    assert.ok(page.includes(`href="${a.svg}"`), `${a.id} links its SVG`);
+    assert.ok(page.includes(`href="${a.png}"`), `${a.id} links its PNG`);
+    assert.ok(page.includes(`${a.width} × ${a.height}`), `${a.id} states its size`);
+    assert.ok(page.includes(`${a.width * a.scale} × ${a.height * a.scale}`), `${a.id} states its PNG pixel size`);
+    assert.ok(page.includes(`>${a.code}<`), `${a.id} shows its code`);
+  }
+  const recipes = readmeSection('Recipes').split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| Need') && !l.startsWith('| ---'));
+  assert.ok(recipes.length >= 15);
+  for (const r of recipes) assert.ok(page.includes(rendered(r.split('|')[1].trim())), `recipe missing from the page: ${r.slice(0, 40)}`);
+  const rules = readmeSection('Rules').split('\n').filter((l) => l.startsWith('- '));
+  assert.equal(rules.length, 5);
+  for (const r of rules) assert.ok(page.includes(rendered(r.slice(2)).slice(0, 40)), `rule missing from the page: ${r.slice(0, 40)}`);
+  assert.ok(page.includes(`>${manifest.badgeWords.top}<`) && page.includes(`>${manifest.badgeWords.bottom}<`), 'the page states the badge words');
+});
+
 test('the kit README lists every asset', () => {
   const readme = readFileSync(join(KIT, 'README.md'), 'utf8');
   for (const a of manifest.assets) assert.ok(readme.includes(`\`${a.id}\``), `${a.id} is missing from brand/kit/README.md`);
@@ -69,6 +108,7 @@ test('the committed kit matches a fresh build', () => {
   const tmp = tempDir('weave-kit-');
   execFileSync(process.execPath, [join(KIT, 'build-kit.mjs'), '--out', tmp], { stdio: 'pipe' });
   assert.equal(readFileSync(join(tmp, 'manifest.json'), 'utf8'), readFileSync(join(KIT, 'manifest.json'), 'utf8'));
+  assert.equal(readFileSync(join(tmp, 'index.html'), 'utf8'), readFileSync(join(KIT, 'index.html'), 'utf8'), 'index.html drifted from build-kit.mjs');
   for (const f of readdirSync(join(tmp, 'svg'))) {
     assert.equal(readFileSync(join(tmp, 'svg', f), 'utf8'), readFileSync(join(KIT, 'svg', f), 'utf8'), `svg/${f} drifted from build-kit.mjs`);
   }
