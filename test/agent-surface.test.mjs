@@ -359,7 +359,6 @@ test('every door emits the one permalink a row has, and no door builds its own (
       'scoped search': w.universalSearch('', { tables: ['Task'] })[0].url,
       'GET /api/entities/:id': (await http('GET', `/w/uno/api/entities/${row.id}`)).url,
       'GET /api/search': (await http('GET', '/w/uno/api/search?q=zebrafinch')).find((h) => h.kind === 'entity').url,
-      'GET /api/search?all': (await http('GET', '/api/search?all=1&q=zebrafinch')).find((h) => h.kind === 'entity').url,
       'MCP weave_get_entity': rpc('weave_get_entity', { entity: row.id }).url,
       'MCP weave_update_entity': rpc('weave_update_entity', { entity: row.id, values: { Name: 'ship the zebrafinch' }, verbose: true }).url,
       'MCP weave_search': rpc('weave_search', { query: 'zebrafinch' }).find((h) => h.kind === 'entity').url,

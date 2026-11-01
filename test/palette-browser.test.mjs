@@ -8,11 +8,14 @@ let crm;
 const s = await launch('⌘K grouped results', (weave) => {
   weave.state.meta.name = 'demo';
   seed(weave);
+  weave.createSpace({ name: 'Sales' });
+  const calls = weave.createTable({ space: 'Sales', name: 'Onboarding' });
+  weave.createEntity(calls, { name: 'Onboarding call with Acme' });
   crm = new Weave();
   crm.state.meta.name = 'crm';
-  crm.createSpace({ name: 'Sales' });
-  const calls = crm.createTable({ space: 'Sales', name: 'Onboarding' });
-  crm.createEntity(calls, { name: 'Onboarding call with Acme' });
+  crm.createSpace({ name: 'Accounts' });
+  const renewals = crm.createTable({ space: 'Accounts', name: 'Renewal' });
+  crm.createEntity(renewals, { name: 'Renewal call with Zenith' });
   const find = (name) => Object.values(weave.state.entities).find((e) => weave.entityName(e) === name);
   return { wizard: find('Design onboarding wizard'), apollo: find('Apollo Launch') };
 }, { server: () => ({ workspaces: { crm } }) });
@@ -90,15 +93,21 @@ if (s) {
     await ctx.close();
   });
 
-  test('a hit from another workspace carries that workspace as an outlined tag', async () => {
+  test('search stays in this workspace, and another workspace is only a place to jump to', async () => {
     const { ctx, page } = await open();
-    await palette(page, 'onboard');
-    const acme = page.locator('#cmdk-results [role="option"]', { hasText: 'Onboarding call with Acme' });
-    assert.equal(await acme.locator('.cmdk-ws').textContent(), 'crm');
-    const wizard = page.locator('#cmdk-results [role="option"]', { hasText: 'Design onboarding wizard' });
-    assert.equal(await wizard.locator('.cmdk-ws').count(), 0, 'a hit at home has no tag');
+    await palette(page, 'renewal');
+    assert.match(await page.locator('#cmdk-results').innerText(), /No matches for “renewal”/, 'another workspace\'s tables and rows stay out');
+    await page.fill('#cmdk-input', 'onboard');
+    await page.waitForFunction(() => document.querySelector('#cmdk-results')?.dataset.query === 'onboard');
+    assert.equal(await page.locator('#cmdk-results .cmdk-ws').count(), 0, 'no hit needs a workspace tag');
     assert.equal(await page.locator('#cmdk .cmdk-inp .cmdk-ws').textContent(), 'demo', 'the input row names this workspace');
     assert.equal(await page.getAttribute('#cmdk-input', 'placeholder'), 'Search demo');
+    await page.fill('#cmdk-input', 'crm');
+    await page.waitForFunction(() => document.querySelector('#cmdk-results')?.dataset.query === 'crm');
+    const jump = page.locator('#cmdk-results [role="option"]', { hasText: 'crm' }).first();
+    assert.equal(await jump.locator('.cmdk-where').textContent(), 'workspace');
+    await jump.click();
+    await page.waitForFunction(() => document.querySelector('meta[name="weave-workspace"]')?.content === 'crm');
     await ctx.close();
   });
 

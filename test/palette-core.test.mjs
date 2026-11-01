@@ -84,6 +84,21 @@ test('whereText names the table and number, or what a container is', () => {
   assert.equal(P.displayName(hit({ name: 'Leo Marsh' })), 'Leo Marsh');
 });
 
+test('workspaceHits offers other openable workspaces by name, never this one or a held one', () => {
+  const list = [
+    { id: 'a', name: 'Sales' },
+    { id: 'b', name: 'presales' },
+    { id: 'c', name: 'sales-held', held: true, open: '/api/start/open/sales-held' },
+    { id: 'd', name: 'Ops' },
+  ];
+  const hrefOf = (w) => `/w/${w.id}/`;
+  assert.deepEqual(P.workspaceHits(list, ' SALES ', 'demo', hrefOf).map((h) => h.name), ['Sales', 'presales']);
+  assert.deepEqual(P.workspaceHits(list, 'sales', 'sales', hrefOf).map((h) => h.name), ['presales'], 'this workspace is compared by name in any case');
+  assert.deepEqual(P.workspaceHits(list, 'ops', 'demo', hrefOf), [{ kind: 'workspace', id: 'd', name: 'Ops', workspace: 'Ops', url: '/w/d/' }]);
+  assert.deepEqual(P.workspaceHits(list, '', 'demo', hrefOf), [], 'an empty box offers nothing');
+  assert.deepEqual(P.workspaceHits(undefined, 'ops', 'demo', hrefOf), [], 'a rail not built yet offers nothing');
+});
+
 test('groupJump moves to the first row of the next group and wraps; Shift goes back', () => {
   const groups = [{ hits: [1, 2] }, { hits: [3] }, { hits: [4, 5, 6] }];
   assert.equal(P.groupJump(groups, 0, 1), 2);

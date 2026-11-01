@@ -41,14 +41,14 @@ function build({ accounts = true } = {}) {
 }
 
 const names = (r) => r.json.map((w) => w.name).sort();
-const hitsIn = (r) => [...new Set(r.json.filter((h) => h.kind === 'entity').map((h) => h.workspace))].sort();
+const rows = (r) => r.json.filter((h) => h.kind === 'entity').map((h) => h.name).sort();
 const issues = (docs) => docs.listEntities(docs.getTable('Development/Issue').id).length;
 
 test('no accounts anywhere: workspace lifecycle, list and search stay open, as today', async () => {
   const { call, dir } = build({ accounts: false });
   assert.equal((await call('POST', '/w/open/api/workspaces', { body: { name: 'fresh' } })).status, 201);
   assert.ok(names(await call('GET', '/w/open/api/workspaces')).includes('secret'));
-  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1')), ['open', 'secret']);
+  assert.deepEqual(rows(await call('GET', '/w/secret/api/search?q=needle')), ['needle in the secret']);
   assert.equal((await call('DELETE', '/w/open/api/workspaces/fresh')).status, 200);
   assert.equal((await call('POST', '/w/open/api/workspaces/fresh/restore')).status, 200);
   assert.equal((await call('DELETE', '/w/open/api/workspaces/fresh?hard=1')).status, 200);
@@ -67,13 +67,14 @@ test('no credentials: a protected workspace cannot be managed through an unwalle
   assert.equal((await call('POST', '/w/open/api/workspaces/secret/restore')).status, 401);
 });
 
-test('no credentials: the list and search ?all=1 leave out a walled workspace', async () => {
+test('no credentials: the list leaves out a walled workspace, its search refuses, and ?all=1 stays home', async () => {
   const { call } = build();
   const list = names(await call('GET', '/w/open/api/workspaces'));
   assert.ok(list.includes('open'));
   assert.equal(list.includes('secret'), false);
   assert.equal(names(await call('GET', '/w/open/api/workspaces?deleted=1')).includes('secret'), false);
-  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1')), ['open']);
+  assert.equal((await call('GET', '/w/secret/api/search?q=needle')).status, 401);
+  assert.deepEqual(rows(await call('GET', '/w/open/api/search?q=needle&all=1')), ['needle in the open']);
 });
 
 test('reader and writer cannot create or manage an unrelated protected workspace', async () => {
@@ -93,7 +94,7 @@ test('an architect creates its own workspace and cannot manage an unrelated prot
   assert.equal((await call('DELETE', '/w/secret/api/workspaces/root', { token: secretAdmin })).status, 401);
   assert.equal(hub.get('open').state.meta.deletedAt ?? null, null);
   assert.ok(names(await call('GET', '/w/secret/api/workspaces', { token: secretAdmin })).includes('secret'));
-  assert.deepEqual(hitsIn(await call('GET', '/w/secret/api/search?q=needle&all=1', { token: secretAdmin })), ['open', 'secret']);
+  assert.deepEqual(rows(await call('GET', '/w/secret/api/search?q=needle&all=1', { token: secretAdmin })), ['needle in the secret'], 'its search never reaches a sibling');
 });
 
 test('a creator gets a separate account on the new workspace, and source credentials stay scoped', async () => {
@@ -115,12 +116,13 @@ test('a reader or writer of the root, signed in by session, cannot open a walled
   for (const name of ['root-reader', 'root-writer']) {
     const { token: session } = root.createSession(name);
     assert.equal((await call('GET', '/w/secret/api/schema', { cookie: session })).status, 401, `${name} holds no account on secret`);
-    assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: session })), ['open'], `${name} never finds secret through search`);
+    assert.deepEqual(rows(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: session })), ['needle in the open'], `${name} never finds secret through search`);
+    assert.equal((await call('GET', '/w/secret/api/search?q=needle', { cookie: session })).status, 401, `${name} cannot search secret`);
     assert.equal(names(await call('GET', '/w/open/api/workspaces', { cookie: session })).includes('secret'), false, `${name} does not see secret listed`);
   }
   const { token: admin } = root.createSession('root-admin');
   assert.equal((await call('GET', '/w/secret/api/schema', { cookie: admin })).status, 401, 'architects require a local account too');
-  assert.deepEqual(hitsIn(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['open']);
+  assert.deepEqual(rows(await call('GET', '/w/open/api/search?q=needle&all=1', { cookie: admin })), ['needle in the open']);
 });
 
 test('OAuth MCP requires a local membership for every role and applies that membership role', async () => {
