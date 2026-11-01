@@ -148,7 +148,12 @@ It checks once more that
 main has not gone green on its own, then opens a `sheriff/revert-<sha>` PR with
 squash auto-merge, comments on the original PR, files
 `Error: <test> fails on main after PR #<n>` with the run links, and writes
-one alert line to the job summary and `SHERIFF_ALERT_URL`. The test it names is
+one alert line to the job summary and `SHERIFF_ALERT_URL`. Then it reads the
+`Issue #<n>` and `Feature #<n>` references off each reverted commit's subject
+and sets each of those rows back from `Fixed` to `Open`, or from `Shipped` to
+`Building`, with a dated line naming the revert PR, so the reland is queued
+instead of the row reading done while its fix is off main. A row in any other
+state is left alone. The test it names is
 a file still red after the in-run retry; a file whose shard ended before its
 retry answered is listed under its own heading in the evidence instead. Past the cap it
 reverts what is still suspect. A revert whose range took no bisect probe, the

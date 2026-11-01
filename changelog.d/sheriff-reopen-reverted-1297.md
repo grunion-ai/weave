@@ -1,0 +1,1 @@
+- A sheriff revert now sets the rows it undid back to work: it reads the `Issue #<n>` and `Feature #<n>` references off each reverted commit's subject and moves each row from `Fixed` to `Open`, or from `Shipped` to `Building`, with a dated line naming the revert PR and the commit it took off main. A row in any other state is left alone, and a dry run writes nothing (Issue #1297).
