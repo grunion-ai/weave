@@ -212,6 +212,10 @@
       "gzip": 2613,
       "br": 2306
     },
+    "/space-launcher-view.js": {
+      "gzip": 2770,
+      "br": 2431
+    },
     "/start.js": {
       "gzip": 13623,
       "br": 12145

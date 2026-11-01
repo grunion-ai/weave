@@ -2865,3 +2865,43 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (max-width: 900px) {
   .space-home-pair { grid-template-columns: minmax(0, 1fr); }
 }
+.launcher-home[hidden], .launcher-rest[hidden], #main > .view-header[hidden] { display: none; }
+.launcher a { color: inherit; text-decoration: none; }
+.launcher button { font: inherit; color: inherit; background: transparent; border: 0; text-align: left; }
+.launcher strong { display: block; font-weight: 500; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.launcher small { display: block; margin-top: 3px; font-size: var(--fs-secondary); color: var(--tblr-secondary); overflow-wrap: anywhere; }
+.launcher-chevron { flex: none; width: 14px; height: 14px; color: var(--tblr-secondary); }
+.launcher button.launcher-search { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 0 12px; border-radius: 10px; background: var(--tblr-bg-surface-secondary); color: var(--tblr-secondary); font-size: var(--fs-doc); }
+.launcher-search > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.launcher-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 8px; padding: 22px 0 21px; }
+.launcher-tile { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 44px; padding: 0 4px 5px; border-radius: 10px; text-align: center; }
+.launcher-tile strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.launcher-tile small { margin: 0; font-size: var(--fs-meta); }
+.launcher-tile-icon { display: grid; place-items: center; width: 54px; height: 54px; margin-bottom: 5px; border-radius: 14px; background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.launcher-tile-icon .wv-icon { width: 24px; height: 24px; }
+.launcher-section { padding: 18px 0 7px; border-top: 1px solid var(--tblr-border-color); }
+.launcher-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.launcher-heading h2 { margin: 0; font-size: var(--fs-doc); font-weight: 500; }
+.launcher-heading > span { font-size: var(--fs-meta); color: var(--tblr-secondary); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.launcher-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 66px; padding: 12px 0; border-radius: 5px; }
+.launcher-label { flex: 1; min-width: 0; }
+.launcher-row time { flex: none; font-size: var(--fs-meta); color: var(--tblr-secondary); white-space: nowrap; }
+.launcher-row-icon { display: grid; flex: none; place-items: center; width: 28px; color: var(--tblr-secondary); }
+.launcher-status { flex: none; align-self: flex-start; margin-top: 3px; }
+.launcher-status.is-attention, .launcher-outcome { color: var(--wv-warn-text); }
+.launcher-status.is-success { color: var(--tblr-success); }
+.launcher-outcome { display: block; margin-top: 5px; font-size: var(--fs-secondary); }
+.launcher button.launcher-more { display: flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0; font-size: var(--fs-secondary); color: var(--tblr-secondary); }
+.launcher-more .wv-icon { width: 14px; height: 14px; }
+.launcher-more[aria-expanded="true"] .wv-icon { transform: rotate(180deg); }
+.launcher button.launcher-about { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; margin-top: 6px; padding: 15px 0; border-top: 1px solid var(--tblr-border-color); font-size: var(--fs-secondary); color: var(--tblr-secondary); }
+.launcher-about .launcher-chevron { margin-left: auto; }
+.launcher button.launcher-return { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0; margin-bottom: 20px; color: var(--tblr-primary); }
+.launcher-detail h2 { margin: 0 0 8px; font-size: var(--fs-title); font-weight: 500; overflow-wrap: anywhere; }
+.launcher-detail h3 { margin: 20px 0 4px; font-size: var(--fs-doc); font-weight: 500; }
+.launcher-detail-meta { margin: 0 0 12px; font-size: var(--fs-secondary); color: var(--tblr-secondary); }
+.launcher-field { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 14px 0; border-bottom: 1px solid var(--tblr-border-color); font-size: var(--fs-secondary); }
+.launcher-detail-body > .card, .launcher-detail-body > .wv-stat-tiles { margin-top: 16px; }
+.launcher-failed { padding: 18px 0; color: var(--tblr-secondary); }
+.launcher-failed .btn { min-height: 44px; }
+@media (max-width: 600px) { #cmdk-results .result { height: 44px; } }
