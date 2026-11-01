@@ -192,6 +192,40 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('stacked draws every group level, outermost first, with the leaf nested inside it', async () => {
+    seed({ groups: 'stacked' });
+    const page = await open();
+    try {
+      const top = page.locator('.wv-board > .board-group[data-key="Ready to Buy"]');
+      assert.equal(await top.count(), 1, 'the State level is drawn as its own section');
+      const head = top.locator('.board-group-head').first();
+      assert.equal((await head.locator('.list-group-label').first().innerText()).trim(), 'Ready to Buy');
+      assert.equal((await head.locator('.list-count').first().innerText()).trim(), '2');
+      assert.equal(await top.locator(`.board-group[data-key="Ready to Buy${SEP}Office"] ${card(ids.desk)}`).count(), 1, 'the Room leaf nests inside its State section');
+      assert.equal(await page.locator(`.wv-board > .board-group[data-key="Ready to Buy${SEP}Office"]`).count(), 0, 'a leaf is never a top-level section');
+      assert.deepEqual(
+        await page.$$eval('.wv-board > .board-group', (ns) => ns.map((n) => n.dataset.key)),
+        ['Research', 'Ready to Buy', 'Bought'],
+        'the top level carries the State groups, each named once',
+      );
+      await top.locator('.list-fold').first().click();
+      assert.equal(await top.locator(`.board-group[data-key="Ready to Buy${SEP}Office"]`).isVisible(), false, 'folding a parent hides the levels under it');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
+  test('a stacked drag between nested leaves writes the leaf it landed in', async () => {
+    seed({ groups: 'stacked' });
+    const page = await open();
+    try {
+      const leaf = (state, room) => `.wv-board .board-group[data-key="${state}${SEP}${room}"]`;
+      await drag(page, tile(ids.lamp), `${leaf('Research', 'Bedroom')} ${card(ids.bed)}`);
+      assert.equal(await eventually(() => raw(ids.lamp, 'Room'), 'Bedroom'), 'Bedroom');
+      assert.equal(raw(ids.lamp, 'State'), 'Research', 'the State level it stayed under is untouched');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
   test('on a phone the columns snap at 85vw, lane headings stick left, targets are 44 px and a hold carries a card to another lane', async () => {
     seed();
     const page = await open({ phone: true });

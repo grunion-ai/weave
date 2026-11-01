@@ -8,13 +8,15 @@
     "load-home|phone|inp": 80,
     "open-table|desktop|lcp": 1000,
     "open-table|desktop|cls": 0.01,
-    "open-table|desktop|inp": 80,
+    "open-table|desktop|inp": 160,
     "open-table|phone|lcp": 1000,
     "open-table|phone|cls": 0.01,
-    "open-table|phone|inp": 64
+    "open-table|phone|inp": 112
   },
   "raised": {
     "open-table|desktop|lcp": "Issue #1042: main run 39378994075 read 480, 512, 764, 916 and 716 ms against 750",
-    "open-table|phone|lcp": "Issue #1042: main run 39378994075 read single loads up to 1204 ms"
+    "open-table|phone|lcp": "Issue #1042: main run 39378994075 read single loads up to 1204 ms",
+    "open-table|desktop|inp": "Issue #1215: INP is quantized to 8 ms and the old 80 ms budget had one quantum of margin. Main tests runs read desktop medians of 72, 80 and 80 on the green tips (e570a410, b20acffd, f94fac37) and 88, 104, 112, 120, 128 and 144 on shared runners at the same code, with in-shard retries up to 192. The parent of the first red run measured 80 on a quiet 10-core Mac and was slower than main at every CPU throttle. The dock render is the cost; making it cheaper is option 1 of the Issue and will try to restore the budget",
+    "open-table|phone|inp": "Issue #1215: the old 64 ms budget had no margin. Main tests runs read phone medians of 56 to 64 on the green tips and 72, 80, 88 and 104 on shared runners at the same code. Option 1 of the Issue (a cheaper dock render) will try to restore the budget"
   }
 }

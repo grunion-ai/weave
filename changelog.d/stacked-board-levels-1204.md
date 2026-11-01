@@ -1,0 +1,1 @@
+- Board: a stacked layout with two or more grouping levels now draws every level, each with its own header and count, and nests the cards in the innermost group. Only the innermost groups were drawn before, so a repeated inner label gave no way to tell which outer group it belonged to (Issue #1204).

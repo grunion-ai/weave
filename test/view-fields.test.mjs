@@ -213,7 +213,7 @@ test('a relation summary carries the chip of the far row', () => {
   assert.equal(e.fields.Owner.chip.name, 'Ada');
   assert.equal(e.fields.Owner.chip.shape, 'chip');
   const inverse = w.readEntity(owner.id);
-  assert.equal(inverse.fields.Tasks[0].chip.state.name, 'Doing');
+  assert.equal(inverse.fields.Task[0].chip.state.name, 'Doing');
 });
 
 test('a chip never nests: auto never picks a view field, and the far chip has no fields of its own to recurse into', () => {

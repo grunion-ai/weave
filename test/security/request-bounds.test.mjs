@@ -83,13 +83,15 @@ async function serveRows(n = 620) {
   return { get, post, stop: () => server.close() };
 }
 
-test('every limit a route takes is capped at 500, the most the UI asks for; the absent limit still means every row', async () => {
+test('every limit a route takes is capped at 500, the most the UI asks for; a row read with no limit answers its default page', async () => {
   const { get, post, stop } = await serveRows();
   try {
     assert.equal((await get('/api/tables/Product%2FTask/entities?limit=100000')).items.length, 500, 'GET entities');
-    assert.equal((await get('/api/tables/Product%2FTask/entities')).items.length, 620, 'no limit, every row');
+    assert.equal((await get('/api/tables/Product%2FTask/entities')).items.length, 200, 'GET entities, no limit: the default page (Issue #1267)');
+    assert.equal((await get('/api/tables/Product%2FTask/entities?limit=-1')).items.length, 620, 'GET entities, limit -1: every row');
     assert.equal((await post('/api/tables/Product%2FTask/query', { limit: 100000 })).items.length, 500, 'POST query');
-    assert.equal((await post('/api/tables/Product%2FTask/query', {})).items.length, 620, 'POST query, no limit');
+    assert.equal((await post('/api/tables/Product%2FTask/query', {})).items.length, 200, 'POST query, no limit: the default page (Issue #1267)');
+    assert.equal((await post('/api/tables/Product%2FTask/query', { limit: -1 })).items.length, 620, 'POST query, limit -1: every row');
     assert.equal((await get('/api/activity?limit=100000')).items.length, 500, 'activity');
     assert.ok((await get('/api/audit?limit=100000')).length <= 500, 'audit');
     assert.ok((await get('/api/undo?limit=100000')).length <= 500, 'undo');

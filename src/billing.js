@@ -87,7 +87,7 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, trialD
   }
 
   const subjectOf = (account) => (account.identities ?? []).find((i) => !issuer || i.issuer === issuer)?.subject ?? null;
-  const seatsOf = (accounts) => accounts.filter((a) => PAID_ROLES.has(a.role) && subjectOf(a));
+  const seatsOf = (accounts) => accounts.filter((a) => PAID_ROLES.has(a.seatRole ?? a.role) && subjectOf(a));
 
   async function lookup(workspace, accounts) {
     const seats = seatsOf(accounts);
@@ -112,7 +112,7 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, trialD
       orgId: null,
       seated(name) {
         const account = byName.get(name);
-        if (!account || !PAID_ROLES.has(account.role) || plan === 'comped' || plan === 'trial') return true;
+        if (!account || !PAID_ROLES.has(account.seatRole ?? account.role) || plan === 'comped' || plan === 'trial') return true;
         const subject = subjectOf(account);
         return !subject || seatedSubjects.has(subject);
       },
@@ -157,7 +157,7 @@ export function createBilling({ secretKey, soloPlan, teamPlan, since = 0, trialD
     },
     async syncMembers({ orgId, accounts }) {
       const wanted = new Map();
-      for (const account of seatsOf(accounts)) wanted.set(subjectOf(account), { name: account.name, role: ORG_ROLE[account.role] });
+      for (const account of seatsOf(accounts)) wanted.set(subjectOf(account), { name: account.name, role: ORG_ROLE[account.role] ?? ORG_ROLE.editor });
       const present = new Map((await members(orgId)).map((m) => [m?.public_user_data?.user_id, m.role]).filter(([id]) => id));
       const refused = [];
       const base = `/organizations/${encodeURIComponent(orgId)}/memberships`;

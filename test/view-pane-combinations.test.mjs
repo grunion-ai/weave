@@ -216,13 +216,16 @@ test('rule: deleted rows show but never add to a total', () => {
   assert.match(sum.display, /^\$/, 'the Σ value wears the column\'s currency costume');
 });
 
-test('rule: changing the group fields expands every group again; a new order keeps them', () => {
+test('rule: changing the group fields or their orders expands every group again (Feature #348)', () => {
   const { x, issue: t } = fresh();
   x.tableView(`${t.id}/Standard`, { group: ['Area'], collapsed: ['Nav'] });
-  assert.deepEqual(x.tableView(`${t.id}/Standard`, { group: [{ field: 'Area', dir: 'desc' }] }).collapsed, ['Nav'], 'same field, new order: still collapsed');
+  assert.deepEqual(x.tableView(`${t.id}/Standard`, { group: ['Area'] }).collapsed, ['Nav'], 'same grouping: still collapsed');
+  assert.equal(x.tableView(`${t.id}/Standard`, { group: [{ field: 'Area', dir: 'desc' }] }).collapsed, undefined, 'same field, new order: a new grouping, every group open');
+  x.tableView(`${t.id}/Standard`, { collapsed: ['Nav'] });
   assert.equal(x.tableView(`${t.id}/Standard`, { group: ['Severity'] }).collapsed, undefined, 'new field: every group open');
   assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Severity' }], ['Nav']), null);
-  assert.deepEqual(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area', dir: 'desc' }], ['Nav']), ['Nav']);
+  assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area', dir: 'desc' }], ['Nav']), null);
+  assert.deepEqual(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area' }], ['Nav']), ['Nav']);
 });
 
 test('rule: a group order reverses and No value stays last', () => {

@@ -154,10 +154,18 @@
 
   const TOOL_IDS = new Set(TOOLS.map((t) => t.id));
 
-  const setupPrompt = (url) => SETUP_PROMPT.replace('{URL}', url);
+  function serverName(url) {
+    const address = new URL(url);
+    const path = address.pathname.match(/^\/w\/([a-z0-9][a-z0-9-]*)\/mcp\/?$/i)?.[1];
+    const host = address.hostname.match(/^([a-z0-9][a-z0-9-]*)\.weave\.grunion\.ai$/i)?.[1];
+    const workspace = path ?? (host === 'dev' ? null : host);
+    return workspace ? `weave-${workspace.toLowerCase()}` : 'weave';
+  }
 
-  function snippet(tool, url, name = 'weave') {
-    if (tool.copy === 'prompt') return setupPrompt(url);
+  const setupPrompt = (url, name = serverName(url)) => SETUP_PROMPT.replace('{URL}', url).replace('server named "weave"', `server named "${name}"`);
+
+  function snippet(tool, url, name = serverName(url)) {
+    if (tool.copy === 'prompt') return setupPrompt(url, name);
     if (tool.copy === 'command') return `claude mcp add --transport http --scope user ${name} ${url}`;
     if (tool.copy === 'codex') return `codex mcp add ${name} --url ${url}`;
     return url;
@@ -173,7 +181,9 @@
   function guide(toolId, { url, workspace, template = null, other = '' }) {
     const tool = TOOLS.find((t) => t.id === toolId);
     if (!tool) return null;
-    return { ...tool, value: snippet(tool, url), message: firstMessage({ workspace, template, other }) };
+    const name = serverName(url);
+    const named = (text) => text.replace(/\b(Name it |pick |next to |turn |mcp login |mcp auth )weave\b/g, `$1${name}`);
+    return { ...tool, steps: tool.steps.map(named), note: tool.note && named(tool.note), value: snippet(tool, url, name), message: firstMessage({ workspace, template, other }) };
   }
 
   root.WeaveAgentConnect = { TOOLS, TOOL_IDS, SETUP_PROMPT, setupPrompt, snippet, firstMessage, guide };
