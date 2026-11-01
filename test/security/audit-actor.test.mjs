@@ -63,11 +63,11 @@ test('a token request keeps its account while another request names itself durin
   assert.equal(lastAudit(root, 'space-created')[0].actor, 'ar');
 });
 
-for (const [where, prefix, rootAccounts] of [['the hub root', '', true], ['a member guarded by the hub root', '/w/member', true]]) {
+for (const [where, prefix, rootAccounts] of [['the hub root', '', true], ['a member with its own accounts', '/w/member', true]]) {
   test(`${where}: an anonymous caller is recorded as anonymous and cannot pick a comment author`, async () => {
     const root = seed('root');
     const member = seed('member');
-    if (rootAccounts) root.createAccount({ name: 'ra', role: 'architect' });
+    if (rootAccounts) (prefix ? member : root).createAccount({ name: 'ra', role: 'architect' });
     const call = caller(createWorkspaceHub(root, { workspaces: { member } }));
     const w = prefix ? member : root;
     const row = firstRow(w);
@@ -104,19 +104,25 @@ test('import CSV, export JSON and import JSON each write one audit entry naming 
   assert.equal(lastAudit(root, 'csv-imported')[0].detail.created, 2);
 });
 
-test('workspace create, trash, restore and delete each write one audit entry on the hub root', async (t) => {
+test('workspace lifecycle audits belong to the affected workspace', async (t) => {
   const dir = tempDir('weave-audit-hub-');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const root = seed('root', { path: join(dir, 'root.db') });
-  const call = caller(createWorkspaceHub(root));
+  const hub = createWorkspaceHub(root);
+  const call = caller(hub);
   assert.equal((await call('POST', '/api/workspaces', { actor: 'agent-7', body: { name: 'fresh' } })).status, 201);
+  const fresh = hub.get('fresh');
+  let finalAudit;
+  const close = fresh.store.close.bind(fresh.store);
+  fresh.store.close = () => { finalAudit = fresh.listAudit({ limit: -1 }); close(); };
   assert.equal((await call('DELETE', '/api/workspaces/fresh', { actor: 'agent-7' })).status, 200);
   assert.equal((await call('POST', '/api/workspaces/fresh/restore', { actor: 'agent-7' })).status, 200);
   assert.equal((await call('DELETE', '/api/workspaces/fresh?hard=1', { actor: 'agent-7' })).status, 200);
   for (const action of ['workspace-created', 'workspace-trashed', 'workspace-restored', 'workspace-deleted']) {
-    const hits = lastAudit(root, action);
+    const hits = finalAudit.filter(row => row.action === action);
     assert.equal(hits.length, 1, `${action} is audited once`);
-    assert.equal(hits[0].actor, 'agent-7', `${action} names the caller`);
+    assert.equal(hits[0].actor, action === 'workspace-created' ? 'creator: agent-7' : 'from root: agent-7', `${action} names the caller`);
     assert.equal(hits[0].detail.name, 'fresh');
+    assert.equal(lastAudit(root, action).length, 0);
   }
 });

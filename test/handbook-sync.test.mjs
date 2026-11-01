@@ -57,6 +57,21 @@ test('a sync keeps each page id, so inbound [[…]] links survive', () => {
   assert.equal(guideRow(w, 'Making a workspace your own').id, before);
 });
 
+test('the workspace registry guide replaces the old root guide without changing its id', () => {
+  const w = new Weave();
+  applyHandbook(w);
+  const row = guideRow(w, 'Workspace registry') ?? guideRow(w, 'Registry at the root');
+  w.updateEntity(row.id, { Name: 'Registry at the root' });
+  w.setDoc(row.id, '# Registry at the root\n\nThe old shared registry.');
+  const count = w.query('Handbook/Guide', { limit: 500 }).total;
+  syncHandbook(w, { force: true });
+  assert.equal(guideRow(w, 'Workspace registry')?.id, row.id);
+  assert.ok(!guideRow(w, 'Registry at the root'));
+  assert.equal(w.query('Handbook/Guide', { limit: 500 }).total, count);
+  assert.match(w.getDoc(row.id), /Each workspace owns/);
+  assert.equal(syncHandbook(w).applied, false);
+});
+
 test('the rows a sync writes name the sync, and the workspace keeps its actor', () => {
   const w = olderBuild();
   w.actor = 'kyle';

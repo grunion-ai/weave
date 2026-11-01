@@ -87,5 +87,5 @@ test('a bug report filed across a failed forward keeps its reporter (Issue #810)
   release();
   const report = await filed;
   assert.equal(report.status, 201);
-  assert.equal(docs.readEntity(report.data.id).createdBy, 'alice');
+  assert.equal(docs.readEntity(report.data.id).createdBy, 'reporter: alice');
 });

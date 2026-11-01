@@ -20,7 +20,7 @@ const hit = (port, host, method, path, { token, body, cookie } = {}) => new Prom
     let text = '';
     res.setEncoding('utf8');
     res.on('data', (c) => { text += c; });
-    res.on('end', () => resolve({ status: res.statusCode, text, json: () => JSON.parse(text) }));
+    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
   });
   req.on('error', reject);
   req.end(payload ?? undefined);
@@ -43,11 +43,11 @@ test('a hub with a public origin walls every workspace it creates', () => {
   } finally { h.done(); }
 });
 
-test('a hub whose default workspace requires sign-in walls every workspace it creates, origin or not', () => {
+test('a workspace auth setting does not become an instance creation policy', () => {
   const h = hubIn({ requireAuth: true });
   try {
     const w = createWorkspaceHub(h.main).create('Guessable');
-    assert.equal(w.state.meta.requireAuth, true);
+    assert.equal(!!w.state.meta.requireAuth, false);
   } finally { h.done(); }
 });
 
@@ -59,28 +59,30 @@ test('a loopback hub with an open default workspace still creates open workspace
   } finally { h.done(); }
 });
 
-test('a workspace created over HTTP on a public origin answers its tables to nobody anonymous, by host or by path', async () => {
+test('hosted legacy workspace creation cannot bypass start-page policy', async () => {
   const h = hubIn();
   const token = h.main.createAccount({ name: 'root', role: 'architect' }).token;
   const { server, port } = await startServer(h.main, { port: 0, origin: 'http://weave.test', baseDomain: 'weave.test' });
   try {
     const made = await hit(port, 'weave.test', 'POST', '/api/workspaces', { token, body: { name: 'guess' } });
-    assert.equal(made.status, 201, made.text);
-    assert.equal((await hit(port, 'guess.weave.test', 'GET', '/api/tables')).status, 401);
-    assert.equal((await hit(port, 'weave.test', 'GET', '/w/guess/api/tables')).status, 401);
+    assert.equal(made.status, 403, made.text);
+    assert.equal((await hit(port, 'guess.weave.test', 'GET', '/api/tables')).status, 404);
+    assert.equal((await hit(port, 'weave.test', 'GET', '/w/guess/api/tables')).status, 404);
   } finally { server.close(); h.done(); }
 });
 
-test('the architect who creates a walled workspace from the app still opens it by path', async () => {
+test('local workspace creation gives the browser its own new workspace session', async () => {
   const h = hubIn({ requireAuth: true });
   h.main.createAccount({ name: 'root', role: 'architect' });
   const cookie = `wv_session_${h.main.state.meta.id}=${h.main.createSession('root').token}`;
-  const { server, port } = await startServer(h.main, { port: 0, origin: 'http://weave.test', baseDomain: 'weave.test' });
+  const { server, port } = await startServer(h.main, { port: 0, origin: null, baseDomain: null });
   try {
-    const made = await hit(port, 'weave.test', 'POST', '/api/workspaces', { cookie, body: { name: 'mine' } });
+    const made = await hit(port, `localhost:${port}`, 'POST', '/api/workspaces', { cookie, body: { name: 'mine' } });
     assert.equal(made.status, 201, made.text);
-    assert.equal((await hit(port, 'weave.test', 'GET', made.json().url + 'api/tables', { cookie })).status, 200);
-    assert.equal((await hit(port, 'weave.test', 'GET', made.json().url + 'api/tables')).status, 401);
+    const createdCookie = made.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables', { cookie: createdCookie })).status, 200);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables', { cookie })).status, 401);
+    assert.equal((await hit(port, `localhost:${port}`, 'GET', made.json().url + 'api/tables')).status, 401);
   } finally { server.close(); h.done(); }
 });
 

@@ -6,7 +6,7 @@ import { join, dirname, extname, basename } from 'node:path';
 import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Weave, WeaveError } from './engine.js';
+import { Weave, WeaveError, detachHubRegistry } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
 import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
@@ -204,8 +204,26 @@ async function readBody(req, { requireJson = false, form = false } = {}) {
   }
 }
 
+function hubRouting(dataDir) {
+  const path = join(dataDir, '_hub.json');
+  if (!existsSync(path)) return {};
+  let routes;
+  try { routes = JSON.parse(readFileSync(path, 'utf8')); } catch { throw new WeaveError('The hub routing file is unreadable; restore _hub.json from backup', 'invalid'); }
+  if (!routes || typeof routes !== 'object' || Array.isArray(routes) || Object.entries(routes).some(([from, to]) => !/^[^/]+\.(db|json)$/.test(from) || typeof to !== 'string' || !/^[^/]+\.(db|json)$/.test(to))) throw new WeaveError('The hub routing file is invalid; restore _hub.json from backup', 'invalid');
+  return routes;
+}
+
 export function openDefaultWorkspace(dataPath, { actor } = {}) {
   const dir = dirname(dataPath);
+  const routing = hubRouting(dir);
+  const seen = new Set();
+  while (Object.hasOwn(routing, basename(dataPath))) {
+    if (seen.has(dataPath)) throw new WeaveError('The hub routing file contains a loop; restore _hub.json from backup', 'invalid');
+    seen.add(dataPath);
+    const next = join(dir, routing[basename(dataPath)]);
+    if (!existsSync(next)) throw new WeaveError('The hub routing target is missing; restore the workspace from backup', 'not-found');
+    dataPath = next;
+  }
   const stem = (f) => f.split('/').pop().replace(/\.(json|db)$/, '');
   const taken = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(json|db)$/.test(f)).map(stem) : [];
   const name = nameFromFile(dataPath) ?? workspaceName({ taken }).slug;
@@ -221,47 +239,69 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
   const instances = new Map();
   let defaultName = defaultWeave.state.meta.name || 'workspace';
   instances.set(defaultName, defaultWeave);
-  defaultWeave.hostRegistry();
-  const enroll = (w) => { if (w !== defaultWeave) w.joinRegistry(defaultWeave); return w; };
-  for (const [name, w] of Object.entries(workspaces)) instances.set(name, enroll(w));
+  for (const [name, w] of Object.entries(workspaces)) instances.set(name, w);
+
+  for (const w of instances.values()) w.localKeyAccess = false;
 
   const dataDir = defaultWeave.store.path ? dirname(defaultWeave.store.path) : null;
   const adoptedPaths = new Set([...instances.values()].map((w) => w.store.path).filter(Boolean));
+  let migrationReady = false;
   const scan = () => {
     if (!dataDir) return;
+    const added = [];
     for (const file of readdirSync(dataDir)) {
-      if (!/\.(json|db)$/.test(file)) continue;
+      if (file === '_hub.json' || !/\.(json|db)$/.test(file)) continue;
       const name = file.replace(/\.(json|db)$/, '');
       const dbPath = join(dataDir, `${name}.db`);
-      if (instances.has(name) || adoptedPaths.has(dbPath)) continue;
-      try {
-        const w = new Weave({ path: join(dataDir, file) });
-        if (w.state.meta) {
-          if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
-            w.state.meta.name = name;
-            w.save();
-          }
-          if (!instances.has(w.state.meta.name)) instances.set(w.state.meta.name, enroll(w));
-          adoptedPaths.add(dbPath);
-        }
-      } catch {}
+      if (instances.has(name) || adoptedPaths.has(dbPath) || added.some(x => x.path === dbPath)) continue;
+      let w;
+      try { w = new Weave({ path: join(dataDir, file) }); } catch { continue; }
+      w.localKeyAccess = false;
+      if (!w.state.meta.name || w.state.meta.name === 'Weave Workspace') {
+        w.state.meta.name = name;
+        w.save();
+      }
+      if (instances.has(w.state.meta.name)) { w.store.close?.(); continue; }
+      added.push({ w, path: dbPath });
+    }
+    try {
+      if (migrationReady && added.some(({ w }) => w.state.meta.registry === 'hub')) {
+        if (![...instances.values()].includes(defaultWeave)) throw new WeaveError('This workspace needs its former registry restored before it can be opened', 'invalid');
+        detachHubRegistry(defaultWeave, [...instances.values(), ...added.map(x => x.w)].filter(w => w !== defaultWeave));
+      }
+    } catch (error) {
+      for (const { w } of added) w.store.close?.();
+      throw error;
+    }
+    for (const { w, path } of added) {
+      instances.set(w.state.meta.name, w);
+      adoptedPaths.add(path);
     }
   };
   scan();
+  detachHubRegistry(defaultWeave, [...instances.values()].filter(w => w !== defaultWeave));
+  migrationReady = true;
   try { if (instances.has('weave')) ensureBugForm(instances.get('weave')); } catch {}
-  if (!Array.isArray(defaultWeave.state.meta.workspaceOrder)) {
-    defaultWeave.state.meta.workspaceOrder = [...instances.values()].map((w) => w.state.meta.id);
-    defaultWeave.save();
-  }
-  const ordered = (entries) => {
-    const rank = new Map((defaultWeave.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
-    return entries.map((e, i) => [e, i])
-      .sort(([[, a], i], [[, b], j]) => (rank.get(a.state.meta.id) ?? Infinity) - (rank.get(b.state.meta.id) ?? Infinity) || i - j)
-      .map(([e]) => e);
+  const ordered = (entries, workspace) => {
+    const rank = new Map((workspace?.state.meta.workspaceOrder ?? []).map((id, i) => [id, i]));
+    return entries.map((entry, index) => ({ entry, index })).sort((a, b) => (rank.get(a.entry[1].state.meta.id) ?? Infinity) - (rank.get(b.entry[1].state.meta.id) ?? Infinity) || a.index - b.index).map(x => x.entry);
   };
 
   return {
-    get defaultName() { return defaultName; },
+    get defaultName() { return !instances.get(defaultName)?.state.meta.deletedAt && instances.has(defaultName) ? defaultName : [...instances].find(([, w]) => !w.state.meta.deletedAt)?.[0] ?? null; },
+    walled,
+    move(ref, position, { workspace, visible = () => true } = {}) {
+      if (!Number.isInteger(position) || position < 0) throw new WeaveError('position must be a non-negative integer', 'invalid');
+      const w = this.get(ref);
+      if (!w || !visible(w)) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
+      const ids = this.list({ workspace }).filter(x => visible(this.get(x.id))).map(x => x.id).filter(id => id !== w.state.meta.id);
+      ids.splice(Math.min(position, ids.length), 0, w.state.meta.id);
+      if (workspace) {
+        workspace.state.meta.workspaceOrder = ids;
+        workspace.save();
+      }
+      return this.list({ workspace });
+    },
     rename(oldName, newName) {
       const w = instances.get(oldName);
       if (!w) return;
@@ -285,42 +325,56 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
     aliasOf(label) {
       return [...instances.values()].find((w) => w.state.meta.aliases?.includes(label)) ?? null;
     },
-    list({ includeDeleted = false } = {}) {
+    list({ includeDeleted = false, workspace = null } = {}) {
       scan();
       for (const w of instances.values()) w.maybeRefresh();
-      return ordered([...instances.entries()])
+      return ordered([...instances.entries()], workspace)
         .filter(([, w]) => includeDeleted || !w.state.meta.deletedAt)
         .map(([name, w]) => ({
           name,
           id: w.state.meta.id,
           url: `/w/${w.state.meta.id}/`,
-          default: name === defaultName,
+          default: name === this.defaultName,
           spaces: w.listSpaces().length,
           tables: w.userTables().length,
           entities: Object.keys(w.state.entities).length,
           logo: !!w.state.meta.logo,
           deletedAt: w.state.meta.deletedAt ?? null,
-          deletable: !!this.remove && name !== defaultName && name !== 'weave' && !w.state.meta.deletedAt,
+          deletable: !!this.remove && name !== 'weave' && !w.state.meta.deletedAt && [...instances.values()].filter(x => !x.state.meta.deletedAt).length > 1,
         }));
     },
-    remove(ref, { hard = false, actor = defaultWeave.actor } = {}) {
+    remove(ref, { hard = false, actor = 'web' } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       const name = [...instances.entries()].find(([, x]) => x === w)?.[0];
       refuseOnDocs(w, 'deleted');
-      if (w === defaultWeave || name === defaultName) throw new WeaveError('The default workspace cannot be deleted', 'invalid');
+      if (!w.state.meta.deletedAt && [...instances.values()].filter(x => !x.state.meta.deletedAt).length === 1) throw new WeaveError('Create another workspace before deleting the last workspace', 'invalid');
+      if (w.store.path && dataDir) {
+        const next = [...instances.values()].find(x => x !== w && !x.state.meta.deletedAt && x.store.path);
+        if (next) {
+          const path = join(dataDir, '_hub.json');
+          const routes = hubRouting(dataDir);
+          for (const [from, to] of Object.entries(routes)) if (to === basename(w.store.path)) routes[from] = basename(next.store.path);
+          delete routes[basename(next.store.path)];
+          routes[basename(w.store.path)] = basename(next.store.path);
+          const legacy = basename(w.store.path).replace(/\.db$/, '.json');
+          routes[legacy] = basename(next.store.path);
+          writeFileSync(`${path}.tmp`, JSON.stringify(routes));
+          renameSync(`${path}.tmp`, path);
+        }
+      }
       if (!hard) {
         if (w.state.meta.deletedAt) return w;
         w.state.meta.deletedAt = new Date().toISOString();
         w.save();
         w.syncRegistry();
-        defaultWeave.auditWorkspace('workspace-trashed', name, actor);
+        w.auditWorkspace('workspace-trashed', name, actor);
         return w;
       }
+      w.auditWorkspace('workspace-deleted', name, actor);
       const path = w.store.path;
       w.store.close?.();
       instances.delete(name);
-      defaultWeave.dropWorkspace(w.state.meta.id);
       if (path) {
         adoptedPaths.delete(path);
         const trashDir = join(dirname(path), 'trash');
@@ -330,17 +384,16 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
           if (existsSync(path + suffix)) renameSync(path + suffix, join(trashDir, `${name}-${stamp}.db${suffix}`));
         }
       }
-      defaultWeave.auditWorkspace('workspace-deleted', name, actor);
       return { name, trashed: !!path };
     },
-    restore(ref, { actor = defaultWeave.actor } = {}) {
+    restore(ref, { actor = 'web' } = {}) {
       const w = this.get(ref);
       if (!w) throw new WeaveError(`Workspace '${ref}' not found`, 'not-found');
       if (!w.state.meta.deletedAt) return w;
       w.state.meta.deletedAt = null;
       w.save();
       w.syncRegistry();
-      defaultWeave.auditWorkspace('workspace-restored', w.state.meta.name, actor);
+      w.auditWorkspace('workspace-restored', w.state.meta.name, actor);
       return w;
     },
     slugState(slug, self = null) {
@@ -349,7 +402,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       const held = this.get(slug) ?? this.aliasOf(slug);
       return held && held !== self ? 'taken' : 'available';
     },
-    create(asked, { slug = null, from = null, actor = defaultWeave.actor } = {}) {
+    create(asked, { slug = null, from = null, actor = 'web' } = {}) {
       let title, name;
       if (slug != null && slug !== '') {
         name = String(slug);
@@ -373,6 +426,12 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
         copyFileSync(from, target);
       }
       const w = new Weave({ path: target });
+      w.localKeyAccess = false;
+      if (from && w.state.meta.registry === 'hub') {
+        w.store.close?.();
+        for (const suffix of ['', '-wal', '-shm']) rmSync(target + suffix, { force: true });
+        throw new WeaveError('Restore the full legacy hub backup and migrate its registry before importing this workspace', 'invalid');
+      }
       const twin = from && [...instances.entries()].find(([, x]) => x.state.meta.id === w.state.meta.id);
       if (twin) {
         w.store.close?.();
@@ -383,15 +442,13 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       if (from) { delete w.state.meta.title; w.state.meta.deletedAt = null; }
       if (title !== name) w.state.meta.title = title;
       w.save();
-      if (walled || defaultWeave.state.meta.requireAuth) w.setRequireAuth(true);
-      instances.set(name, enroll(w));
+      if (walled) w.setRequireAuth(true);
+      instances.set(name, w);
       adoptedPaths.add(w.store.path);
-      const order = defaultWeave.state.meta.workspaceOrder;
-      if (Array.isArray(order) && !order.includes(w.state.meta.id)) { order.push(w.state.meta.id); defaultWeave.save(); }
-      defaultWeave.auditWorkspace('workspace-created', name, actor);
+      w.auditWorkspace('workspace-created', name, actor);
       return w;
     },
-    async createFrom(asked, { slug = null, archive, key, workspace = null, actor = defaultWeave.actor } = {}) {
+    async createFrom(asked, { slug = null, archive, key, workspace = null, actor = 'web' } = {}) {
       if (!dataDir) throw new WeaveError('In-memory hub cannot create workspaces', 'invalid');
       const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
       try {
