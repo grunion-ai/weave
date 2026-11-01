@@ -338,7 +338,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. hideEmpty: no empty groups. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. collapsed: paths. hideEmpty: no empty groups. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -346,7 +346,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },

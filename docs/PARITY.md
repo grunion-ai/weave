@@ -63,7 +63,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 |---|---------|--------|-------|
 | 39 | Table view | ✅ | all field types incl. computed, in-place cell editing, sort |
 | 40 | Board / kanban | ✅ | a table-view layout (Feature #352): kanban columns, picture gallery, swimlanes (#355), compare (#354), drop a picture to set a cover (#353) |
-| 41 | List view | ✅ | a table-view layout, grouped, ordered and checkable (Feature #276) |
+| 41 | List view | ❌ | removed; Table and Board layouts remain |
 | 42 | Entity page | ✅ | docked beside the table or full page; fields, documents, comments, activity |
 | 43 | Sorting | ✅ | API + UI |
 | 44 | Filtering | ✅ | the Filters popover in the UI (Issues #319, #448); API/CLI/MCP filter language with relation traversal and and/or |
@@ -93,13 +93,13 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 
 ## Score
 
-- ✅ full: **53**
+- ✅ full: **52**
 - 🟡 partial (×0.5): **2** → 1
 - Total counted features: **62**
 
-**Parity: (53 + 1) / 62 = 87.1%** (target: 80%)
+**Parity: (52 + 1) / 62 = 85.5%** (target: 80%)
 
-Most of the missing 12.9% sits in two groups. Collaboration: real-time co-editing, fine-grained permissions and connector integrations. Secondary views: calendar, timeline, whiteboard and charts.
+Most of the missing 14.5% sits in two groups. Collaboration: real-time co-editing, fine-grained permissions and connector integrations. Secondary views: list, calendar, timeline, whiteboard and charts.
 
 ## Outside the matrix
 

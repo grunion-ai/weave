@@ -971,8 +971,8 @@ test('Board is a layout of the table view, never a separate board view (Kyle: Is
   assert.ok(!APP.includes('view-switch'), 'no table/board switcher: Board is picked in the Layout control (Issue #75 still holds)');
   assert.match(fnBody('showDatabase'), /pickTableView\(table, view\)/, 'every #/table route lands on the table view');
   assert.match(fnBody('readAndDrawTable'), /isBoardLayout\(db\)/, 'the view\'s layout key picks the board (Task #122)');
-  assert.match(fnBody('drawDatabase'), /list\.board \? renderBoard : renderList/, 'renderBoard draws only through the table view');
-  assert.match(fnBody('displayBlock'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table and List under Layout');
+  assert.match(fnBody('drawDatabase'), /renderBoard\(main, db, items, list\)/, 'renderBoard draws only through the table view');
+  assert.match(fnBody('displayBlock'), /\{ id: 'board', label: 'Board'/, 'Board sits beside Table under Layout');
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {
@@ -1016,7 +1016,7 @@ test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, p
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(html.includes('nl-date.js'), 'the parser loads before the app');
-  assert.ok(app.includes('parseNaturalDate('), 'typed phrases go through the parser');
+  assert.ok(readFileSync(join(ROOT, 'public/date-picker.js'), 'utf8').includes('parseNaturalDate('), 'typed phrases go through the parser');
   const ctl = fnBody('dateControl');
   assert.ok(ctl.includes('datePopover({'), 'the calendar button opens the popover');
   assert.ok(ctl.includes('readTypedDate(typed, c, local())'), 'typed text is read against the field\'s grain');

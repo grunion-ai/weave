@@ -160,8 +160,8 @@
     return !!rollups && (subtotals === 'all' || (subtotals === 'top' && level === 0));
   }
 
-  function model(rows, { levels = [], collapsed = null, rollups = false, subtotals = 'all', showEmpty = false } = {}) {
-    const arranged = core().arrange(rows, { levels, showEmpty });
+  function model(rows, { levels = [], collapsed = null, rollups = false, subtotals = 'all' } = {}) {
+    const arranged = core().arrange(rows, { levels });
     const slots = [];
     const nodes = [];
     const leaves = [];

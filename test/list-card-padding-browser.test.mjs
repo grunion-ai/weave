@@ -12,7 +12,6 @@ const s = await launch('list card padding', (weave) => {
   weave.createTable({ space: 'Sales', name: 'Company' });
   tasks = weave.createTable({ space: 'Sales', name: 'Task' });
   weave.createEntity(tasks, { name: 'Call Acme' });
-  weave.tableView(`${tasks.id}/Standard`, { layout: 'list' });
   scratch = new Weave();
   scratch.state.meta.name = 'scratch';
   scratch.createSpace({ name: 'Notes' });
@@ -49,20 +48,6 @@ if (s) {
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.card.list-rows.system-tables .list-row');
       roomy(await page.evaluate(inset, '.card.list-rows.system-tables'), 'system tables');
-    } finally { await page.close(); }
-  });
-
-  test('the List layout keeps its own row height and indent', async () => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    try {
-      await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('.wv-list .list-row');
-      const r = await page.locator('.wv-list .list-row').first().evaluate((n) => {
-        const cs = getComputedStyle(n);
-        return { h: n.getBoundingClientRect().height, left: parseFloat(cs.paddingLeft), right: parseFloat(cs.paddingRight) };
-      });
-      assert.ok(r.h >= 40, `a comfortable list row is at least 40px, got ${r.h}`);
-      assert.deepEqual([r.left, r.right], [4, 12], 'the list row keeps its 4px lead and 12px trail');
     } finally { await page.close(); }
   });
 }

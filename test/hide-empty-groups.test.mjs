@@ -13,17 +13,6 @@ function posts() {
   return { w, t };
 }
 
-test('a list view draws every option of its group field until hideEmpty drops the empty ones (Feature #345)', () => {
-  const { w, t } = posts();
-  const shown = w.tableView('Post/Standard', { layout: 'list', group: ['Style'] });
-  const all = w.query(t.id, { groupBy: shown.id }).groups;
-  assert.equal(all.length, 3, JSON.stringify(all.map((g) => g.count)));
-  assert.deepEqual(all.map((g) => g.count), [2, 0, 0]);
-  const hidden = w.tableView('Post/Standard', { hideEmpty: true });
-  assert.equal(hidden.hideEmpty, true);
-  assert.deepEqual(w.query(t.id, { groupBy: hidden.id }).groups.map((g) => g.count), [2]);
-});
-
 test('hideEmpty takes true, false or null; false and null read as unset', () => {
   const { w } = posts();
   assert.throws(() => w.tableView('Post/Standard', { hideEmpty: 'yes' }), /hideEmpty is true, false or null/);
@@ -35,7 +24,7 @@ test('hideEmpty takes true, false or null; false and null read as unset', () => 
 
 test('hideEmpty travels with describeSchema, the view copy and weave_table_view', () => {
   const { w } = posts();
-  w.tableView('Post/Standard', { layout: 'list', group: ['Style'], hideEmpty: true });
+  w.tableView('Post/Standard', { layout: 'board', group: ['Style'], hideEmpty: true });
   assert.equal(w.tableView('Post/Copy', { from: 'Standard' }).hideEmpty, true);
   const w2 = new Weave();
   w2.applySchema(w.describeSchema());

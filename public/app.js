@@ -4076,7 +4076,7 @@ function systemDefault(db, view = null) {
     filters: {}, sort: [], search: '',
     ...(view ? { widths: Object.fromEntries(Object.keys(view.widths || {}).map((n) => [n, null])) } : {}),
     frozen: 0, density: 'comfortable', deleted: false, rollups: false, subtotals: null,
-    layout: null, groups: null, picture: null, fit: null, frame: null, flow: null, group: null, completedBy: null, nest: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
+    layout: null, groups: null, picture: null, fit: null, frame: null, flow: null, group: null, completedBy: null, collapsed: null, hideEmpty: null, order: null, phoneRow: null,
   };
 }
 function nextViewName(db, base = 'View') {
@@ -4504,7 +4504,7 @@ function rememberFirstPage(key, result) {
   if (firstPages.size > FIRST_PAGES_KEPT) firstPages.delete(firstPages.keys().next().value);
 }
 function tableGroup(db) {
-  if (!hasView(db) || isListLayout(db) || isBoardLayout(db)) return null;
+  if (!hasView(db) || isBoardLayout(db)) return null;
   const group = (db.view.group ?? []).filter((l) => listCore.groupable(db.fields.find((f) => f.name === l.field)));
   return group.length ? group : null;
 }
@@ -4512,7 +4512,7 @@ function serverSums(result) {
   return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
 }
 async function readAndDrawTable(db, dbId, search, cold = false) {
-  if (isListLayout(db) || isBoardLayout(db)) return readAndDrawList(db, dbId, search);
+  if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
@@ -4780,7 +4780,7 @@ function tableDensityButton(ref) {
       { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
       { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' },
     ], gridDensity(db), (next) => {
-      const wrap = document.querySelector('#main > .table-wrap, #main > .list-wrap, #main > .board-wrap');
+      const wrap = document.querySelector('#main > .table-wrap, #main > .board-wrap');
       if (wrap?.wvSetDensity) wrap.wvSetDensity(next); else saveGridDensity(db, next);
       btn.label(next);
       pop?.remove(); btn.focus({ preventScroll: true });
@@ -5058,7 +5058,7 @@ function levelsBlock(db, kind, save) {
     const multi = levels.map((l) => fieldOf(l.field)).find((f) => f?.type === 'multiselect');
     if (multi) out.push(el('p', { class: 'vp-hint' }, `A ${db.term.singular} with several ${multi.name} values appears under each one. Totals above that level count it once.`));
   }
-  if (!isSort && (isListLayout(db) || isBoardLayout(db))) out.push(...listRowPrefs(db, save));
+  if (!isSort && isBoardLayout(db)) out.push(...listRowPrefs(db, save));
   return out;
 }
 function listRowPrefs(db, save) {
@@ -5071,12 +5071,9 @@ function listRowPrefs(db, save) {
   };
   const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
   doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
-  const nestSel = pick('nest', 'Nest by', v.nest, db.fields.filter((f) => f.type === 'relation' && f.targetDbId === db.id && !f.many));
-  nestSel.input.addEventListener('change', () => save({ nest: nestSel.input.value || null }));
   const hide = v.group?.length ? [paneSwitch({ label: 'Hide empty groups', on: !!v.hideEmpty, data: { hideEmpty: '' }, onChange: (on) => save({ hideEmpty: on }) })] : [];
   return [...hide, el('div', { class: 'eye-head' }, 'Rows'),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel),
-    el('label', { class: 'group-pref' }, el('span', {}, 'Nest by'), nestSel)];
+    el('label', { class: 'group-pref' }, el('span', {}, 'Completed by'), doneSel)];
 }
 function drawnGroupKeys(db) {
   const drawn = $('#main')?.wvDraw;
@@ -5094,16 +5091,16 @@ function keyedSeg(seg, name) {
 function displayBlock(db, save) {
   const v = db.view ?? {};
   const rollups = showsRollups(db);
-  const layout = ['list', 'board'].includes(v.layout) ? v.layout : 'table';
+  const layout = v.layout === 'board' ? 'board' : 'table';
   const out = [
     el('div', { class: 'view-layout vp-line' }, el('span', { class: 'view-layout-label' }, 'Layout'),
-      keyedSeg(segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' }, { id: 'list', label: 'List', title: 'Things to finish: grouped, ordered, checkable' },
+      keyedSeg(segCtl([{ id: 'table', label: 'Table', title: 'Records to compare' },
         { id: 'board', label: 'Board', title: 'Things to move or pick between: kanban columns or a picture gallery' }],
       layout, (next) => save({ layout: next })), 'layout')),
     el('div', { class: 'vp-line vp-density' }, el('span', { class: 'view-layout-label' }, 'Density'),
       keyedSeg(segCtl([{ id: 'compact', label: 'Compact', title: 'Short rows, for scanning' }, { id: 'comfortable', label: 'Comfortable', title: 'Roomy rows, for reading' },
         { id: 'spacious', label: 'Spacious', title: 'Two lines per row, for long values' }], gridDensity(db), (mode) => {
-        const wrap = document.querySelector('#main > .table-wrap, #main > .list-wrap, #main > .board-wrap');
+        const wrap = document.querySelector('#main > .table-wrap, #main > .board-wrap');
         if (wrap?.wvSetDensity) wrap.wvSetDensity(mode); else saveGridDensity(db, mode);
         document.querySelector('#main .table-density-btn')?.label?.(mode);
         paneSync(db);
@@ -5185,7 +5182,7 @@ function paneValue(db, key) {
   if (key === 'sort') return (gridSort(db) ?? []).map((s) => `${s.field} ${s.dir === 'desc' ? '↓' : '↑'}`).join(', ') || 'None';
   if (key === 'group') return (v.group ?? []).map((l) => l.field).join(listCore.SEP) || 'None';
   if (key === 'fields') return `${visibleCols(db).length} of ${systemDefault(db).fields.length}`;
-  const layout = { list: 'List', board: 'Board' }[v.layout] ?? 'Table';
+  const layout = v.layout === 'board' ? 'Board' : 'Table';
   return `${layout}, ${DENSITY_LABELS[gridDensity(db)]}${showsRollups(db) ? `, Σ ${({ all: 'every level', top: 'top level', none: 'grand total' })[v.subtotals ?? 'all']}` : ''}`;
 }
 function paneChanged(db, key) {
@@ -5194,7 +5191,7 @@ function paneChanged(db, key) {
   if (key === 'sort') return !!gridSort(db);
   if (key === 'group') return !!v.group?.length;
   if (key === 'fields') return JSON.stringify(visibleCols(db)) !== JSON.stringify(systemDefault(db).fields);
-  return ['list', 'board'].includes(v.layout) || gridDensity(db) !== 'comfortable' || showsRollups(db);
+  return v.layout === 'board' || gridDensity(db) !== 'comfortable' || showsRollups(db);
 }
 function paneFilters(db) {
   const same = viewPane.strip && viewPane.strip.wvKey === `${db.id}|${db.view?.id}`;
@@ -5416,7 +5413,7 @@ function tableChrome(db, trashCount) {
         eye.classList.add('vp-phone-only');
         eye.setAttribute('aria-label', 'Show or hide fields');
         eye.title = 'Show or hide fields';
-        eye.addEventListener('click', () => (dockCoversScreen.matches && !isListLayout(ref.db) && !isBoardLayout(ref.db)
+        eye.addEventListener('click', () => (dockCoversScreen.matches && !isBoardLayout(ref.db)
           ? phoneRowPopover(eye, ref.db) : fieldVisibilityPopover(eye, ref.db, ref.trashCount)));
         return eye;
       })(),
@@ -5482,7 +5479,7 @@ function paintTableChrome(db) {
   main.wvTable = chrome;
   main.replaceChildren(chrome.header);
   syncPhoneBar();
-  scheduleSkeleton(isListLayout(db) || isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
+  scheduleSkeleton(isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
@@ -5529,8 +5526,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   }
 
   if (list) {
-    state.inlineAdd = list.board ? null : async () => main.querySelector('.list-add-name')?.focus();
-    (list.board ? renderBoard : renderList)(main, db, items, list);
+    state.inlineAdd = null;
+    renderBoard(main, db, items, list);
     main.wvDraw = { db, items, trashCount, pager: null };
     syncPhoneBar();
     paintGridWait();
@@ -5594,7 +5591,6 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
 }
 
 const listCore = globalThis.weaveListCore;
-const isListLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'list';
 const boardCore = globalThis.weaveBoardCore;
 const isBoardLayout = (db) => !!db.view && !db.view.blank && db.view.layout === 'board';
 function listSetup(db) {
@@ -5609,7 +5605,6 @@ function listSetup(db) {
   return {
     levels,
     completedBy: fieldOf(v.completedBy),
-    nest: fieldOf(v.nest),
     hideEmpty: !!v.hideEmpty,
     chip: viewFieldOf(db, 'chip'),
     dateField: dates.find((f) => shown.has(f.name)) ?? dates[0] ?? null,
@@ -5629,36 +5624,29 @@ async function listTargetRows(f) {
   const at = new Map(first.order.map((p, i) => [p, i]));
   return rows.map((r, i) => ({ r, i })).sort((a, b) => (at.get(a.r.publicId) ?? Infinity) - (at.get(b.r.publicId) ?? Infinity) || a.i - b.i).map((x) => x.r);
 }
-async function readAndDrawList(db, dbId, search) {
+async function readAndDrawBoard(db, dbId, search) {
   const s = listSetup(db);
-  const board = isBoardLayout(db);
   const where = filterWhere(db);
   const sort = gridSort(db);
-  const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.nest?.name, s.dateField?.name,
-    ...(board ? [...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name] : []),
-    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n)),
-    ...(board || showsRollups(db) ? [] : s.levels.map((l, i) => VP.breakdownField(breakdownFields(db), s.levels, i)?.name))].filter(Boolean);
+  const names = [nameFieldOf(db)?.name, s.chip?.name, ...s.levels.map((l) => l.f.name), s.completedBy?.name, s.dateField?.name,
+    ...boardCardFields(db).map((f) => f.name), boardCore.coverField(db)?.name,
+    ...(sort ?? []).map((x) => x.field).filter((n) => db.fields.some((f) => f.name === n))].filter(Boolean);
   const base = { fields: [...new Set(names)], relations: 'chip', limit: -1 };
   const filtered = !!(where || search);
-  const showDeleted = !board && showsDeleted(db);
-  const sums = !board && showsRollups(db);
-  const [result, everyone, domains, total] = await Promise.all([
+  const [result, everyone, domains] = await Promise.all([
     api('POST', `/tables/${db.id}/query`, {
       ...base, ...(where ? { where } : {}), ...(sort ? { sort } : {}), ...(search ? { search } : {}), trashCount: true, countAll: true,
-      includeDeleted: showDeleted, ...(s.levels.length && hasView(db) ? { groupBy: db.view.id } : {}),
+      ...(s.levels.length && hasView(db) ? { groupBy: db.view.id } : {}),
     }).then((r) => graftChips(db, r)),
-    filtered && (s.nest || !sort) ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
+    filtered && !sort ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
-    sums && !s.levels.length ? api('GET', `/tables/${db.id}/stats`).then((r) => ({ rollups: (r.rollups ?? []).filter((x) => !x.where).map((x) => ({ field: x.targetField ?? nameFieldOf(db)?.name ?? 'Name', aggregate: x.aggregate, value: x.value, display: x.display })) })).catch(() => null) : null,
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
-  const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
+  const items = result.items;
   const live = items.filter((e) => !e.deleted);
   tableSearch.only = search && live.length === 1 ? live[0].id : null;
   setFilterTotal(db, live.length, result.all);
-  const server = serverSums(result);
-  drawDatabase(db, items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort, board,
-    sums: sums ? { ...server, grand: server.grand ?? total, subtotals: db.view?.subtotals ?? 'all' } : null });
+  drawDatabase(db, items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort });
 }
 let listWrites = Promise.resolve();
 function shareCollapsed(db, collapsed) {
@@ -5728,11 +5716,8 @@ function groupSummaryEl(db, levels, node) {
   return text ? el('span', { class: 'group-summary', title: `${f.name}: ${text}` }, text) : null;
 }
 const drawnPast = new Map();
-let revealRow = null;
 function cappedEls(db, cap, key, items, draw) {
   const memo = `${db.id}/${db.view?.id}/${db.view?.layout}/${key ?? ''}`;
-  const wanted = revealRow ? items.findIndex((i) => i.row.id === revealRow) + 1 : 0;
-  if (wanted > cap) drawnPast.set(memo, Math.max(wanted, drawnPast.get(memo) ?? 0));
   let shown = Math.max(cap, drawnPast.get(memo) ?? 0);
   if (!cap || items.length <= shown) return items.flatMap(draw);
   const more = el('button', { class: 'btn btn-sm btn-ghost-secondary wv-more', type: 'button' });
@@ -5745,266 +5730,6 @@ function cappedEls(db, cap, key, items, draw) {
   });
   relabel();
   return [...items.slice(0, shown).flatMap(draw), more];
-}
-function renderList(main, db, items, ctx) {
-  const { setup: s, all, everyone, domains, filtered, sorted, sums } = ctx;
-  const v = db.view;
-  const parentOf = (it) => {
-    if (!s.nest) return null;
-    const p = it?.fields?.[s.nest.name];
-    return (Array.isArray(p) ? p[0] : p)?.id ?? null;
-  };
-  const rowOf = (it, extra = {}) => ({
-    id: it.id, keys: s.levels.map((l) => listKeys(l, it)), parent: parentOf(it),
-    done: s.completedBy ? !!it.raw?.[s.completedBy.name] : false, deleted: !!it.deleted, item: it, ...extra,
-  });
-  const rows = items.map((it) => rowOf(it));
-  const known = new Map((everyone ?? items).map((it) => [it.id, it]));
-  if (s.nest && everyone) {
-    const have = new Set(rows.map((r) => r.id));
-    for (const r of [...rows]) {
-      const seen = new Set();
-      for (let p = r.parent; p && !have.has(p) && !seen.has(p) && known.has(p); p = parentOf(known.get(p))) {
-        seen.add(p);
-        have.add(p);
-        rows.push(rowOf(known.get(p), { keys: r.keys, done: false, ghost: true }));
-      }
-    }
-  }
-  const byPid = new Map([...known.values(), ...items].map((it) => [it.publicId, it.id]));
-  const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
-  const levels = s.levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: VP.NO_VALUE }));
-  const arranged = listCore.arrange(rows, { levels, completedBy: !!s.completedBy, nest: !!s.nest, manual, showEmpty: !filtered && !s.hideEmpty });
-  const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
-  const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
-  let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
-
-  const reload = async (focusId = null) => {
-    await keepScroll(() => showDatabase(db.id, db.view.id));
-    if (focusId) document.querySelector(`#main .list-row[data-eid="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
-  };
-  const write = async (it, values, order = null, focusId = it?.id) => {
-    const release = gridHold();
-    try {
-      if (it && Object.keys(values).length) await api('PATCH', `/entities/${it.id}`, { values });
-      if (order) await listViewWrite(db, { order });
-      await reload(focusId);
-    } catch (err) { toast(err.message, true); } finally { release(); }
-  };
-  const fold = (sec, key) => {
-    collapsed = listCore.toggleCollapsed(collapsed, key);
-    const shut = listCore.isCollapsed(collapsed, key);
-    sec.classList.toggle('shut', shut);
-    sec.querySelector(':scope > .list-group-head .list-fold')?.setAttribute('aria-expanded', String(!shut));
-    v.collapsed = collapsed;
-    listViewWrite(db, { collapsed });
-  };
-  const headingEl = (depth, node) => listHeadingEl(s, depth, node);
-  const rowEls = (item, path) => {
-    const r = item.row;
-    const it = r.item;
-    const raw = s.chip ? it.raw?.[s.chip.name] : null;
-    const chipV = raw && typeof raw === 'object' ? raw : { id: it.id, publicId: it.publicId, name: it.name, link: false, state: null, fields: [] };
-    const segs = viewCore.viewSegments(chipV);
-    const box = s.completedBy && !r.ghost ? el('input', {
-      type: 'checkbox', class: 'form-check-input list-check', 'aria-label': `${s.completedBy.name}: ${it.name || `#${it.publicId}`}`,
-      ...(r.done ? { checked: '' } : {}),
-      onchange: (e) => write(it, { [s.completedBy.name]: e.target.checked }),
-    }) : (s.completedBy ? el('span', { class: 'list-check-gap', 'aria-hidden': 'true' }) : null);
-    const grip = el('button', {
-      class: 'list-grip', type: 'button', tabindex: '-1', 'aria-label': `Move ${it.name}`,
-      title: sorted ? 'Sorted: drag into another group, or sideways to nest' : 'Drag to reorder; sideways to nest',
-    }, lucideEl('grip-vertical'));
-    const line = el('div', {
-      class: 'list-row' + (r.ghost ? ' ghost' : '') + (r.done ? ' done' : '') + (r.deleted ? ' row-deleted' : ''), role: 'listitem',
-      tabindex: r.ghost ? '-1' : '0', dataset: { eid: it.id, depth: String(item.depth) }, style: `--depth:${item.depth}`,
-      ...(r.ghost ? { title: 'Shown for its matching sub-rows; the filter leaves it out' } : {}),
-    }, grip, box,
-      el('span', { class: 'list-chip' },
-        el('a', { class: 'list-title', href: `#/entity/${it.id}`, tabindex: '-1' }, viewCore.viewTitle(chipV) || `#${it.publicId}`),
-        segs.length ? el('span', { class: 'list-segs' }, ...segs.map(viewSegmentEl)) : null));
-    line.wvPath = path;
-    line.wvItem = item;
-    if (!r.ghost) grip.addEventListener('pointerdown', (e) => listDrag(e, line));
-    return [line, ...item.children.flatMap((c) => rowEls(c, path))];
-  };
-  const addEl = (path) => {
-    const where = path.map((p) => p.label).join(listCore.SEP);
-    const name = el('input', { class: 'form-control form-control-sm list-add-name', placeholder: `Add ${db.term.singular}`, 'aria-label': `Add ${db.term.singular}${where ? ` to ${where}` : ''}` });
-    const date = s.dateField ? el('input', { class: 'form-control form-control-sm list-add-date', placeholder: s.dateField.name, 'aria-label': `${s.dateField.name}: today, fri, oct 12` }) : null;
-    const form = el('form', { class: 'list-add', dataset: { key: where } }, lucideEl('plus'), name, date);
-    form.wvPath = path;
-    form.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' || e.isComposing) return;
-      e.preventDefault();
-      form.requestSubmit();
-    });
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const text = name.value.trim();
-      if (!text) return;
-      const values = { ...filterSeed(db), ...listPathValues(s, path) };
-      if (date?.value.trim()) {
-        const day = parseNaturalDate(date.value);
-        if (!day) { toast(`“${date.value}” is not a date weave can read: try today, fri, oct 12 or 2026-10-12`, true); date.focus(); return; }
-        values[s.dateField.name] = day;
-      }
-      const release = gridHold();
-      try {
-        const made = await api('POST', `/tables/${db.id}/entities`, { name: text, values });
-        revealRow = made.id;
-        await keepScroll(() => showDatabase(db.id, db.view.id));
-        document.querySelector(`#main .list-add[data-key="${CSS.escape(where)}"] .list-add-name`)?.focus({ preventScroll: true });
-      } catch (err) { toast(err.message, true); } finally { revealRow = null; release(); }
-    });
-    return form;
-  };
-  const groupEl = (node, depth) => {
-    const shut = listCore.isCollapsed(collapsed, node.key);
-    const sec = el('section', { class: 'list-group' + (shut ? ' shut' : ''), dataset: { key: node.key, depth: String(depth) }, 'aria-label': node.key });
-    const body = node.groups
-      ? node.groups.map((g) => groupEl(g, depth + 1))
-      : [...cappedEls(db, listCore.LIST_CAP, node.key, node.items, (i) => rowEls(i, node.path)), addEl(node.path)];
-    sec.append(
-      el('div', { class: 'list-group-head', style: `--level:${depth}` },
-        el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${node.key}`, onclick: () => fold(sec, node.key) }, lucideEl('chevron-right')),
-        groupCrumbEl(node),
-        headingEl(depth, node),
-        el('span', { class: 'list-count' }, String(node.count)),
-        sums ? null : groupSummaryEl(db, s.levels, node)),
-      el('div', { class: 'list-group-body' }, ...body),
-      ...(sums && VP.subtotalAt(depth, { rollups: true, subtotals: sums.subtotals }) ? [sumEl(node.label, node.rows, depth, sums.sums.get(node.key))] : []));
-    sec.wvPath = node.path;
-    sec.wvItems = node.items ?? null;
-    return sec;
-  };
-  const sumCols = visibleCols(db);
-  const sumEl = (label, members, depth, from, grand = false) => el('div', { class: 'list-sum' + (grand ? ' grand' : ''), dataset: { sum: grand ? 'all' : label }, style: `--level:${depth}` },
-    el('b', {}, `Σ ${label} · ${VP.countText(members, db.term)}`),
-    ...sumCols.flatMap((c) => rollupCells(from?.rollups, c).map((x) => el('span', { class: 'list-sum-stat' }, `${c} ${FOOT_LABELS[x.agg]} ${x.text}`))));
-  const list = el('div', { class: 'wv-list', role: 'list', 'aria-label': `${db.name} · ${v.name}` });
-  if (arranged.groups) list.append(...arranged.groups.map((g) => groupEl(g, 0)));
-  else { list.append(...cappedEls(db, listCore.LIST_CAP, '', arranged.items, (i) => rowEls(i, [])), addEl([])); list.wvItems = arranged.items; list.wvPath = []; }
-  if (arranged.completed?.count) {
-    const c = arranged.completed;
-    const shut = listCore.isCollapsed(collapsed, c.key);
-    const sec = el('section', { class: 'list-group list-completed' + (shut ? ' shut' : ''), dataset: { key: c.key, depth: '0' }, 'aria-label': c.key });
-    sec.append(
-      el('div', { class: 'list-group-head', style: '--level:0' },
-        el('button', { class: 'list-fold', type: 'button', 'aria-expanded': String(!shut), 'aria-label': `Fold ${c.key}`, onclick: () => fold(sec, c.key) }, lucideEl('chevron-right')),
-        el('span', { class: 'list-group-label' }, c.label),
-        el('span', { class: 'list-count' }, String(c.count))),
-      el('div', { class: 'list-group-body' }, ...cappedEls(db, listCore.LIST_CAP, c.key, c.items, (i) => rowEls(i, null))));
-    sec.wvItems = c.items;
-    list.append(sec);
-  }
-  if (sums) list.append(sumEl('All', rows, 0, sums.grand, true));
-  const footer = el('div', { class: 'list-footer', role: 'status', 'aria-live': 'polite' },
-    listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term }));
-  const wrap = el('div', { class: 'card list-wrap', dataset: { density: gridDensity(db), layout: 'list' } }, list, footer);
-  wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
-  main.append(wrap);
-
-  const siblingsOf = (line) => {
-    const holder = line.closest('.list-group') ?? list;
-    return listCore.locate(holder.wvItems ?? [], line.dataset.eid);
-  };
-  const renest = (line, parentId) => {
-    const item = line.wvItem.row.item;
-    const order = sorted ? null : parentId ? listCore.moveInOrder(effective(), item.id, parentId, true) : null;
-    return write(item, { [s.nest.name]: parentId ? [parentId] : [] }, order);
-  };
-  list.addEventListener('keydown', (e) => {
-    const line = e.target.closest?.('.list-row');
-    if (!line || e.target !== line) return;
-    const visible = () => [...list.querySelectorAll('.list-row[tabindex="0"]')].filter((x) => x.offsetParent);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const all = visible();
-      const at = all.indexOf(line);
-      if (e.altKey && !sorted) {
-        const hit = siblingsOf(line);
-        const to = hit?.siblings[hit.index + (e.key === 'ArrowUp' ? -1 : 1)];
-        if (to) write(line.wvItem.row.item, {}, listCore.moveInOrder(effective(), line.dataset.eid, to.row.id, e.key === 'ArrowDown'));
-        return;
-      }
-      all[at + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      openEntity(line.dataset.eid);
-    } else if (e.key === ' ' && s.completedBy) {
-      e.preventDefault();
-      line.querySelector('.list-check')?.click();
-    } else if (e.key === 'Tab' && s.nest) {
-      const hit = siblingsOf(line);
-      if (!hit) return;
-      if (!e.shiftKey && hit.index > 0) { e.preventDefault(); renest(line, hit.siblings[hit.index - 1].row.id); }
-      if (e.shiftKey && hit.parent) {
-        e.preventDefault();
-        const up = hit.parent.row.parent && known.has(hit.parent.row.parent) ? hit.parent.row.parent : null;
-        renest(line, up);
-      }
-    }
-  });
-
-  function listDrag(down, line) {
-    if (down.button !== 0) return;
-    const inside = (row) => line.wvItem.children.some(function walk(c) { return c.row.id === row.dataset.eid || c.children.some(walk); });
-    const depth0 = line.style.getPropertyValue('--depth');
-    const modeOf = (p, start) => {
-      const dx = p.x - start.x;
-      return s.nest && dx > 40 ? 'nest' : s.nest && dx < -40 ? 'unnest' : 'move';
-    };
-    const resolve = ({ node, before, point, start }) => {
-      const mode = modeOf(point, start);
-      const target = node.classList.contains('list-row') ? node : null;
-      const sec = node.closest('.list-group:not(.list-completed)');
-      if (!target && !sec) return null;
-      let above = target?.previousElementSibling;
-      while (above && (above === line || inside(above) || !above.classList.contains('list-row'))) above = above.previousElementSibling;
-      return { target, sec, after: target ? !before : true, mode, above };
-    };
-    RO().guard(down.currentTarget);
-    RO().sortable(down, {
-      source: line,
-      items: () => [...list.querySelectorAll('.list-row, .list-add')],
-      members: () => [line, ...[...list.querySelectorAll('.list-row')].filter((r) => r !== line && inside(r))],
-      tail: (n) => n.classList.contains('list-add'),
-      zone: () => list,
-      onPlace: (placed) => {
-        const mode = modeOf(placed.point, placed.start);
-        const base = Number(placed.node.dataset.depth ?? 0);
-        line.style.setProperty('--depth', String(Math.max(0, base + (mode === 'nest' ? 1 : mode === 'unnest' ? -1 : 0))));
-      },
-      onCancel: () => line.style.setProperty('--depth', depth0),
-      onDrop: (placed) => {
-        const drop = resolve(placed);
-        if (drop) commit(drop);
-      },
-    });
-    const commit = ({ target, sec, after, mode, above }) => {
-      const item = line.wvItem.row.item;
-      const from = line.wvPath;
-      const to = target?.wvPath ?? sec?.wvPath ?? [];
-      const values = from ? listPathValues(s, to, item, from) : listPathValues(s, to, item, to.map(() => ({ key: null })));
-      if (!from && s.completedBy) values[s.completedBy.name] = false;
-      let order = null;
-      if (s.nest) {
-        const own = line.wvItem.row.parent;
-        let parent = own;
-        if (mode === 'nest' && target) {
-          const anchor = after ? target : above;
-          parent = anchor && anchor !== line ? anchor.dataset.eid : own;
-        } else if (mode === 'unnest') {
-          parent = own && known.has(own) ? parentOf(known.get(own)) : null;
-        } else if (target) parent = target.wvItem.row.parent && target.wvItem.row.parent !== item.id ? target.wvItem.row.parent : null;
-        if (parent !== own) values[s.nest.name] = parent ? [parent] : [];
-      }
-      if (!sorted && target) order = listCore.moveInOrder(effective(), item.id, target.dataset.eid, after);
-      if (!Object.keys(values).length && !order) return;
-      write(item, values, order);
-    };
-  }
 }
 function boardCardFields(db) {
   const cover = boardCore.coverField(db);
@@ -6129,7 +5854,7 @@ function renderBoard(main, db, items, ctx) {
   const byPid = new Map([...(everyone ?? []), ...items].map((it) => [it.publicId, it.id]));
   const manual = sorted ? null : (v.order ?? []).map((p) => byPid.get(p)).filter(Boolean);
   const arrangeLevels = levels.map((l, i) => ({ order: l.order, dir: l.dir, domain: listDomain(l, domains?.[i], items), nullLabel: `No ${l.f.name}` }));
-  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, nest: false, manual, showEmpty: !filtered && !s.hideEmpty });
+  const arranged = listCore.arrange(rows, { levels: arrangeLevels, completedBy: !!s.completedBy, manual, showEmpty: !filtered && !s.hideEmpty });
   let collapsed = Array.isArray(v.collapsed) ? [...v.collapsed] : undefined;
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);

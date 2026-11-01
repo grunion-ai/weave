@@ -80,7 +80,7 @@ test('the grouping signature is the group fields with their orders, in level ord
 test('collapsed groups follow the grouping across views: same signature restores', () => {
   const { w, issue } = fresh();
   w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'] });
-  w.tableView(`${issue.id}/Triage`, { layout: 'list' });
+  w.tableView(`${issue.id}/Triage`, { layout: 'board' });
   w.tableView(`${issue.id}/Standard`, { collapsed: ['High', 'Low › Nav'] });
   assert.equal(w.tableView(`${issue.id}/Triage`).collapsed, undefined, 'an ungrouped view keeps its own state');
   const triage = w.tableView(`${issue.id}/Triage`, { group: ['Severity', 'Area'] });

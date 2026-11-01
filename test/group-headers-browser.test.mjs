@@ -21,7 +21,7 @@ if (s) {
   const open = async (v, { theme = 'light', height = 900 } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1440, height }, colorScheme: theme });
     await page.goto(`${base}/#/table/${issue.id}/view/${v.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
+    await page.waitForSelector('#main :is(.wv-grid, .wv-board)');
     return page;
   };
   const heads = (page) => page.$$eval('#main tr.group-head', (trs) => trs.map((t) => ({
@@ -73,65 +73,43 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('list: nested headers show their path and the breakdown too, read in table field order with the field hidden', async () => {
-    const v = view('Standard', { fields: STANDARD_FIELDS.filter((n) => n !== 'Status'), group: ['Severity', 'Area'], rollups: false, layout: 'list', collapsed: null });
-    const page = await open(v, { height: 6000 });
-    try {
-      const got = await page.$$eval('#main .wv-list .list-group:not(.list-completed)', (ss) => ss.map((sec) => {
-        const head = sec.querySelector(':scope > .list-group-head');
-        return { key: sec.dataset.key, depth: Number(sec.dataset.depth), crumb: head.querySelector('.group-crumb')?.textContent ?? null, summary: head.querySelector('.group-summary')?.textContent ?? null };
-      }));
-      const nav = got.find((g) => g.key === 'High › Nav');
-      assert.equal(nav.crumb, 'High ›');
-      assert.equal(got.find((g) => g.key === 'High').crumb, null);
-      for (const g of got) assert.equal(g.summary ?? '', statusOf(g.key), g.key);
-      assert.doesNotMatch(await page.textContent('#main .wv-list'), /null|undefined/, 'no stray text between groups with rollups off');
-    } finally { await page.close(); }
+  const underHead = async (page) => page.evaluate(() => {
+    const top = Math.max(...[...document.querySelectorAll('#main .wv-grid thead :is(th, td)')].map((c) => c.getBoundingClientRect().bottom));
+    const x = document.querySelector('#main .wv-grid').getBoundingClientRect().left + 60;
+    const hit = document.elementFromPoint(x, top + 4);
+    const head = hit?.closest('tr.group-head');
+    if (!head) return { hit: hit?.className ?? null };
+    return { key: head.dataset.key, level: Number(head.dataset.level), gap: Math.round(head.firstElementChild.getBoundingClientRect().top - top) };
   });
 
-  const underHead = async (page, layout) => page.evaluate((layout) => {
-    const top = layout === 'list'
-      ? document.querySelector('#main > .view-header').getBoundingClientRect().bottom
-      : Math.max(...[...document.querySelectorAll('#main .wv-grid thead :is(th, td)')].map((c) => c.getBoundingClientRect().bottom));
-    const x = document.querySelector(layout === 'list' ? '#main .wv-list' : '#main .wv-grid').getBoundingClientRect().left + 60;
-    const hit = document.elementFromPoint(x, top + 4);
-    const head = hit?.closest(layout === 'list' ? '.list-group-head' : 'tr.group-head');
-    if (!head) return { hit: hit?.className ?? null };
-    const box = (layout === 'list' ? head : head.firstElementChild).getBoundingClientRect();
-    const sec = layout === 'list' ? head.closest('.list-group') : head;
-    return { key: sec.dataset.key, level: Number(sec.dataset.depth ?? sec.dataset.level), gap: Math.round(box.top - top) };
-  }, layout);
-
-  for (const layout of ['table', 'list']) {
-    test(`${layout}: the top-level header stays pinned under the column headers while its rows scroll`, async () => {
-      const v = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: layout === 'list' ? 'list' : null, collapsed: null });
-      const page = await open(v);
-      try {
-        const scroll = (y) => page.evaluate(({ y, layout }) => {
-          const box = layout === 'list' ? document.querySelector('#main') : document.querySelector('#main .wv-grid-scroll') ?? document.querySelector('#main');
-          box.scrollTop = y;
-        }, { y, layout });
-        for (const y of [1600, 4200]) {
-          await scroll(y);
-          const got = await eventually(() => underHead(page, layout), { key: 'Low', level: 0, gap: 0 });
-          assert.deepEqual(got, { key: 'Low', level: 0, gap: 0 }, `scrolled ${y}px into Low`);
-        }
-      } finally { await page.close(); }
-    });
-  }
+  test('table: the top-level header stays pinned under the column headers while its rows scroll', async () => {
+    const v = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null });
+    const page = await open(v);
+    try {
+      const scroll = (y) => page.evaluate((y) => {
+        const box = document.querySelector('#main .wv-grid-scroll') ?? document.querySelector('#main');
+        box.scrollTop = y;
+      }, y);
+      for (const y of [1600, 4200]) {
+        await scroll(y);
+        const got = await eventually(() => underHead(page), { key: 'Low', level: 0, gap: 0 });
+        assert.deepEqual(got, { key: 'Low', level: 0, gap: 0 }, `scrolled ${y}px into Low`);
+      }
+    } finally { await page.close(); }
+  });
 
   test('collapsed groups follow the grouping across views; a different order starts expanded', async () => {
     weave.tableView(`${issue.id}/Standard`, { collapsed: null });
     const a = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null });
-    const b = view('Triage', { group: ['Severity', 'Area'], layout: 'list' });
+    const b = view('Triage', { group: ['Severity', 'Area'], layout: null });
     const c = view('Reversed', { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], layout: null });
     const page = await open(a, { height: 3000 });
     try {
       await page.click('#main tr.group-head[data-key="Medium"] .group-fold');
       await page.goto(`${base}/#/table/${issue.id}/view/${b.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-list .list-group[data-key="Medium"]');
-      assert.equal(await page.locator('#main .wv-list .list-group[data-key="Medium"].shut').count(), 1, 'Triage opens with Medium collapsed');
-      assert.equal(await page.locator('#main .wv-list .list-group.shut').count(), 1);
+      await page.waitForSelector('#main tr.group-head[data-key="Medium"]');
+      assert.equal(await page.locator('#main tr.group-head[data-key="Medium"].shut').count(), 1, 'Triage opens with Medium collapsed');
+      assert.equal(await page.locator('#main tr.group-head.shut').count(), 1);
       assert.deepEqual(await eventually(() => weave.tableView(`${issue.id}/Triage`).collapsed ?? [], ['Medium']), ['Medium'], 'and the server remembers it for Triage');
       await page.goto(`${base}/#/table/${issue.id}/view/${c.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main tr.group-head[data-key="Medium"]');
@@ -163,21 +141,16 @@ if (s) {
     });
   }
 
-  test('Table, List and Board read the same group levels from the view', async () => {
+  test('Table and Board read the same group levels from the view', async () => {
     const v = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null, groups: null });
     const page = await open(v, { height: 6000 });
     try {
       const table = (await heads(page)).filter((h) => h.level === 0).map((h) => h.key);
-      view('Standard', { layout: 'list' });
-      await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .wv-list');
-      const list = await page.$$eval('#main .wv-list .list-group[data-depth="0"]:not(.list-completed)', (ss) => ss.map((x) => x.dataset.key));
       view('Standard', { layout: 'board', groups: 'stacked' });
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('#main .wv-board');
       const board = await page.$$eval('#main .wv-board .board-group[data-depth="0"]', (ss) => ss.map((x) => x.dataset.key));
       const nested = await page.locator('#main .wv-board .board-group[data-depth="1"]').count();
-      assert.deepEqual(list.filter((k) => table.includes(k)), table);
       assert.deepEqual(board.filter((k) => table.includes(k)), table);
       assert.ok(nested > 0, 'the board draws the second level too');
     } finally {
