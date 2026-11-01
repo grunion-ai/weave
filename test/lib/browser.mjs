@@ -128,6 +128,17 @@ export async function engineOf(name) {
   return extraEngines.get(name);
 }
 
+const barEngines = new Map();
+test.after(async () => {
+  for (const browser of barEngines.values()) await browser?.close().catch(() => {});
+  barEngines.clear();
+});
+export async function barsOnEngine(name) {
+  if (!pw) return null;
+  if (!barEngines.has(name)) barEngines.set(name, pw[name] ? await pw[name].launch({ ignoreDefaultArgs: ['--hide-scrollbars'] }).catch(() => null) : null);
+  return barEngines.get(name);
+}
+
 export async function painted(page, selector, { timeout = 30000, state } = {}) {
   try {
     await page.waitForSelector(selector, state ? { timeout, state } : { timeout });

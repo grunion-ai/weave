@@ -1402,8 +1402,16 @@ test('the Fields list reserves its scrollbar gutter and insets its rows to match
   assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
 });
 
-test('one thin scroll bar spec overrides Tabler in every engine (Issue #956)', () => {
-  assert.equal(rulesFor('*')['scrollbar-width'], 'thin', 'Chromium, Firefox and a WebKit that reads scrollbar-width draw the native thin bar and skip the pseudo rules');
+test('one thin scroll bar spec overrides Tabler in every engine (Issues #956, #1310)', () => {
+  assert.match(CSS, /@supports not selector\(::-webkit-scrollbar\)\s*\{\s*\*\s*\{\s*scrollbar-width:\s*thin;?\s*\}/, 'an engine with no pseudo rules, Firefox, draws the native thin bar');
+  assert.doesNotMatch(CSS, /^\*\s*\{[^}]*scrollbar-width/m, 'a bare scrollbar-width makes Chromium and WebKit skip the pseudo rules and draw what the OS says');
+  const color = rulesFor('*')['scrollbar-color'];
+  assert.equal(color, 'auto', 'Tabler sets scrollbar-color on *, which also turns the pseudo rules off');
+  for (const tabler of ['pre', '.modal-body']) assert.equal(rulesFor(tabler)['scrollbar-color'], 'auto', `Tabler sets it again on ${tabler}`);
+  assert.equal(px(rulesFor('::-webkit-scrollbar-track:vertical')['margin-block']), 8, 'bar ends stop short of a small corner');
+  assert.equal(px(rulesFor('::-webkit-scrollbar-track:horizontal')['margin-inline']), 8);
+  assert.equal(px(rulesFor('::-webkit-scrollbar-thumb')['min-height']), 32, 'a thumb on a 2,000-row grid stays the same size to grab in both engines');
+  assert.equal(px(rulesFor('::-webkit-scrollbar-thumb')['min-width']), 32);
   for (const scope of ['', '.modal-body', 'pre']) {
     const bar = rulesFor(`${scope}::-webkit-scrollbar`);
     assert.equal(bar.width, '8px', `${scope || 'every element'}: a WebKit without scrollbar-width gets 8px in place of Tabler's 1rem`);

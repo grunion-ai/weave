@@ -66,7 +66,7 @@ test('the sidebar anchors its name and search at the top, and pins New space the
   const pinned = rulesFor('.nav-pinned');
   const list = rulesFor('#nav');
   assert.equal(rulesFor('#sidebar').overflow, 'hidden', 'the sidebar frame never scrolls, so its bar cannot run beside the head or the foot (Issue #957)');
-  assert.equal(list['overflow-y'], 'auto', 'the space list is the one scroll container (Issues #451, #957)');
+  assert.match(list['overflow-y'], /^(auto|scroll)$/, 'the space list is the one scroll container (Issues #451, #957)');
   assert.equal(list['min-height'], '0', 'the list shrinks below its content, so the head and the foot keep their room');
   assert.equal(list['overscroll-behavior'], 'contain', 'a wheel past the list end stops there (Issue #451)');
   assert.equal(list['scrollbar-gutter'], 'stable', 'the list keeps its width when overflow comes and goes');
