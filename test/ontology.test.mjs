@@ -17,8 +17,8 @@ const groups = () => [...ONTOLOGY.levels, ...ONTOLOGY.constituents, ...ONTOLOGY.
 
 test('the ontology has one core kind, and the entity levels are its levels', () => {
   assert.equal(ONTOLOGY.core.key, 'entity', 'the core kind is the entity');
-  assert.deepEqual(ONTOLOGY.levels.map((l) => l.key), ['workspace', 'space', 'table', 'field', 'row'],
-    'the levels are workspace > space > table > field > row');
+  assert.deepEqual(ONTOLOGY.levels.map((l) => l.key), ['workspace', 'space', 'table', 'field', 'record'],
+    'the levels are workspace > space > table > field > record');
   for (const l of ONTOLOGY.levels) assert.equal(l.isEntity, true, `${l.key} must be an entity`);
 });
 
@@ -172,7 +172,7 @@ test('the doc documents structure-as-tables, and the config fields are real', ()
 test('a space is defined as the unit of meaning, in the engine and the glossary alike (Feature #278)', () => {
   const space = ONTOLOGY.levels.find((l) => l.key === 'space');
   assert.equal(space.definition,
-    'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in System/Spaces is the same object seen as data.');
+    'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its record in System/Spaces is the same object seen as data.');
   const row = DOC.split('\n').find((l) => l.startsWith('| **Space** |'));
   assert.ok(row, 'ONTOLOGY.md has a Space row');
   assert.equal(row.split(' | ').at(-1).replace(/ \|$/, ''),

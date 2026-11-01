@@ -64,7 +64,7 @@ export function fieldHints(field, { sent = {}, tables = [] } = {}) {
   if (dropped.length) hints.push(`Ignored ${dropped.join(', ')}: ${type} takes ${[...takes].join(', ')}.`);
   if (type === 'text') {
     const table = tables.find((t) => singular(t) === singular(name));
-    if (table) hints.push(`'${name}' names the ${table} table, so it is a relation: weave_update_field {type:"relation", config:{targetDb:"${table}"}} links each value to the ${table} row of that name.`);
+    if (table) hints.push(`'${name}' names the ${table} table, so it is a relation: weave_update_field {type:"relation", config:{targetDb:"${table}"}} links each value to the ${table} record of that name.`);
     else if (MONEY.test(name) || FIGURE.test(name)) hints.push(`'${name}' holds figures: weave_update_field {type:"number"${MONEY.test(name) ? ', config:{format:"currency", currency:"USD"}' : ''}} so it sums and aligns.`);
   }
   if (type === 'number' && MONEY.test(name) && config.format !== 'currency') {

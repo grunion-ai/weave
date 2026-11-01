@@ -30,7 +30,7 @@ const liveEntity = (weave, id) => {
 };
 
 const invalid = (msg) => new WeaveError(msg, 'invalid');
-const registry = (what) => invalid(`${what} belongs to the system registry; a share reaches the rows people made`);
+const registry = (what) => invalid(`${what} belongs to the system registry; a share reaches the records people made`);
 const gone = (what, ref) => new WeaveError(`${what} '${ref}' not found`, 'not-found');
 
 function resolveScope(weave, scope) {
@@ -127,7 +127,7 @@ export function mint(weave, opts = {}) {
   let submissionFormId;
   if (mode === 'submit') {
     const form = getForm(weave, formId);
-    if (target.kind !== 'table' || form.kind !== 'Row' || form.tableId !== target.id || form.owner !== weave || !form.shareOnly) throw invalid('Submission links require a share-only row form on the shared table');
+    if (target.kind !== 'table' || form.kind !== 'Row' || form.tableId !== target.id || form.owner !== weave || !form.shareOnly) throw invalid('Submission links require a share-only record form on the shared table');
     submissionFormId = form.id;
   }
   const grant = {
@@ -306,7 +306,7 @@ export function shareDoor(path, authz) {
 const answer = (status, data) => ({ status, data });
 const refuse = (status, error) => answer(status, { error, code: status === 404 ? 'not-found' : 'forbidden' });
 const missing = () => refuse(404, 'Not found');
-const OUTSIDE = 'A share link reaches the rows, documents and files in its scope, nothing else';
+const OUTSIDE = 'A share link reaches the records, documents and files in its scope, nothing else';
 
 const OMIT_SELECTED = new Set(['relation', 'lookup', 'rollup', 'formula', 'view', 'field']);
 
@@ -376,7 +376,7 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
     const db = tableOf(m[1]);
     if (!db || !touches(weave, grant, db)) return missing();
     if (m[2] === 'entities' && method === 'POST') {
-      if (!withinScope(weave, grant, { tableId: db.id })) return refuse(403, 'This share link reaches one row; it cannot add rows beside it');
+      if (!withinScope(weave, grant, { tableId: db.id })) return refuse(403, 'This share link reaches one record; it cannot add records beside it');
       return rung >= RUNG.manage ? null : refuse(403, `A ${grant.mode} link cannot add rows; that takes manage`);
     }
     if (!(m[2] === 'entities' ? read : method === 'POST')) return refuse(403, OUTSIDE);
@@ -409,12 +409,12 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
     if (read && (tail === '' || tail === 'doc')) return null;
     if (method === 'DELETE' && tail === '') {
       if (rung < RUNG.manage) return refuse(403, `A ${grant.mode} link cannot delete rows; that takes manage`);
-      return searchParams?.get('hard') ? refuse(403, 'A share link moves rows to the trash; it never purges them') : null;
+      return searchParams?.get('hard') ? refuse(403, 'A share link moves records to the trash; it never purges them') : null;
     }
     const writes = (tail === '' && method === 'PATCH') || (tail === 'doc' && ['PUT', 'POST'].includes(method))
       || (['state', 'link', 'unlink'].includes(tail) && method === 'POST');
     if (!writes) return refuse(403, OUTSIDE);
-    return rung >= RUNG.edit ? null : refuse(403, `A ${grant.mode} link cannot change rows; that takes edit`);
+    return rung >= RUNG.edit ? null : refuse(403, `A ${grant.mode} link cannot change records; that takes edit`);
   }
   return refuse(403, OUTSIDE);
 }
@@ -429,7 +429,7 @@ const md = (s) => String(s).replace(/\|/g, '¦').replace(/[[\]]/g, (c) => (c ===
 
 function rowsTable(weave, db, items, base, fieldIds = db.fieldOrder, grant = null) {
   const cols = fieldIds.map((id) => db.fields[id]).filter((f) => f && f.type !== 'document' && f.type !== 'view' && !(grant?.scope.kind === 'entities' && OMIT_SELECTED.has(f.type)));
-  if (!items.length) return '_No rows._';
+  if (!items.length) return '_No records._';
   const lines = [`| ${cols.map((f) => md(f.name)).join(' | ')} |`, `|${cols.map(() => '---').join('|')}|`];
   for (const item of items) {
     const e = sharedRead(weave, grant, item.id);
@@ -505,7 +505,7 @@ export function sharePage(weave, grant, rest, { method, prefix = '', searchParam
     const v = own(views(weave), m[1]);
     const blocks = (v.blocks ?? []).map((b) => {
       const db = liveTable(weave, b.dbId);
-      if (!db) return '## (deleted table)\n\n_No rows._';
+      if (!db) return '## (deleted table)\n\n_No records._';
       return `## ${md(weave.qualifiedName(db))}\n\n${rowsTable(weave, db, rowsIn(weave, grant, db, b.where), base)}`;
     });
     return { html: page(v.name, count(blocks.length, 'block'), blocks.join('\n\n')) };

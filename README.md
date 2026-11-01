@@ -47,7 +47,7 @@
 
 ## For agents
 
-weave stores structured work (tables, rows, relations, documents) in one SQLite
+weave stores structured work (tables, records, relations, documents) in one SQLite
 file, and an agent drives it over MCP, REST or the CLI.
 
 - Connect over MCP: `node bin/weave.js mcp --data <file.db>`, the same as
@@ -63,7 +63,7 @@ file, and an agent drives it over MCP, REST or the CLI.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/stack-dark.gif">
-    <img src="docs/stack-light.gif" alt="weave as a stack of four layers, top to bottom: agents calling weave_query and weave_update_entity over MCP, REST and CLI; documents on every row; tables with relations and rollups; one SQLite file named acme.db" width="640">
+    <img src="docs/stack-light.gif" alt="weave as a stack of four layers, top to bottom: agents calling weave_query and weave_update_entity over MCP, REST and CLI; documents on every record; tables with relations and rollups; one SQLite file named acme.db" width="640">
   </picture>
 </p>
 
@@ -178,14 +178,14 @@ values so an agent reads them instead of guessing. Full map:
 
 ## Screenshots
 
-| Documents on every row | Relation map | Search across workspaces |
+| Documents on every record | Relation map | Search across workspaces |
 | --- | --- | --- |
 | <img src="docs/screenshots/document.png" alt="weave entity page: a markdown document rendered beside the entity's fields" width="290"> | <img src="docs/screenshots/map.png" alt="weave relation map of a Launch workspace: Milestone, Person and Task tables with their row counts, joined by relation lines with a cardinality label" width="290"> | <img src="docs/screenshots/search.png" alt="weave command-K search palette showing cross-workspace results with copyable permalinks" width="290"> |
 | Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. | The schema, drawn: each table with its row count, and relations labelled with cardinality. Automations appear on the same map. | ⌘K across every workspace, backed by SQLite FTS5, with copyable permalinks. |
 
 <img src="docs/screenshots/dock.png" alt="weave table with one row opened in the dock beside it, the breadcrumb on one line above the table toolbar" width="900">
 
-Open any row and it docks beside its table, so the entity and the rows around it stay in view together.
+Open any record and it docks beside its table, so the entity and the records around it stay in view together.
 
 | Kanban board | Phone layout |
 | --- | --- |
@@ -201,7 +201,7 @@ Open any row and it docks beside its table, so the entity and the rows around it
 | License | MIT, open source | Proprietary | Proprietary | Proprietary |
 | Where the data lives | A `.db` file you own | Vendor cloud | Vendor cloud | Vendor cloud |
 | Pricing | Free to self-host | Per seat, per month | Per seat, per month | Per seat, per month |
-| Row / record caps | Your disk | Plan-tiered | Plan-tiered | Plan-tiered |
+| Record / record caps | Your disk | Plan-tiered | Plan-tiered | Plan-tiered |
 | Agent access | MCP server, REST and CLI, against a file you own | Set by the vendor | Set by the vendor | Set by the vendor |
 | Runs offline | Yes | No | No | No |
 | Telemetry | None | Vendor-defined | Vendor-defined | Vendor-defined |
@@ -225,7 +225,7 @@ more mature than weave. They differ mainly in what they optimize for:
 
 | Area | Details |
 | --- | --- |
-| Data model | Spaces → tables → entities. Field types: text, number, rating (icons you click to fill, 0 to a max), date, date range, checkbox, toggle (a switch with two named states), url, email, select, multiselect, workflow states, attachments (files with small previews; one can be the row's cover picture), avatar (a row's face on its chip, card and header), bidirectional relations, lookups, rollups (count, sum, avg, median, min, max, range, stdev, distinct, filled, empty, join, computed over a relation or over a whole table from the space's own row, which is what the grid footer draws), formulas, and any number of markdown document fields per entity. |
+| Data model | Spaces → tables → entities. Field types: text, number, rating (icons you click to fill, 0 to a max), date, date range, checkbox, toggle (a switch with two named states), url, email, select, multiselect, workflow states, attachments (files with small previews; one can be the record's cover picture), avatar (a record's face on its chip, card and header), bidirectional relations, lookups, rollups (count, sum, avg, median, min, max, range, stdev, distinct, filled, empty, join, computed over a relation or over a whole table from the space's own record, which is what the grid footer draws), formulas, and any number of markdown document fields per entity. |
 | Statistics | `weave stats <table>` (also `weave_stats` and `GET /api/tables/:ref/stats`): every column summarised (five-number summary, stdev and a histogram for numbers, ranked distributions for chips, earliest/latest/span for dates), grouped with `--by`, narrowed with `--where`, cut to one column and its rollups with `--field`. |
 | Views | Every table view takes a layout: table, list or board. Board draws kanban columns or a picture gallery with small, medium or large covers and adds swimlanes from a second group level; drag a card to another column or lane to change its field, with Undo. Pick two to four cards to Compare them side by side, or drop a picture on a card to set its cover. The View pane beside the table holds filters, sort (three keys), group (five levels, with subtotals) and saved views, and `weave_query` can name a saved view. Entity pages dock beside the table or open full page, and the relation map draws the schema with its automations. Inline editing everywhere. |
 | Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams, raw HTML and math render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. Math is KaTeX only (`$…$` / `$$…$$`, vendored + offline); the other fence engines Vditor knows (graphviz, echarts, plantuml, mindmap, abc, flowchart) are deliberately not vendored, so those fences stay plain code blocks. |
@@ -264,7 +264,7 @@ set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
 `weave_import_csv`, `weave_vocabulary`, `weave_workspace`, `weave_search`,
-`weave_build` for spaces, tables, fields, relations and rows in one call) and
+`weave_build` for spaces, tables, fields, relations and records in one call) and
 `weave_call`, whose description lists every other tool (`weave_set_doc`,
 `weave_link`, `weave_set_state`, `weave_update_table`, `weave_apply_schema`,
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
@@ -277,13 +277,13 @@ order, hidden columns, saved views) without a human opening the UI.
 Two things make that practical. `weave_vocabulary` returns every value a config
 key will accept **and what the choice looks like on screen**, so an agent picking
 a color or an icon is reading rather than guessing. And the meta-model means the
-schema is data: the rows of `System/Spaces`, `System/Tables` and
+schema is data: the records of `System/Spaces`, `System/Tables` and
 `System/Fields` *are* the spaces, tables and fields, so an entity write on a
-registry row runs the same validation as the schema verb: a field's whole shape
+registry record runs the same validation as the schema verb: a field's whole shape
 edits through its `Definition`, a table's column order through `Field Order`.
 The registry lives once, at the weave root (the default workspace): a
-`Workspaces` table holds one row per workspace the hub serves, every registry
-row carries a `Workspace` relation, and a row edit routes to the workspace that
+`Workspaces` table holds one record per workspace the hub serves, every registry
+record carries a `Workspace` relation, and a record edit routes to the workspace that
 owns it.
 
 **REST** and **CLI** cover the same ground:
@@ -346,9 +346,9 @@ Stated plainly, so you can rule it out fast:
 
 - **No field- or row-level permissions for accounts.** Each account holds one of
   three roles in a workspace: an observer reads and comments, an editor writes
-  rows, an architect also changes structure, accounts and keys. An architect can
-  mint a share link that opens one row, table, space or saved view to whoever
-  holds it, but no rule narrows an account's own role to one space, row or field.
+  records, an architect also changes structure, accounts and keys. An architect can
+  mint a share link that opens one record, table, space or saved view to whoever
+  holds it, but no rule narrows an account's own role to one space, record or field.
 - **Auth is off until you turn it on.** Agents carry `wv_` tokens and people
   sign in through one OpenID Connect provider, but only after
   `weave workspace require-auth`. Until then, anyone who reaches the port can do
@@ -402,9 +402,9 @@ Yes. Give each person an account at a role (observer, editor or architect),
 run `weave workspace require-auth`, and let them sign in through your OpenID
 Connect provider. Every change lands in the audit log under the account that
 made it. For someone without an account, an architect mints a share link to one
-row, table, space, saved view or the whole workspace, at read, edit or manage
+record, table, space, saved view or the whole workspace, at read, edit or manage
 access, valid for thirty days unless renewed. Account roles still cover the
-whole workspace: no rule narrows an account to one space, row or field.
+whole workspace: no rule narrows an account to one space, record or field.
 
 **Is there a hosted version?**
 Yes: weave cloud at https://weave.grunion.ai runs this repository's code behind
@@ -451,7 +451,7 @@ anyone else can reach a hosted install, put a door in front of it (see
 then refuses a caller without a `wv_` token or a signed-in session.
 
 Roles stop at the workspace. An observer reads and comments, an editor writes
-rows, and an architect changes structure, accounts and keys.
+records, and an architect changes structure, accounts and keys.
 
 A document of kind `html` renders on the application's origin, so script an
 editor places in one runs for whoever opens it. We are reviewing that

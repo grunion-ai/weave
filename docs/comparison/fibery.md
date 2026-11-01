@@ -34,7 +34,7 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 | Table / board / list views | Table view with Table, List and Board layouts | Board draws kanban columns, a picture gallery and swimlanes. |
 | Relation diagram | Relation map | Tables, cardinalities, and the automation layer in one picture. |
 | Whiteboards, Timeline, Calendar, Reports | — | Not built. |
-| Forms | Forms | Public links at `/f/<id>` add one row to one table, with prefill links. |
+| Forms | Forms | Public links at `/f/<id>` add one record to one table, with prefill links. |
 | Portals | — | Not built. |
 | Users, permissions, guest access | Accounts and roles | Three roles per workspace and read-only share links for saved views; no per-space permissions or guest seats. |
 | Integrations (Jira, GitHub, Slack…) | Webhooks + REST | Outbound webhooks and a full REST API; no connector catalog. |
@@ -47,7 +47,7 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 - **An official CLI.** Fibery has no first-party CLI; weave's covers the whole
   surface — schema, entities, documents, search, import/export.
 - **An MCP server in the box.** 65 tools including schema design, so an agent
-  can create spaces, tables, relations, and automations, not just rows.
+  can create spaces, tables, relations, and automations, not just records.
 - **Documents as plain URLs.** `/e/Task#12/doc.md`, `.html`, `.pdf` render
   directly, with Mermaid diagrams in place and a whole-entity export that
   paginates one page per document.
@@ -82,7 +82,7 @@ tool, not near-term roadmap items.
 
 Fibery exports to CSV per database. Recreate the spaces and tables in weave
 (UI, CLI, or by handing an agent the MCP server and the exported headers), load
-rows with `import` / `weave_import_csv`, then rebuild relations, lookups,
+records with `import` / `weave_import_csv`, then rebuild relations, lookups,
 rollups, and formulas on top. Rich-text fields come across as markdown into
 document fields.
 

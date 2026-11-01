@@ -3105,7 +3105,7 @@ function entityAvatarEl(entity, db, refresh) {
   });
 }
 function relationChipEl(f, s, { onRemove = null } = {}) {
-  if (s.locked) return el('span', { class: 'k k-rel k-locked', title: 'A row in a private space you are not a member of' }, iconEl('lucide:lock', 'wv-icon wv-icon-xs'), el('span', {}, s.name || 'Private'));
+  if (s.locked) return el('span', { class: 'k k-rel k-locked', title: 'A record in a private space you are not a member of' }, iconEl('lucide:lock', 'wv-icon wv-icon-xs'), el('span', {}, s.name || 'Private'));
   const v = s.chip ?? { id: s.id, publicId: s.publicId, name: s.name, link: false, state: null, fields: [], ...(s.avatar ? { avatar: s.avatar } : {}) };
   return viewChipEl(v, {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
@@ -3967,7 +3967,7 @@ async function showSettings() {
   if (typeof ws?.linkPreview === 'boolean') {
     main.append(el('div', { class: 'card settings-link-preview' },
       el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
-      el('p', { class: 'settings-note' }, 'A row permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
+      el('p', { class: 'settings-note' }, 'A record permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
       paneSwitch({
         label: 'Link preview before sign-in', on: ws.linkPreview,
         onChange: async (on) => {
@@ -3983,7 +3983,7 @@ async function showSettings() {
   ];
   const purge = el('div', { class: 'card settings-purge' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Delete forever')),
-    el('p', { class: 'settings-note' }, 'Rows and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
+    el('p', { class: 'settings-note' }, 'Records and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
   if (!gone.length) purge.append(el('div', { class: 'empty-note' }, 'Nothing in the trash.'));
   else {
     const rows = el('tbody');
@@ -4273,7 +4273,7 @@ async function openPrefill(dbId, query) {
       class: 'btn btn-sm wv-prefill-copy', type: 'button',
       onclick: (ev) => copyText(weavePrefill.link(prefillBase(db), prefillValues(ev.currentTarget.form, fields)), 'Create link copied'),
     }, 'Copy create link'));
-  tray(`New ${db.term?.singular ?? 'row'}`, [body], async () => {
+  tray(`New ${db.term?.singular ?? 'record'}`, [body], async () => {
     const made = await api('POST', `/tables/${db.id}/entities`, { values: prefillValues(body.closest('form'), fields) });
     await loadSchema();
     location.hash = `#/table/${db.id}?e=${made.id}`;
@@ -4305,7 +4305,7 @@ function setFilterTotal(db, x, n) {
   const c = filterCounts.get(db.id);
   const out = document.querySelector(':is(.table-filter-popover, #view-pane) .filter-total');
   if (!out || !c || out.closest('.chip-pop, #view-pane')?.tableId !== db.id) return;
-  const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'rows'}`;
+  const text = `${c.x} of ${c.n} ${db.term?.plural ?? 'records'}`;
   if (out.textContent !== text) out.textContent = text;
   out.classList.remove('stale');
 }
@@ -4748,7 +4748,7 @@ function tableViewButton(ref) {
       el('hr'),
       el('button', { class: 'chip-pop-row view-reset', type: 'button', onclick: () => reset(true, current) }, lucideEl('undo'), 'Reset view'),
       el('button', { class: 'chip-pop-row view-clear', type: 'button', onclick: () => reset(false, current) }, lucideEl('list-filter'), 'Clear filters, search, and sorting'),
-      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset shows every field in schema order as a Table with no grouping, turns off filters, sorting, search, deleted rows and the Σ rollup row, and sets Comfortable density.'),
+      el('p', { class: 'table-control-note' }, 'Changes save automatically. Reset shows every field in schema order as a Table with no grouping, turns off filters, sorting, search, deleted records and the Σ rollup row, and sets Comfortable density.'),
     ];
     pop = tableControlPopover(btn, db, 'table-view-popover', build(db));
     if (!pop) return;
@@ -5005,7 +5005,7 @@ function levelsBlock(db, kind, save) {
       grain.input.addEventListener('change', () => put({ grain: grain.input.value }));
     }
     if (!isSort && f?.type === 'relation') {
-      heading = segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked row's Chip heads the group" }], l.heading ?? 'label', (h) => put({ heading: h }));
+      heading = segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked record's Chip heads the group" }], l.heading ?? 'label', (h) => put({ heading: h }));
       heading.classList.add('group-heading');
     }
     const act = (cls, icon, label, run, off = false) => el('button', {
@@ -5050,7 +5050,7 @@ function levelsBlock(db, kind, save) {
     out.push(add);
   } else out.push(el('div', { class: 'vp-limit' }, `${cap} of ${cap} ${word} levels in use.`));
   const last = v.group?.length ? v.group[v.group.length - 1].field : null;
-  if (isSort) out.push(el('p', { class: 'vp-hint' }, last ? `Groups order the rows first. These levels order rows inside each ${last} group. Ties fall back to #.` : 'Ties after the last level fall back to #.'));
+  if (isSort) out.push(el('p', { class: 'vp-hint' }, last ? `Groups order the records first. These levels order records inside each ${last} group. Ties fall back to #.` : 'Ties after the last level fall back to #.'));
   else if (levels.length) {
     out.push(el('div', { class: 'vp-links' },
       el('button', { class: 'btn btn-sm btn-ghost-primary vp-collapse-all', type: 'button', onclick: () => save({ collapsed: drawnGroupKeys(db) }) }, 'Collapse all'),
@@ -5315,10 +5315,10 @@ function renderViewPane(pane, db, { force = false } = {}) {
   };
   const foot = el('div', { class: 'vp-foot' },
     el('button', { class: 'btn btn-sm view-reset', type: 'button', dataset: { vpKey: 'reset' },
-      title: 'Every field in schema order as a Table with no grouping; no filters, sorting, search, deleted rows or Σ rollups; Comfortable density',
+      title: 'Every field in schema order as a Table with no grouping; no filters, sorting, search, deleted records or Σ rollups; Comfortable density',
       onclick: () => resetView(true) }, lucideEl('undo'), 'Reset view'),
     el('button', { class: 'btn btn-sm view-clear', type: 'button', dataset: { vpKey: 'clear' },
-      title: 'Clear filters, deleted rows, search, sorting and grouping', onclick: () => resetView(false) }, lucideEl('x'), 'Clear all'));
+      title: 'Clear filters, deleted records, search, sorting and grouping', onclick: () => resetView(false) }, lucideEl('x'), 'Clear all'));
   const scroll = el('div', { class: 'vp-scroll' }, el('div', { class: 'vp-picker' }, pick, views), ...sections);
   pane.replaceChildren(
     el('div', { class: 'vp-head' }, el('strong', {}, 'View'),
@@ -7677,7 +7677,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         el('th', { class: 'sel-head' },
           el('label', { class: 'sel-hit' },
             el('input', {
-              class: 'sel-box form-check-input', type: 'checkbox', 'aria-label': 'Select every row',
+              class: 'sel-box form-check-input', type: 'checkbox', 'aria-label': 'Select every record',
               onclick: () => {
                 const loaded = loadedIds();
                 const L = SEL();
@@ -8656,7 +8656,7 @@ function rolledBackText(out, verb) {
   const parts = [
     n('restored', 'value back', 'values back'),
     n('left', 'edited since, kept', 'edited since, kept'),
-    n('converted', 'newer row converted', 'newer rows converted'),
+    n('converted', 'newer record converted', 'newer records converted'),
   ].filter(Boolean);
   return `${out.field.name} ${verb}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }
@@ -8850,7 +8850,7 @@ async function footerPicker(anchor, db, col) {
   const build = () => [
     el('div', { class: 'chip-pop-title' }, `${col} · space rollups`),
     ...aggs.map(row),
-    el('div', { class: 'chip-pop-note' }, 'Each box is a rollup field on this space\'s row'),
+    el('div', { class: 'chip-pop-note' }, 'Each box is a rollup field on this space\'s record'),
   ];
   const opened = eyeWrites.then(load);
   eyeWrites = opened.catch(() => {});
@@ -8970,7 +8970,7 @@ async function useTemplateDialog(space) {
     pickerSelect({ name: 'workspace', title: 'Workspace', options: others.map((w) => ({ id: w.name, label: w.name })), value: others[0].name }),
     el('label', { class: 'form-label wv-start-label' }, 'Name'),
     el('input', { name: 'name', class: 'form-control', value: space.space, required: '' }),
-    el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Rows stay here.'),
+    el('div', { class: 'form-hint' }, 'Copies the tables, fields and views. Records stay here.'),
     said,
   ] : [el('p', { class: 'use-template-none' }, 'There is no other workspace to build in. Create one first, from the workspace rail.')];
   tray(`Use ${space.space} as a template`, body, async (fd) => {
@@ -11062,10 +11062,10 @@ function emptyWorkspace() {
   if (!state.canManageForms) return el('div', { class: 'card wv-start' }, el('div', { class: 'card-body' },
     el('h2', {}, 'You’re in the workspace'),
     el('p', { class: 'wv-start-lead' }, 'There are no tables here yet. Ask a workspace architect to add the first table or template.'),
-    el('p', {}, state.accountRole === 'editor' ? 'As an editor, you can add and edit rows once a table is ready.' : 'As an observer, you can read and comment once your team adds content.')));
+    el('p', {}, state.accountRole === 'editor' ? 'As an editor, you can add and edit records once a table is ready.' : 'As an observer, you can read and comment once your team adds content.')));
   return el('div', { class: 'card wv-start' },
     el('div', { class: 'card-body' },
-      el('p', { class: 'wv-start-lead' }, 'A table holds rows, and you choose its fields. Start with a new table or a template.'),
+      el('p', { class: 'wv-start-lead' }, 'A table holds records, and you choose its fields. Start with a new table or a template.'),
       el('button', { class: 'btn btn-primary wv-start-new', onclick: () => tableTray() }, '+ New table'),
       el('div', { class: 'wv-start-label' }, 'Templates'),
       el('div', { class: 'wv-start-templates' },
@@ -11443,7 +11443,7 @@ async function showHome() {
     return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
       el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
       el('span', { class: 'spacer' }),
-      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? 'row' : 'rows'}`));
+      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? (db.term?.singular ?? 'record') : (db.term?.plural ?? 'records')}`));
   });
   main.replaceChildren(
     viewHeader({

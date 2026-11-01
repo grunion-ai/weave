@@ -445,7 +445,7 @@ export const TYPE_MIGRATIONS = {
 export const ONTOLOGY = {
   core: {
     key: 'entity', name: 'Entity', definition:
-      'One addressable thing: it has an id, a public id, a set of fields with values, and a dedicated entity view. Workspaces, spaces, tables and the rows inside tables are all entities; they differ by level, not by kind.',
+      'One addressable thing: it has an id, a public id, a set of fields with values, and a dedicated entity view. Workspaces, spaces, tables and the records inside tables are all entities; they differ by level, not by kind.',
     identity: 'uuid, plus a per-table public id addressed as Table#n',
     storedIn: 'state.entities',
     view: '/e/<id> — the entity view: its fields, its documents, its comments, its files, its activity',
@@ -457,33 +457,33 @@ export const ONTOLOGY = {
     {
       key: 'workspace', name: 'Workspace', isEntity: true, registry: 'System/Workspaces', storedIn: 'state.meta',
       contains: 'spaces', identity: 'the .db file; a name and an optional logo',
-      definition: 'One workspace file and everything in it. The top level of the hierarchy. Each workspace owns its users and system registry. Its spaces, tables and fields relate to its own workspace row; the hub routes between independent workspace files.',
+      definition: 'One workspace file and everything in it. The top level of the hierarchy. Each workspace owns its users and system registry. Its spaces, tables and fields relate to its own workspace record; the hub routes between independent workspace files.',
       api: ['describeSchema', 'ontology', 'spaceVersions', 'exportJSON', 'importJSON', 'setWorkspaceLogo'],
     },
     {
       key: 'space', name: 'Space', isEntity: true, registry: 'System/Spaces', storedIn: 'state.spaces',
       contains: 'tables', identity: 'uuid; name unique in the workspace, and the left half of Space/Table',
-      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its row in System/Spaces is the same object seen as data.',
+      definition: 'A space is a workspace\'s unit of meaning: the tables of one area, such as CRM or Development, each addressed as Space/Table. It carries its own schema version, and its record in System/Spaces is the same object seen as data.',
       api: ['createSpace', 'listSpaces', 'updateSpace', 'deleteSpace'],
     },
     {
       key: 'table', name: 'Table', isEntity: true, registry: 'System/Tables', storedIn: 'state.tables',
-      contains: 'rows', identity: 'uuid; qualified name Space/Table',
-      definition: 'An entity that is also an entity TYPE: the ordered set of fields every row inside it follows.',
+      contains: 'records', identity: 'uuid; qualified name Space/Table',
+      definition: 'An entity that is also an entity TYPE: the ordered set of fields every record inside it follows.',
       api: ['createTable', 'listTables', 'updateTable', 'moveTable', 'duplicateTable', 'deleteTable', 'qualifiedName'],
     },
     {
       key: 'field', name: 'Field', isEntity: true, registry: 'System/Fields', storedIn: 'table.fields',
       contains: 'nothing', identity: 'uuid; name unique within its table',
-      definition: 'One typed, named slot on a table. A field is not itself a row of data, but it has a row in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
+      definition: 'One typed, named slot on a table. A field is not itself a record of data, but it has a record in the Fields registry — carrying its type and its definition — so the schema is editable as data.',
       api: ['addField', 'addRelation', 'updateField', 'deleteField', 'restoreField', 'materializeField'],
     },
     {
-      key: 'row', name: 'Row', isEntity: true, registry: null, storedIn: 'state.entities',
+      key: 'record', name: 'Record', isEntity: true, registry: null, storedIn: 'state.entities',
       contains: 'its values, documents, comments, files and activity',
       identity: 'uuid; public id addressed as Table#n',
-      definition: 'An entity inside a table, typed by that table. Called whatever the domain calls it — record, item, entry, customer, company, account — without changing what it is.',
-      note: 'A row needs no registry: it IS the data, and the table it belongs to is its entity type.',
+      definition: 'An entity inside a table, typed by that table. Called whatever the domain calls it — item, entry, customer, company, account — without changing what it is. A grid draws it as a row, a board as a card.',
+      note: 'A record needs no registry: it IS the data, and the table it belongs to is its entity type.',
       api: ['createEntity', 'updateEntity', 'deleteEntity', 'restoreEntity', 'listEntities'],
     },
   ],
@@ -530,13 +530,13 @@ export const ONTOLOGY = {
     },
     {
       key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a row of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the row number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a record of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the record number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',
-      definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a row by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the row as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
+      definition: 'A named token holder with a role — architect, editor, or observer (admin, writer and reader before 2026-10-02, rewritten on open). Only the token hash is kept. Browser sessions are kept beside it as sha256 hashes (Feature #222 part 2). A credentials[] array left on a record by the passkey door removed in Feature #243 is kept and ignored. Provider identities ({ issuer, subject }, no email) live on the record as identities[] (Feature #212, Feature #252); an identity is linked by redeeming a one-time invite kept as its sha256 in meta.identityInvites.',
       identity: 'uuid; name unique in the workspace',
       api: ['createAccount', 'listAccounts', 'setAccountRole', 'deleteAccount', 'verifyToken', 'setRequireAuth', 'createSession', 'verifySession', 'removedSession', 'listSessions', 'revokeSession', 'linkIdentity', 'inviteMember', 'listInvites', 'revokeInvite', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'],
     },
@@ -560,12 +560,12 @@ export const ONTOLOGY = {
     },
   ],
 
-  aliases: ['record', 'item', 'entry', 'customer', 'company', 'account', 'task', 'deal', 'ticket', 'contact'],
+  aliases: ['row', 'item', 'entry', 'customer', 'company', 'account', 'task', 'deal', 'ticket', 'contact'],
 
   collisions: [
     {
       alias: 'account', kind: 'account',
-      note: 'An "account" row in a CRM table is a Row like any other; the Account kind here is a token holder with a role. Same word, two levels.',
+      note: 'An "account" record in a CRM table is a Record like any other; the Account kind here is a token holder with a role. Same word, two levels.',
     },
   ],
 };
@@ -2485,7 +2485,7 @@ export class Weave {
     const cur = PhoneRow.resolve(fields, shown, next.phoneRow ? this.#phoneRowNamed(db, next.phoneRow) : null);
     const pick = (ref) => {
       const f = this.#listField(db, ref);
-      if (f.id === db.nameFieldId) throw new WeaveError(`'${f.name}' is the row's name: line one always shows it, so it is never a lead or a chip`, 'invalid');
+      if (f.id === db.nameFieldId) throw new WeaveError(`'${f.name}' is the record's name: line one always shows it, so it is never a lead or a chip`, 'invalid');
       return f.id;
     };
     for (const k of ['labels', 'wrap']) {
@@ -2531,7 +2531,7 @@ export class Weave {
     const e = pid != null
       ? this.#rowsByPublicId(db.id, pid).find((x) => x.publicId === pid)
       : own(this.state.entities, String(ref));
-    if (!e || e.dbId !== db.id) throw new WeaveError(`'${ref}' is not a row of ${this.qualifiedName(db)} — order lists its rows as #ids`, 'invalid');
+    if (!e || e.dbId !== db.id) throw new WeaveError(`'${ref}' is not a record of ${this.qualifiedName(db)} — order lists its records as #ids`, 'invalid');
     return e.id;
   }
 
@@ -2584,7 +2584,7 @@ export class Weave {
       else {
         const f = this.#listField(db, patch.nest);
         if (f.type !== 'relation' || f.config.targetDbs || f.config.targetDb !== db.id) throw new WeaveError(`nest is a link from ${db.name} to itself (a Parent link): '${f.name}' is not one`, 'invalid');
-        if (f.config.many) throw new WeaveError(`nest needs one parent per row: '${f.name}' links many`, 'invalid');
+        if (f.config.many) throw new WeaveError(`nest needs one parent per record: '${f.name}' links many`, 'invalid');
         next.nest = f.id;
       }
     }
@@ -2598,7 +2598,7 @@ export class Weave {
     if (patch.order !== undefined) {
       if (patch.order == null) delete next.order;
       else {
-        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of rows, as #ids, in the order the list shows them', 'invalid');
+        if (!Array.isArray(patch.order)) throw new WeaveError('order is the list of records, as #ids, in the order the list shows them', 'invalid');
         const ids = [...new Set(patch.order.map((ref) => this.#orderRow(db, ref)))];
         if (ids.length) next.order = ids; else delete next.order;
       }
@@ -2716,7 +2716,7 @@ export class Weave {
       if (d === 'comfortable') delete next.density; else next.density = d;
     }
     if (patch.deleted != null) {
-      if (typeof patch.deleted !== 'boolean') throw new WeaveError(`deleted is true or false: whether the view shows its deleted rows. Got ${JSON.stringify(patch.deleted)}`, 'invalid');
+      if (typeof patch.deleted !== 'boolean') throw new WeaveError(`deleted is true or false: whether the view shows its deleted records. Got ${JSON.stringify(patch.deleted)}`, 'invalid');
       if (patch.deleted) next.deleted = true; else delete next.deleted;
     }
     if (patch.rollups !== undefined) {
@@ -2724,7 +2724,7 @@ export class Weave {
       if (patch.rollups === null) delete next.rollups; else next.rollups = patch.rollups;
     }
     if (patch.hideEmpty !== undefined) {
-      if (patch.hideEmpty !== null && typeof patch.hideEmpty !== 'boolean') throw new WeaveError(`hideEmpty is true, false or null: whether grouped layouts leave out groups with no rows. Got ${JSON.stringify(patch.hideEmpty)}`, 'invalid');
+      if (patch.hideEmpty !== null && typeof patch.hideEmpty !== 'boolean') throw new WeaveError(`hideEmpty is true, false or null: whether grouped layouts leave out groups with no records. Got ${JSON.stringify(patch.hideEmpty)}`, 'invalid');
       if (patch.hideEmpty) next.hideEmpty = true; else delete next.hideEmpty;
     }
     this.#writeListKeys(db, next, patch);
@@ -3264,7 +3264,7 @@ export class Weave {
     let computed = null;
     const result = () => ({ created, existing, ignored, errors, ...(computed ? { computed } : {}) });
     if (!isObj(spec)) {
-      fail('', new WeaveError('A build spec is an object: {workspace?, spaces: [{name, tables: [{name, fields, rows}]}]}', 'invalid'));
+      fail('', new WeaveError('A build spec is an object: {workspace?, spaces: [{name, tables: [{name, fields, records}]}]}', 'invalid'));
       return result();
     }
     extra('', spec, ['workspace', 'description', 'spaces']);
@@ -3288,8 +3288,8 @@ export class Weave {
       }
       listAt(`${at}.tables`, sp.tables).forEach((t, j) => {
         const tAt = `${at}.tables[${j}]`;
-        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, rows?, fieldOrder?, hidden?, sort?}', 'invalid'));
-        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'rows', 'fieldOrder', 'hidden', 'sort']);
+        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, records?, fieldOrder?, hidden?, sort?}', 'invalid'));
+        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'records', 'rows', 'fieldOrder', 'hidden', 'sort']);
         const tw = cosmetic(tAt, t, 'icon', iconValue);
         let db = t.name ? this.findTable(`${space.name}/${t.name}`) : null;
         if (db) existing.push(`table ${space.name}/${db.name}`);
@@ -3298,7 +3298,7 @@ export class Weave {
           if (!db) { if (t.name) failedTables.add(String(t.name).toLowerCase()); return undefined; }
           created.tables += 1;
         }
-        tables.push({ at: tAt, spec: t, db, failed: new Set() });
+        tables.push({ at: tAt, spec: t.records === undefined ? t : { ...t, rows: t.records }, db, failed: new Set() });
         return undefined;
       });
       return undefined;
@@ -3393,10 +3393,10 @@ export class Weave {
       const held = skipExistingRows ? new Set(this.listEntities(tb.db.id).map((e) => this.entityName(e))) : null;
       listAt(`${tb.at}.rows`, tb.spec.rows).forEach((row, k) => {
         const at = `${tb.at}.rows[${k}]`;
-        if (!isObj(row)) return fail(at, new WeaveError('A row is an object of values by field name', 'invalid'));
+        if (!isObj(row)) return fail(at, new WeaveError('A record is an object of values by field name', 'invalid'));
         const rowName = row.Name ?? row.name ?? row[tb.db.fields[tb.db.nameFieldId]?.name];
         if (held && rowName != null && held.has(String(rowName))) {
-          existing.push(`row ${this.qualifiedName(tb.db)}: ${rowName}`);
+          existing.push(`record ${this.qualifiedName(tb.db)}: ${rowName}`);
           return undefined;
         }
         const values = {};
@@ -4763,7 +4763,7 @@ export class Weave {
     if (account) return { owner, account };
     const entry = Object.entries(owner.state.meta.identityInvites ?? {}).find(([, i]) => i.rowId === row.sysId);
     if (entry) return { owner, inviteKey: entry[0], invite: entry[1] };
-    throw new WeaveError(`Users row '${this.entityName(row)}' describes no account or invite`, 'not-found');
+    throw new WeaveError(`Users record '${this.entityName(row)}' describes no account or invite`, 'not-found');
   }
 
   #userValues(input) {
@@ -4778,12 +4778,12 @@ export class Weave {
     const role = String(values.Role ?? 'editor').toLowerCase();
     const kind = String(values.Kind ?? (email ? 'Person' : 'Agent')).toLowerCase();
     for (const k of ['Status', 'Identities', 'Last Seen', 'Created']) {
-      if (values[k] != null && values[k] !== '') throw new WeaveError(`'${k}' is kept by weave and cannot be set on a Users row`, 'invalid');
+      if (values[k] != null && values[k] !== '') throw new WeaveError(`'${k}' is kept by weave and cannot be set on a Users record`, 'invalid');
     }
     let owner = this;
     if (values.Workspace != null) {
       const wsRow = this.findEntity(this.#sysTable('workspaces').id, values.Workspace) ?? this.#sysRow('workspaces', values.Workspace);
-      if (!wsRow) throw new WeaveError(`Workspace row '${values.Workspace}' not found`, 'not-found');
+      if (!wsRow) throw new WeaveError(`Workspace record '${values.Workspace}' not found`, 'not-found');
       owner = this.#engineOf(wsRow.sysId);
     }
     for (const k of ['Name', 'Email', 'Role', 'Kind', 'Workspace', 'Status', 'Identities', 'Last Seen', 'Created']) delete values[k];
@@ -4804,7 +4804,7 @@ export class Weave {
       sysId = made.account.id;
       once = { token: made.token };
     } else {
-      throw new WeaveError('A Users row needs an Email to invite a person, or Kind Agent and a Name to make an agent account', 'invalid');
+      throw new WeaveError('A Users record needs an Email to invite a person, or Kind Agent and a Name to make an agent account', 'invalid');
     }
     owner.#syncUsers();
     const row = this.#sysRow('users', sysId);
@@ -4819,7 +4819,7 @@ export class Weave {
       if (!(k in patch)) continue;
       const f = this.#sysField(db, k);
       if (f && JSON.stringify(this.#validateValue(f, patch[k]) ?? null) !== JSON.stringify(e.values[f.id] ?? null)) {
-        throw new WeaveError(`'${k}' is kept by weave and cannot be edited on a Users row`, 'invalid');
+        throw new WeaveError(`'${k}' is kept by weave and cannot be edited on a Users record`, 'invalid');
       }
       delete patch[k];
     }
@@ -5039,7 +5039,7 @@ export class Weave {
     const s = this.state;
     let ws = Object.values(s.spaces).find((x) => x.system === 'workspace');
     if (!ws) {
-      ws = { id: uuid(), name: SYSTEM_SPACE_NAME, description: 'The workspace itself: its spaces and tables, as rows.', icon: SYSTEM_SPACE_ICON, system: 'workspace', createdAt: nowISO() };
+      ws = { id: uuid(), name: SYSTEM_SPACE_NAME, description: 'The workspace itself: its spaces and tables, as records.', icon: SYSTEM_SPACE_ICON, system: 'workspace', createdAt: nowISO() };
       s.spaces[ws.id] = ws;
     } else if (ws.name.toLowerCase() === LEGACY_SYSTEM_SPACE_NAME || !ws.icon) {
       const taken = Object.values(s.spaces).some((x) => x !== ws && !x.deletedAt && x.name.toLowerCase() === SYSTEM_SPACE_NAME.toLowerCase());
@@ -5061,10 +5061,10 @@ export class Weave {
       return t;
     };
     const spacesT = this.#sysTable('spaces')
-      ?? mkTable('Spaces', 'spaces', 'Every space in this workspace, as a row. Creating a row creates the space; renaming it renames the space; hard-deleting it deletes the space and everything in it.');
+      ?? mkTable('Spaces', 'spaces', 'Every space in this workspace, as a record. Creating a record creates the space; renaming it renames the space; hard-deleting it deletes the space and everything in it.');
     if (!this.#sysField(spacesT, 'Template')) this.addField(spacesT.id, { name: 'Template', type: 'checkbox' }).system = true;
     const tablesT = this.#sysTable('tables')
-      ?? mkTable('Tables', 'tables', 'Every table in this workspace, as a row related to its space. Creating a row creates the table; renaming it renames the table; hard-deleting it deletes the table and its rows.');
+      ?? mkTable('Tables', 'tables', 'Every table in this workspace, as a record related to its space. Creating a record creates the table; renaming it renames the table; hard-deleting it deletes the table and its records.');
     if (!this.#sysField(tablesT, 'Space')) {
       const { field, inverse } = this.addRelation(tablesT.id, { name: 'Space', targetDb: spacesT.id, cardinality: 'many-to-one', inverseName: 'Tables' });
       field.system = true;
@@ -5076,7 +5076,7 @@ export class Weave {
     if (!this.#sysField(tablesT, 'Sort')) this.addField(tablesT.id, { name: 'Sort', type: 'text' }).system = true;
     if (!this.#sysField(tablesT, 'Hide Rollups')) this.addField(tablesT.id, { name: 'Hide Rollups', type: 'checkbox' }).system = true;
     const fieldsT = this.#sysTable('fields')
-      ?? mkTable('Fields', 'fields', 'Every field of every table, as a row related to its table and carrying its definition. Creating a row creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
+      ?? mkTable('Fields', 'fields', 'Every field of every table, as a record related to its table and carrying its definition. Creating a record creates the column; renaming it renames the column; editing its Definition changes the config; hard-deleting it deletes the column.');
     if (!this.#sysField(fieldsT, 'Table')) {
       const { field, inverse } = this.addRelation(fieldsT.id, { name: 'Table', targetDb: tablesT.id, cardinality: 'many-to-one', inverseName: 'Fields' });
       field.system = true;
@@ -5085,7 +5085,7 @@ export class Weave {
     if (!this.#sysField(fieldsT, 'Type')) this.addField(fieldsT.id, { name: 'Type', type: 'text' }).system = true;
     if (!this.#sysField(fieldsT, 'Definition')) this.addField(fieldsT.id, { name: 'Definition', type: 'field', config: { depth: 4 } }).system = true;
     const viewsT = this.#sysTable('views')
-      ?? mkTable('Views', 'views', 'Every view over every table, as a row related to its table: the columns it shows in order, its state filter and its sort. The first view of a table is its default. Creating a row creates the view; editing it edits the view; deleting it deletes the view.');
+      ?? mkTable('Views', 'views', 'Every view over every table, as a record related to its table: the columns it shows in order, its state filter and its sort. The first view of a table is its default. Creating a record creates the view; editing it edits the view; deleting it deletes the view.');
     if (!this.#sysField(viewsT, 'Table')) {
       const { field, inverse } = this.addRelation(viewsT.id, { name: 'Table', targetDb: tablesT.id, cardinality: 'many-to-one', inverseName: 'Views' });
       field.system = true;
@@ -5144,12 +5144,12 @@ export class Weave {
       this.save();
     }
     const usersT = this.#sysTable('users')
-      ?? mkTable('Users', 'users', 'Every account and pending invite in this workspace, as a row. A row with an Email invites that person at its Role; a row with Kind Agent and no Email makes an agent account and shows its token once. Editing Role or Name changes the account; deleting the row revokes the invite or deletes the account.');
+      ?? mkTable('Users', 'users', 'Every account and pending invite in this workspace, as a record. A record with an Email invites that person at its Role; a record with Kind Agent and no Email makes an agent account and shows its token once. Editing Role or Name changes the account; deleting the record revokes the invite or deletes the account.');
     for (const [n, type, config] of USER_COLUMNS) {
       if (!this.#sysField(usersT, n)) this.addField(usersT.id, { name: n, type, config }).system = true;
     }
     const wsT = this.#sysTable('workspaces')
-      ?? mkTable('Workspaces', 'workspaces', 'This workspace as a row. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as rows.');
+      ?? mkTable('Workspaces', 'workspaces', 'This workspace as a record. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as records.');
     for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
@@ -5425,7 +5425,7 @@ export class Weave {
 
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
-    if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
+    if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a record', 'invalid');
     if (db.system === 'users') return this.#createUserRow(db, input);
     if (db.system === 'workflows') {
       const values = { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) };
@@ -5449,7 +5449,7 @@ export class Weave {
       let owner = this;
       if (wsRef != null) {
         const wsRow = this.findEntity(this.#sysTable('workspaces').id, wsRef) ?? this.#sysRow('workspaces', wsRef);
-        if (!wsRow) throw new WeaveError(`Workspace row '${wsRef}' not found`, 'not-found');
+        if (!wsRow) throw new WeaveError(`Workspace record '${wsRef}' not found`, 'not-found');
         owner = this.#engineOf(wsRow.sysId);
       }
       const template = !!values.Template;
@@ -5458,9 +5458,9 @@ export class Weave {
     } else if (db.system === 'tables') {
       const spaceRef = values.Space;
       delete values.Space;
-      if (spaceRef == null) throw new WeaveError(`A Tables row needs its 'Space' — which space the table lives in`, 'invalid');
+      if (spaceRef == null) throw new WeaveError(`A Tables record needs its 'Space' — which space the table lives in`, 'invalid');
       const spaceRow = this.findEntity(this.#sysTable('spaces').id, spaceRef);
-      if (!spaceRow) throw new WeaveError(`Space row '${spaceRef}' not found`, 'not-found');
+      if (!spaceRow) throw new WeaveError(`Space record '${spaceRef}' not found`, 'not-found');
       const owner = this.#ownerOf(spaceRow);
       if (owner.state.spaces[spaceRow.sysId]?.system) {
         throw new WeaveError(`Space '${this.entityName(spaceRow)}' is part of the system registry — create tables in your own spaces`, 'invalid');
@@ -5472,10 +5472,10 @@ export class Weave {
       delete values.Table;
       delete values.Definition;
       delete values.Type;
-      if (tableRef == null) throw new WeaveError(`A Fields row needs its 'Table' — which table the column lands on`, 'invalid');
-      if (!def || typeof def !== 'object' || !def.type) throw new WeaveError(`A Fields row needs its 'Definition' — the column's shape`, 'invalid');
+      if (tableRef == null) throw new WeaveError(`A Fields record needs its 'Table' — which table the column lands on`, 'invalid');
+      if (!def || typeof def !== 'object' || !def.type) throw new WeaveError(`A Fields record needs its 'Definition' — the column's shape`, 'invalid');
       const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
-      if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      if (!tableRow) throw new WeaveError(`Table record '${tableRef}' not found`, 'not-found');
       const owner = this.#ownerOf(tableRow);
       if (owner.state.tables[tableRow.sysId]?.system) {
         throw new WeaveError(`Table '${this.entityName(tableRow)}' is part of the system registry — its columns are fixed`, 'invalid');
@@ -5485,9 +5485,9 @@ export class Weave {
     } else if (db.system === 'views') {
       const tableRef = values.Table;
       delete values.Table;
-      if (tableRef == null) throw new WeaveError(`A Views row needs its 'Table' — which table the view is over`, 'invalid');
+      if (tableRef == null) throw new WeaveError(`A Views record needs its 'Table' — which table the view is over`, 'invalid');
       const tableRow = this.findEntity(this.#sysTable('tables').id, tableRef);
-      if (!tableRow) throw new WeaveError(`Table row '${tableRef}' not found`, 'not-found');
+      if (!tableRow) throw new WeaveError(`Table record '${tableRef}' not found`, 'not-found');
       const owner = this.#ownerOf(tableRow);
       const v = owner.tableView(`${tableRow.sysId}/${name}`, { from: 'blank', ...this.#viewRowPatch(values, null) });
       made = this.#sysRow('views', v.id);
@@ -5514,12 +5514,12 @@ export class Weave {
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
       const next = patch.Workspace == null ? null : this.findEntity(this.#sysTable('workspaces').id, patch.Workspace)?.id;
-      if (next !== (e.values[this.#sysField(db, 'Workspace').id] ?? null)) throw new WeaveError("A row's Workspace follows the structure it describes and cannot move", 'invalid');
+      if (next !== (e.values[this.#sysField(db, 'Workspace').id] ?? null)) throw new WeaveError("A record's Workspace follows the structure it describes and cannot move", 'invalid');
       delete patch.Workspace;
     }
     if (db.system === 'views') {
       const hit = this.#viewAnywhere(e.sysId);
-      if (!hit) throw new WeaveError(`View row '${this.entityName(e)}' describes no view`, 'not-found');
+      if (!hit) throw new WeaveError(`View record '${this.entityName(e)}' describes no view`, 'not-found');
       if ('Table' in patch) {
         const next = patch.Table == null ? null : this.findEntity(this.#sysTable('tables').id, patch.Table)?.id;
         if (next !== (e.values[this.#sysField(db, 'Table').id] ?? null)) throw new WeaveError('A view cannot move between tables', 'invalid');
@@ -5623,7 +5623,7 @@ export class Weave {
 
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
-    if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
+    if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a record', 'invalid');
     if (db.system === 'users') return this.#deleteUserRow(e);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     if (db.system === 'views') {
@@ -5686,7 +5686,7 @@ export class Weave {
 
     const field = { id: uuid(), name, type, config: {} };
     if (type === 'avatar' && Object.values(db.fields).some((f) => f.type === 'avatar' && !f.deletedAt)) {
-      throw new WeaveError(`Table '${db.name}' already has an avatar field; a row has one face`, 'conflict');
+      throw new WeaveError(`Table '${db.name}' already has an avatar field; a record has one face`, 'conflict');
     }
     if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'avatar', 'document', 'key', 'text', 'toggle'].includes(type)) {
       field.config = normalizeSelfContainedConfig(type, config, { strict: true });
@@ -5925,7 +5925,7 @@ export class Weave {
         if (sub) field.config.subtable = sub; else delete field.config.subtable;
       }
       if ('term' in patch.config) {
-        if (field.id !== db.nameFieldId) throw new WeaveError('The row term lives on the Name field', 'invalid');
+        if (field.id !== db.nameFieldId) throw new WeaveError('The record term lives on the Name field', 'invalid');
         this.#setTerm(db, patch.config.term, { save: false });
       }
       if ('width' in patch.config) {
@@ -6371,7 +6371,7 @@ export class Weave {
     const missing = [...new Set(rows.flatMap((e) => parts(e.values[field.id])).filter((v) => !lookup(v)))];
     if (missing.length && !config.createMissing) {
       const shown = missing.slice(0, 10).map((v) => `'${v}'`).join(', ');
-      throw new WeaveError(`No ${target.name} row is named ${shown}${missing.length > 10 ? ` and ${missing.length - 10} more` : ''}: make those rows first, or pass config.createMissing: true`, 'invalid');
+      throw new WeaveError(`No ${target.name} record is named ${shown}${missing.length > 10 ? ` and ${missing.length - 10} more` : ''}: make those records first, or pass config.createMissing: true`, 'invalid');
     }
     for (const v of missing) if (!lookup(v)) { const made = this.createEntity(target.id, { name: v }); exact.set(v, made.id); folded.set(v.toLowerCase(), made.id); }
     const inverse = { id: uuid(), name: invName, type: 'relation', config: { targetDb: db.id, many: true, inverseFieldId: field.id } };
@@ -6440,7 +6440,7 @@ export class Weave {
     }
     const field = this.getField(db.id, fieldRef);
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
-    if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every row has a ${field.config.shape} by existing — hide it instead`, 'invalid');
+    if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every record has a ${field.config.shape} by existing — hide it instead`, 'invalid');
     if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
     const readers = this.#targetFieldReaders(field.id);
     if (readers.length) {
@@ -7237,7 +7237,7 @@ export class Weave {
     }
     const oldIds = this.#relationIds(e, field);
     const kept = oldIds.filter((id) => this.#lockedEntity(id));
-    if (kept.length && !field.config.many && newIds[0] !== kept[0]) throw new WeaveError(`'${field.name}' holds a row of a private space; a member of that space changes it`, 'forbidden');
+    if (kept.length && !field.config.many && newIds[0] !== kept[0]) throw new WeaveError(`'${field.name}' holds a record of a private space; a member of that space changes it`, 'forbidden');
     newIds = [...newIds.filter((id) => !this.#lockedEntity(id) || kept.includes(id)), ...kept.filter((id) => !newIds.includes(id))];
     const removed = oldIds.filter((id) => !newIds.includes(id));
     const added = newIds.filter((id) => !oldIds.includes(id));
@@ -7399,7 +7399,7 @@ export class Weave {
   bulk(ids, op, params = {}) {
     for (const id of ids == null ? [] : [].concat(ids)) this.#mayWriteRow(id);
     const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
-    if (!list.length) throw new WeaveError('ids is required: the rows to act on', 'invalid');
+    if (!list.length) throw new WeaveError('ids is required: the records to act on', 'invalid');
     if (!BULK_OPS.includes(op)) throw new WeaveError(`Unknown bulk op '${op}' (${BULK_OPS.join(', ')})`, 'invalid');
     const out = { op, done: [], failed: [] };
     const each = (fn) => {
@@ -7427,7 +7427,7 @@ export class Weave {
         out.moved = [];
         each((e) => {
           const from = this.state.tables[e.dbId];
-          if (to.system || from.system) throw new WeaveError('Rows cannot move into or out of a system table', 'invalid');
+          if (to.system || from.system) throw new WeaveError('Records cannot move into or out of a system table', 'invalid');
           if (to.id === from.id) throw new WeaveError(`Already in ${this.qualifiedName(to)}`, 'invalid');
           out.moved.push(this.#moveEntity(e, from, to));
         });
@@ -7909,7 +7909,7 @@ export class Weave {
     try {
       return this.store.batch(() => {
         this.maybeRefresh();
-        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Row revision changed; read it again before writing', 'conflict');
+        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Record revision changed; read it again before writing', 'conflict');
         if (operation === 'state') {
           attempted = true;
           this.setState(id, field, state);
@@ -7932,7 +7932,7 @@ export class Weave {
     try {
       return this.store.batch(() => {
         this.maybeRefresh();
-        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This row changed since you read it; nothing was written', 'stale');
+        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This record changed since you read it; nothing was written', 'stale');
         attempted = true;
         return this.updateEntity(id, valuesByName);
       });

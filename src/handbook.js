@@ -7,11 +7,11 @@ export const FIELD_KINDS = ['Value', 'Choice', 'Relation', 'Computed', 'Document
 export const FIELD_DOCS = [
   { name: 'text', kind: 'Value', doc: `# text
 
-Free-form single-line string. Every table is born with one: \`Name\`, the entity's identity and its link text everywhere. It can be renamed (Title, Subject, Invoice #) and it can become a **formula** — a computed name that follows its inputs; it cannot be deleted, because a row needs an identity. The row term (what one row is called) lives on it too.
+Free-form single-line string. Every table is born with one: \`Name\`, the entity's identity and its link text everywhere. It can be renamed (Title, Subject, Invoice #) and it can become a **formula** — a computed name that follows its inputs; it cannot be deleted, because a record needs an identity. The record term (what one record is called) lives on it too.
 
 ## Config
 
-\`default\` — the value a new row starts with. \`{ "name": "Title", "type": "text", "config": { "default": "Untitled" } }\`
+\`default\` — the value a new record starts with. \`{ "name": "Title", "type": "text", "config": { "default": "Untitled" } }\`
 
 \`literal\` — \`true\` paints the characters as typed. A text cell normally dresses inline markdown (\`**bold**\` reads bold, \`\\\`code\\\`\` reads as code); a column that HOLDS syntax — a regex, a glob, a format string, the Showcase's Syntax column — opts out with \`{ "literal": true }\`, from the field dialog's **Literal** box or \`--config '{"literal":true}'\`.
 
@@ -53,7 +53,7 @@ Finite numeric value. One type, four costumes — plain, currency, percent, and 
 | \`display\` | \`text\` (default), \`bar\`, \`ring\`, \`heat\` | how the value is drawn: a bar or a ring filled to its share of the scale, or a cell tinted by it; the text rides beside it, and the API still returns the number |
 | \`scale\` | \`column\` (default) or a number above 0 | what 100% is for a bar, ring or heat: the column's largest value, or a fixed figure (\`1\` for a percent, \`5\` for a score out of five) |
 | \`color\` | \`ink\` (default), \`icon\`, \`accent\` | the colour a bar, ring or heat is drawn in (Feature #235): Quiet ink is the text colour on a hairline track and a grey tint; Color by icon draws bars and rings teal and runs heat from cool to warm; One accent hue draws everything in the workspace accent |
-| \`default\` | number | the value a new row starts with |
+| \`default\` | number | the value a new record starts with |
 
 \`\`\`json
 { "name": "Price", "type": "number",
@@ -98,7 +98,7 @@ A date field declares two things separately. Its **grain** is which parts it sto
 | \`clock\` | \`12h\` (default), \`24h\` | \`2:32 PM\` or \`14:32\` |
 | \`zone\` | \`floating\` (default), \`fixed\`, \`instant\` | what the clock time means — see below |
 | \`zoneName\` | an IANA zone — \`America/Los_Angeles\`, \`Europe/Berlin\` | the zone a \`fixed\` field lives in |
-| \`default\` | a date, or \`today()\` / \`now()\` | what a new row starts with, evaluated per row and cut to the grain |
+| \`default\` | a date, or \`today()\` / \`now()\` | what a new record starts with, evaluated per record and cut to the grain |
 \`\`\`json
 { "name": "Expires", "type": "date",
   "config": { "grain": ["year", "month"], "format": "us", "pad": true } }
@@ -144,7 +144,7 @@ The format is a costume, like a number's. Comparison, sorting and date math all 
 
 **A costume can dress only what the grain stored.** \`month\` and \`quarter\` need a month, \`ordinal\` a day, \`relative\` a year — ask for one on a grain without it and the field refuses to be defined that way, with the missing part named. The tray only offers the styles the grain can wear.
 
-**Narrowing a grain does not rewrite rows.** A \`2026-08-15\` already stored keeps its day; the costume simply stops printing it. Widening cannot invent the parts it never had.` },
+**Narrowing a grain does not rewrite records.** A \`2026-08-15\` already stored keeps its day; the costume simply stops printing it. Widening cannot invent the parts it never had.` },
   { name: 'daterange', kind: 'Value', doc: `# daterange
 A start and an end, together: \`{"start": "2026-09-20", "end": "2026-09-27"}\`. Both ends wear the field's grain and costume.
 ## Config
@@ -157,7 +157,7 @@ A start and an end, together: \`{"start": "2026-09-20", "end": "2026-09-27"}\`. 
 | \`clock\` | \`24h\`, \`12h\` | as for \`date\` |
 | \`zone\` · \`zoneName\` | as for \`date\` | what the clock times mean |
 | \`elapsed\` | boolean | append the span between the ends — \`09:15 – 17:40 · 8h 25m\`; needs \`time\`, and two clock readings wrap at midnight |
-| \`default\` | a range | what a new row starts with |
+| \`default\` | a range | what a new record starts with |
 \`\`\`json
 { "name": "Hours", "type": "daterange",
   "config": { "grain": [], "time": true, "clock": "12h", "elapsed": true } }
@@ -205,7 +205,7 @@ Boolean, worn as a switch with two named states (Feature #202). Same storage as 
 
 \`on\` and \`off\` — the two labels, renameable, \`On\` / \`Off\` unless named: \`{ "name": "Feed", "type": "toggle", "config": { "on": "Live", "off": "Paused" } }\`. Both must be words, and they must differ.
 
-\`default\` — the state a new row starts in when the create does not name the field: \`{ "config": { "on": "Public", "off": "Private", "default": false } }\`.
+\`default\` — the state a new record starts in when the create does not name the field: \`{ "config": { "on": "Public", "off": "Private", "default": false } }\`.
 
 ## Usage
 
@@ -215,7 +215,7 @@ In the grid a click flips it, and so does \`Space\` on the resting cell — the 
 
 ## Migrations
 
-\`checkbox\` ⇄ \`toggle\` both ways, lossless: the values and the default ride along, the labels start at On / Off. To \`text\`, each row freezes the label it showed.
+\`checkbox\` ⇄ \`toggle\` both ways, lossless: the values and the default ride along, the labels start at On / Off. To \`text\`, each record freezes the label it showed.
 
 ## In formulas
 
@@ -223,15 +223,15 @@ In the grid a click flips it, and so does \`Space\` on the resting cell — the 
 
 ## Gotchas
 
-\`is-empty\` never matches a toggle — \`false\` is a value, not a hole. Renaming a label changes what the switch says, not what any row stores; a filter saved on the old label is refused until it names the new one.` },
+\`is-empty\` never matches a toggle — \`false\` is a value, not a hole. Renaming a label changes what the switch says, not what any record stores; a filter saved on the old label is refused until it names the new one.` },
 
   { name: 'rating', kind: 'Value', doc: `# rating
 
-A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the first ones filled (Feature #231). Scoring a row (priority, quality, fit) takes one click instead of a number and a scale to remember. To a formula, a sort, a filter, CSV, the API and MCP it is a number.
+A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the first ones filled (Feature #231). Scoring a record (priority, quality, fit) takes one click instead of a number and a scale to remember. To a formula, a sort, a filter, CSV, the API and MCP it is a number.
 
 ## Config
 
-\`max\` — how many icons, any whole number from 1 to 100; \`5\` unless named (Feature #234). The field dialog takes any number and offers 3, 5 and 7 as shortcuts. The ceiling of 100 keeps a screen of rows paintable: every icon is a button in every visible cell.
+\`max\` — how many icons, any whole number from 1 to 100; \`5\` unless named (Feature #234). The field dialog takes any number and offers 3, 5 and 7 as shortcuts. The ceiling of 100 keeps a screen of records paintable: every icon is a button in every visible cell.
 
 \`icon\` — one icon for the field, picked from the inventory (\`lucide:<name>\`, or a mark): \`lucide:star\` unless named. \`{ "name": "Fit", "type": "rating", "config": { "max": 7, "icon": "lucide:heart" } }\`.
 
@@ -239,13 +239,13 @@ A whole number from 0 to the field's \`max\`, drawn as \`max\` icons with the fi
 
 Icons are 14px with a 1px gap. A rating column's floor holds every icon, so a drag, a nudge or a stored width never cuts one; past the fit cap (320px) the column stops there and draws a compact \`★ 3/12\` instead.
 
-\`default\` — the rating a new row starts with. In the field dialog it is picked on a row of the field's own icons: click the nth to set n, click it again to clear; with the row focused, the arrow keys move it, a digit sets it and \`Backspace\` clears it. Lowering \`max\` below the default brings the default down with it.
+\`default\` — the rating a new record starts with. In the field dialog it is picked on a record of the field's own icons: click the nth to set n, click it again to clear; with the record focused, the arrow keys move it, a digit sets it and \`Backspace\` clears it. Lowering \`max\` below the default brings the default down with it.
 
 ## Usage
 
 Click the third icon to set 3; click the filled third icon again to clear to 0. In the grid a digit key on the resting cell sets the rating (a digit past the max sets the max) and \`Backspace\` or \`Delete\` clears it to 0. A screen reader hears "3 of 5".
 
-A write is rounded and held to 0..max: \`{"Fit": 3.6}\` stores 4, \`{"Fit": 9}\` stores 5, numeric text is read as its number, anything else is refused by name. Lowering \`max\` holds every row to the new ceiling.
+A write is rounded and held to 0..max: \`{"Fit": 3.6}\` stores 4, \`{"Fit": 9}\` stores 5, numeric text is read as its number, anything else is refused by name. Lowering \`max\` holds every record to the new ceiling.
 
 A rating column in the grid opens wide enough for every icon: \`max\` icons, the gaps between them and the cell's padding, up to the fit ceiling of 320 pixels (Issue #404). A width you drag stands.
 
@@ -253,7 +253,7 @@ A lookup of a rating, and a rollup whose answer stays on the scale (\`avg\`, \`m
 
 ## Migrations
 
-\`number\` ⇄ \`rating\` both ways: a number becomes a rating by rounding and clamping to the max; a rating becomes the number it held. To \`text\`, each row freezes its number.
+\`number\` ⇄ \`rating\` both ways: a number becomes a rating by rounding and clamping to the max; a rating becomes the number it held. To \`text\`, each record freezes its number.
 
 ## In formulas
 
@@ -261,7 +261,7 @@ A lookup of a rating, and a rollup whose answer stays on the scale (\`avg\`, \`m
 
 ## Gotchas
 
-Empty and 0 are different: an unrated row is empty (\`is-empty\` matches it), a cleared one is 0.` },
+Empty and 0 are different: an unrated record is empty (\`is-empty\` matches it), a cleared one is 0.` },
 
   { name: 'url', kind: 'Value', doc: `# url
 
@@ -301,7 +301,7 @@ One choice from a configured list. Stored as the option **id** (a slug), read ev
 
 ## Config
 
-\`options\` — strings, or objects carrying a hue and a glyph. \`default\` — one option, by name or id; without it a new row's value is empty. The field dialog picks it from the options (*No default* first), and removing that option clears it.
+\`options\` — strings, or objects carrying a hue and a glyph. \`default\` — one option, by name or id; without it a new record's value is empty. The field dialog picks it from the options (*No default* first), and removing that option clears it.
 
 \`\`\`json
 { "name": "Priority", "type": "select", "config": { "options": [
@@ -316,11 +316,11 @@ One choice from a configured list. Stored as the option **id** (a slug), read ev
 
 Write by name or by id, case-insensitively: \`{"Priority": "high"}\`. An unknown option is rejected.
 
-Editing the options is an in-place edit from the column header, not a delete-and-recreate: renaming \`Medium\` to \`Normal\` keeps every row that held it.
+Editing the options is an in-place edit from the column header, not a delete-and-recreate: renaming \`Medium\` to \`Normal\` keeps every record that held it.
 
 ## Gotchas
 
-Pass an option's **id** when renaming it — a bare string re-slugs and orphans the rows that pointed at the old id.` },
+Pass an option's **id** when renaming it — a bare string re-slugs and orphans the records that pointed at the old id.` },
 
   { name: 'multiselect', kind: 'Choice', doc: `# multiselect
 
@@ -350,7 +350,7 @@ A lifecycle. One state at a time, each state belonging to a **category**. The ca
 
 **Leave \`states\` out and you get one.** A workflow whose config never mentions states arrives as \`Not started\` · \`In progress\` · \`Done\` · \`Canceled\` — one per category — in the tray and on \`weave field add\` alike. Rename, reorder, recolour or delete them like any others. Sending \`"states": []\` is a different thing and still refused: a list emptied on purpose is not a lifecycle.
 
-**No state is the default unless you mark one.** A new row's state is empty until someone sets it, unless one state carries \`"default": true\` (at most one does; the first marked wins). In the field dialog that is the **Default** picker under the states: *No default* first, then the states. A state can be set back to empty (\`null\`, or the — row in the cell's picker). Fields created before 2026-09-26 stored their first state as the default and keep it until the Default is changed.
+**No state is the default unless you mark one.** A new record's state is empty until someone sets it, unless one state carries \`"default": true\` (at most one does; the first marked wins). In the field dialog that is the **Default** picker under the states: *No default* first, then the states. A state can be set back to empty (\`null\`, or the — row in the cell's picker). Fields created before 2026-09-26 stored their first state as the default and keep it until the Default is changed.
 
 \`\`\`json
 { "name": "Stage", "type": "workflow", "config": { "states": [
@@ -372,13 +372,13 @@ A two-state workflow is a legitimate gate — \`Pending\` → \`Approved\` says 
 
 ## Gotchas
 
-**One workflow per table.** The state a row's chip and card show is read from the first one; a second makes it ambiguous.
+**One workflow per table.** The state a record's chip and card show is read from the first one; a second makes it ambiguous.
 
 A select becomes a workflow the moment its values describe progress rather than kind.` },
 
   { name: 'relation', kind: 'Relation', doc: `# relation
 
-A link between tables. One target table makes the classic bidirectional pair — the inverse field appears on the other table in the same write. A **target set** (\`targetDbs\`, two or more tables) makes a polymorphic relation: one field whose values may point at rows of ANY member table — the registry's \`System/Spaces\` and \`System/Tables\` are legal members, so a row can point at a space or a table as easily as at another row.
+A link between tables. One target table makes the classic bidirectional pair — the inverse field appears on the other table in the same write. A **target set** (\`targetDbs\`, two or more tables) makes a polymorphic relation: one field whose values may point at records of ANY member table — the registry's \`System/Spaces\` and \`System/Tables\` are legal members, so a record can point at a space or a table as easily as at another record.
 
 ## Config
 
@@ -396,9 +396,9 @@ weave link Task#5 Project 'Project#1'
 weave unlink Task#5 Project 'Project#1'
 \`\`\`
 
-Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a row by name, \`#id\`, any text field or a document, and shows the linked rows checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles rows and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a row named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
+Renders as chips carrying the target's name, each with a \`×\`, plus a \`+ link\` control that opens the ⌘K search scoped to the relation's target tables (Issue #703). It matches a record by name, \`#id\`, any text field or a document, and shows the linked records checked. A to-one relation replaces its value on a pick and closes; a to-many relation toggles records and saves on \`Esc\` or \`Return\` in an empty box. The last row, \`+ New <term>\`, creates a record named from what you typed and links it. **+ Link existing** under a related grid and the selection bar's **Link to…** open the same search.
 
-On a record page each to-many relation shows its linked rows as a subtable. The eye in the subtable header picks which target fields the subtable shows and filters its rows with the same chips as the table filter (Feature #214). Both land on the relation field as \`config.subtable\`, shaped \`{ fields, filter, sort }\` with the filter in \`where\` triples, so every record of the table shares one setting and one edit changes them all. A filtered subtable counts \`shown / total\` in its header, and the field dialog shows the stored JSON. Reading the record through the API still returns every linked row.
+On a record page each to-many relation shows its linked records as a subtable. The eye in the subtable header picks which target fields the subtable shows and filters its records with the same chips as the table filter (Feature #214). Both land on the relation field as \`config.subtable\`, shaped \`{ fields, filter, sort }\` with the filter in \`where\` triples, so every record of the table shares one setting and one edit changes them all. A filtered subtable counts \`shown / total\` in its header, and the field dialog shows the stored JSON. Reading the record through the API still returns every linked record.
 
 ## Query
 
@@ -410,7 +410,7 @@ Name the field for **what is on the other end** (\`Project\`, \`Assignee\`), and
 
 Deleting a relation deletes both ends. Deleting a member table of a target set prunes it from the set; the last member takes the field with it.
 
-Lookups and rollups need a single-target relation — a target set has no one far table to read a field from. Filters still traverse it: each linked row resolves against its own table, so \`[["Scope.Name", "=", "Apollo"]]\` matches whichever member table Apollo lives in.` },
+Lookups and rollups need a single-target relation — a target set has no one far table to read a field from. Filters still traverse it: each linked record resolves against its own table, so \`[["Scope.Name", "=", "Apollo"]]\` matches whichever member table Apollo lives in.` },
 
   { name: 'lookup', kind: 'Computed', doc: `# lookup
 
@@ -429,7 +429,7 @@ A value borrowed across a relation, read-only, refreshed whenever either side ch
 
 Renders on a tinted background marked \`↗\`. Nothing writes to it.
 
-A lookup of a relation draws the far row's chip, the way the relation column draws it: \`Contact › Company\` shows the company's chip, which opens the company. A to-many path draws one chip per far row, each row once. The API answers \`{id, publicId, name, db}\` per row (a list when either hop is to-many), a filter and a formula read the name, and \`raw\` keeps the ids (Issue #643).
+A lookup of a relation draws the far record's chip, the way the relation column draws it: \`Contact › Company\` shows the company's chip, which opens the company. A to-many path draws one chip per far record, each record once. The API answers \`{id, publicId, name, db}\` per record (a list when either hop is to-many), a filter and a formula read the name, and \`raw\` keeps the ids (Issue #643).
 
 The field's settings tray shows the recipe as **Relation** and **Target field** pickers, and a **Shows as** line naming the display it inherits: a lookup of a rating reads \`Drawn as the rating on People › Skill: 5 stars.\`, with a link to that field's settings, where the look is changed. Pick another relation or another field and save to repoint the lookup in place: the column keeps its name, width, description and place in every view, and every cell reads the new recipe at once. From the terminal: \`weave field update Team Skills --config '{"targetField":"Age"}'\` (Feature #241).
 
@@ -437,13 +437,13 @@ The field's settings tray shows the recipe as **Relation** and **Target field** 
 
 A lookup that returns null usually means the \`relationField\` name is wrong — it is the **field** name on this table, not the target table's name.
 
-Across a to-many relation a lookup reads a list, one value per linked row in relation order; use a \`rollup\` with \`join\` when you want them as one string.
+Across a to-many relation a lookup reads a list, one value per linked record in relation order; use a \`rollup\` with \`join\` when you want them as one string.
 
 The \`targetField\` cannot be deleted while a lookup reads it — the delete is refused and names the lookup; delete the lookup first. A lookup that already lost its target (a workspace from before that refusal) reads \`null\`.` },
 
   { name: 'rollup', kind: 'Computed', doc: `# rollup
 
-An aggregate over everything on the far side of a relation — or, on a space's row, over a whole table.
+An aggregate over everything on the far side of a relation — or, on a space's record, over a whole table.
 
 ## Config
 
@@ -451,9 +451,9 @@ An aggregate over everything on the far side of a relation — or, on a space's 
 
 | Aggregate | Reads | Answers |
 | --- | --- | --- |
-| \`count\` | the rows | how many |
-| \`filled\` / \`empty\` | the rows | how many say something / nothing in \`targetField\` |
-| \`distinct\` | the rows | how many different values \`targetField\` holds (a multiselect counts each chip) |
+| \`count\` | the records | how many |
+| \`filled\` / \`empty\` | the records | how many say something / nothing in \`targetField\` |
+| \`distinct\` | the records | how many different values \`targetField\` holds (a multiselect counts each chip) |
 | \`sum\` / \`avg\` / \`median\` | the numbers | the total, the mean, the middle value |
 | \`min\` / \`max\` | the numbers, or the strings when there are none | the extremes — the earliest and latest of a date column |
 | \`range\` / \`stdev\` | the numbers | max − min; the sample standard deviation |
@@ -475,7 +475,7 @@ A number aggregate over a checkbox or toggle counts a tick as 1 and an empty box
 
 ## Over a whole table: the space rollup
 
-The Σ under a grid column is a rollup on the **System/Spaces** row of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the rows with the same clauses a query takes.
+The Σ under a grid column is a rollup on the **System/Spaces** record of the space that holds the table (Kyle, 2026-09-06: "all footer values live at the space level"). \`via\` names the table instead of a relation; \`where\` narrows the records with the same clauses a query takes.
 
 \`\`\`json
 { "name": "Sessions · Cost · sum", "type": "rollup",
@@ -485,23 +485,23 @@ The Σ under a grid column is a rollup on the **System/Spaces** row of the space
 
 Three surfaces write that field. The Σ row's picker turns one on with a checkbox, \`weave field add\` / \`weave_add_field\` take the config above, and the field dialog on the **System/Spaces** grid asks **Rolls up** — through a relation, or over a table — where *Over a table* picks the table, the aggregate and the column. Only the API writes a \`where\`.
 
-A grid carries no Σ row until you ask for one: tick **Σ rollup row** in the Fields menu's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that row. The box saves into the current view as its \`rollups\` (\`weave_table_view\`, never a browser setting). A view that has never set it follows the table's older \`hideRollups\` (mirrored as **Hide Rollups** on its Tables row): \`false\` is a table that opted in, \`true\` is one switched back off, and a table nobody has touched has no row. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's row and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
+A grid carries no Σ row until you ask for one: tick **Σ rollup row** in the Fields menu's Rows section and the grid draws every space rollup in a **Σ row** pinned under the field headers — it stays while the body scrolls — and offers the aggregates on a click in that record. The box saves into the current view as its \`rollups\` (\`weave_table_view\`, never a browser setting). A view that has never set it follows the table's older \`hideRollups\` (mirrored as **Hide Rollups** on its Tables record): \`false\` is a table that opted in, \`true\` is one switched back off, and a table nobody has touched has no record. The space page draws the same rollups as tiles; \`weave stats <table>\` / \`weave_stats\` / \`GET /api/tables/:ref/stats\` summarise every column on demand without storing anything. A space rollup answers on its own space's record and reads \`null\` on every other; \`via\` is refused anywhere but the Spaces registry and on registry tables.
 
 ## Usage
 
-The field's settings tray shows the recipe as **Relation**, **Target field** and **Aggregate** pickers, a **Result** line with the value on a row of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. Change any of the three and save to repoint the rollup in place: it keeps its name, width, description and place in every view. The edit runs the same check a create runs, so a new relation needs a field of its own table and any aggregate but count needs a field to read. When the result changes kind (a number becomes text, say) the tray warns before you save, and the save names every formula of the table that now fails on it. The repoint is one entry in Activity, naming the old and the new recipe, and Undo puts the old one back. A space rollup (one made from the grid's Σ row) keeps its recipe read-only (Feature #241).
+The field's settings tray shows the recipe as **Relation**, **Target field** and **Aggregate** pickers, a **Result** line with the value on a record of the table, and a **Shows as** line naming the display it inherits from the field it reads (a rating's icons, or a number's bar, ring or heat), with a link to that field's settings. Change any of the three and save to repoint the rollup in place: it keeps its name, width, description and place in every view. The edit runs the same check a create runs, so a new relation needs a field of its own table and any aggregate but count needs a field to read. When the result changes kind (a number becomes text, say) the tray warns before you save, and the save names every formula of the table that now fails on it. The repoint is one entry in Activity, naming the old and the new recipe, and Undo puts the old one back. A space rollup (one made from the grid's Σ row) keeps its recipe read-only (Feature #241).
 
 Renders on a tinted background marked \`Σ\`, wearing the target column's costume: a sum of dollars is dollars, the \`max\` of a date column is a date; a mean of whole numbers shows two decimals. \`join\` accepts a \`separator\`; the default is \`, \`.
 
 ## Gotchas
 
-A rollup crosses a relation; a formula stays on the row. Reaching for a formula where a rollup does the job is the most common way to end up with a number that will not update.
+A rollup crosses a relation; a formula stays on the record. Reaching for a formula where a rollup does the job is the most common way to end up with a number that will not update.
 
 The \`targetField\` cannot be deleted while a rollup reads it — the delete is refused and names the rollup; delete the rollup first. A rollup that already lost its target (a workspace from before that refusal) reads \`null\`; \`count\` never had a target and keeps counting.` },
 
   { name: 'formula', kind: 'Computed', doc: `# formula
 
-An expression over this row's own fields, recomputed on read.
+An expression over this record's own fields, recomputed on read.
 
 ## Config
 
@@ -538,13 +538,13 @@ A list result can wear \`"display": "sparkline"\` with a \`style\` of \`line\` (
 
 ## Check before you save
 
-The script editor validates as you type: a parse error, an unknown function or an unknown field shows under the box in red, and a valid expression shows its computed value on a real row. The same check stands alone as \`weave formula check <table> '<expression>'\`, \`POST /api/tables/:id/formula-check\` and the \`weave_check_formula\` MCP tool — validate until \`ok: true\`, save, then read a cell back. Saving an invalid expression is refused with the same error the check gives.
+The script editor validates as you type: a parse error, an unknown function or an unknown field shows under the box in red, and a valid expression shows its computed value on a real record. The same check stands alone as \`weave formula check <table> '<expression>'\`, \`POST /api/tables/:id/formula-check\` and the \`weave_check_formula\` MCP tool — validate until \`ok: true\`, save, then read a cell back. Saving an invalid expression is refused with the same error the check gives.
 
 The chips under the script are the whole vocabulary: this table's fields first, then the functions in the four groups the grammar has — **logic** (\`if\`, \`empty\`, \`contains\`), **text**, **number**, **date**. Hover, focus or tap a chip and a card shows its signature, one sentence of what it does and an example; click it and the call lands with the caret between the parens. A document or an attachments field is listed greyed with the reason — a formula reads values, not prose or files — rather than left out. \`weave vocabulary formulaFunctions\` (and \`weave_vocabulary\`, \`GET /api/vocabulary\`) serves the same cards verbatim.
 
 Under the chips, **As an agent would do it** (closed by default) prints the three calls that do what the dialog is doing — \`weave formula check\`, \`weave field add\` (or \`update\`) with the expression, \`weave get\` to read the cell back — and the MCP sequence \`weave_check_formula → weave_add_field → weave_get_entity\`, live with the typing. Copy it into a script and the browser was never the only door.
 
-The verdict line names the result's **type** (number, text, boolean, list) and the dialog scans the table behind it — up to 200 rows — so the line under it reads \`row 1 of 51 — "Acme"\` with ‹ › to step through rows and pick the pathological one, and \`⚠ 2 rows → null · 1 → #ERR\` when any row did not compute. A formula valid on row 1 and null on a third of the table is exactly the bug one preview cannot show. The **Result format** section (currency, unit, decimals) only appears when the result is a number. The same figures come back from \`weave formula check <table> '<expression>' --scan\` and \`weave_check_formula {scan: true}\` as \`{type, scan: {rows, capped, nulls, errors, sampleByOutcome}}\`.
+The verdict line names the result's **type** (number, text, boolean, list) and the dialog scans the table behind it — up to 200 records — so the line under it reads \`row 1 of 51 — "Acme"\` with ‹ › to step through records and pick the pathological one, and \`⚠ 2 rows → null · 1 → #ERR\` when any record did not compute. A formula valid on record 1 and null on a third of the table is exactly the bug one preview cannot show. The **Result format** section (currency, unit, decimals) only appears when the result is a number. The same figures come back from \`weave formula check <table> '<expression>' --scan\` and \`weave_check_formula {scan: true}\` as \`{type, scan: {rows, capped, nulls, errors, sampleByOutcome}}\`.
 
 Chips are discovery; typing is speed. In the script box, \`[\` opens a list of this table's readable fields at the caret and two letters open the functions that start with them — the same two lists the chips draw from, ranked by prefix. ↑ ↓ move, Return picks (a call lands with the caret between its parens), Escape closes the list and nothing else. A misspelled field name dies at the keystroke instead of at the check; the verdict line stays live underneath.
 
@@ -554,13 +554,13 @@ A formula reads **raw** values. A number's currency and unit are display costume
 
 A formula cannot reference its own field — it never converges, and the save refuses it as an unknown field.
 
-A formula cannot reach its own field the long way round either. \`Total\` reading \`Bonus\` while \`Bonus\` reads \`Total\` is refused when it is saved, and the message names the path: \`Formula 'Bonus' would close a reference cycle: Bonus → Total → Bonus\`. A loop that only closes through a rollup or a lookup takes two rows pointing at each other to exist, so no save can see it — those cells read \`#CYCLE:\` and the path instead of computing, and the marker travels: a rollup over a looping value reports the loop rather than summing it. A loop that stays on one row names its fields (\`#CYCLE: Double → MirrorSum → Double\`); one that travels between rows names them too (\`#CYCLE: Alpha › Double → Alpha › PeerSum → Beta › Double → Beta › PeerSum → Alpha › Double\`), because the rows are what closed it (Issue #283).
+A formula cannot reach its own field the long way round either. \`Total\` reading \`Bonus\` while \`Bonus\` reads \`Total\` is refused when it is saved, and the message names the path: \`Formula 'Bonus' would close a reference cycle: Bonus → Total → Bonus\`. A loop that only closes through a rollup or a lookup takes two records pointing at each other to exist, so no save can see it — those cells read \`#CYCLE:\` and the path instead of computing, and the marker travels: a rollup over a looping value reports the loop rather than summing it. A loop that stays on one record names its fields (\`#CYCLE: Double → MirrorSum → Double\`); one that travels between records names them too (\`#CYCLE: Alpha › Double → Alpha › PeerSum → Beta › Double → Beta › PeerSum → Alpha › Double\`), because the records are what closed it (Issue #283).
 
 A formula cannot cross a relation. That is what \`lookup\` and \`rollup\` are for.` },
 
   { name: 'document', kind: 'Document', doc: `# document
 
-A markdown document that belongs to one row. Every table has one — \`Description\` — and a table may carry as many more as it needs.
+A markdown document that belongs to one record. Every table has one — \`Description\` — and a table may carry as many more as it needs.
 
 The first one is a **role**, not a name. Rename it to \`Notes\` and it is still the description: the table points at it by id, so \`weave doc set Task#5\` without a \`--field\` still finds it, and the schema descriptor carries \`role: "description"\`. Delete it and it stays deleted — no migration puts it back.
 
@@ -592,9 +592,9 @@ A write over HTTP carries its text under \`doc\` or \`markdown\`: \`PUT /api/ent
 
 ## History
 
-Every document keeps its own revisions. A revision is one editing session: writes by the same actor to the same field within ten minutes fold into one, so a pause is not a snapshot and a keystroke log never builds up. Identical text records nothing. Two hundred revisions are kept per document, oldest trimmed; the trash keeps them, a purge drops them with the row.
+Every document keeps its own revisions. A revision is one editing session: writes by the same actor to the same field within ten minutes fold into one, so a pause is not a snapshot and a keystroke log never builds up. Identical text records nothing. Two hundred revisions are kept per document, oldest trimmed; the trash keeps them, a purge drops them with the record.
 
-The **Activity** button (the clock-arrow in the record's header) opens the record's Activity in the context pane, the next card in the pane row: right of the record on the full page, right of the entity pane in the peek. Drag the gutter before it to resize it (double-click resets it to 340 px); the URL carries \`side=activity\`, so a reload or a shared link reopens it, and Esc closes it before the entity pane. Press the button again to close it. It lists every document's revisions and every field and state change, newest first under Today, Yesterday and a date. A chip per document narrows the list to that document's versions; the chips stay on one line, and the ones that do not fit wait under **More**. A long value wraps inside its row. Hover a row for its action; select it for **Restore** (a revision) or **Revert** (a field; **Clear value** when the field was empty before the change), and for a revision a picker to compare it with any other version of the same document. The selected change shows read-only where it lives, a document's diff in place of its editor and a field change as a card at the top. A restore is an ordinary edit (undoable) and never overwrites what it replaces: both texts stay in the list. Its row reads "Description restored from" and the time of the version it brought back, and its own activity entry reads "Description restored to the version from …" with who wrote that version; an agent reads the same as \`restoredFrom\` (the revision's seq) on the revision and \`restoredFrom\`, \`restoredAt\`, \`restoredBy\` on the entry. Every action toasts with **Undo**, which steps back that action only.
+The **Activity** button (the clock-arrow in the record's header) opens the record's Activity in the context pane, the next card in the pane row: right of the record on the full page, right of the entity pane in the peek. Drag the gutter before it to resize it (double-click resets it to 340 px); the URL carries \`side=activity\`, so a reload or a shared link reopens it, and Esc closes it before the entity pane. Press the button again to close it. It lists every document's revisions and every field and state change, newest first under Today, Yesterday and a date. A chip per document narrows the list to that document's versions; the chips stay on one line, and the ones that do not fit wait under **More**. A long value wraps inside its row. Hover a row for its action; select it for **Restore** (a revision) or **Revert** (a field; **Clear value** when the field was empty before the change), and for a revision a picker to compare it with any other version of the same document. The selected change shows read-only where it lives, a document's diff in place of its editor and a field change as a card at the top. A restore is an ordinary edit (undoable) and never overwrites what it replaces: both texts stay in the list. Its record reads "Description restored from" and the time of the version it brought back, and its own activity entry reads "Description restored to the version from …" with who wrote that version; an agent reads the same as \`restoredFrom\` (the revision's seq) on the revision and \`restoredFrom\`, \`restoredAt\`, \`restoredBy\` on the entry. Every action toasts with **Undo**, which steps back that action only.
 
 Comments are off in the app until their redesign: a record shows no comment card or comment box, and the Activity panel lists no comments. Comments written through the API, MCP or an automation's add-comment action are still stored, returned with the record by \`GET /api/entities/:id\`, and listed as comment-added entries in the Activity table.
 
@@ -634,7 +634,7 @@ The value is the same object \`add_field\` takes:
 { "type": "number", "config": { "format": "currency", "currency": "EUR", "decimals": 2 } }
 \`\`\`
 
-Written to a registry row, it reconfigures the real field — the same validation, because it is the same normalizer.
+Written to a registry record, it reconfigures the real field — the same validation, because it is the same normalizer.
 
 In a grid the cell reads as a sentence rather than as JSON: \`select · 3 options\`.
 
@@ -677,7 +677,7 @@ The cell reads \`✱✱✱✱ vendor-portal\`, or \`✱✱✱✱ vendor-portal (
 
 ## Who can read it back
 
-Everywhere else in weave, reaching the table reaches the values. A credential looks like the exception and is not one: the secret was never IN the table. The name is ordinary table data that anyone with the row can see; the secret sits behind the credential's own access list.
+Everywhere else in weave, reaching the table reaches the values. A credential looks like the exception and is not one: the secret was never IN the table. The name is ordinary table data that anyone with the record can see; the secret sits behind the credential's own access list.
 
 \`\`\`bash
 weave key reveal vendor-portal          # owner, or someone granted — prints the bare value
@@ -693,11 +693,11 @@ There is still no read-back GET, on any surface. Reveal is a POST because it is 
 
 A legacy credential with no owning account stays unavailable through the web and MCP. An operator with local CLI access can grant it to an account through \`key share\`. A workspace Architect gains no access to another account's credential by role alone. Sharing grants access without changing ownership.
 
-Storing a name the keystore does not hold is allowed on purpose — set the row first and the secret later. An export carries the names and none of the values, and neither does a formula, a lookup or a query result.` },
+Storing a name the keystore does not hold is allowed on purpose — set the record first and the secret later. An export carries the names and none of the values, and neither does a formula, a lookup or a query result.` },
 
   { name: 'view', kind: 'Meta', doc: `# view
 
-How one row **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the row inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the row as a tile — a gallery, a peek. The config is the table's and the same for every row, so a task looks like a task wherever it turns up. The entity page draws each one the eye leaves on, in its **Appears as** strip, so a reader sees the row the way the rest of the workspace will; switch Chip or Card on in the eye to see it there, off and it goes from the strip and the grid alike.
+How one record **appears elsewhere**. Every table carries two, minted with it and hidden from the grid until someone unhides them: **Chip**, the record inline — a relation cell, a \`[[Table#12]]\` mention in a document, a reference card — and **Card**, the record as a tile — a gallery, a peek. The config is the table's and the same for every record, so a task looks like a task wherever it turns up. The entity page draws each one the eye leaves on, in its **Appears as** strip, so a reader sees the record the way the rest of the workspace will; switch Chip or Card on in the eye to see it there, off and it goes from the strip and the grid alike.
 
 ## Config
 
@@ -705,13 +705,13 @@ How one row **appears elsewhere**. Every table carries two, minted with it and h
 
 \`link\` — show the public id as a permalink (\`#12\`). A card says yes by default; a chip no.
 
-\`state\` — show the workflow state, first. On by default for both. The state is the **mark**: on a chip it leads the line, on a card it takes a row of its own, and on either a click opens the state picker grouped by category and writes the state to the row. It is the only way state changes from a chip or a card.
+\`state\` — show the workflow state, first. On by default for both. The state is the **mark**: on a chip it leads the line, on a card it takes a row of its own, and on either a click opens the state picker grouped by category and writes the state to the record. It is the only way state changes from a chip or a card.
 
 \`description\` — a preview of the description document: \`none\`, \`small\` (the first line), \`medium\` (about 120 characters across the first lines), \`large\` (about 320). A chip defaults to \`none\`, a card to \`small\`. Prose only: a page, a JSON model or a diagram is named, never flattened.
 
 \`fields\` — the other fields to show, by name, in this order — or \`null\` to take the first few non-empty glanceable values in column order, which is the default: arranging the columns IS the curation. A chip auto-fills to three segments in all, a card to four; the state counts as one. A select or multiselect segment draws as its own chip and opens its picker; the rest are label·value pairs. Documents, files, keys and definitions cannot ride along, and neither can the name (always shown) or the views themselves.
 
-One renderer draws both shapes, \`public/chip-view.js\`, with one stylesheet, \`public/chip.css\`. The browser loads them for relation cells and the References panel, and \`src/markdown.js\` loads them for document pages and HTML exports, so the same row prints the same markup on every surface. The **Chip and card anatomy** guide names every element.
+One renderer draws both shapes, \`public/chip-view.js\`, with one stylesheet, \`public/chip.css\`. The browser loads them for relation cells and the References panel, and \`src/markdown.js\` loads them for document pages and HTML exports, so the same record prints the same markup on every surface. The **Chip and card anatomy** guide names every element.
 
 \`\`\`json
 { "name": "Card", "type": "view", "role": "card",
@@ -720,9 +720,9 @@ One renderer draws both shapes, \`public/chip-view.js\`, with one stylesheet, \`
 
 ## Usage
 
-The chip and the card are roles, like the description: \`describeSchema\` marks them \`role: chip\` / \`role: card\`, and a schema document is matched on the role, so a renamed Chip is still the chip. Rename freely. There is no delete — every row has a chip and a card by existing — and no \`add_field\` of type \`view\`: configure the minted pair.
+The chip and the card are roles, like the description: \`describeSchema\` marks them \`role: chip\` / \`role: card\`, and a schema document is matched on the role, so a renamed Chip is still the chip. Rename freely. There is no delete — every record has a chip and a card by existing — and no \`add_field\` of type \`view\`: configure the minted pair.
 
-\`readEntity\` ships both under their field names — the one-line form (\`Ship the editor · Doing · Due 2026-09-12\`) in \`fields\`, the object (\`{ shape, id, publicId, url, name, link, state, description, fields }\`) in \`raw\` — and every relation summary carries the far row's \`chip\`, so a relation cell and a doc mention draw the same chip. \`weave_update_field\` with \`{ config: { fields: ["Owner"], description: "medium" } }\` changes it for every row of the table at once. \`GET /api/entities/:ref/view?shape=card&config={…}\` draws one row under a candidate config without saving it — the field dialog's live preview.
+\`readEntity\` ships both under their field names — the one-line form (\`Ship the editor · Doing · Due 2026-09-12\`) in \`fields\`, the object (\`{ shape, id, publicId, url, name, link, state, description, fields }\`) in \`raw\` — and every relation summary carries the far record's \`chip\`, so a relation cell and a doc mention draw the same chip. \`weave_update_field\` with \`{ config: { fields: ["Owner"], description: "medium" } }\` changes it for every record of the table at once. \`GET /api/entities/:ref/view?shape=card&config={…}\` draws one record under a candidate config without saving it — the field dialog's live preview.
 
 ## Gotchas
 
@@ -734,7 +734,7 @@ A card cannot show the description of a table whose description was deleted; \`d
 
   { name: 'attachments', kind: 'Files', doc: `# attachments
 
-Files on a row. Bytes live in the workspace's sibling \`files/\` directory; the cell holds their ids.
+Files on a record. Bytes live in the workspace's sibling \`files/\` directory; the cell holds their ids.
 
 ## Config
 
@@ -762,7 +762,7 @@ weave file delete Task#5 <fileId>
 
 Renders by its \`preview\`. A click on a file's chip or sheet cell opens it in a panel beside the record: an image, a PDF, plain text, or an HTML upload live under \`GET /api/files/:id?view\`, never a download. The panel's arrows step through the field's files, its full-screen button opens the same file full-screen (where ← → step too), and its ✕ or Esc closes it. ⌘-click a chip to open the file in a browser tab instead. A file of any other kind stays a download link. A single-file field shows its file in place: an image, a PDF or plain text in a frame whose bottom edge drags. Every HTML file renders in place on the record (Issue #1175), in a many-file field and on the loose Files card too, one frame per file, unless the field's preview is \`link\` or \`cover\`. The page loads live under \`GET /api/files/:id?view\`, whose sandbox keeps it off the workspace's origin (its scripts run, its links open a new tab, and it can read nothing of weave's), and the frame takes the page's own height: \`?view\` adds one script after the doctype that posts the page height to weave, and weave sizes a frame only from its own window's messages. A frame starts at three quarters of the window's height, so a page laid out on the viewport height (\`100vh\`), such as a slide deck, keeps that height instead of growing without end. The stored bytes are unchanged; \`weave file read\` and the bare route return the file as uploaded.
 
-In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. An upload into a single-file field that already holds a file replaces it; the old file stays in the row's file ledger. Where a table shows its rows as cards, drop a picture on a card to set its cover: it uploads into the table's cover field, a file that is no PNG, JPEG, GIF or WebP is refused, and a table with no cover field offers to add a Photo field.
+In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. An upload into a single-file field that already holds a file replaces it; the old file stays in the record's file ledger. Where a table shows its records as cards, drop a picture on a card to set its cover: it uploads into the table's cover field, a file that is no PNG, JPEG, GIF or WebP is refused, and a table with no cover field offers to add a Photo field.
 
 ## Gotchas
 
@@ -772,12 +772,12 @@ An HTML file's own edits live in its page storage, not in the file (Issue #1176)
 
 A file whose bytes are gone keeps its name and is marked \`(missing)\` in the cell and on the record. Metadata outlives the blob, so weave says which file was lost rather than offering a link that cannot open.
 
-A file attached to the row rather than to this field (\`POST /api/entities/<id>/files\`, or \`weave file attach\` with no \`--field\`) lands in the row's file ledger. The record's **Files** card lists everything in that ledger no attachments field already draws, with the same link and \`(missing)\` treatment, so a row whose table has no attachments field still reaches its files. The card is a body block like the fields: drag its grip to move it, and its caret folds it. **Make a field** in its header adds an attachments field to the table (named Files, or Files 2 when that name is taken) and moves the listed files into it without uploading them again, so they pick up the field's preview and multiple settings.
+A file attached to the record rather than to this field (\`POST /api/entities/<id>/files\`, or \`weave file attach\` with no \`--field\`) lands in the record's file ledger. The record's **Files** card lists everything in that ledger no attachments field already draws, with the same link and \`(missing)\` treatment, so a record whose table has no attachments field still reaches its files. The card is a body block like the fields: drag its grip to move it, and its caret folds it. **Make a field** in its header adds an attachments field to the table (named Files, or Files 2 when that name is taken) and moves the listed files into it without uploading them again, so they pick up the field's preview and multiple settings.
 
 A file delete is not undoable.` },
   { name: 'avatar', kind: 'Files', doc: `# avatar
 
-The row's face: an uploaded image, or the row's initials on a colour drawn from its name. An icon says what kind of row this is and belongs to the table; an avatar says which row it is and belongs to the row, so an avatar never takes an icon from the inventory.
+The record's face: an uploaded image, or the record's initials on a colour drawn from its name. An icon says what kind of record this is and belongs to the table; an avatar says which record it is and belongs to the record, so an avatar never takes an icon from the inventory.
 
 ## Config
 
@@ -796,13 +796,13 @@ weave field add Company Logo avatar --config '{"shape":"square"}'
 weave file attach Contact#5 --path ./myriam.png --field Photo
 \`\`\`
 
-The upload replaces the face; the earlier image stays in the row's file ledger. The value is the id of a file on this row, and the field takes PNG, JPEG, GIF or WebP. An SVG is refused, since weave serves uploaded SVGs as downloads, never inline. Clearing the value, or deleting the file, puts the initials back.
+The upload replaces the face; the earlier image stays in the record's file ledger. The value is the id of a file on this record, and the field takes PNG, JPEG, GIF or WebP. An SVG is refused, since weave serves uploaded SVGs as downloads, never inline. Clearing the value, or deleting the file, puts the initials back.
 
-A table with an avatar field puts the face first in the row's chip, inside its link, and first in the card's head. The face stands in for the row mark in the crumb and sits beside the name on the row's page, where a click or a dropped image changes it. A relation to the table draws the face on every chip that points there, and ⌘K shows it beside the hit. A table without one draws exactly as before.
+A table with an avatar field puts the face first in the record's chip, inside its link, and first in the card's head. The face stands in for the record mark in the crumb and sits beside the name on the record's page, where a click or a dropped image changes it. A relation to the table draws the face on every chip that points there, and ⌘K shows it beside the hit. A table without one draws exactly as before.
 
 **System/Users** carries an Avatar field. An agent account shows its face with a small chip badge in the corner, so a person and an agent with the same initials read apart.
 
-A compact to-many relation cell whose rows all have faces draws them as a pile: up to five overlapping faces, each a link to its row, then \`+N\`. Created by, Modified by, the activity feed and the identity panel show the face from the actor's **System/Users** row. A one-word name takes its initials from the parts between its dashes or underscores, so \`weave-fixer\` reads WF.
+A compact to-many relation cell whose records all have faces draws them as a pile: up to five overlapping faces, each a link to its record, then \`+N\`. Created by, Modified by, the activity feed and the identity panel show the face from the actor's **System/Users** record. A one-word name takes its initials from the parts between its dashes or underscores, so \`weave-fixer\` reads WF.
 
 ## Gotchas
 
@@ -816,9 +816,9 @@ export const GUIDES = [
     order: 4,
     doc: `# Agent access
 
-An agent works in weave through the MCP server. \`weave mcp --data <file.db>\` serves it over stdio. A running \`weave serve\` answers the same protocol at \`POST /api/mcp\`, and at \`/mcp\` on a host with a sign-in provider. Both doors list ${CORE_TOOLS.size} tools by default, out of ${TOOLS.length}. \`weave mcp --tools all\` or \`WEAVE_MCP_TOOLS=all\` lists all ${TOOLS.length}. A token lists only the tools its role may call: an Observer reads and comments, an Editor also writes rows, and an Architect also changes the schema and accounts.
+An agent works in weave through the MCP server. \`weave mcp --data <file.db>\` serves it over stdio. A running \`weave serve\` answers the same protocol at \`POST /api/mcp\`, and at \`/mcp\` on a host with a sign-in provider. Both doors list ${CORE_TOOLS.size} tools by default, out of ${TOOLS.length}. \`weave mcp --tools all\` or \`WEAVE_MCP_TOOLS=all\` lists all ${TOOLS.length}. A token lists only the tools its role may call: an Observer reads and comments, an Editor also writes records, and an Architect also changes the schema and accounts.
 
-The server sends a primer as \`initialize.instructions\`. This guide follows its order: read the outline, build in one call, read rows, then reach every other tool by name.
+The server sends a primer as \`initialize.instructions\`. This guide follows its order: read the outline, build in one call, read records, then reach every other tool by name.
 
 ## Schema outline
 
@@ -826,13 +826,13 @@ The server sends a primer as \`initialize.instructions\`. This guide follows its
 
 ## One build call
 
-\`weave_build\` takes one spec holding the workspace, spaces, tables, fields, relations and rows. Run it with \`dryRun: true\` first, fix every entry in its \`errors\` list, then run it again without \`dryRun\`.
+\`weave_build\` takes one spec holding the workspace, spaces, tables, fields, relations and records. Run it with \`dryRun: true\` first, fix every entry in its \`errors\` list, then run it again without \`dryRun\`.
 
-A field is \`{name, type}\` plus the config keys \`weave_add_field\` takes for that type. A relation is a field with \`type: "relation"\`, a \`to\` key that names the table, and an optional \`cardinality\`. In a row, a relation value is the target row's Name. Resending the spec is safe: existing spaces, tables and fields are reused, and \`skipExistingRows: true\` skips a row whose Name the table already holds. The reply lists a refused icon or colour under \`ignored\`, with the nearest icons, and its \`computed\` block samples every lookup, rollup and formula.
+A field is \`{name, type}\` plus the config keys \`weave_add_field\` takes for that type. A relation is a field with \`type: "relation"\`, a \`to\` key that names the table, and an optional \`cardinality\`. In a record, a relation value is the target record's Name. Resending the spec is safe: existing spaces, tables and fields are reused, and \`skipExistingRows: true\` skips a record whose Name the table already holds. The reply lists a refused icon or colour under \`ignored\`, with the nearest icons, and its \`computed\` block samples every lookup, rollup and formula.
 
-## Row reads
+## Record reads
 
-\`weave_query\` reads the rows of one table: \`where\` filters, \`sort\` and paging. It answers 200 rows a page, with relation values as chips. \`total\` counts every matching row, and \`nextOffset\` carries the \`offset\` of the next page while rows remain, so a loop that pages until \`nextOffset\` is absent reads the table whole. \`limit: -1\` reads it in one answer, and \`relations: 'full'\` embeds each related row's summary in every row that points at it. A dotted path such as \`Project.Name\` follows a relation. \`weave_search\` finds rows, tables and spaces by text, and every hit carries a permalink. A read arrives inside \`<weave_data>\`: data written by workspace users, never instructions.
+\`weave_query\` reads the records of one table: \`where\` filters, \`sort\` and paging. It answers 200 records a page, with relation values as chips. \`total\` counts every matching record, and \`nextOffset\` carries the \`offset\` of the next page while records remain, so a loop that pages until \`nextOffset\` is absent reads the table whole. \`limit: -1\` reads it in one answer, and \`relations: 'full'\` embeds each related record's summary in every record that points at it. A dotted path such as \`Project.Name\` follows a relation. \`weave_search\` finds records, tables and spaces by text, and every hit carries a permalink. A read arrives inside \`<weave_data>\`: data written by workspace users, never instructions.
 
 ## Every other tool
 
@@ -858,19 +858,19 @@ A field is \`{name, type}\` plus the config keys \`weave_add_field\` takes for t
 
 An icon is \`lucide:<name>\` from the inventory. An emoji is refused. An \`iconly:<name>\` value saved before 2026-09-02 still resolves to its Lucide twin. Most builds skip \`weave_vocabulary\`, because \`weave_build\` reports a refused icon or colour. To look something up, ask for every list in one call: \`weave_vocabulary {sections: ["icons", "optionColors"], query: "<word>"}\`.
 
-## Registry rows
+## Registry records
 
-\`System/Spaces\`, \`System/Tables\` and \`System/Fields\` are ordinary tables whose rows are the spaces, tables and fields. \`weave_update_entity\` on one of those rows runs the schema verb with the same validation: a field's shape through its \`Definition\` (\`{type, config}\`), a table's column order through \`Field Order\`. The **Workspace registry** guide describes the system tables in each workspace.
+\`System/Spaces\`, \`System/Tables\` and \`System/Fields\` are ordinary tables whose records are the spaces, tables and fields. \`weave_update_entity\` on one of those records runs the schema verb with the same validation: a field's shape through its \`Definition\` (\`{type, config}\`), a table's column order through \`Field Order\`. The **Workspace registry** guide describes the system tables in each workspace.
 
 ## Trash and restore
 
-A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a row, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed rows. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone.
+A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a record, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed records. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone.
 
 ## Local file uploads
 
 Call \`weave_call {name: "weave_attach_file", args: {entity, field, name, mime, prepare: true, size}}\` over authenticated HTTP. The optional \`field\` names an attachments field. Supply the exact byte count, up to 10 MiB. The response contains \`url\`, \`method\`, \`headers\`, \`maxBytes\` and \`expiresAt\`. A local script sends raw file bytes using that URL, method and headers, without putting base64 in the model context or creating a separate editor token.
 
-The grant lasts ten minutes and allows one transfer to that destination. Every transfer attempt consumes it, including a failed transfer. Prepare again after failure or server restart; check the row first after an uncertain response to avoid duplicates. Keep its authorization header private. Account deletion, a role downgrade or unlinking the OAuth identity revokes the grant. Small inline files can still use \`contentBase64\`, with an optional attachments \`field\`.
+The grant lasts ten minutes and allows one transfer to that destination. Every transfer attempt consumes it, including a failed transfer. Prepare again after failure or server restart; check the record first after an uncertain response to avoid duplicates. Keep its authorization header private. Account deletion, a role downgrade or unlinking the OAuth identity revokes the grant. Small inline files can still use \`contentBase64\`, with an optional attachments \`field\`.
 
 ## Secrets
 
@@ -890,7 +890,7 @@ Every entity carries at least one document, and a table can give it more. This p
 
 ## Conditional agent writes
 
-Entity API reads include an opaque \`revision\`. Send it as \`expectedRevision\` to \`POST /api/entities/:id/conditional\`. The \`append\` operation takes \`field\` and \`markdown\`; \`state\` takes \`field\` and \`state\`; \`close\` takes both halves at once, \`markdown\` with its \`field\` and \`state\` with its \`stateField\`, so a worker files its evidence and moves the row in one write with one revision check. A refused \`close\` writes neither half. The server checks the revision under its database write lock, refuses stale input with 409, and returns the updated entity. Append preserves existing text. A retry first reads the row again and checks whether its run evidence already exists.
+Entity API reads include an opaque \`revision\`. Send it as \`expectedRevision\` to \`POST /api/entities/:id/conditional\`. The \`append\` operation takes \`field\` and \`markdown\`; \`state\` takes \`field\` and \`state\`; \`close\` takes both halves at once, \`markdown\` with its \`field\` and \`state\` with its \`stateField\`, so a worker files its evidence and moves the record in one write with one revision check. A refused \`close\` writes neither half. The server checks the revision under its database write lock, refuses stale input with 409, and returns the updated entity. Append preserves existing text. A retry first reads the record again and checks whether its run evidence already exists.
 
 Authenticated clients can read \`GET /api/health/build\` for the serving worker's full commit SHA, version and readiness. This response excludes filesystem paths, backup details and process identifiers. A missing full SHA makes readiness false.
 
@@ -939,7 +939,7 @@ Lists nest on two spaces. The divider is \`***\` rather than \`---\` because a \
 
 ## Linking to anything in the workspace
 
-Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigable, one step. Pick a row and you get a chip.
+Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigable, one step. Pick a record and you get a chip.
 
 \`\`\`
 [[Task#12]]          an entity
@@ -947,7 +947,7 @@ Type \`#\` anywhere in a line and the entity search opens inline, arrow-navigabl
 [[space:Handbook]]   a space
 \`\`\`
 
-The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML. Each is the same pointer chip a relation cell wears, out of the same renderer and the same stylesheet: an outline, no fill, the state mark leading, the \`#id\` in mono, the name, then the configured chips and the home badge. It draws at the size of the text around it, so a line holding one is no taller than a line without. A bare \`[[Table#n]]\` is stored as \`[[Table#n|Name]]\` once the editor resolves it, which is what keeps the chip from being cut to the width of its source (Issue #679). A reference to a missing or deleted row is never drawn as a chip, and a PDF prints the reference's words.
+The stored form is a permalink keyed on the target's id, so renaming the target renames the chip and never breaks the link. Chips render live in the editor, in the rendered view, and in exported HTML. Each is the same pointer chip a relation cell wears, out of the same renderer and the same stylesheet: an outline, no fill, the state mark leading, the \`#id\` in mono, the name, then the configured chips and the home badge. It draws at the size of the text around it, so a line holding one is no taller than a line without. A bare \`[[Table#n]]\` is stored as \`[[Table#n|Name]]\` once the editor resolves it, which is what keeps the chip from being cut to the width of its source (Issue #679). A reference to a missing or deleted record is never drawn as a chip, and a PDF prints the reference's words.
 
 In the editor a chip shows the target's name. Its outline stops where the name does; hover for the table and number. A bare \`[[Task#12]]\` leaves room for a few characters only, so a long name ends in an ellipsis. Picked from the \`#\` search, the reference carries the name and fits.
 
@@ -975,7 +975,7 @@ KaTeX is the only optional renderer in the tree.
 
 ## Tables
 
-Inside a table, **Enter** adds a row, **Shift+Enter** breaks a line within the cell, and **Tab** moves to the next cell. A wide table scrolls inside its own frame rather than pushing the page sideways.
+Inside a table, **Enter** adds a record, **Shift+Enter** breaks a line within the cell, and **Tab** moves to the next cell. A wide table scrolls inside its own frame rather than pushing the page sideways.
 
 ## Folding
 
@@ -1012,7 +1012,7 @@ The PDF writer is in-tree and embeds DejaVu, so accented text, Greek, arrows and
 
 ## Written by an agent, read by a person
 
-An automation can append to a document on a state change, with \`{{Name}}\` and \`{{Today}}\` filled in from the row. \`{{Today}}\` and date fields print the way the grid prints dates (Oct 6, 2026); \`{{Today:iso}}\` prints 2026-10-06 for a script to parse:
+An automation can append to a document on a state change, with \`{{Name}}\` and \`{{Today}}\` filled in from the record. \`{{Today}}\` and date fields print the way the grid prints dates (Oct 6, 2026); \`{{Today:iso}}\` prints 2026-10-06 for a script to parse:
 
 \`\`\`json
 { "type": "append-doc", "text": "---\\n\\n✅ Completed on {{Today}}." }
@@ -1020,7 +1020,7 @@ An automation can append to a document on a state change, with \`{{Name}}\` and 
 
 What lands is markdown, in the same document a person is editing, folding and exporting. There is no second class of content.
 
-Worked examples of every construct on this page live in [[table:Formatting]], one row each.`,
+Worked examples of every construct on this page live in [[table:Formatting]], one record each.`,
   },
   {
     name: 'Making a workspace your own',
@@ -1028,7 +1028,7 @@ Worked examples of every construct on this page live in [[table:Formatting]], on
     order: 9,
     doc: `# Making a workspace your own
 
-Two tables holding the same rows can read completely differently. This page is the surface that decides which one you get: the chrome, the costumes, the grid, and the views.
+Two tables holding the same records can read completely differently. This page is the surface that decides which one you get: the chrome, the costumes, the grid, and the views.
 
 Everything here is reachable from the UI, the CLI, REST and MCP. The **Configuring a space, first time right** guide is the same surface written for an agent standing up a space without a browser; this one is written for whoever has to read the result.
 
@@ -1041,31 +1041,31 @@ weave workspace require-auth
 weave workspace link-preview        # or --off
 \`\`\`
 
-The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. The weave mark stays pinned at the top; below it the chips run in the order this browser last opened them, newest first, with the workspace you are in always first. Every workspace page load moves that workspace to the front of a \`wv_recent\` cookie (fifty names at most, the same domain, path and lifetime as \`wv_rail\`), and \`GET /api/workspaces\` answers in that order, with workspaces the cookie does not name after them in their usual order. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens. It holds one row, **Delete workspace…**, and shows only where you may delete that workspace, so a workspace you cannot delete has no ⋮ and its chip opens no menu. **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar), lists the same workspaces with **Delete…**. Either way a **Delete workspace** dialog opens. Type the workspace's exact name and its **Delete workspace** button turns on; **Cancel**, Escape or a click outside closes the dialog with nothing deleted. Deleting a workspace is permanent from your side: it leaves the rail for everyone, its address and links answer 404, there is no **Undo** and Trash never lists it. Delete the workspace you are in and weave opens the next workspace on the rail; delete your last one and you land on the \`weave\` workspace as an Observer. \`DELETE /api/workspaces/<id>\` does the same. The hub keeps the file behind a tombstone that only the operator can restore (\`POST /api/workspaces/<id>/restore\`). Delete shows only to an Architect of the workspace being deleted, the right the route checks; the \`weave\` docs workspace and the last live workspace cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
+The name and logo ride the icon rail on the far left, which is how you switch between workspaces served side by side at \`/w/<name>/\`. The weave mark stays pinned at the top; below it the chips run in the order this browser last opened them, newest first, with the workspace you are in always first. Every workspace page load moves that workspace to the front of a \`wv_recent\` cookie (fifty names at most, the same domain, path and lifetime as \`wv_rail\`), and \`GET /api/workspaces\` answers in that order, with workspaces the cookie does not name after them in their usual order. Right-click any chip (or click the current one) for the workspace menu, the same one the **⋮** on the workspace page opens. It holds one record, **Delete workspace…**, and shows only where you may delete that workspace, so a workspace you cannot delete has no ⋮ and its chip opens no menu. **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar), lists the same workspaces with **Delete…**. Either way a **Delete workspace** dialog opens. Type the workspace's exact name and its **Delete workspace** button turns on; **Cancel**, Escape or a click outside closes the dialog with nothing deleted. Deleting a workspace is permanent from your side: it leaves the rail for everyone, its address and links answer 404, there is no **Undo** and Trash never lists it. Delete the workspace you are in and weave opens the next workspace on the rail; delete your last one and you land on the \`weave\` workspace as an Observer. \`DELETE /api/workspaces/<id>\` does the same. The hub keeps the file behind a tombstone that only the operator can restore (\`POST /api/workspaces/<id>/restore\`). Delete shows only to an Architect of the workspace being deleted, the right the route checks; the \`weave\` docs workspace and the last live workspace cannot be deleted. **Click the logo** at the left of the workspace page's title to pick an image, whether or not the workspace has one yet; **Remove logo**, the small **×** beside it, clears it. The theme toggle is light, dark, or follow the system, and every surface — chips, code blocks, diagrams, the relation map — is drawn in both.
 
 ## Deleting
 
-Every menu deletes the same way: **Move to trash**, held until its fill sweeps across, for a table, a space, a record, a share page or a field. A click deletes nothing. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a row, type the row's name, then hold the button until it fills. An observer sees the list without the button.
+Every menu deletes the same way: **Move to trash**, held until its fill sweeps across, for a table, a space, a record, a share page or a field. A click deletes nothing. The message it raises says **Moved to trash** and carries **Undo**, which puts the thing back where it was: a table or a space in the sidebar, a record on its page, a share page on the workspace page, a field at its column. The selection bar's trash says the same and undoes the same. Nothing in a menu or on the Trash page deletes for good; the Trash page restores. **Delete forever** lives in **Settings**, which the personal menu opens (the **⋯** beside your name at the foot of the sidebar): choose it on a record, type the record's name, then hold the button until it fills. An observer sees the list without the button.
 
 ## The space
 
-A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's row in System/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
+A space is the unit of meaning in a workspace: it groups the tables of one area, such as Contact, Company and Deal in CRM. You address a table by space and table name, so CRM/Deal is the Deal table in CRM. Spaces never nest. Make a new space only when you have a table whose area no existing space covers. The Σ under a grid column is a rollup on the space's record in System/Spaces. A space's schema version rises when its structure changes, so an agent can ask for only what changed. Mark a space as a template and weave_template_use copies its schema into another workspace.
 
 ## Sharing a link
 
-Every row, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/e/<id>\` for a row, \`/t/<id>\` for a table, \`/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. A row, table or space link names no workspace: on a workspace host such as \`net.weave.grunion.ai\` the host names it, and anywhere else the link opens in whichever workspace holds that id. Links that do carry \`/w/<ws>/\` (\`/w/<ws>/e/Issue%23287\` too) keep working. The ⧉ beside a row's \`#id\`, a table's title or a space's title copies it.
+Every record, table, space and workspace has a permalink built from its id, so a rename never breaks it: \`/e/<id>\` for a record, \`/t/<id>\` for a table, \`/s/<id>\` for a space and \`/w/<ws>/\` for the workspace. A record, table or space link names no workspace: on a workspace host such as \`net.weave.grunion.ai\` the host names it, and anywhere else the link opens in whichever workspace holds that id. Links that do carry \`/w/<ws>/\` (\`/w/<ws>/e/Issue%23287\` too) keep working. The ⧉ beside a record's \`#id\`, a table's title or a space's title copies it.
 
-The same row permalink comes back as \`url\` from every door: the API, MCP, the CLI, chips and cards, search hits and the bug reporter. It works as input too. Paste a row's link, with or without the origin, its \`/e/<id>\` path or its bare id into search or ⌘K and that row comes first; pass it to any API, MCP or CLI call that names a row and it names that row.
+The same record permalink comes back as \`url\` from every door: the API, MCP, the CLI, chips and cards, search hits and the bug reporter. It works as input too. Paste a record's link, with or without the origin, its \`/e/<id>\` path or its bare id into search or ⌘K and that record comes first; pass it to any API, MCP or CLI call that names a record and it names that record.
 
-Paste one into Slack, Messages or an email and it unfurls: the workspace logo (the weave mark when the workspace has none, or only an SVG one), the row's table, \`#id\` and name as the title, the path \`weave › Development › Issue\` on the first line and the state and the first fields on the next (\`Status Fixed · Severity Medium\`). The browser tab reads the row before the app has loaded. Opening the link lands on the row, and Back leaves in one step.
+Paste one into Slack, Messages or an email and it unfurls: the workspace logo (the weave mark when the workspace has none, or only an SVG one), the record's table, \`#id\` and name as the title, the path \`weave › Development › Issue\` on the first line and the state and the first fields on the next (\`Status Fixed · Severity Medium\`). The browser tab reads the record before the app has loaded. Opening the link lands on the record, and Back leaves in one step.
 
 On a workspace with \`requireAuth\` on, a link fetcher is signed out, so by default it gets the sign-in redirect and the paste shows a bare URL. **Link preview before sign-in**, a switch on the **Settings** page (\`weave workspace link-preview\`, or \`PATCH /api/workspace\` with \`{"linkPreview": true}\` and an architect token), lets a signed-out request for a uuid permalink read the preview head: title, path, \`#id\`, name, logo, state and the first fields. Nothing else leaves: no document, no other field, no API. An unknown id and a \`Table#n\` address, which anyone could count through, are walled like any other page. The person who opens the link still signs in first. It is off on every workspace until an architect turns it on.
 
-**Prefilled create links.** \`/w/<ws>/t/<id>/new?<Field>=<value>&…\` opens the new-row form for that table with those fields filled in. Nothing is saved until you press **Save**, so a link on another page cannot add rows. Values are read the way the API reads them: a select takes the option's name, a relation takes the target row's Name, and a repeated key fills a multi-select or a many relation (\`Tags=ai&Tags=ops\`). A field the table does not have, or a computed one, is left out and named at the top of the form, and so is a value that matches no option or row. Each value is cut to 1,000 characters and the whole query to 2,400, so the link survives sign-in: a signed-out visit signs in and lands on the filled form. **Copy create link** in the table's ⋮ menu copies the link with the values the current filter gives a new row; the button of the same name in the form copies a link carrying what you have filled in so far.
+**Prefilled create links.** \`/w/<ws>/t/<id>/new?<Field>=<value>&…\` opens the new-row form for that table with those fields filled in. Nothing is saved until you press **Save**, so a link on another page cannot add rows. Values are read the way the API reads them: a select takes the option's name, a relation takes the target record's Name, and a repeated key fills a multi-select or a many relation (\`Tags=ai&Tags=ops\`). A field the table does not have, or a computed one, is left out and named at the top of the form, and so is a value that matches no option or record. Each value is cut to 1,000 characters and the whole query to 2,400, so the link survives sign-in: a signed-out visit signs in and lands on the filled form. **Copy create link** in the table's ⋮ menu copies the link with the values the current filter gives a new record; the button of the same name in the form copies a link carrying what you have filled in so far.
 
 ## Share links
 
-The **Share** up-arrow in the header of every workspace, space, table, record and share page opens the one docked **Beta** panel beside the page; no menu row or dialog shares. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared, or the one record or share page you are on. Filters hide rows in a view but do not narrow table access. Container links include every field. Selected-entry links omit related and computed fields to keep neighboring records private.
+The **Share** up-arrow in the header of every workspace, space, table, record and share page opens the one docked **Beta** panel beside the page; no menu row or dialog shares. **Existing access** lists links with preview, copy, edit and delete icons. **Add link** creates a public read link, or a submission link on a table. Selected entries fix the read scope to those entries; with nothing selected, the whole current table, space or workspace is shared, or the one record or share page you are on. Filters hide records in a view but do not narrow table access. Container links include every field. Selected-entry links omit related and computed fields to keep neighboring records private.
 
 **Expires** offers one hour, one day, seven days, thirty days, ninety days, a custom future date, or **Never**. Editing expiration keeps the address. **Regenerate link** preserves the grant and replaces its credential; the previous address stops working immediately. **Delete link** revokes it. Expired and deleted links remain visible for review. Dedicated HTTP links use the workspace UUID and an opaque token, with no username in the path; renaming a workspace or link does not change access.
 
@@ -1077,13 +1077,13 @@ Email and domain restrictions, automatic observer membership, and comments by pu
 
 | Access | What the link can do |
 | --- | --- |
-| Read | open the pages under the link, and read the rows in scope through the API |
-| Submit | create through the configured form without reading existing rows |
+| Read | open the pages under the link, and read the records in scope through the API |
+| Submit | create through the configured form without reading existing records |
 | Comment | reserved: shown but not offered until comments by share link are built |
-| Edit rows | read, and change the values and documents of rows in scope |
-| Add and delete rows | edit, add rows to a table in scope, and move rows in scope to the trash |
+| Edit records | read, and change the values and documents of records in scope |
+| Add and delete rows | edit, add records to a table in scope, and move records in scope to the trash |
 
-No link changes a field, a table, a space or a registry row, and none purges a row. Pages under \`/s/<token>\` open read-only whatever the access: a row opens as its fields and documents, a table as its rows under the columns its schema names, a space as its tables. Edit and add-delete work through the API and MCP, with the link's token as the bearer:
+No link changes a field, a table, a space or a registry record, and none purges a record. Pages under \`/s/<token>\` open read-only whatever the access: a record opens as its fields and documents, a table as its records under the columns its schema names, a space as its tables. Edit and add-delete work through the API and MCP, with the link's token as the bearer:
 
 \`\`\`bash
 weave share mint table Dev/Task --mode edit --label "vendor sync"
@@ -1092,7 +1092,7 @@ weave share revoke <share id>
 curl -H "Authorization: Bearer wvs_…" https://<host>/api/share
 \`\`\`
 
-\`GET /api/share\` answers what the token reaches. A row or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. An architect makes, lists, renews and revokes links; a link passes the wall, so minting one is a publishing decision, and editors and observers do none of it. An API or CLI link defaults to thirty days unless an architect chooses an expiration preset or renews it for thirty more on the same token (\`weave share renew <id>\`, \`weave_shares\` renew, \`POST /api/shares/<id>/renew\`), or names its own expiry when minting. Every mint, renew and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
+\`GET /api/share\` answers what the token reaches. A record or table outside the scope answers 404, and a route no link reaches answers 403. **Signed-in members only** makes the link private: it opens only in a browser signed in to the workspace. An architect makes, lists, renews and revokes links; a link passes the wall, so minting one is a publishing decision, and editors and observers do none of it. An API or CLI link defaults to thirty days unless an architect chooses an expiration preset or renews it for thirty more on the same token (\`weave share renew <id>\`, \`weave_shares\` renew, \`POST /api/shares/<id>/renew\`), or names its own expiry when minting. Every mint, renew and revoke lands in the audit log with its actor (\`weave_shares\` over MCP, \`POST\`/\`GET\`/\`DELETE /api/shares\` over HTTP).
 
 The CLI also accepts \`share update <id> --expiry 7d\` and \`share regenerate <id> --expiry never\`. MCP \`weave_shares\` exposes the same \`update\` and \`regenerate\` actions. REST uses \`PATCH /api/shares/<id>\` and \`POST /api/shares/<id>/regenerate\`; \`GET /api/shares?includeInactive=1\` includes expired and revoked grants. Labels and expiration can change; a grant's scope and purpose stay fixed.
 
@@ -1104,9 +1104,9 @@ On a local instance, the first time you open an empty workspace, a short welcome
 
 Architects opening a workspace with no tables of their own see a **New table** button and three templates (**Money**, **Work**, **People**). The system **Workspace** space (**Spaces**, **Tables**, **Fields**, **Views**, **Workflows**, **Workspaces**) doesn't count as yours.
 
-**New table** asks for a name and a space, offering **General** if you have none. A template builds its space, tables, fields and a few sample rows in one build call, and opens its first table. **Money** links each transaction to an account and a month, and a **Months** row totals what was **Spent** and **Earned** that month and the **Net** between them; you link the rows by hand for now. **Work** gives **Tasks** a status, a due date and a priority. **People** links **Contacts** to **Companies**. The empty state ends with your first table.
+**New table** asks for a name and a space, offering **General** if you have none. A template builds its space, tables, fields and a few sample records in one build call, and opens its first table. **Money** links each transaction to an account and a month, and a **Months** record totals what was **Spent** and **Earned** that month and the **Net** between them; you link the records by hand for now. **Work** gives **Tasks** a status, a due date and a priority. **People** links **Contacts** to **Companies**. The empty state ends with your first table.
 
-Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit rows once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
+Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit records once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
 
 Then the home page shows the relation map.
 
@@ -1129,31 +1129,31 @@ weave table update Invoice --icon lucide:file --noun invoice
 
 The icon value is **\`lucide:<name>\`** — one of the names in weave's inventory, Lucide shapes curated for what a space, a table, an option or a state tends to be called (\`activity bell bookmark bug calendar chart-bar compass file-text folder funnel heart house layout-grid lock mail map-pin pencil search settings shield-check star trash-2 users wallet\` among them; \`weave vocabulary icons\` lists them all). Most of them move — once when the page loads, once when the picker scrolls them into view, once per hover, never on a loop. A value stored before 2026-09-02 as \`iconly:<name>\` keeps drawing through a built-in alias, so nothing migrates. An emoji is not an icon: the engine refuses any value outside the inventory (Kyle, 2026-09-02).
 
-The **noun** is what one row is called — the table's *row term*. It lives on the Name field (open the Name column's menu → Field settings… → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
+The **noun** is what one record is called — the table's *record term*. It lives on the Name field (open the Name column's menu → Field settings… → "Rows in this table are…"), with a curated list to pick from and a plural you can correct. Every surface speaks it: the create control says "New invoice" instead of "New Invoice", the selection puck counts "3 invoices", the trash toggle reads "Deleted invoices". \`--noun\` on the CLI and \`noun\` over MCP set the same term.
 
 ## The grid reads as a record
 
-The table view is a ledger, not a form. The \`#id\` link opens the row in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. A text, number, date or url cell opens with its **whole value selected**, so typing, \`⌘C\` and \`⌘V\` act on the value you can see; a second click inside the open cell places the caret. Chips keep their tint and lose their box. A computed cell shows its value alone on a faint gray ground across the whole cell; the glyph lives on the field's name. A computed or relation column marks its header with a superscript (\`ƒ\` formula, \`Σ\` rollup, \`↳\` lookup, \`→\` relation), and hovering the mark names the route its value travels: \`Σ sum of Estimate via Tasks → Product/Task\`, \`↳ Name via Project → Product/Project\`, \`→ Product/Task\`. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
+The table view is a ledger, not a form. The \`#id\` link opens the record in the **dock** beside the table; **every other cell edits in place**, raising that field type's own editor with the cursor already in it. A text, number, date or url cell opens with its **whole value selected**, so typing, \`⌘C\` and \`⌘V\` act on the value you can see; a second click inside the open cell places the caret. Chips keep their tint and lose their box. A computed cell shows its value alone on a faint gray ground across the whole cell; the glyph lives on the field's name. A computed or relation column marks its header with a superscript (\`ƒ\` formula, \`Σ\` rollup, \`↳\` lookup, \`→\` relation), and hovering the mark names the route its value travels: \`Σ sum of Estimate via Tasks → Product/Task\`, \`↳ Name via Project → Product/Project\`, \`→ Product/Task\`. A row hover draws no lines between fields; the row's tint is the feedback. The one cell under the pointer shows the control a click would open.
 
-The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked row stays lit, Esc closes it. **Docked is the default pose** (Issue #198): a relation chip, a card, a mention chip in a document, a ⌘K hit and a document chip in a cell all open the entity in the dock beside the table you are reading. **The dock follows the click and the page stays** (Issue #276): a relation hop into another table docks that row beside the table you were on, the grid keeps its place and its filters, nothing lands in the browser history, and the dock's own crumb carries the path taken — Deals › Acme › Contacts › #4 — with a back arrow (or Esc) that walks it one hop at a time. Only from a page with no table under it (home, a space, the activity page) does a hit travel to the entity's table first. The outward diagonal arrows on the dock expand it to the full page (⌘⇧E flips either way); the inward arrows on the page dock it again. The dock keeps every control on its breadcrumb line (Issue #583): the back arrow at its left, the eye, the ⋮, the expand arrows and the ✕ at its right, and that line stays pinned at the top of the pane while the record scrolls under it. Only a \`#/entity/…\` address opens as the page — the address a new tab, a permalink and the expand arrows land on. ⌘-click a row (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity row, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
+The dock is the entity itself, not a preview: edit there and the table keeps its place, the docked record stays lit, Esc closes it. **Docked is the default pose** (Issue #198): a relation chip, a card, a mention chip in a document, a ⌘K hit and a document chip in a cell all open the entity in the dock beside the table you are reading. **The dock follows the click and the page stays** (Issue #276): a relation hop into another table docks that record beside the table you were on, the grid keeps its place and its filters, nothing lands in the browser history, and the dock's own crumb carries the path taken — Deals › Acme › Contacts › #4 — with a back arrow (or Esc) that walks it one hop at a time. Only from a page with no table under it (home, a space, the activity page) does a hit travel to the entity's table first. The outward diagonal arrows on the dock expand it to the full page (⌘⇧E flips either way); the inward arrows on the page dock it again. The dock keeps every control on its breadcrumb line (Issue #583): the back arrow at its left, the eye, the ⋮, the expand arrows and the ✕ at its right, and that line stays pinned at the top of the pane while the record scrolls under it. Only a \`#/entity/…\` address opens as the page — the address a new tab, a permalink and the expand arrows land on. ⌘-click a record (or its \`#id\` link) to give the record its own browser tab. Every navigating surface in weave answers the same three gestures — ⌘/Ctrl, Shift, and the middle button — so an activity record, a ⌘K hit and a node on the relation map open in a tab the same way. Text cells keep their own modifiers: shift-click still extends a selection there. A document chip in a cell opens its entity in the dock.
 
 The window itself never scrolls (Issue #609). The workspace rail, the sidebar, the table and the dock each scroll on their own: the wheel moves the one under the pointer, and a scroll that reaches the end of one stops there instead of carrying on into the next.
 
 ## A big table draws only what is in view
 
-The grid holds the rows in view plus a buffer of rows above and below, the buffer running ahead of the direction you scroll, and two spacer rows stand in for the loaded rows outside that window (Issue #271). The rows come in pages of 200 in the table's sort and filter order. The scroll reaches only rows that are here: under the last loaded row sits a **Loading more** row with the weave loader, and the next page is asked for while the end of the loaded rows is still three screens below the fold, so scrolling down meets that row and never a blank one (Issue #962). Jumping to a row that is not here yet (End, a new row, a search hit) loads every page up to it first. The foot reads \`200 of 2,087 loaded\` until every row is here. Sort and filter stay on the server, so page one is the right 200 and the Σ row still reads the space rollups, never the page. A refresh re-reads every loaded row in batches of 400 and swaps them in at once, so scrolling back up after a refresh never waits on a row you already saw (Issue #961). A cell commit redraws at the same scroll.
+The grid holds the rows in view plus a buffer of rows above and below, the buffer running ahead of the direction you scroll, and two spacer rows stand in for the loaded rows outside that window (Issue #271). The records come in pages of 200 in the table's sort and filter order. The scroll reaches only rows that are here: under the last loaded row sits a **Loading more** row with the weave loader, and the next page is asked for while the end of the loaded rows is still three screens below the fold, so scrolling down meets that record and never a blank one (Issue #962). Jumping to a record that is not here yet (End, a new record, a search hit) loads every page up to it first. The foot reads \`200 of 2,087 loaded\` until every record is here. Sort and filter stay on the server, so page one is the right 200 and the Σ row still reads the space rollups, never the page. A refresh re-reads every loaded record in batches of 400 and swaps them in at once, so scrolling back up after a refresh never waits on a row you already saw (Issue #961). A cell commit redraws at the same scroll.
 
 ## Searching everything (⌘K)
 
 ⌘K (Ctrl+K on Windows and Linux) or the sidebar's search control opens the palette. A tag at the right of its \`Search <workspace name>\` box names the current workspace. An empty palette lists Recent: the last eight records and tables opened here, newest first, kept in this browser only. Typing searches every workspace; a match from another carries that workspace's name in an outlined tag. Matches are grouped with counts: Records (name or \`#143\` id), In documents (words in a document or text field, with an excerpt), Tables, then Spaces and views; empty groups are dropped. Each match shows a kind icon, its name with your text highlighted, any workflow state chip, and its location on the right (\`Task #1\`, \`Product · table\`).
 
-Linking a relation opens the same palette scoped to the relation's target tables (Issue #703): an empty box lists the linked rows first, then the table's latest rows, and \`GET /api/search?tables=<id,...>\` is the scoped search behind it.
+Linking a relation opens the same palette scoped to the relation's target tables (Issue #703): an empty box lists the linked records first, then the table's latest records, and \`GET /api/search?tables=<id,...>\` is the scoped search behind it.
 
 The footer lists the keys: \`↑\` and \`↓\` select, \`Tab\` and \`Shift+Tab\` jump between groups, \`Return\` opens and \`Esc\` closes. The copy button on the selected or hovered match copies its permalink. ⌘-click or middle-click opens a match in a new tab and leaves the palette open (Issue #382).
 
 ## Searching a table
 
-The magnifier in the table's toolbar opens a search box; \`/\` opens it from a resting cell. \`⌘F\` stays the browser's own find, which sees only the rows the grid has drawn; the search box reaches every row (Issue #822). It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching rows as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table. It is saved with the view, beside its filter and sort: open the view again, or reload, and the box and the rows come back. Duplicate copies the search into the new view, a view started from **+ Add view** has none, and clearing the box clears the view's search (Feature #307). On the raw Blank table the search is yours alone and nothing is written. \`Return\` on a single match opens that row in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new row matches nothing.
+The magnifier in the table's toolbar opens a search box; \`/\` opens it from a resting cell. \`⌘F\` stays the browser's own find, which sees only the records the grid has drawn; the search box reaches every record (Issue #822). It uses the ⌘K matcher, scoped to this table: a name fragment, a \`#143\` id, or the words in a text field or a document. The grid keeps only the matching records as you type, in the table's own sort and inside its saved filter, and the foot reads \`3 rows found\`. The search runs on the server, so it reaches every page of a big table. It is saved with the view, beside its filter and sort: open the view again, or reload, and the box and the records come back. Duplicate copies the search into the new view, a view started from **+ Add view** has none, and clearing the box clears the view's search (Feature #307). On the raw Blank table the search is yours alone and nothing is written. \`Return\` on a single match opens that record in the dock. \`Esc\` clears the box and folds it away; a search that finds nothing says so and offers **Clear search**. \`+ New\` clears the search first, since an empty new record matches nothing.
 
 ## The grid from the keyboard
 
@@ -1170,8 +1170,8 @@ Cells **rest as values** and open on purpose. The cursor is a ring on one cell; 
 | \`/\` | search this table |
 | \`Space\` | pick the row up — or, on a toggle cell, flip the switch |
 | \`0\`–\`9\`, \`Backspace\` | on a rating cell: set the rating, or clear it to 0 |
-| \`⇧↑\` / \`⇧↓\` | extend the run of chosen rows |
-| \`⌘A\` | take every loaded row — the foot says how many that is |
+| \`⇧↑\` / \`⇧↓\` | extend the run of chosen records |
+| \`⌘A\` | take every loaded record — the foot says how many that is |
 | \`Home\` / \`End\` | the first or the last row of the table, scrolled in first |
 | \`⇧Return\` | make the next row, open on its name |
 | \`⌘Return\` | open the record in the dock |
@@ -1200,7 +1200,7 @@ A rectangle of cells is a **range**. Grow one with \`⇧\` and the arrows, or dr
 | Gesture | What it does |
 | --- | --- |
 | \`⇧← ⇧→\` | grow the range sideways from the resting cell |
-| \`⇧↑ ⇧↓\` | grow it up or down — **unless a row is picked up**, where they still extend the run of rows |
+| \`⇧↑ ⇧↓\` | grow it up or down — **unless a record is picked up**, where they still extend the run of records |
 | Drag across cells | the same rectangle, from the pointer |
 | Drag the corner handle | fill: the range's values, down or across, over everything the handle covers |
 | \`⌘C\` | copy the range, or the cell the cursor is on |
@@ -1217,13 +1217,13 @@ What the types force:
 
 - **Select, multi-select and workflow paste by option identity.** Within a table the option itself carries over. Into a different table the label goes instead, and a label that names no option there is **refused**, never invented.
 - **A multi-select pastes as a replacement**, never a merge: the set you copied is the set the cell ends up with.
-- **A relation links by name.** Each label in the paste — a copied relation cell, or \`Ann, Bob\` from a sheet — is matched against the related table's rows: a cell copied inside weave links the same rows; otherwise the exact name (case and surrounding spaces aside), then \`#12\`. A set is replaced whole, as a multi-select is; a single relation takes the first match. A label that names no row is never invented: the message counts and names it, and a cell whose labels all miss is left alone.
+- **A relation links by name.** Each label in the paste — a copied relation cell, or \`Ann, Bob\` from a sheet — is matched against the related table's rows: a cell copied inside weave links the same records; otherwise the exact name (case and surrounding spaces aside), then \`#12\`. A set is replaced whole, as a multi-select is; a single relation takes the first match. A label that names no record is never invented: the message counts and names it, and a cell whose labels all miss is left alone.
 - **A formula, rollup, lookup, view or document column takes no paste.** The cell refuses and the message names the column, the way the selection bar names what did not land.
 - **Text from a spreadsheet** fills the range row by row. Each column reads it in its own terms — a number parsed, a checkbox read (\`false\` is false), a comma list split into a set — and a cell that will not read is dropped and counted while its neighbours land.
 
-A fill or a paste is written the same way the selection bar writes: \`POST /api/bulk\`, one call per distinct set of values, reported per row. Rows that receive the same values share one call, so a fill down a column is **one write**, and the message it raises carries an **Undo** that steps the whole thing back at once.
+A fill or a paste is written the same way the selection bar writes: \`POST /api/bulk\`, one call per distinct set of values, reported per record. Records that receive the same values share one call, so a fill down a column is **one write**, and the message it raises carries an **Undo** that steps the whole thing back at once.
 
-## Working on many rows at once
+## Working on many records at once
 
 The checkbox column sits **left of the \`#\` link**, so the link never disappears while a selection is live. It draws nothing at rest: the box appears when the pointer is on the row, and every box in the column stays lit once anything is chosen.
 
@@ -1231,30 +1231,30 @@ Because a bare cell click already means *edit this cell*, it cannot also mean *c
 
 | Gesture | What it does |
 | --- | --- |
-| Click a box | chooses that row |
+| Click a box | chooses that record |
 | Shift-click a box | takes the span from the last box hit |
 | Click the header box | all, then none |
 | \`Esc\` | clears the selection |
 
-A selection is a set of **records**, not of positions: sort the table and the same rows stay chosen. Rows that leave the page — trashed, filtered out — leave the selection with them. Trashed rows carry no box at all.
+A selection is a set of **records**, not of positions: sort the table and the same records stay chosen. Records that leave the page — trashed, filtered out — leave the selection with them. Trashed records carry no box at all.
 
-Once a row is chosen, a bar sits at the bottom centre of the window saying how many it holds — the window, not the table, so it is in reach on a grid taller than the screen, and the grid keeps a floor under it so the last row is never covered. The bar is contextual: a table with no relation gets no *Link to…*, a workspace with one table gets no *Move to table…*.
+Once a record is chosen, a bar sits at the bottom centre of the window saying how many it holds — the window, not the table, so it is in reach on a grid taller than the screen, and the grid keeps a floor under it so the last row is never covered. The bar is contextual: a table with no relation gets no *Link to…*, a workspace with one table gets no *Move to table…*.
 
 | On the bar | What it does |
 | --- | --- |
 | **Set a field…** | pick a field, then a value — state chips, options, checked or unchecked, or a typed box — and it is written across the selection. State is a field like any other here, so a table with two workflow fields needs no second button |
-| **Link to…** | pick a relation, search the far table, pick one row: every chosen row is linked to it |
-| **Duplicate** | copies each row's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
+| **Link to…** | pick a relation, search the far table, pick one row: every chosen record is linked to it |
+| **Duplicate** | copies each record's writable fields; computed fields and documents are not copied, because a computed field is a read and recomputes itself on the copy |
 | **⋯** | the overflow below |
-| **Move to trash** | past a hairline, on its own. Hold it until its fill sweeps across: the message it raises carries **Undo**, which brings back every row it took, and the cursor moves to the row after them |
+| **Move to trash** | past a hairline, on its own. Hold it until its fill sweeps across: the message it raises carries **Undo**, which brings back every record it took, and the cursor moves to the record after them |
 
 | Under ⋯ | What it does |
 | --- | --- |
-| **Move to table…** | re-creates each row in the chosen table, matching fields by name and type, and trashes the original. Fields the far table lacks, files and comments stay behind — the bar names them |
-| **Roll up into a new …** | pick a relation, name one new parent in its table, and every chosen row is linked to it |
-| **Copy links** | one permalink per chosen row on the clipboard; the selection stays |
+| **Move to table…** | re-creates each record in the chosen table, matching fields by name and type, and trashes the original. Fields the far table lacks, files and comments stay behind — the bar names them |
+| **Roll up into a new …** | pick a relation, name one new parent in its table, and every chosen record is linked to it |
+| **Copy links** | one permalink per chosen record on the clipboard; the selection stays |
 
-Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/bulk\`, \`weave bulk\`, \`weave_bulk\`), reported per row. If part of it fails, the bar says what did **not** land rather than reporting a success it cannot vouch for, and each row keeps its own undo step. A \`set\` also reports \`changed\` — the rows whose value actually moved, which is how deep the undo stack it left goes, and what the grid's fill and paste count before offering to step one back.
+Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/bulk\`, \`weave bulk\`, \`weave_bulk\`), reported per record. If part of it fails, the bar says what did **not** land rather than reporting a success it cannot vouch for, and each record keeps its own undo step. A \`set\` also reports \`changed\` — the records whose value actually moved, which is how deep the undo stack it left goes, and what the grid's fill and paste count before offering to step one back.
 
 ## Column order, width, and what is on screen at all
 
@@ -1269,11 +1269,11 @@ Set a field, Link to, Move to table and Roll up are each one write (\`POST /api/
 | **Sort** in the View pane | table view | sorts by up to three fields, stored on the view for everyone. The two directions read by type: **Oldest to newest** for a date, **Smallest to largest** for a number, **A to Z** for text, **Option order** for a select and **State order** for a workflow (the order the definition lists them in), plain **Ascending** where no one reading fits. The system columns and **Public Id** (the **#** column) are in its list too; a column's ⋮ holds no sort rows |
 | **Fields** in the View pane | table view | show or hide any field and the system columns |
 | Drag the grip | entity page | reorders fields; the table's columns follow. On a phone, press and hold a field to pick it up |
-| Tap a field row | entity page, phone | opens that field's picker sheet. At 600px and below the fields block is one inset group of 50px rows: label on the left, value chip, chevron on the right, and an empty value as a single + chip. The grips are gone, the label still opens the field tray, and a relation that carries chips takes its own full-width row |
-| Tap a chip on a list row | table view, phone | edits that field without opening the row. The state mark and every chip own a 44px target around the drawn pill, the size the pill keeps; where two targets meet, or a target meets the **#** link or the name, the gap splits at its midpoint, so a tap a little wide of the state still picks a state and a tap nearer the **#** opens the row. The name always holds its two lines, so the chip line sits at the same height in every row. A drag never edits |
-| Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per row in this browser |
+| Tap a field record | entity page, phone | opens that field's picker sheet. At 600px and below the fields block is one inset group of 50px rows: label on the left, value chip, chevron on the right, and an empty value as a single + chip. The grips are gone, the label still opens the field tray, and a relation that carries chips takes its own full-width row |
+| Tap a chip on a list row | table view, phone | edits that field without opening the record. The state mark and every chip own a 44px target around the drawn pill, the size the pill keeps; where two targets meet, or a target meets the **#** link or the name, the gap splits at its midpoint, so a tap a little wide of the state still picks a state and a tap nearer the **#** opens the record. The name always holds its two lines, so the chip line sits at the same height in every row. A drag never edits |
+| Fold FIELDS | entity page | the caret beside FIELDS folds the value rows into one line of label · value chips, so a long field list stops pushing the documents down; the chips still edit in place, and the fold is remembered per record in this browser |
 
-The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the row keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
+The **#** column takes none of this. It is frozen to the grid's left edge, so a wide table scrolls sideways underneath it and the record keeps its id and its \`\u2197\` permalink whatever column you have read your way out to; the selection checkbox travels with it. No drag moves it, and no field can be ordered ahead of it.
 
 Fields dropped across the seam beside **#** freeze with it, and stay put while the rest of the grid scrolls. The frozen zone stops at 60% of the visible grid: a drop past that lands on the scrolling side, and a narrow window draws fewer fields frozen without forgetting the rest. The hairline at the seam shows only while something scrolls under it.
 
@@ -1283,13 +1283,13 @@ A table or field description stays behind the raised info icon beside its name. 
 
 The four system columns — \`Created At\`, \`Modified At\`, \`Created By\`, \`Modified By\` — are off by default. Turn them on where provenance is part of the record. A view shows the ones you turn on in its own list: each one drags, freezes across the seam and sizes like any field, and its place and width are the view's. A record's history lives in two places: the Activity button in the record's header and the Activity system table. Every one sorts from **Sort** in the View pane; the stored sort names it (\`Created At desc\`), and \`Public Id\` is the name the # column sorts under.
 
-\`Created By\` and \`Modified By\` show a person as their name on an initial, followed by "via MCP" when they wrote through an MCP client. A signed-in write records the account, never its name, so these columns, the activity feed, the audit log, document revisions and credential owners all show the account's current name and follow it across a rename; a line written before accounts were recorded keeps the name it was written with, and an account since removed shows as \`removed account\`. A write an automation made shows the rule's Workflows row instead, and the chip opens that row. When a rule writes to a row you have open, in the grid or on its page, each cell it changed lights up in the order the rule wrote it, Modified By last, and a toast names the rule and the row. With reduced motion on, the cells stay still and the chip and the toast still show.
+\`Created By\` and \`Modified By\` show a person as their name on an initial, followed by "via MCP" when they wrote through an MCP client. A signed-in write records the account, never its name, so these columns, the activity feed, the audit log, document revisions and credential owners all show the account's current name and follow it across a rename; a line written before accounts were recorded keeps the name it was written with, and an account since removed shows as \`removed account\`. A write an automation made shows the rule's Workflows record instead, and the chip opens that record. When a rule writes to a record you have open, in the grid or on its page, each cell it changed lights up in the order the rule wrote it, Modified By last, and a toast names the rule and the record. With reduced motion on, the cells stay still and the chip and the toast still show.
 
 Hide rather than delete when a column matters to a machine and not to a reader. Hiding keeps the data and the API surface; a delete needs \`hard\` and does not come back.
 
 ## What a field means
 
-Every field can carry a **description**: what the value represents and how it is written — \`Who we bought from — the legal name on the invoice\`, \`ISO date of the first event in the transcript\`. It sits under the label on the entity page and in the folded chips, is the column header's tooltip in the grid, and rides the schema (\`weave_schema\`, \`weave schema\`, \`GET /api/schema\`) as the field's \`description\`, so an agent filling the row reads the same note a person does. Set it in the field tray (click a header, or a label on the entity page), or from the schema verbs:
+Every field can carry a **description**: what the value represents and how it is written — \`Who we bought from — the legal name on the invoice\`, \`ISO date of the first event in the transcript\`. It sits under the label on the entity page and in the folded chips, is the column header's tooltip in the grid, and rides the schema (\`weave_schema\`, \`weave schema\`, \`GET /api/schema\`) as the field's \`description\`, so an agent filling the record reads the same note a person does. Set it in the field tray (click a header, or a label on the entity page), or from the schema verbs:
 
 \`\`\`bash
 weave field update Order Vendor --description "Who we bought from — the legal name on the invoice"
@@ -1306,7 +1306,7 @@ The toast lasts a few seconds. The record of the change stays in Activity: every
 
 A roll back checks first. If the field has changed since the entry, the page says so and changes nothing: roll back the newer change first. Undo and Roll back each write an \`undo\` entry of their own, which can itself be rolled back.
 
-Removing an option or a state leaves the rows that held it alone: they keep its id, so rolling the change back brings their values back. A **type change** converts every stored value to the new type, and weave keeps each row's value from before it, so its Undo and its Roll back bring the values back with the definition. A row someone edited after the change keeps that edit, converted back to the old type, and a row made after the change is converted the same way. The toast says how many values came back, how many edited rows were kept and how many newer rows were converted.
+Removing an option or a state leaves the records that held it alone: they keep its id, so rolling the change back brings their values back. A **type change** converts every stored value to the new type, and weave keeps each record's value from before it, so its Undo and its Roll back bring the values back with the definition. A record someone edited after the change keeps that edit, converted back to the old type, and a record made after the change is converted the same way. The toast says how many values came back, how many edited records were kept and how many newer records were converted.
 
 Weave keeps the values of a field's newest type change only. When a field changes type again, the older entry keeps its two definitions but not its values, and its page says so: rolling it back cannot bring those values back.
 
@@ -1367,22 +1367,22 @@ weave automation create Task --name 'Log completion' \\
               {"type":"add-comment","text":"{{Name}} moved to Done."}]'
 \`\`\`
 
-Triggers fire on create, update, state change, and on a schedule. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows row Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the row; an empty one reads \`(no Field)\`.
+Triggers fire on create, update, state change, and on a schedule. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows record Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the record; an empty one reads \`(no Field)\`.
 
-An \`upsert-row\` action writes a row of another table instead of the one that fired, matched on a key field that holds an id from the other system:
+An \`upsert-row\` action writes a record of another table instead of the one that fired, matched on a key field that holds an id from the other system:
 
 \`\`\`json
 { "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
   "fields": { "Stripe Id": "row.Customer", "Name": "row.Company", "Plan": "row.Tier" } }
 \`\`\`
 
-When a row of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing row (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target row's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows row Failed. An upsert into its own table is held by the same depth limit as every automation write.
+When a record of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing record (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target record's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows record Failed. An upsert into its own table is held by the same depth limit as every automation write.
 
-A \`schedule\` trigger fires on a timer instead of a row change:
+A \`schedule\` trigger fires on a timer instead of a record change:
 \`\`\`json
 { "type": "schedule", "cron": "0 9 * * 1-5", "zone": "America/Los_Angeles", "where": [["State", "!=", "Done"]] }
 \`\`\`
-\`cron\` is the five-field expression (minute, hour, day, month, weekday; \`*\`, lists, ranges and \`*/n\` steps), read on the wall clock of \`zone\` (UTC when absent). At each due minute the rule runs its actions on every live row of its table, or on the rows its \`where\` clause admits, written in the query filter syntax; \`{{Today}}\` reads the clock the run happens at and \`event.type\` is \`schedule\`. The server checks every minute. A due minute fires once: a box that slept through several runs one catch-up pass when it wakes, going back seven days at most; a new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one. Health and Last Run are stamped per run as for every rule.
+\`cron\` is the five-field expression (minute, hour, day, month, weekday; \`*\`, lists, ranges and \`*/n\` steps), read on the wall clock of \`zone\` (UTC when absent). At each due minute the rule runs its actions on every live record of its table, or on the records its \`where\` clause admits, written in the query filter syntax; \`{{Today}}\` reads the clock the run happens at and \`event.type\` is \`schedule\`. The server checks every minute. A due minute fires once: a box that slept through several runs one catch-up pass when it wakes, going back seven days at most; a new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one. Health and Last Run are stamped per run as for every rule.
 
 Actions run in order and each one yields an output the later ones can read. \`set-field\` yields \`{field, value}\`, \`append-doc\` \`{field, text}\`, \`add-comment\` \`{id, text}\`, \`upsert-row\` \`{id, publicId, name, created}\` and \`webhook\` \`{url, sent}\`. A later action reads them as \`{{steps.1.publicId}}\` in its text, in a \`set-field\` string value, or as \`steps.1.name\` in an \`upsert-row\` source path, so a chain like "open the account, then write its number back on the request" is three actions:
 \`\`\`json
@@ -1390,11 +1390,11 @@ Actions run in order and each one yields an output the later ones can read. \`se
  { "type": "set-field", "field": "Account Ref", "value": "Account#{{steps.1.publicId}}" },
  { "type": "add-comment", "text": "Opened {{steps.1.name}}; ref {{steps.2.value}}" }]
 \`\`\`
-A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each row carries the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the row it stopped on.
+A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each record carries the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the record it stopped on.
 
 ## Decks
 
-A deck is a read over slide rows, composed on request — the rows stay editable data and the deck is generated from them. See the **Decks: composing slides** guide.
+A deck is a read over slide records, composed on request — the records stay editable data and the deck is generated from them. See the **Decks: composing slides** guide.
 
 ## Who can do it
 
@@ -1405,19 +1405,19 @@ weave account list
 weave audit --limit 50
 \`\`\`
 
-Three roles. An **Observer** (free) reads every page and comments: through the API or MCP it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes rows and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. Over MCP, \`tools/list\` names only the tools the caller's role may call, and any other tool answers as an unknown one. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
+Three roles. An **Observer** (free) reads every page and comments: through the API or MCP it may post a comment, under its own name, and delete a comment it made. An **Editor** (paid seat) also creates, edits and deletes records and any comment, and never touches structure: no workspace, space, table or field definition. An **Architect** (paid) does everything, structure, accounts and the keystore included. Over MCP, \`tools/list\` names only the tools the caller's role may call, and any other tool answers as an unknown one. "Free" and "paid seat" are labels: weave bills nobody. Before 2026-10-02 the three were \`reader\`, \`writer\` and \`admin\`; every open rewrites a stored old name to the new one, so every token keeps working, and \`--role admin|writer|reader\` is still accepted, with a deprecation note, for one more release. Tokens are \`wv_\` values hashed at rest, and every mutation lands in a durable audit log with the actor that made it — a person, the CLI, or a named MCP client.
 
 An architect changes an existing account with \`weave account set <name> --role observer|editor|architect\`, \`weave_accounts\` with \`action: set\`, \`account\` and \`role\`, or \`PATCH /api/accounts/:ref\` with \`{role}\`. The account keeps its identity, tokens and sessions, which use the new role on their next request. The change is audited, and the last architect cannot be demoted. Editing Role in the Users table follows the same rules.
 
-A space is open or private. An open space follows each account's workspace role. A private space admits its members and the workspace's architects: anyone else gets \`404\` on its tables and rows and finds nothing of it in search, the schema, views, exports, share links or the audit log, and a relation into it shows a locked **Private** chip. A member may carry a role for that space that overrides the workspace role, so an Observer can be an Editor in Sales alone, and that member takes a paid seat. Workspace architects and the space's own architects manage it with \`PATCH /api/spaces/:ref\` and \`{access: "private"}\`, \`PUT /api/spaces/:ref/members/:account\` with an optional \`{role}\`, \`DELETE\` on the same path, or \`weave_update_space\` with \`access\`, \`member\`, \`role\` and \`removeMember\`. \`weave_accounts\` with \`action: create\` and \`space\` mints a token that reaches one space. A token never reaches past the account that issued it, and each write it makes lands in the audit log as \`token-write\`.
+A space is open or private. An open space follows each account's workspace role. A private space admits its members and the workspace's architects: anyone else gets \`404\` on its tables and records and finds nothing of it in search, the schema, views, exports, share links or the audit log, and a relation into it shows a locked **Private** chip. A member may carry a role for that space that overrides the workspace role, so an Observer can be an Editor in Sales alone, and that member takes a paid seat. Workspace architects and the space's own architects manage it with \`PATCH /api/spaces/:ref\` and \`{access: "private"}\`, \`PUT /api/spaces/:ref/members/:account\` with an optional \`{role}\`, \`DELETE\` on the same path, or \`weave_update_space\` with \`access\`, \`member\`, \`role\` and \`removeMember\`. \`weave_accounts\` with \`action: create\` and \`space\` mints a token that reaches one space. A token never reaches past the account that issued it, and each write it makes lands in the audit log as \`token-write\`.
 
-\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\` (status only without credentials: \`{"ok":true,"name":"weave"}\`, plus \`"auth":{"ok":…}\` when a provider is configured; the version, build, sizes, backup state and the provider's error code need an architect token or session), a share link (\`/s/<token>\`, and the old \`/view/<token>\` that redirects there), the task applet, the public production status page at \`/status\`, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes rows, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
+\`weave workspace require-auth\` closes every page and every API route to a caller without a token or a signed-in session. The doors that stay open are \`/api/health\` (status only without credentials: \`{"ok":true,"name":"weave"}\`, plus \`"auth":{"ok":…}\` when a provider is configured; the version, build, sizes, backup state and the provider's error code need an architect token or session), a share link (\`/s/<token>\`, and the old \`/view/<token>\` that redirects there), the task applet, the public production status page at \`/status\`, the sign-in page at \`/auth\`, and the static assets it needs; a browser without either is sent to the sign-in when a provider is configured and gets a page that links to it when none is, and an API call gets a 401. People sign in through an identity provider (the **Door C: sign in with a provider** guide) and agents keep the token. An observer may read any page and write nothing but its own comments; an editor writes records, never structure — and \`weave import\`, which replaces the whole workspace, is structure, so it needs an architect token. A token hash never leaves through \`weave export\`: an imported account keeps its name and role but opens nothing until it is deleted and created again.
 
 Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard deletes and file deletions are not. In the app, \`⌘Z\` (Ctrl+Z) steps back the last change: a selection-bar trash comes back whole when nothing was written after it. A text box, an open cell and a document keep \`⌘Z\` as their own text undo. There is no redo.
 
 ## The structure is data too
 
-\`System/Spaces\`, \`System/Tables\`, \`System/Fields\` and \`System/Workflows\` are ordinary tables whose rows **are** the structure. Each workspace stores its own system tables, with a \`Workspace\` column identifying the workspace (the **Workspace registry** guide). Editing a row runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the row needs before creating it; a Workflows row starts blank like any other row; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
+\`System/Spaces\`, \`System/Tables\`, \`System/Fields\` and \`System/Workflows\` are ordinary tables whose records **are** the structure. Each workspace stores its own system tables, with a \`Workspace\` column identifying the workspace (the **Workspace registry** guide). Editing a record runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the record needs before creating it; a Workflows record starts blank like any other record; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
   },
   {
     name: 'Polymorphic relations',
@@ -1425,7 +1425,7 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
     order: 10,
     doc: `# Polymorphic relations
 
-A relation field normally points at one table. In weave it can point at several, a **target set**, and two of the legal members are the workspace's own registries: \`System/Spaces\` and \`System/Tables\`. A bug can be scoped to a whole space. A dependency can name an entire workstream. An agenda can mix rows with the structure that holds them. This page is what a target set is, how the engine carries it, and why it was built this way rather than the way every other tool builds it.
+A relation field normally points at one table. In weave it can point at several, a **target set**, and two of the legal members are the workspace's own registries: \`System/Spaces\` and \`System/Tables\`. A bug can be scoped to a whole space. A dependency can name an entire workstream. An agenda can mix records with the structure that holds them. This page is what a target set is, how the engine carries it, and why it was built this way rather than the way every other tool builds it.
 
 ## The classic pair
 
@@ -1460,7 +1460,7 @@ weave link Bug#7 Scope Sales
   "config": { "targetDbs": ["<Spaces id>", "<Tables id>", "<Project id>"], "many": false } }
 \`\`\`
 
-Two or more tables in \`targetDbs\` make one field whose values may point at a row of any member. The engine stores the member ids and this side's arity, and nothing else. Only this side's cardinality matters: \`many-to-one\` holds one chip, \`many-to-many\` holds a set.
+Two or more tables in \`targetDbs\` make one field whose values may point at a record of any member. The engine stores the member ids and this side's arity, and nothing else. Only this side's cardinality matters: \`many-to-one\` holds one chip, \`many-to-many\` holds a set.
 
 Each surface handles the set on its own terms:
 
@@ -1468,7 +1468,7 @@ Each surface handles the set on its own terms:
 | --- | --- |
 | Chip | carries its **home table**, so \`Apollo\` from \`Sales/Project\` and \`Apollo\` the space read differently in the same cell |
 | Picker | searches every member table in one box |
-| Filter | traverses per row: \`[["Scope.Name", "=", "Apollo"]]\` resolves each linked row against its own table and matches whichever member Apollo lives in |
+| Filter | traverses per row: \`[["Scope.Name", "=", "Apollo"]]\` resolves each linked record against its own table and matches whichever member Apollo lives in |
 | Relation map | draws one edge per member, so the field reads as a fan rather than a line |
 | Field dialog | one select per member plus a remove control on the same line; the set shrinks to one and the field becomes a classic pair on the next save |
 | Link input | a name is resolved across the members in order; a live uuid outside the set is refused as *not in a related table*, a sharper error than *not found* |
@@ -1485,24 +1485,24 @@ flowchart TD
   M2 -- yes --> Store
   M3 -- no --> Err["not found · or: not in a related table"]
   Store --> Chip["chip: Apollo · Sales/Project"]
-  F["filter Scope.Name = Apollo"] --> Row["each linked row → its own table → its own Name"]
-  Row --> Match["matches whichever member Apollo lives in"]
+  F["filter Scope.Name = Apollo"] --> Record["each linked record → its own table → its own Name"]
+  Record --> Match["matches whichever member Apollo lives in"]
 \`\`\`
 
 ## Why a space can be a target
 
 The polymorphism is not a special case bolted onto relations. It falls out of the model.
 
-Every level of weave is a row. A space is a row in \`System/Spaces\`, a table a row in \`System/Tables\`, a field a row in \`System/Fields\`; a space has an entity view, a document, comments and a public id, the same as a task does, because it is the same kind of thing. One core kind, the Entity, is the whole ontology. Workspace, Space, Table, Field and Row are levels of it rather than separate kinds, and a relation has only ever known how to point at an entity.
+Every level of weave is a record. A space is a record in \`System/Spaces\`, a table a record in \`System/Tables\`, a field a record in \`System/Fields\`; a space has an entity view, a document, comments and a public id, the same as a task does, because it is the same kind of thing. One core kind, the Entity, is the whole ontology. Workspace, Space, Table, Field and Record are levels of it rather than separate kinds, and a relation has only ever known how to point at an entity.
 
 \`\`\`mermaid
 graph TD
-  subgraph reg["Registries are tables; their rows are the structure"]
+  subgraph reg["Registries are tables; their records are the structure"]
     WS["System/Spaces"] --- s1["row: Sales"]
     WT["System/Tables"] --- t1["row: Sales/Project"]
     WF["System/Fields"] --- f1["row: Project.Owner"]
   end
-  subgraph data["A user table; its rows are the data"]
+  subgraph data["A user table; its records are the data"]
     SP["Sales/Project"] --- p1["row: Apollo"]
   end
   Bug["Bug#7 · Scope"] -. "may point at" .-> s1
@@ -1512,7 +1512,7 @@ graph TD
   p1 --- E2["entity view · document · comments · public id"]
 \`\`\`
 
-So a relation whose target set includes \`System/Spaces\` is pointing at rows in a table, which is all a relation ever did. No second link type, no "reference to structure" field, no string that holds a space name and hopes it stays valid. Rename the space and the chip follows; delete the space and the link is pruned with the row. Airtable, Notion and Fibery weld a link field to one table and keep spaces and databases outside the data, so the same relation is structurally unavailable there.
+So a relation whose target set includes \`System/Spaces\` is pointing at records in a table, which is all a relation ever did. No second link type, no "reference to structure" field, no string that holds a space name and hopes it stays valid. Rename the space and the chip follows; delete the space and the link is pruned with the record. Airtable, Notion and Fibery weld a link field to one table and keep spaces and databases outside the data, so the same relation is structurally unavailable there.
 
 ## Why it is one-way
 
@@ -1536,7 +1536,7 @@ This is the ruling from the 2026-08-28 design review, and it is the reason the s
 
 Lookups and rollups refuse a target set. A lookup reads a named field from the far side, and across three member tables there is no one far side: \`Owner\` may exist on one member, be a number on another, and be missing on the third. Rather than answer with the first thing that matches, the engine keeps the single-target contract and the error says why.
 
-Filters do traverse, because a filter resolves one row at a time and each row knows its own table. That asymmetry is deliberate: a filter answers *does this row match*, a lookup promises *this column has this type*, and only the first can be kept across members.
+Filters do traverse, because a filter resolves one record at a time and each record knows its own table. That asymmetry is deliberate: a filter answers *does this record match*, a lookup promises *this column has this type*, and only the first can be kept across members.
 
 ## Lifecycle
 
@@ -1554,7 +1554,7 @@ stateDiagram-v2
 - Adding a member is a config edit on the field. Removing one is the same edit.
 - Deleting a member table prunes it from every target set that names it. The last member takes the field with it; an empty set has nothing to hold.
 - Duplicate members are refused at creation. An empty list is refused.
-- Chips into a deleted row disappear with the row, as they do for the pair.
+- Chips into a deleted record disappear with the record, as they do for the pair.
 
 ## Gotchas
 
@@ -1562,19 +1562,19 @@ Name the field for the role the target plays (\`Scope\`, \`Blocks\`, \`Agenda\`)
 
 A target set that only ever holds one member is a classic pair wearing a costume. Drop the list and take the inverse.
 
-\`System/Fields\` is a registry too, but it is not a useful member: a field's identity is its table's, and a relation into it reads as a pointer to a column definition. Reach for the \`field\` field type when a row needs to hold a field.
+\`System/Fields\` is a registry too, but it is not a useful member: a field's identity is its table's, and a relation into it reads as a pointer to a column definition. Reach for the \`field\` field type when a record needs to hold a field.
 
 MCP: \`weave_add_relation\` takes \`targetDbs\` as a list; a single-element list is the pair. REST and the CLI mirror it with \`--target-dbs\`.
 
 ## See it in Showcase
 
-Six tables in the **Showcase** space, one per use case, each with realistic rows and a description that opens on the one-line WHY. Open a table, click any chip in the polymorphic column: the home badge names the table the row came from, and the picker searches every member.
+Six tables in the **Showcase** space, one per use case, each with realistic records and a description that opens on the one-line WHY. Open a table, click any chip in the polymorphic column: the home badge names the table the record came from, and the picker searches every member.
 
 | Case | Table | Field | Target set |
 | --- | --- | --- | --- |
 | Attachment target — a comment lives on anything | [[table:Showcase/Comments]] | \`On\` | Tasks · Docs · Meetings, one |
 | Audit subject — the log points at what changed | [[table:Showcase/Activity]] | \`Subject\` | every Showcase table, one |
-| Pointing at structure — a note about a row *or the table that holds it* | [[table:Showcase/Notes]] | \`Related\` | Projects · Meetings · Docs · System/Tables · System/Spaces, many |
+| Pointing at structure — a note about a record *or the table that holds it* | [[table:Showcase/Notes]] | \`Related\` | Projects · Meetings · Docs · System/Tables · System/Spaces, many |
 | Sign-off target — one approval workflow for three kinds of subject | [[table:Showcase/Approvals]] | \`Of\` | Expenses · Contracts · Deploys, one |
 | Many-to-many mixed set — one label across five tables, +N chip | [[table:Showcase/Tags]] | \`Applied to\` | Tasks · Docs · Projects · Meetings · Deploys, many |
 | The counter-example — a plain pair because a lookup and a rollup read through it | [[table:Showcase/Line Items]] | \`Expense\` | Expenses only; \`Expense category\` is a lookup, \`Line total\` on Expenses a sum rollup |
@@ -1589,11 +1589,11 @@ The Notes case is the walkthrough in [[Article#5]]. The set was built for Featur
 
 Each workspace owns its **System** space, including **Users**, **Spaces**, **Tables**, **Fields**, **Forms** and **Workflows**. The workspace stores these records in its own file and checks its own accounts and roles. The hub discovers workspaces and routes requests to them. The workspace served at \`/\` is a routing default with the same permissions as any other workspace.
 
-## System rows in the sidebar
+## System records in the sidebar
 
 On desktop, **Hide sidebar** hides the workspace rail too. **Show sidebar** leads the page breadcrumb row. Rest at the left edge for 150 ms to peek; moving away for 400 ms or pressing Escape closes the peek. Clicking the edge or blank sidebar space pins it open.
 
-The **System** space sits at the bottom of the sidebar, under your spaces and **+ New space**, behind a hairline, and stays put on desktop however far the space list scrolls (Feature #333). It holds four built-in tables, in this order and with no counts: **Workflows** (this workspace's own workflows), **Users** (the accounts and invites, below), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed row in the workspace, \`#/trash\`). System folds and unfolds from its caret like any space, and the sidebar remembers the fold. On a phone, the menu scrolls as one column so System leaves room for the space list; the identity panel stays within reach at the bottom. Its stored name is System and its internal key stays \`workspace\`; a workspace whose system space was still called Workspace is renamed System the first time it opens, and \`Workspace/Users\` style names keep resolving to it. A workflow belongs to the workspace whose table its rule runs on, and its row's \`Workspace\` column says which; a row made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces row, and Restore on that row brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+The **System** space sits at the bottom of the sidebar, under your spaces and **+ New space**, behind a hairline, and stays put on desktop however far the space list scrolls (Feature #333). It holds four built-in tables, in this order and with no counts: **Workflows** (this workspace's own workflows), **Users** (the accounts and invites, below), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed record in the workspace, \`#/trash\`). System folds and unfolds from its caret like any space, and the sidebar remembers the fold. On a phone, the menu scrolls as one column so System leaves room for the space list; the identity panel stays within reach at the bottom. Its stored name is System and its internal key stays \`workspace\`; a workspace whose system space was still called Workspace is renamed System the first time it opens, and \`Workspace/Users\` style names keep resolving to it. A workflow belongs to the workspace whose table its rule runs on, and its record's \`Workspace\` column says which; a record made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces record, and Restore on that record brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
 
 Under System, at the very foot of the sidebar, the identity panel shows who you are here: your avatar, your name and your role in this workspace as a chip (Architect purple, Editor blue, Observer slate). A role belongs to a workspace, never to a person, so switching workspace from the rail changes the chip. Signed out of a workspace that asks for a sign-in, the panel shows **Sign in**; an open workspace with no sign-in shows **Open access**. The **⋯** button opens the personal menu: **Theme** (auto, dark and light in turn), **Keyboard shortcuts** (the \`?\` key opens the same sheet) and **Sign out** with the running version beside it, then **Sign out everywhere**. A server running an older commit than the page it served, or one behind main or the latest release, still raises its toast and shows a tinted line above the panel naming the commits.
 
@@ -1603,21 +1603,21 @@ Open **System › Users** in the workspace whose accounts you want to manage. An
 
 ## The Workspaces table
 
-Each workspace's **Workspaces** table contains the row describing that workspace. Its system rows relate to this row through their **Workspace** column.
+Each workspace's **Workspaces** table contains the record describing that workspace. Its system records relate to this record through their **Workspace** column.
 
-Create and delete workspaces through the hub routes, \`POST /api/workspaces\` and \`DELETE /api/workspaces/:id\`. A Workspaces row's Description edits the workspace's description; edit its Name from the workspace's own page so its address follows the change.
+Create and delete workspaces through the hub routes, \`POST /api/workspaces\` and \`DELETE /api/workspaces/:id\`. A Workspaces record's Description edits the workspace's description; edit its Name from the workspace's own page so its address follows the change.
 
-## Structure and system rows
+## Structure and system records
 
-Each workspace's \`state\` holds its spaces, tables and fields. Structural changes update the corresponding system rows in the same workspace. Editing a system row calls the same schema operation with the same validation. \`weave registry report\` reports drift, and \`weave registry rebuild\` restores the rows from the structure.
+Each workspace's \`state\` holds its spaces, tables and fields. Structural changes update the corresponding system records in the same workspace. Editing a system record calls the same schema operation with the same validation. \`weave registry report\` reports drift, and \`weave registry rebuild\` restores the records from the structure.
 
-Table configuration, including Field Order, Hidden Fields, Filter, Sort and Hide Rollups, stays on the local Tables row. Space rollups live on the local Spaces table and name tables in that workspace. Relations can target the local System/Spaces and System/Tables rows, and the workspace's own API reads and edits those rows.
+Table configuration, including Field Order, Hidden Fields, Filter, Sort and Hide Rollups, stays on the local Tables record. Space rollups live on the local Spaces table and name tables in that workspace. Relations can target the local System/Spaces and System/Tables records, and the workspace's own API reads and edits those records.
 
 ## Migration
 
-A legacy hub validates its system records before returning them to their owning workspaces. Current hub row IDs are retained, and typed relation references to older local registry rows are remapped to those IDs. Custom text stays unchanged. Cross-workspace schema or custom links that cannot remain local stop migration before it writes.
+A legacy hub validates its system records before returning them to their owning workspaces. Current hub record IDs are retained, and typed relation references to older local registry records are remapped to those IDs. Custom text stays unchanged. Cross-workspace schema or custom links that cannot remain local stop migration before it writes.
 
-The source rows become inactive recovery records only after the destination workspaces save successfully. A migration marker lets startup resume after an interruption. Back up the complete data directory before upgrading. To return to the previous binary, restore that backup too; older code must not open the migrated files.`,
+The source records become inactive recovery records only after the destination workspaces save successfully. A migration marker lets startup resume after an interruption. Back up the complete data directory before upgrading. To return to the previous binary, restore that backup too; older code must not open the migrated files.`,
   },
   {
     name: "Self-host weave: choose your door",
@@ -1642,7 +1642,7 @@ weave on a laptop binds \`127.0.0.1\` and needs no login. weave on a server need
 
 ## Door B was removed
 
-weave used to ship a third door, B: passkeys built into weave, registered from a one-time invite link. It was removed in the 0.4 series, in the first release after 0.4.52 (Feature #243). The CLI verbs \`weave account invite\` and \`weave account remove-credential\` and the \`/api/auth/register/*\` and \`/api/auth/login/*\` routes went with it. A passkey already stored on an account row stays in the data and is ignored. To keep a person signing in, link their account to a provider identity before you upgrade: \`weave account link <name>\` prints an invite link for them.
+weave used to ship a third door, B: passkeys built into weave, registered from a one-time invite link. It was removed in the 0.4 series, in the first release after 0.4.52 (Feature #243). The CLI verbs \`weave account invite\` and \`weave account remove-credential\` and the \`/api/auth/register/*\` and \`/api/auth/login/*\` routes went with it. A passkey already stored on an account record stays in the data and is ignored. To keep a person signing in, link their account to a provider identity before you upgrade: \`weave account link <name>\` prints an invite link for them.
 
 ## Tailscale, stated plainly
 
@@ -1765,7 +1765,7 @@ Three checks, whichever gate you chose:
 
 1. A private browser window gets the gate before any weave page.
 2. \`curl -sI https://weave.example.com/api/health\` answers a redirect or \`401\` from the gate, or \`200\` only with the gate's own credential (service token, basic auth, cookie).
-3. A row created through the gate is there after the gate is restarted: the gate holds sessions, weave holds data, and neither borrowed the other's.`,
+3. A record created through the gate is there after the gate is restarted: the gate holds sessions, weave holds data, and neither borrowed the other's.`,
   },
   {
     name: "Door C: sign in with a provider",
@@ -1773,7 +1773,7 @@ Three checks, whichever gate you chose:
     order: 15.5,
     doc: `# Door C: sign in with a provider
 
-Door C signs people in with one OpenID Connect (OIDC) provider. The provider has to serve \`/.well-known/openid-configuration\`; Clerk, Auth0, Keycloak, Authentik and Google are examples. The provider proves who is there; weave keeps the account row, the browser session and sign-out. Agents keep using \`wv_\` bearer tokens.
+Door C signs people in with one OpenID Connect (OIDC) provider. The provider has to serve \`/.well-known/openid-configuration\`; Clerk, Auth0, Keycloak, Authentik and Google are examples. The provider proves who is there; weave keeps the account record, the browser session and sign-out. Agents keep using \`wv_\` bearer tokens.
 
 ## Accounts and identities
 
@@ -1785,11 +1785,11 @@ A hosted provider with open sign-up lets anyone create a user there. A sign-in a
 
 ## The Users table
 
-**Users** is a system table in the System space, listed in the sidebar's System group under Workflows (Feature #318, Feature #333). Each account and each pending invite is a row with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Avatar, Identities, Last Seen and Created. The accounts stay the source of truth and the rows follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
+**Users** is a system table in the System space, listed in the sidebar's System group under Workflows (Feature #318, Feature #333). Each account and each pending invite is a record with Name, Email, Role (Architect, Editor or Observer), Status (Invited or Active), Kind (Person or Agent), Avatar, Identities, Last Seen and Created. The accounts stay the source of truth and the records follow them, so an account made with \`weave account create\` or redeemed from an invite shows up here too.
 
-You manage people by editing rows. A new row with an Email invites that person at the row's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the row reads Invited until they sign in. A new row with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role without replacing its tokens or sessions; the last architect cannot be demoted. Editing Name renames the account, and deleting the row revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
+You manage people by editing records. A new record with an Email invites that person at the record's Role; the answer carries the one-time sign-in link as \`invite.url\`, and the record reads Invited until they sign in. A new record with Kind Agent and no Email makes an agent account; the answer carries its \`wv_\` token as \`token\`, shown once. Editing Role changes the account's role without replacing its tokens or sessions; the last architect cannot be demoted. Editing Name renames the account, and deleting the record revokes the invite or deletes the account. Email, Status, Kind, Identities, Last Seen and Created are kept by weave and refuse edits.
 
-Add your own fields to Users like on any table, and point a relation at it from any table in the same workspace for an owner or an assignee. Only an architect creates, edits or deletes Users rows; editors and observers read them and relate to them. No row, query, export or MCP answer carries a token, session or invite hash, and \`weave export\` leaves the Email column out.
+Add your own fields to Users like on any table, and point a relation at it from any table in the same workspace for an owner or an assignee. Only an architect creates, edits or deletes Users records; editors and observers read them and relate to them. No record, query, export or MCP answer carries a token, session or invite hash, and \`weave export\` leaves the Email column out.
 
 ## Application at the provider
 
@@ -1890,13 +1890,13 @@ WEAVE_BILLING_SINCE=2026-10-16T00:00:00Z
 
 A workspace with one Editor or Architect is paid when that person holds the solo plan. Once a second paid person joins, the workspace needs the team plan: an architect opens it on the **Billing** page (\`/billing\`), which makes one Clerk organization for the workspace and adds every Editor and Architect to it. Architects join with the role that may manage the organization's billing in Clerk, Editors as plain members, and Observers never join, so Clerk counts only paid seats. Invites, role changes, removals and leaving keep the organization in step.
 
-A workspace made at \`/start\` opens on a free trial of \`WEAVE_TRIAL_DAYS\` days (14 unless the operator sets it; \`0\` turns trials off). During the trial every Editor and Architect works fully, writes and the AI app included, and weave asks Clerk only to notice a plan bought early. The sidebar shows how long is left over the last 3 days and links to **Billing**. When the trial ends nothing is deleted: the rules below apply, and the rows stay.
+A workspace made at \`/start\` opens on a free trial of \`WEAVE_TRIAL_DAYS\` days (14 unless the operator sets it; \`0\` turns trials off). During the trial every Editor and Architect works fully, writes and the AI app included, and weave asks Clerk only to notice a plan bought early. The sidebar shows how long is left over the last 3 days and links to **Billing**. When the trial ends nothing is deleted: the rules below apply, and the records stay.
 
 A paid account without a seat works as an Observer. Its writes answer \`402\` with \`code: "seat-required"\` and the billing page's address, worded for the reader: an Architect is told to subscribe, an Editor to ask an architect. The app shows one toast with **Open billing** however many writes it refused. Reading and commenting keep working, and so does an unseated Architect's AI app: \`/mcp\` answers \`initialize\`, \`tools/list\` and the read tools, and any write tool comes back as a tool error carrying the same words and the billing address. A failed card never cuts access: an item that is past due, or that Clerk ended after a failed payment nobody canceled, still seats its workspace. A canceled plan runs to the end of the month already paid. A workspace created before \`WEAVE_BILLING_SINCE\` is never billed. Accounts with no sign-in identity at Clerk, such as a deploy token's account, are not seats. When Clerk does not answer, a write answers \`503\` with \`code: "billing-unavailable"\` after the last answer is 15 minutes old.
 
 \`GET /api/billing\` returns the plan (\`trial\` during one), \`trial: { endsAt, daysLeft }\` or \`null\`, the seat count and each member's seat; \`POST /api/billing/team\` opens the team plan and needs an architect. An architect also reads each member's verified address, as in the Invite people dialog, and the Billing page prints it under the name so a team workspace says who holds which seat. A member who is no architect reads the seats without any address.
 
-With billing on, a person with no account can start a workspace of their own. Signing in at the start page, or at a workspace that answers **No access**, holds the login at \`/start\`, which offers **Create workspace**. The new workspace makes that person its Architect, linked to the login they signed in with, and the workspace starts its free trial, so they create and edit from the first minute. After the trial they work as an Observer there until they hold the solo plan, which they buy on its **Billing** page. Each login gets one unpaid workspace: while a workspace that login is Architect of has no plan, trial or not, another create answers \`402\` with \`code: "plan-required"\`, \`waiting\` naming that workspace and \`billing\` its billing page, and once the solo plan covers it the next create goes through. \`GET /api/start\` says so before anyone types: \`waiting\` beside \`canCreate\` names the workspace, or is \`null\`, and each workspace row carries its \`trial\`. A row's \`open\` link with \`?to=billing\` lands on that workspace's billing page. An unavailable Clerk response makes creation answer \`503\` with \`code: "billing-unavailable"\` rather than letting the workspace through. Workspace creation follows the server's signup policy; being an Architect in another workspace grants no exception. The agent step counts an AI app as connected only once weave has answered one of its MCP calls, never a call it refused.
+With billing on, a person with no account can start a workspace of their own. Signing in at the start page, or at a workspace that answers **No access**, holds the login at \`/start\`, which offers **Create workspace**. The new workspace makes that person its Architect, linked to the login they signed in with, and the workspace starts its free trial, so they create and edit from the first minute. After the trial they work as an Observer there until they hold the solo plan, which they buy on its **Billing** page. Each login gets one unpaid workspace: while a workspace that login is Architect of has no plan, trial or not, another create answers \`402\` with \`code: "plan-required"\`, \`waiting\` naming that workspace and \`billing\` its billing page, and once the solo plan covers it the next create goes through. \`GET /api/start\` says so before anyone types: \`waiting\` beside \`canCreate\` names the workspace, or is \`null\`, and each workspace record carries its \`trial\`. A record's \`open\` link with \`?to=billing\` lands on that workspace's billing page. An unavailable Clerk response makes creation answer \`503\` with \`code: "billing-unavailable"\` rather than letting the workspace through. Workspace creation follows the server's signup policy; being an Architect in another workspace grants no exception. The agent step counts an AI app as connected only once weave has answered one of its MCP calls, never a call it refused.
 
 ## Production service status
 
@@ -1956,7 +1956,7 @@ A slug is a DNS label: lowercase letters, digits and hyphens, 1 to 63 characters
 
 Sign-in stays on one callback, \`<WEAVE_ORIGIN>/api/auth/oidc/callback\`, so the provider needs no new redirect URI. A workspace host sends the browser to the apex to sign in; after the callback the apex sends it back with a single-use code that lasts 60 seconds and is kept only as its hash. The workspace host trades the code for its own session cookie, which has no \`Domain\` attribute and so never reaches another host. Each workspace keeps its own wall: an identity with no account there gets the same refusal as on the apex. The MCP door answers at \`<slug>.weave.example.com/mcp\`, and its protected-resource metadata names that host.
 
-At the apex, \`/start\` is the way in once \`WEAVE_BASE_DOMAIN\` is set: it names no workspace until the person signs in at the provider, then lists every workspace that identity opens, each one opening at its own host, and offers **Create workspace** when the server's signup and billing policy allows it. The start page is the setup page: a left pane walks a new person through Account, Workspace, Template (the kind of work they track, which picks a starter template with sample rows) and Agent (their AI app, its own steps, the workspace MCP address with a copy button and a first message to paste; the step turns green when that app first reaches the workspace over OAuth, and passes only connected or skipped), while the right pane carries the brand and weaves each table in as the workspace builds. The page opens on sign-in, with **Create an account** beside it; a first sign-in through Google or another single sign-on creates the account on the spot. Sign-in cannot be skipped. **Skip setup** on any later step makes an empty workspace and opens it, and \`/start?setup=skip\` does the same straight after sign-in for people who configure weave themselves. A sign-in that fails comes back to the pane with the reason. With \`WEAVE_OPEN_SIGNUP=1\` anyone who signs in may create workspaces, up to \`WEAVE_SIGNUP_LIMIT\` each (1 by default); without it the page tells a stranger the server is invite only. A browser at the apex root goes to \`/start\`, which opens the workspace used last on the page it last had open while the thirty-minute start cookie holds a login, unless an invite waits on the list. Once that cookie has lapsed, the root opens the first live workspace the \`wv_rail\` cookie names, on its own host. **Find my workspaces** opens the full list at \`/start?pick=1\`. An apex permalink to a row, table, space or share moves with a \`301\` to the host of the workspace that holds it, and to the default workspace's host when none does. The apex \`/api\` and \`/mcp\` keep answering for the default workspace, so scripts and connected MCP clients need no change.
+At the apex, \`/start\` is the way in once \`WEAVE_BASE_DOMAIN\` is set: it names no workspace until the person signs in at the provider, then lists every workspace that identity opens, each one opening at its own host, and offers **Create workspace** when the server's signup and billing policy allows it. The start page is the setup page: a left pane walks a new person through Account, Workspace, Template (the kind of work they track, which picks a starter template with sample records) and Agent (their AI app, its own steps, the workspace MCP address with a copy button and a first message to paste; the step turns green when that app first reaches the workspace over OAuth, and passes only connected or skipped), while the right pane carries the brand and weaves each table in as the workspace builds. The page opens on sign-in, with **Create an account** beside it; a first sign-in through Google or another single sign-on creates the account on the spot. Sign-in cannot be skipped. **Skip setup** on any later step makes an empty workspace and opens it, and \`/start?setup=skip\` does the same straight after sign-in for people who configure weave themselves. A sign-in that fails comes back to the pane with the reason. With \`WEAVE_OPEN_SIGNUP=1\` anyone who signs in may create workspaces, up to \`WEAVE_SIGNUP_LIMIT\` each (1 by default); without it the page tells a stranger the server is invite only. A browser at the apex root goes to \`/start\`, which opens the workspace used last on the page it last had open while the thirty-minute start cookie holds a login, unless an invite waits on the list. Once that cookie has lapsed, the root opens the first live workspace the \`wv_rail\` cookie names, on its own host. **Find my workspaces** opens the full list at \`/start?pick=1\`. An apex permalink to a record, table, space or share moves with a \`301\` to the host of the workspace that holds it, and to the default workspace's host when none does. The apex \`/api\` and \`/mcp\` keep answering for the default workspace, so scripts and connected MCP clients need no change.
 
 One browser can hold several logins. The start cookie keeps every login signed in there for thirty minutes, \`/start\` lists the union of the workspaces those logins open and names the login that opens each one, **Add login** returns to the provider with its account picker and adds the result, and **Sign out** forgets them all. Every sign-in, at the apex or at a workspace, runs find my workspaces: weave asks each workspace on the instance whether the login has an account there and sets a \`wv_rail\` cookie for the whole base domain naming the ones that said yes, docs workspace aside. No workspace learns what the others answered, and no server record links the logins; the rail lives in that cookie. A workspace host draws the rail from it, with a grey dashed chip for each workspace it holds no session for, titled **<name>: session expired, click to sign in**; such a chip opens through the apex, which signs the person in there with whichever held login has the account. The rail's **+** button offers New workspace, Add login and Find my workspaces. An invite link opened in a browser that already holds a login shows **Accept as <login>** for each one, which binds the invite to that login with no trip to the provider, next to **Use another login**. A new device starts with the docs workspace alone and rebuilds the rail one sign-in at a time.
 
@@ -2062,7 +2062,7 @@ Railway's cron is a separate service and cannot share the volume, so backup runs
 ## How you know it worked
 
 1. \`curl -s https://weave.example.com/api/health\` answers \`{"ok":true,"name":"weave"}\` (the same call with an architect token adds the version, build, sizes and backup state) and the Deployments tab shows the health check passed.
-2. Create a row, then **Redeploy** from the dashboard. The row is still there: the volume, not the container, holds it.
+2. Create a record, then **Redeploy** from the dashboard. The record is still there: the volume, not the container, holds it.
 3. The service shows **1 replica** and one volume at \`/data\`; the log has no \`not writable\` line for the data directory.
 4. With step 7 in place, \`/api/health\` carries a \`supervisor\` object. After the next release it reads \`"release":"v<that version>"\` with \`lastSwap.ok: true\`, \`version\` is the new one, and the Deployments tab shows no new deployment.`,
   },
@@ -2087,7 +2087,7 @@ fly deploy --ha=false                            # one Machine, not two: one vol
 
 Fly snapshots the volume daily with five days of retention; that is a floor, not a backup plan (the **Backup and restore** page). If the log shows \`EACCES\` on \`/data\`, the mount came up root-owned: \`fly ssh console -C "chown node:node /data"\` once, then \`fly machine restart\`.
 
-**Check:** \`fly status\` shows one Machine \`started\`; \`curl -s https://<app>.fly.dev/api/health\` answers \`{"ok":true\`; a row created before \`fly machine restart\` is there after it.
+**Check:** \`fly status\` shows one Machine \`started\`; \`curl -s https://<app>.fly.dev/api/health\` answers \`{"ok":true\`; a record created before \`fly machine restart\` is there after it.
 
 ## Render
 
@@ -2095,7 +2095,7 @@ New → **Web Service** → your repo, runtime **Docker**. Disks need a paid ins
 
 A disk pins the service to one instance and turns off zero-downtime deploys: Render stops the old instance before starting the new one, so each deploy is a few seconds of \`502\`. Render snapshots the disk daily and keeps snapshots at least seven days.
 
-**Check:** the service log ends in \`Weave running at http://…:<port>\`; \`/api/health\` on the \`onrender.com\` URL answers ok; a row survives **Manual Deploy → Deploy latest commit**.
+**Check:** the service log ends in \`Weave running at http://…:<port>\`; \`/api/health\` on the \`onrender.com\` URL answers ok; a record survives **Manual Deploy → Deploy latest commit**.
 
 ## A VPS (Hetzner, or any Linux box) with systemd
 
@@ -2142,11 +2142,11 @@ docker compose up -d
 
 To keep the data in a directory you can see instead of a named volume, change the mount to \`./data:/data\` and \`chown 1000:1000 data\` first: the image runs as the unprivileged \`node\` user (uid 1000) and a bind mount keeps the host's ownership. Set \`WEAVE_KEYSTORE_PASSPHRASE\` in the \`environment\` block to keep the keystore key off the disk. Update with \`git pull && docker compose up -d --build\`.
 
-**Check:** \`docker compose ps\` shows the service \`healthy\`; \`curl -s http://127.0.0.1:4400/api/health\` answers ok; \`docker compose restart\` keeps every row.
+**Check:** \`docker compose ps\` shows the service \`healthy\`; \`curl -s http://127.0.0.1:4400/api/health\` answers ok; \`docker compose restart\` keeps every record.
 
 ## How you know it worked
 
-Whichever target: \`/api/health\` answers \`{"ok":true,…}\` with the version you deployed, a row created before a restart is there after it, and the log shows no \`EACCES\` on the data directory. Then pick the door on the **Self-host weave: choose your door** page.`,
+Whichever target: \`/api/health\` answers \`{"ok":true,…}\` with the version you deployed, a record created before a restart is there after it, and the log shows no \`EACCES\` on the data directory. Then pick the door on the **Self-host weave: choose your door** page.`,
   },
   {
     name: "Backup and restore",
@@ -2171,7 +2171,7 @@ The archive is a plain POSIX tar: \`tar -tf weave-backup-all-2026-09-12T04-00-00
 
 ## The orphan report
 
-A row can reference a blob that is not in \`files/\` any more — Issue #250 found fifty-six such references on one instance. The backup cannot copy bytes that are not there, so it **counts and lists** them in \`manifest.json\` and on stdout, and does not fail: a nightly job that went red over a source defect would teach everyone to ignore red. \`weave restore\` prints the same count so nobody is surprised by a dead link on the restored instance. The \`orphan\` count on the manifest is the number to watch; a rising one means bytes are going missing quietly.
+A record can reference a blob that is not in \`files/\` any more — Issue #250 found fifty-six such references on one instance. The backup cannot copy bytes that are not there, so it **counts and lists** them in \`manifest.json\` and on stdout, and does not fail: a nightly job that went red over a source defect would teach everyone to ignore red. \`weave restore\` prints the same count so nobody is surprised by a dead link on the restored instance. The \`orphan\` count on the manifest is the number to watch; a rising one means bytes are going missing quietly.
 
 ## The three variables
 
@@ -2242,7 +2242,7 @@ Then start \`weave serve --data /var/lib/weave-restored/<your workspace>.db\`. T
 
 ### keystore.key and passphrases
 
-\`keystore.json\` lands; the key that opens it does not, by design. On a laptop, copy \`keystore.key\` back beside it (Kyle's is in the login Keychain; yours is wherever you put it — a password manager is the right place). On a hosted instance set \`WEAVE_KEYSTORE_PASSPHRASE\` to the value the original had. Without either, every credential reads as undecryptable and must be re-entered; everything else — workspaces, rows, documents, attachments — is whole.
+\`keystore.json\` lands; the key that opens it does not, by design. On a laptop, copy \`keystore.key\` back beside it (Kyle's is in the login Keychain; yours is wherever you put it — a password manager is the right place). On a hosted instance set \`WEAVE_KEYSTORE_PASSPHRASE\` to the value the original had. Without either, every credential reads as undecryptable and must be re-entered; everything else — workspaces, records, documents, attachments — is whole.
 
 The backup passphrase and the keystore passphrase are separate things that default into each other. Keep whichever you set somewhere that is not the server and not the bucket.
 
@@ -2268,7 +2268,7 @@ A nightly archive means a day of loss in the worst case. Litestream replicates t
     audience: 'Human',
     order: 18.5,
     doc: `# Backup to weave cloud
-A self-hosted weave can send its nightly archive to an account on a weave cloud deployment such as weave.grunion.ai. The archive is sealed on your machine with the passphrase you already use for **Backup and restore**, so the cloud stores ciphertext only and cannot read a row of it. The cloud runs the same code as your instance; nothing else needs installing.
+A self-hosted weave can send its nightly archive to an account on a weave cloud deployment such as weave.grunion.ai. The archive is sealed on your machine with the passphrase you already use for **Backup and restore**, so the cloud stores ciphertext only and cannot read a record of it. The cloud runs the same code as your instance; nothing else needs installing.
 
 ## Send archives to the cloud
 1. On the cloud deployment, mint a token for your account: \`weave account create <name> --role editor\` prints a \`wv_\` token once. Keep it with your other secrets.
@@ -2342,7 +2342,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_KEYSTORE_PASSPHRASE\` | every verb | unset | Unset, a random key is written to a \`chmod 600\` file beside the keystore, so a copy of the volume carries the key. Set, the key is derived from the passphrase and nothing lands. Change it and every stored secret becomes unreadable; keep it in a password manager. |
 | \`WEAVE_ORIGIN\` | \`weave serve\` | unset (loopback: \`http://localhost:<port>\`) | The public origin, scheme and host, no path. The identity provider sends sign-ins back to \`<origin>/api/auth/oidc/callback\`, and the \`wv_session\` cookie is \`Secure\` when it is https. Set, every workspace the server creates starts with \`requireAuth\` on. Unset off loopback with \`requireAuth\` on, \`serve\` refuses to start; wrong, the provider refuses the redirect URI or sends the browser to the wrong host. |
 | \`WEAVE_TRUST_PROXY\` | \`weave serve\` | unset | Set to \`1\` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from the last \`X-Forwarded-For\` entry, the one the proxy appended. Unset behind a proxy, every visitor shares the proxy's address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header. |
-| \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`, or \`weave://host/account\` for a weave cloud account (the **Backup to weave cloud** guide). Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit row and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
+| \`WEAVE_BACKUP_DEST\` | \`weave serve\`, \`weave backup\` | unset | \`s3://bucket/prefix\`, or \`weave://host/account\` for a weave cloud account (the **Backup to weave cloud** guide). Set on \`weave serve\`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and \`/api/health\` carries no \`backup\` field. Wrong bucket or credentials: the run fails, a \`backup-failed\` audit record and \`lastStatus\` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide. |
 | \`WEAVE_OIDC_ISSUER\` | \`weave serve\`, \`weave account link\` | unset | The issuer URL of one OpenID Connect provider, \`https\` off loopback. Set with \`WEAVE_OIDC_CLIENT_ID\`, \`/auth\` sends a signed-out browser to the provider (the **Door C: sign in with a provider** guide). Set without it, \`serve\` stops at startup and names the missing variable. A URL the provider does not call its own issuer fails every sign-in with a page that says so. |
 | \`WEAVE_MCP_ORIGINS\` | \`weave serve\` | unset | Other public origins the MCP door answers on, comma separated, each scheme and host only: \`https://mcp.weave.example.com\`. The protected-resource metadata names the one the request arrived on, else \`WEAVE_ORIGIN\`; each host is also served. Unset, a second domain on the same service gets \`421\`; wrong, the agent's client refuses the metadata because it names another URL (the **Door C: sign in with a provider** guide). |
 | \`WEAVE_BASE_DOMAIN\` | \`weave serve\` | unset | The domain workspaces get their own hosts under: \`weave.example.com\` serves each workspace at \`<slug>.weave.example.com\`, host name only. Sign-in still finishes at \`WEAVE_ORIGIN\`. Unset, a workspace host gets \`421\`; wrong, the wildcard certificate does not cover the hosts browsers ask for (the **Door C: sign in with a provider** guide, section Workspace hosts). |
@@ -2366,7 +2366,7 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 | \`WEAVE_WEBHOOK_ALLOW_PRIVATE\` | every verb that fires a workflow | unset | A webhook action posts only to a public address: before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, follows no redirect, and writes the refusal to the rule's **Health Reason**. Set to \`1\` on an instance whose webhooks land on its own network (a Railway private service, a VPS sidecar) and the ranges are allowed; redirects stay refused. |
 | \`WEAVE_UPDATE_CHECK\` | \`weave serve\` | on | Set to \`off\` and the server makes no request to GitHub. On, it asks \`api.github.com/repos/grunion-ai/weave/releases/latest\` at most once a day (no token, nothing about the install), keeps the answer in \`update-check.json\` beside \`WEAVE_DATA\` (a new version asks again at boot, and never reports a latest release older than itself), and \`/api/health\` carries \`latestRelease\`, \`releaseCheckedAt\` and \`releaseBehind\`; the sidebar instance chip turns amber when a newer release exists. Offline, rate-limited or blocked, the check stays silent and nothing else changes. |
 | \`WEAVE_AUTO_UPDATE\` | \`weave supervise\` | unset | Set to \`1\` and \`weave supervise\` holds the port, runs the server as a worker, and installs each newer release in place: every ten minutes it asks GitHub for the latest release, takes it only when the tag's commit is on \`grunion-ai/weave\` main, unpacks it to \`releases/v<version>/\` beside \`WEAVE_DATA\`, and moves requests to the new worker once its \`/api/health\` answers. Unset, \`supervise\` is \`serve\`. A release that fails its health check stays off and is not tried again; \`/api/health\` carries the supervisor's \`release\`, \`dir\`, \`lastSwap\` and \`failed\`. After every swap, every failed health check and every boot, the supervisor deletes the folders under \`releases/\` except the one it serves and the most recently served good one, kept for rollback; while the image serves, only the newest good folder stays. \`releases/state.json\` is never deleted, and a folder it cannot remove is logged and never stops a swap. A dev instance that follows main unpacks each commit to \`releases/c<sha>/\` under the same rule. |
-| \`WEAVE_MAX_ROWS\` | \`weave serve\` | \`500\` | The most rows one API call returns when it names a \`limit\`: entity lists and queries, activity, audit, undo, document revisions and search clamp a larger \`limit\` to this, which is the most the UI ever asks for in one call. A call that names no \`limit\` is unchanged, except three that page themselves: the table query answers 200 rows over the API and MCP, the activity feed its newest 500 over the API, MCP and CLI, and the audit log its newest 100 (\`limit: -1\` asks for the whole table or log; \`total\` counts every row, and the table query's \`nextOffset\` names the next page). Raise it for an agent that pages in bigger steps; every row is still built on the one event loop. |
+| \`WEAVE_MAX_ROWS\` | \`weave serve\` | \`500\` | The most records one API call returns when it names a \`limit\`: entity lists and queries, activity, audit, undo, document revisions and search clamp a larger \`limit\` to this, which is the most the UI ever asks for in one call. A call that names no \`limit\` is unchanged, except three that page themselves: the table query answers 200 records over the API and MCP, the activity feed its newest 500 over the API, MCP and CLI, and the audit log its newest 100 (\`limit: -1\` asks for the whole table or log; \`total\` counts every record, and the table query's \`nextOffset\` names the next page). Raise it for an agent that pages in bigger steps; every record is still built on the one event loop. |
 
 ## The container
 
@@ -2386,9 +2386,9 @@ The bug glyph in the bottom-right corner of every page opens a small panel besid
 
 ## Report issue: an Issue on this instance
 
-**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a row into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the row, so a stale build cannot report itself as current. The row also asks **Which probe would have caught this?** Whoever fixes the bug answers it with the probe that should have caught it, or with none, and the weekly quality scorecard counts the answers that read none.
+**Report issue**, or \`⌘Return\` from the note (the \`⌘↵\` on the button says so), files a record into this instance's \`Development/Issue\` table, in the \`weave\` docs workspace, with the symptoms in the \`Symptom\` multiselect and a **Replay** section built from the recorder every session runs: routes entered, controls clicked, requests that failed, anything that threw. The recorder keeps control names, never what was typed into them. The server stamps its own version and start time on the record, so a stale build cannot report itself as current. The record also asks **Which probe would have caught this?** Whoever fixes the bug answers it with the probe that should have caught it, or with none, and the weekly quality scorecard counts the answers that read none.
 
-That row lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
+That record lives where the instance lives. On the canonical instance it is read every night. On a self-hosted weave it is on your disk, and an instance without a docs workspace cannot file it at all.
 
 ## Email instead: the way out of any instance
 
@@ -2417,7 +2417,7 @@ The address is printed under the panel's foot, so a device with no mail app stil
 ## What never leaves the page by mail
 
 - The **workspace name** and every entity, table, space and view id: the page line is the route shape, with \`<ws>\` and \`<id>\` in their places, and the query string (a docked entity, a share token) dropped.
-- Row names, page titles, field values: the email quotes nothing from the workspace. A server message that quoted a name arrives as \`"…"\`.
+- Record names, page titles, field values: the email quotes nothing from the workspace. A server message that quoted a name arrives as \`"…"\`.
 - The action **trace**: its steps name tables and buttons, and a schema is yours. It goes into the local Issue only.
 - Tokens and keys: the same redaction the server applies to an Issue runs in the page before the link is built.
 - The raw user-agent string, the page URL, and anything from \`state.meta\`.
@@ -2432,11 +2432,11 @@ The mail app opens with the To, Subject and body already there. If nothing opens
     order: 12.5,
     doc: `# Forms
 
-A form lets someone add one row to one table without write access to that table. An Observer, who can read and comment and nothing else, can still file a bug or send feedback through a form.
+A form lets someone add one record to one table without write access to that table. An Observer, who can read and comment and nothing else, can still file a bug or send feedback through a form.
 
-## A form is a row
+## A form is a record
 
-Every form is a row in \`System/Forms\`, beside Spaces, Tables and Fields. The row names:
+Every form is a record in \`System/Forms\`, beside Spaces, Tables and Fields. The record names:
 
 | Column | What it holds |
 | --- | --- |
@@ -2445,13 +2445,13 @@ Every form is a row in \`System/Forms\`, beside Spaces, Tables and Fields. The r
 | Hidden | the fields the server fills, as JSON: \`{"Reporter": "$actor", "Filed At": "$now", "Build": "$version"}\` |
 | Enabled | a form that is off refuses every submission |
 | Floor | **Observer** (anyone with a role in the workspace) or **Anonymous** (signed-out visitors too) |
-| Kind | **Row**, or **Bug report** for the bug reporter |
+| Kind | **Record**, or **Bug report** for the bug reporter |
 
-A form row is schema, like a Tables row: an Architect makes and edits it, and an Editor or Observer cannot.
+A form record is schema, like a Tables row: an Architect makes and edits it, and an Editor or Observer cannot.
 
 ## Submitting
 
-A submission creates exactly one row in the form's table and nothing else. It reads no other row, edits nothing, and changes no schema. The submitter is the row's author and the actor in its history. A submission that names a hidden field is refused, and so is one that names a field the form does not show.
+A submission creates exactly one record in the form's table and nothing else. It reads no other record, edits nothing, and changes no schema. The submitter is the record's author and the actor in its history. A submission that names a hidden field is refused, and so is one that names a field the form does not show.
 
 - **Page:** \`/f/<form id>\`, styled for both themes, opens to anyone the form admits.
 - **HTTP:** \`POST /api/forms/<id>/submit\` with \`{"values": {...}}\`; \`GET /api/forms\` lists the forms whose table lives in the workspace.
@@ -2464,7 +2464,7 @@ An **Anonymous** floor also needs the operator to allow it: start the server wit
 
 Open the table's actions menu and choose **Forms…**. The same action appears in the phone menu. An Architect can create a form, choose its fields, change labels and defaults, mark required inputs, and save it. Each form has controls to open it, copy its link, edit it or pause submissions. Editing keeps its form ID and permalink.
 
-The editor writes the existing System/Forms row. Server-filled values survive edits. Advanced input keys remain stable, and old keys remain aliases. Forms created by an agent appear in the same manager.
+The editor writes the existing System/Forms record. Server-filled values survive edits. Advanced input keys remain stable, and old keys remain aliases. Forms created by an agent appear in the same manager.
 
 The audience control reports whether the server allows anonymous submissions. In a workspace with sign-in disabled, forms follow that workspace's open access. A member-workspace Architect also needs Architect access on the hub registry to manage its forms.
 
@@ -2494,7 +2494,7 @@ Saving the form resolves its fields to IDs and retains its previous input keys a
 
 Field IDs, configured aliases, current field names and labels also work. Unknown or invalid URL values produce a visible warning; hidden values cannot be prefilled. Submission rejects unknown, ambiguous, hidden or invalid fields. A required boolean must be provided; false is a valid answer.
 
-Opening a URL only fills a draft. A person presses **Send**, or a caller makes a POST, to create the row. Sign-in preserves the form's query parameters. A Squirrel-style share-sheet Shortcut can URL-encode the shared title and URL and open this draft, without storing a workspace token on the phone.
+Opening a URL only fills a draft. A person presses **Send**, or a caller makes a POST, to create the record. Sign-in preserves the form's query parameters. A Squirrel-style share-sheet Shortcut can URL-encode the shared title and URL and open this draft, without storing a workspace token on the phone.
 
 ## Retries and duplicate detection
 
@@ -2504,18 +2504,18 @@ Send a new random UUID in \`Idempotency-Key\` for each intended submission. Reus
 | --- | --- |
 | New input | 201 and a receipt |
 | Same key and input within 24 hours | 200 and the original receipt, even after restart |
-| Same key with different input | 409; no new row |
+| Same key with different input | 409; no new record |
 | Identical input within 60 seconds, same signed-in actor or browser cookie | Original receipt, with duplicate marked |
 | Independent anonymous browsers | Separate submissions |
 | Disabled form | Refused, including retries |
 
-The browser retains a pending retry key in tab session storage until success, so a lost response can be retried without a second row. Anonymous clients without a browser cookie receive retry protection when they supply a key; they do not share content deduplication with other clients. Duplicate matching uses submitted values, with types normalized. It does not merge existing records or compare similar wording.
+The browser retains a pending retry key in tab session storage until success, so a lost response can be retried without a second record. Anonymous clients without a browser cookie receive retry protection when they supply a key; they do not share content deduplication with other clients. Duplicate matching uses submitted values, with types normalized. It does not merge existing records or compare similar wording.
 
 ## Limits
 
 HTTP submissions allow 20 attempts per sender IP per form, 120 per form and 1,000 across the server in a one-minute window. A 429 response includes Retry-After. These counters are local to the server process and reset on restart. Form bodies are capped at 64 KiB. Cross-origin browser POSTs remain refused; server and Shortcut clients can POST directly.
 
-Each workspace retains at most 10,000 unexpired receipts for 24 hours. At capacity, new receipts are refused until space expires; existing retries still work. Receipts persist with the row in one transaction and are omitted from JSON exports. A database backup preserves them. These limits suit a single server; multiple serving processes need shared rate counters.
+Each workspace retains at most 10,000 unexpired receipts for 24 hours. At capacity, new receipts are refused until space expires; existing retries still work. Receipts persist with the record in one transaction and are omitted from JSON exports. A database backup preserves them. These limits suit a single server; multiple serving processes need shared rate counters.
 
 ## The bug reporter is the first form
 
@@ -2523,11 +2523,11 @@ The bug glyph files through the **Report a bug** form on the \`weave\` docs work
 
 ## The weave docs workspace
 
-The \`weave\` docs workspace is built in. Nobody can delete it, rename it or leave it; each attempt answers 403. Every login any workspace on this instance knows opens it as an Observer, with no invite and no account row there, and may submit a bug through its form.
+The \`weave\` docs workspace is built in. Nobody can delete it, rename it or leave it; each attempt answers 403. Every login any workspace on this instance knows opens it as an Observer, with no invite and no account record there, and may submit a bug through its form.
 
 ## How you know it worked
 
-Open \`/f/<id>\`, fill it in and press **Send**. The button reads **Sent** and the line under it names the new row, such as \`Development/Issue #412\`. The row shows you as its author.`,
+Open \`/f/<id>\`, fill it in and press **Send**. The button reads **Sent** and the line under it names the new record, such as \`Development/Issue #412\`. The record shows you as its author.`,
   },
   {
     name: 'Table views',
@@ -2544,7 +2544,7 @@ The controls sit beside the breadcrumb: **Search → View → Table actions (⋮
 | Control | What it does |
 | --- | --- |
 | **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
-| **View** | Opens the View pane beside the table, and closes it again. Its badge counts the active filters, deleted rows included. Closing the pane gives the table the full width. |
+| **View** | Opens the View pane beside the table, and closes it again. Its badge counts the active filters, deleted records included. Closing the pane gives the table the full width. |
 
 ## The View pane
 
@@ -2552,15 +2552,15 @@ The pane holds the view picker at the top, then five sections. One section is op
 
 | Section | What it does |
 | --- | --- |
-| **Filters** | Narrows rows by workflow states, toggle labels and single-select or multi-select options, and holds the **Include deleted** switch. Deleted rows show struck through and never count toward a total. |
-| **Sort** | Up to three levels: primary, secondary and tertiary. Each level has a field, a direction worded by type, move up, move down and remove. Rows that tie on every level fall back to **#**. Empty values sort last in both directions. |
-| **Group** | Up to five nested levels, in Table and List layouts. Each level has a field, an order, move up, move down and remove. **Collapse all** and **Expand all** fold every group. Empty values gather under **No value**, listed last. A row with several values in a multi-select appears under each one, and every total above that level counts it once. In List layout the section also holds **Completed by** and **Nest by**. In List and Board layouts an unfiltered view shows every option of the group field, empty or not; **Hide empty groups** leaves out the groups with no rows. |
+| **Filters** | Narrows records by workflow states, toggle labels and single-select or multi-select options, and holds the **Include deleted** switch. Deleted records show struck through and never count toward a total. |
+| **Sort** | Up to three levels: primary, secondary and tertiary. Each level has a field, a direction worded by type, move up, move down and remove. Records that tie on every level fall back to **#**. Empty values sort last in both directions. |
+| **Group** | Up to five nested levels, in Table and List layouts. Each level has a field, an order, move up, move down and remove. **Collapse all** and **Expand all** fold every group. Empty values gather under **No value**, listed last. A record with several values in a multi-select appears under each one, and every total above that level counts it once. In List layout the section also holds **Completed by** and **Nest by**. In List and Board layouts an unfiltered view shows every option of the group field, empty or not; **Hide empty groups** leaves out the groups with no records. |
 | **Fields** | Shows, hides and reorders columns, with a **Group n** or **Sort n** tag on a field in use; opens the field tray to add a field. |
-| **Display** | **Layout** (Table, List or Board layout), **Density** (Compact, Comfortable or Spacious; table rows are 32, 44 or 72 pixels), the **Σ Rollups** switch, **Subtotals** (Every level, Top level, None) and the aggregation for each column. |
+| **Display** | **Layout** (Table, List or Board layout), **Density** (Compact, Comfortable or Spacious; table records are 32, 44 or 72 pixels), the **Σ Rollups** switch, **Subtotals** (Every level, Top level, None) and the aggregation for each column. |
 
-A field sits in Sort or Group, never both: grouping by a sorted field takes it out of Sort, and the Sort section says so. Groups order the rows first; the sort levels order the rows inside each innermost group. A collapsed group keeps its header and its subtotal, so collapsing every group turns the table into a summary. Hiding a grouped field keeps its group headers. A nested group header shows the groups above it, muted, before its own field and value, and the top-level header stays pinned under the column headers while its rows scroll. With **Σ Rollups** off, each header also shows a short breakdown of the first single-select or workflow field not grouped at or above it; with rollups on, the subtotal rows carry the numbers. Collapsed groups belong to the grouping: every view of the table with the same group fields, in the same order and directions, opens with the same groups collapsed. Changing the group fields or their order opens every group again, unless another view already uses that grouping.
+A field sits in Sort or Group, never both: grouping by a sorted field takes it out of Sort, and the Sort section says so. Groups order the records first; the sort levels order the records inside each innermost group. A collapsed group keeps its header and its subtotal, so collapsing every group turns the table into a summary. Hiding a grouped field keeps its group headers. A nested group header shows the groups above it, muted, before its own field and value, and the top-level header stays pinned under the column headers while its rows scroll. With **Σ Rollups** off, each header also shows a short breakdown of the first single-select or workflow field not grouped at or above it; with rollups on, the subtotal rows carry the numbers. Collapsed groups belong to the grouping: every view of the table with the same group fields, in the same order and directions, opens with the same groups collapsed. Changing the group fields or their order opens every group again, unless another view already uses that grouping.
 
-A subtotal row shows the group's live row count and, for each column, the aggregations picked in Display. The server computes them; an agent reads the same numbers from \`weave_query\` with the view, in its \`groups\` and \`groupTotal\`.
+A subtotal row shows the group's live record count and, for each column, the aggregations picked in Display. The server computes them; an agent reads the same numbers from \`weave_query\` with the view, in its \`groups\` and \`groupTotal\`.
 
 On a phone the sliders button keeps the table menu: View, Density, Fields, Filters, Group and Sort, with the same sort and group levels.
 
@@ -2583,11 +2583,11 @@ A relation block uses the Board layout when the linked table's first view select
 | **Alt+↑** / **Alt+↓** on a focused view | Moves it one place. |
 | Hover or focus a view | Shows its **Rename**, **Duplicate** and **Delete** buttons. There is no right-click menu. |
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
-| **Duplicate** | Adds a row under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
+| **Duplicate** | Adds a record under the view with its name focused (\`Open bugs 2\`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
 | **Delete** | Hold the button until it fills. The last view cannot be deleted. |
-| **+ Add view** | Adds a row with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The pane stays open throughout. |
-| **Reset view** | Returns the view to the system default: a Table with no grouping, every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted rows, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
-| **Clear all** | Removes filters, deleted rows, search, sorting and grouping while keeping the column layout and density. |
+| **+ Add view** | Adds a record with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The pane stays open throughout. |
+| **Reset view** | Returns the view to the system default: a Table with no grouping, every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted records, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
+| **Clear all** | Removes filters, deleted records, search, sorting and grouping while keeping the column layout and density. |
 
 A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` link still opens the raw table, read-only. Choose **+ Add view** to make an editable view.
 
@@ -2595,35 +2595,35 @@ A view's link is \`#/table/<table>/view/<view id>\`. An old \`…/view/blank\` l
 
 Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
 
-These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. Deleted rows moved to the **Include deleted** switch in Filters, and the Σ row to **Σ Rollups** in Display; each saves into the current view, so another view keeps its own.
+These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. Deleted records moved to the **Include deleted** switch in Filters, and the Σ row to **Σ Rollups** in Display; each saves into the current view, so another view keeps its own.
 
 ## Filters
 
-Open **Filters** in the View pane and tick options under a workflow, toggle, single-select or multi-select field. Each tick applies at once and saves into the current view; the pane stays open as results update. Untick an option to remove it. Several options in one field include any of them, and filters on different fields must all match. A multi-select row matches when it has any ticked option. A field with nothing ticked adds no restriction. The footer counts what is left as **X of N**, in the table's own word for its rows (\`7 of 413 bugs\`): X after the filters and the search, N every row that is not deleted.
+Open **Filters** in the View pane and tick options under a workflow, toggle, single-select or multi-select field. Each tick applies at once and saves into the current view; the pane stays open as results update. Untick an option to remove it. Several options in one field include any of them, and filters on different fields must all match. A multi-select record matches when it has any ticked option. A field with nothing ticked adds no restriction. The footer counts what is left as **X of N**, in the table's own word for its records (\`7 of 413 bugs\`): X after the filters and the search, N every record that is not deleted.
 
 **Clear all** removes all filters from the view while keeping search, sorting and column layout. If the table has no workflow, toggle or select fields, the popover offers **New field**, opening the usual field tray.
 
 ## List layout
 
-A list holds things to finish, in an order you set; a table holds records to compare. Choose **List** under **Layout** in the view menu. The list shows the same rows, filters, sorting and density as the view's table.
+A list holds things to finish, in an order you set; a table holds records to compare. Choose **List** under **Layout** in the view menu. The list shows the same records, filters, sorting and density as the view's table.
 
 | In a list | What happens |
 | --- | --- |
-| A row | Draws the table's **Chip**: the name and the fields the Chip config shows. Click the name to open the row. |
-| **Group** levels | Up to three, in order: a select, workflow, toggle, checkbox, link or date field (dates by day, week, month or year). A link level can head its groups with the linked row's **Chip**, so a rollup with a bar on that Chip shows the group's progress. Groups follow the option order, the linked table's order, or A to Z. Every group folds, and the folds save into the view. |
-| **Completed by** | Draws that checkbox field on every row with the standard checkbox. Ticked rows leave their group for **Completed · N** at the bottom, folded until you open it. |
-| **Nest by** | A to-one link from the table to itself (a Parent link). Children indent under their parent. **Tab** on a row nests it under the row above; **Shift+Tab** takes it out a level. |
-| Drag by the handle | Moves the row: into another group sets every level that differs, sideways right nests it under the row above the placeholder, left takes it out. With no sort the drop saves the view's manual order. |
-| A sort | Orders rows inside each group. The handle still moves rows between groups and nests them; clearing the sort brings the saved order back. |
-| The add row | Ends each innermost group. A row added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
-| A filter | Runs first. Matching ticked rows still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
-| Past 200 rows | Each group, and the Completed section, draws its first 200 rows and ends with **Show 200 more \u00b7 200 of 3,980 rows**, which adds the next 200 in place. The Board layout draws 40 cards a column and extends the same way (Issue #1266). |
+| A record | Draws the table's **Chip**: the name and the fields the Chip config shows. Click the name to open the record. |
+| **Group** levels | Up to three, in order: a select, workflow, toggle, checkbox, link or date field (dates by day, week, month or year). A link level can head its groups with the linked record's **Chip**, so a rollup with a bar on that Chip shows the group's progress. Groups follow the option order, the linked table's order, or A to Z. Every group folds, and the folds save into the view. |
+| **Completed by** | Draws that checkbox field on every record with the standard checkbox. Ticked records leave their group for **Completed · N** at the bottom, folded until you open it. |
+| **Nest by** | A to-one link from the table to itself (a Parent link). Children indent under their parent. **Tab** on a record nests it under the record above; **Shift+Tab** takes it out a level. |
+| Drag by the handle | Moves the row: into another group sets every level that differs, sideways right nests it under the record above the placeholder, left takes it out. With no sort the drop saves the view's manual order. |
+| A sort | Orders records inside each group. The handle still moves records between groups and nests them; clearing the sort brings the saved order back. |
+| The add row | Ends each innermost group. A record added there takes every group value and every filter that names one value; type the date in its own box (\`today\`, \`fri\`, \`oct 12\`). |
+| A filter | Runs first. Matching ticked records still go to Completed. A sub-row that matches keeps its parent on screen, dimmed and not counted. Empty groups show only with no filter on. |
+| Past 200 records | Each group, and the Completed section, draws its first 200 records and ends with **Show 200 more \u00b7 200 of 3,980 records**, which adds the next 200 in place. The Board layout draws 40 cards a column and extends the same way (Issue #1266). |
 
 The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 
 ## For agents
 
-One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the rows the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed rows in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. \`layout\` is \`table\` or \`list\`; a read carries it once someone has chosen one, and \`null\` clears the choice. The List layout takes \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`), shared by every view of the table with the same group levels, \`hideEmpty\` (\`true\` leaves out groups with no rows) and \`order\` (the manual order as row #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a row in **System/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
+One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the records the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed records in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. \`layout\` is \`table\` or \`list\`; a read carries it once someone has chosen one, and \`null\` clears the choice. The List layout takes \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`), shared by every view of the table with the same group levels, \`hideEmpty\` (\`true\` leaves out groups with no records) and \`order\` (the manual order as record #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a record in **System/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
   },
   {
     name: 'Chip and card anatomy',
@@ -2631,7 +2631,7 @@ One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the
     order: 21,
     doc: `# Chip and card anatomy
 
-A row appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.
+A record appears in two shapes outside its own page: the **chip**, inline — a relation cell, a \`[[…]]\` mention in a document, a reference card, a picker — and the **card**, a tile. Both are drawn from the table's two \`view\` fields (the **view** page in [[table:Handbook/Fields|Fields]] says what they can contain; the entity page's **Appears as** strip shows the live pair once the eye unhides them — a hidden view is not drawn there either, Issue #208). This page is the face: every element, what it does, how you use it, and its **hitbox** — the region a click lands in. Each figure below is the real markup the app draws, with a dashed outline traced on each element's box, so the outline IS the hitbox. The solid grey outline is the one link the whole thing is.
 
 ## The chip
 
@@ -2639,21 +2639,21 @@ A row appears in two shapes outside its own page: the **chip**, inline — a rel
 <span class="k k-rel kind-entity has-id has-segs open"><button type="button" class="k k-state cat-in-progress hue-blue wv-chip-mark" data-seg="state" style="position:relative;outline:1.5px dashed #218358;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#218358">1</i>Doing</button><a href="#" onclick="return false" style="position:relative;outline:1.5px solid rgba(128,128,128,.55);outline-offset:2px"><span class="wv-chip-id" style="position:relative;outline:1.5px dashed #8e4ec6;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#8e4ec6">2</i>#12</span><span class="k-label" style="position:relative;outline:1.5px dashed #3a5bc7;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#3a5bc7">3</i>Ship the editor</span></a><span class="mention-fields" style="position:relative;outline:1.5px dashed #d97706;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#d97706">4</i><button type="button" class="k k-select hue-red" data-seg="select">P1</button><span class="mention-f"><span class="mention-f-label">Due</span>2026-09-12</span></span><span class="k-home" style="position:relative;outline:1.5px dashed #0e8a7a;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#0e8a7a">5</i>Task</span><button type="button" class="mention-caret" aria-expanded="true" title="Hide fields" style="position:relative;outline:1.5px dashed #e5484d;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;right:-3px;bottom:-15px;transform:rotate(180deg);font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#e5484d">6</i>›</button><button type="button" class="x" data-seg="remove" style="position:relative;outline:1.5px dashed #ce2c31;outline-offset:2px"><i class="wv-anat-n" style="position:absolute;left:-3px;top:-15px;font:600 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-style:normal;color:#ce2c31">7</i>×</button></span>
 </div>
 
-The grey box is the link to the row. The state mark, the segments, the caret and the × sit beside it, each its own target: the chip is the link, and the controls are the pixels that do not navigate.
+The grey box is the link to the record. The state mark, the segments, the caret and the × sit beside it, each its own target: the chip is the link, and the controls are the pixels that do not navigate.
 
 | № | Element | What it does | How you use it | Hitbox |
 | --- | --- | --- | --- | --- |
-| 1 | **State mark** (\`.wv-chip-mark\`) | the workflow state as the same state chip the grid cell wears, leading the line because the category reads before the words do | **click** opens the state picker, grouped by category — Not started, In progress, Done, Canceled — and the state you pick is written to the row | its own box, outside the link |
-| 2 | **Public id** (\`.wv-chip-id\`) | the row's number in mono; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
-| 3 | **Name** (\`.k-label\`) | the row's \`Name\` field | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the id beside it all count |
-| 4 | **Segments** (\`.mention-fields\`) | the configured \`fields\`, three at most: a select or multiselect as its own chip, anything else as a label·value pair | a **select** or **multiselect** segment opens its picker and writes the row; a label·value pair is read-only | each segment is its own box; none of them navigate |
-| 5 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set), and on a document reference it always names the row's table | read it | display only |
+| 1 | **State mark** (\`.wv-chip-mark\`) | the workflow state as the same state chip the grid cell wears, leading the line because the category reads before the words do | **click** opens the state picker, grouped by category — Not started, In progress, Done, Canceled — and the state you pick is written to the record | its own box, outside the link |
+| 2 | **Public id** (\`.wv-chip-id\`) | the record's number in mono; shows when the chip's \`link\` setting is on | read it, quote it — \`[[Task#12]]\` written in any document becomes this chip | inside the link |
+| 3 | **Name** (\`.k-label\`) | the record's \`Name\` field | **click** opens the record; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the id beside it all count |
+| 4 | **Segments** (\`.mention-fields\`) | the configured \`fields\`, three at most: a select or multiselect as its own chip, anything else as a label·value pair | a **select** or **multiselect** segment opens its picker and writes the record; a label·value pair is read-only | each segment is its own box; none of them navigate |
+| 5 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set), and on a document reference it always names the record's table | read it | display only |
 | 6 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** | a 24×24px square around the glyph; the click stops there |
-| 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this row from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity row) puts it back | its own box, outside the link |
+| 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this record from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity record) puts it back | its own box, outside the link |
 
-There is no open mark. The chip is the link, so a separate \`↗\` promises nothing. A table with an [[table:Handbook/Fields|avatar]] field puts the row's face first inside the link, before the \`#id\`; a table without one draws no face. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
+There is no open mark. The chip is the link, so a separate \`↗\` promises nothing. A table with an [[table:Handbook/Fields|avatar]] field puts the record's face first inside the link, before the \`#id\`; a table without one draws no face. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
 
-One renderer draws this markup: \`public/chip-view.js\`, loaded by the browser and by \`src/markdown.js\`, with one stylesheet, \`public/chip.css\`, behind both. A relation cell, a document page and an HTML export of the same row therefore print the same chip, down to the class names.
+One renderer draws this markup: \`public/chip-view.js\`, loaded by the browser and by \`src/markdown.js\`, with one stylesheet, \`public/chip.css\`, behind both. A relation cell, a document page and an HTML export of the same record therefore print the same chip, down to the class names.
 
 ## The card
 
@@ -2665,24 +2665,24 @@ The card is the **Tile**: the \`#id\` and the title, the description preview, a 
 
 | № | Element | What it does | How you use it | Hitbox |
 | --- | --- | --- | --- | --- |
-| 8 | **Public id** (\`.wv-card-id\`) | the row's number, when the card's \`link\` setting is on (it is, by default) | read it, quote it | inside the title link |
-| 9 | **Title** (\`.wv-card-title\`) | the row's \`Name\`, bold | **click** opens the row; **⌘/Ctrl/Shift-click or middle-click** for a new tab; **right-click → Copy Link** for the permalink; **hover** turns it brand-blue | the title text, the id, and the gap between them |
-| 10 | **Description** | the first lines of the description document at the view's \`description\` size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card | read it; the row's page has the rest | none |
-| 11 | **State row** (\`.wv-card-state\`) | the workflow state on a line of its own, spelled out, as the same mark the chip leads with | **click** opens the state picker grouped by category and writes the row | the mark's own box |
+| 8 | **Public id** (\`.wv-card-id\`) | the record's number, when the card's \`link\` setting is on (it is, by default) | read it, quote it | inside the title link |
+| 9 | **Title** (\`.wv-card-title\`) | the record's \`Name\`, bold | **click** opens the record; **⌘/Ctrl/Shift-click or middle-click** for a new tab; **right-click → Copy Link** for the permalink; **hover** turns it brand-blue | the title text, the id, and the gap between them |
+| 10 | **Description** | the first lines of the description document at the view's \`description\` size — small (one line), medium (~120 chars), large (~320); prose only, three lines at most, one on a compact card | read it; the record's page has the rest | none |
+| 11 | **State row** (\`.wv-card-state\`) | the workflow state on a line of its own, spelled out, as the same mark the chip leads with | **click** opens the state picker grouped by category and writes the record | the mark's own box |
 | 12 | **Fields** (\`.wv-card-fields\`) | label · value pairs from the view's \`fields\`, two columns across — the first few glanceable values in column order by default | read them; arranging the table's columns IS the curation | none |
 
 ## Where the same chip shows up
 
 | Surface | Which chip | What differs |
 | --- | --- | --- |
-| a relation cell in the grid | the far row's chip | carries the × (7); the home badge (5) on a target set |
+| a relation cell in the grid | the far record's chip | carries the × (7); the home badge (5) on a target set |
 | a \`[[…]]\` mention in a document | the same chip, from the same config | no × — a reference is text, there is nothing to unlink; Backspace in the editor removes it |
 | an HTML export of that document | the same chip, byte for byte | nothing |
 | a reference panel on the entity page | the same chip | home badge on, no × |
 | the relation picker | the same chip | the × means "take it out of the selection" |
 | the entity page's Appears as strip | this table's own chip and card, for the views the eye shows — both are minted hidden, so unhide one to see it | a gear beside each opens the table's config; the strip shows what every other surface will draw |
 
-To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or \`weave field update Task Chip --config '{"fields":["Due"]}'\`. It changes every row of the table at once.`,
+To change what a chip or card contains — the id, the state, the description size, which fields ride along — open the gear on the Appears as strip or \`weave field update Task Chip --config '{"fields":["Due"]}'\`. It changes every record of the table at once.`,
   },
   {
     name: 'Templates',
@@ -2690,11 +2690,11 @@ To change what a chip or card contains — the id, the state, the description si
     order: 20.5,
     doc: `# Templates
 
-Any space can be a template. A template copies its schema into another workspace of this weave: the tables, their fields and settings, option colours and icons, workflow states, views, column widths, field order, hidden fields, filters, sorting, the row term, the icons, and the space rollups over its tables. Rows never travel. The copy is an ordinary space; it is not a template itself.
+Any space can be a template. A template copies its schema into another workspace of this weave: the tables, their fields and settings, option colours and icons, workflow states, views, column widths, field order, hidden fields, filters, sorting, the record term, the icons, and the space rollups over its tables. Records never travel. The copy is an ordinary space; it is not a template itself.
 
 ## Mark a space as a template
 
-Open **Workspace › Spaces** and tick the space's **Template** box, in the grid or on the row's own page. Untick it to stop offering the space.
+Open **Workspace › Spaces** and tick the space's **Template** box, in the grid or on the record's own page. Untick it to stop offering the space.
 
 ## Use a template
 
@@ -2712,9 +2712,9 @@ A relation to a table outside the space cannot follow it. The copy leaves that r
 
 ## Template checks
 
-The test suite exercises each template kept in \`test/fixtures/templates/\` (the CRM template) and the three starters. For each table it adds a row that sets every field and reads each value back, links and unlinks every relation from both ends, checks each lookup, rollup and formula while the links stand, then trashes and restores the row. It also uses each template into a workspace named \`test\` and runs the same steps on the copy.
+The test suite exercises each template kept in \`test/fixtures/templates/\` (the CRM template) and the three starters. For each table it adds a record that sets every field and reads each value back, links and unlinks every relation from both ends, checks each lookup, rollup and formula while the links stand, then trashes and restores the record. It also uses each template into a workspace named \`test\` and runs the same steps on the copy.
 
-\`node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test\` runs the same checks over HTTP on a running weave. It removes every row it made, purges its copy so the test workspace keeps nothing, not even trash, and exits 1 on any failure; \`--keep\` leaves the copy for a look. \`node scripts/template-fixture.mjs --space CRM\` refreshes the fixture from the live template.
+\`node scripts/template-exercise.mjs --base http://127.0.0.1:4400 --from weave --into test\` runs the same checks over HTTP on a running weave. It removes every record it made, purges its copy so the test workspace keeps nothing, not even trash, and exits 1 on any failure; \`--keep\` leaves the copy for a look. \`node scripts/template-fixture.mjs --space CRM\` refreshes the fixture from the live template.
 
 ## For agents
 
