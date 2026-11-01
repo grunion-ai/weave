@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CONTEXT, DEFAULTS, judge, describe, soak, report, config } from '../scripts/dev-soak.mjs';
+import { CONTEXT, DEFAULTS, judge, describe, soak, report, config, smoke } from '../scripts/dev-soak.mjs';
 
 const SHA = 'a'.repeat(40);
 const NEWER = 'b'.repeat(40);
@@ -183,6 +183,48 @@ test('config reads the dev URL, workspaces and timings from the environment', ()
   assert.equal(c.soakMs, 60_000);
   assert.equal(c.max5xx, 2);
   assert.equal(config({}).soakMs, 15 * MIN);
+});
+
+function fakePage() {
+  const seen = [];
+  let pageHeaders = {};
+  const answer = (url) => {
+    if (url.endsWith('/api/tables')) return [{ id: 't1' }];
+    if (url.endsWith('/query')) return { items: [{ id: 'e1', doc: 'body' }] };
+    return { id: 'e2' };
+  };
+  return {
+    seen,
+    on: () => {},
+    setExtraHTTPHeaders: async (headers) => { pageHeaders = headers; },
+    goto: async (url) => { seen.push({ url, auth: pageHeaders.Authorization }); },
+    reload: async () => {},
+    evaluate: async () => {},
+    waitForSelector: async () => {},
+    waitForFunction: async () => {},
+    request: {
+      fetch: async (url, init) => {
+        seen.push({ url, auth: init.headers?.Authorization });
+        return { status: () => 200, ok: () => true, json: async () => answer(url) };
+      },
+    },
+  };
+}
+
+test('smoke: the write token reaches only the write workspace', async () => {
+  const page = fakePage();
+  const result = await smoke(page, { base: 'https://dev.example', workspace: '/w/weave', writeWorkspace: '/w/smoke', token: 'wv_smoke' });
+  assert.deepEqual(result, { ok: true, fivexx: 0, steps: 6 });
+  const read = page.seen.filter((s) => s.url.includes('/w/weave'));
+  const write = page.seen.filter((s) => s.url.includes('/w/smoke'));
+  assert.ok(read.length && write.length);
+  assert.deepEqual(read.filter((s) => s.auth), []);
+  assert.deepEqual(write.filter((s) => s.auth !== 'Bearer wv_smoke'), []);
+});
+
+test('smoke: the browser context carries no token of its own', () => {
+  const source = readFileSync(new URL('../scripts/dev-soak.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /newContext\(\{[^}]*Authorization/);
 });
 
 test('the dev-soak workflow follows Deploy dev on main, cancels superseded runs and may write statuses', () => {
