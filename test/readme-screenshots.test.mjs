@@ -12,8 +12,6 @@ const DIR = join(ROOT, 'docs', 'screenshots');
 const referenced = [...README.matchAll(/docs\/screenshots\/([\w-]+)\.png/g)].map((m) => m[1]);
 const onDisk = readdirSync(DIR).filter((f) => f.endsWith('.png')).map((f) => f.replace(/\.png$/, ''));
 
-const REMOVED = /\b(board|list)\b/i;
-
 test('every screenshot the README shows exists on disk', () => {
   for (const name of referenced) {
     assert.ok(existsSync(join(DIR, `${name}.png`)), `README shows docs/screenshots/${name}.png, which is missing`);
@@ -30,25 +28,24 @@ test('scripts/screenshots.mjs captures exactly the README\'s screenshots', () =>
   assert.deepEqual(SHOTS.map(([file]) => file).sort(), [...new Set(referenced)].sort());
 });
 
-test('no README screenshot shows a removed view', () => {
-  for (const name of referenced) assert.doesNotMatch(name, REMOVED, `docs/screenshots/${name}.png`);
-  const section = README.split('\n## Screenshots\n')[1]?.split('\n## ')[0];
-  assert.ok(section, 'README has a Screenshots section');
-  assert.doesNotMatch(section, /\b(board|list) view\b/i);
+test('the README shows the Board layout and the phone layout', () => {
+  assert.ok(referenced.includes('board'), 'README shows docs/screenshots/board.png');
+  assert.ok(referenced.includes('phone'), 'README shows docs/screenshots/phone.png');
 });
 
-test('the README Views row names only views the app draws', () => {
+test('the README Views row names the table, list and board layouts', () => {
   const row = README.split('\n').find((l) => l.startsWith('| Views |'));
   assert.ok(row, 'README has a Views row');
-  assert.doesNotMatch(row, REMOVED, row);
+  for (const layout of [/\btable\b/i, /\blist\b/i, /\bboard\b/i, /\bkanban\b/i]) assert.match(row, layout, row);
 });
 
-test('the other screenshot indexes do not list a board shot', () => {
+test('the other screenshot indexes list the board and phone shots', () => {
   const docsIndex = read('docs/README.md').split('\n').find((l) => l.includes('[Screenshots]'));
   const llms = read('llms.txt').split('\n').find((l) => l.includes('[Screenshots]'));
   for (const line of [docsIndex, llms]) {
     assert.ok(line, 'screenshot index line present');
-    assert.doesNotMatch(line, REMOVED, line);
+    assert.match(line, /\b(board|kanban)\b/i, line);
+    assert.match(line, /\bphone\b/i, line);
   }
 });
 
