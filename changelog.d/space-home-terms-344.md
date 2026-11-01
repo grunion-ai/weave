@@ -1,0 +1,1 @@
+- The space home keys what it lists by table name and no longer says rows: **Recent** groups what you opened under each table, and a run reads `Ops → Sales · Deal 2, Contact 1`.
