@@ -24,10 +24,23 @@ export function eligible(run, repo = REPO) {
   if (run.name !== 'tests' || String(run.path ?? '').split('@')[0] !== WORKFLOW) return 'not the tests workflow';
   if (run.event !== 'push' || run.head_branch !== 'main') return 'not a main push';
   if (run.head_repository?.full_name !== repo) return 'not this repository';
-  if (run.status !== 'completed' || run.conclusion !== 'failure') return 'not a failed run';
+  if (run.status !== 'completed') return 'not a completed run';
+  if (run.conclusion !== 'failure') return `conclusion ${run.conclusion} is no signal`;
   if (!/^[0-9a-f]{40}$/.test(run.head_sha ?? '')) return 'no head commit';
   return null;
 }
+
+export function rerunVerdict(gate) {
+  return gate === 'success' || gate === 'failure' ? gate : 'unknown';
+}
+
+export function gateVerdict(jobs = []) {
+  const gate = jobs.find((j) => j.name === 'CI gate')?.conclusion ?? null;
+  const shards = jobs.filter((j) => j.name !== 'CI gate');
+  return gate === 'failure' && !shards.some((j) => j.conclusion === 'failure') && shards.some((j) => j.conclusion === 'cancelled') ? 'cancelled' : gate;
+}
+
+export const flakeName = (file) => `Error: ${file} flakes on main`;
 
 export function nextProbe(lo, hi) {
   return hi - lo > 1 ? Math.floor((lo + hi) / 2) : null;
@@ -43,11 +56,11 @@ export function culpritsOf(body = '') {
 }
 
 export function failingFiles(results) {
-  const files = new Set();
-  for (const result of results) {
-    for (const s of result.summaries ?? []) if (s.file && (s.success === false || s.counts?.failed > 0)) files.add(s.file);
+  const last = new Map();
+  for (const result of [...results].sort((a, b) => Number(a.attempt ?? 1) - Number(b.attempt ?? 1))) {
+    for (const s of result.summaries ?? []) if (s.file) last.set(s.file, s.success === false || s.counts?.failed > 0);
   }
-  return [...files].sort();
+  return [...last].filter(([, failed]) => failed).map(([file]) => file).sort();
 }
 
 const prList = (prs) => prs.length > 3 ? `${prs.slice(0, 3).map((p) => `#${p.number}`).join(', ')} and ${prs.length - 3} more` : prs.map((p) => `#${p.number}`).join(', ');
@@ -59,9 +72,10 @@ export function issueName({ files, prs, culprits, run }) {
   return `Error: ${test}${more} fails on main after ${after}`;
 }
 
-export function revertTitle({ culprits, prs }) {
+export function revertTitle({ culprits, prs, probes = [] }) {
   const what = culprits.length === 1 ? short(culprits[0].sha) : `${culprits.length} commits ${short(culprits[0].sha)}..${short(culprits.at(-1).sha)}`;
-  return `sheriff: revert ${what}${prs.length ? ` (PR ${prList(prs)})` : ''} after main went red`;
+  const unprobed = probes.length ? '' : ` (${culprits.length} commit${culprits.length === 1 ? '' : 's'} in range, no bisect probe)`;
+  return `sheriff: revert ${what}${prs.length ? ` (PR ${prList(prs)})` : ''} after main went red${unprobed}`;
 }
 
 function evidence(ctx) {
@@ -89,7 +103,7 @@ function evidence(ctx) {
 
 export function revertBody(ctx) {
   return [
-    `The tests workflow went red on main and stayed red after one rerun of its failed jobs. The sheriff reverts ${ctx.culprits.length === 1 ? 'the commit that broke it' : 'the commits it could not separate within the bisect cap'}; the fix lands as a new PR.`,
+    `The tests workflow went red on main and stayed red after a rerun of its failed jobs. The sheriff reverts ${ctx.culprits.length === 1 ? 'the commit that broke it' : 'the commits it could not separate within the bisect cap'}; the fix lands as a new PR.`,
     '',
     evidence(ctx),
     '',
@@ -119,7 +133,7 @@ export function prComment(ctx, revert) {
 
 export function issueDescription(ctx, revert, note) {
   return [
-    `The sheriff found main red on ${ctx.run.html_url} and it stayed red after one rerun of the failed jobs.`,
+    `The sheriff found main red on ${ctx.run.html_url} and it stayed red after a rerun of the failed jobs.`,
     note ? `\n${note}` : '',
     revert?.html_url ? `Revert PR: ${revert.html_url}` : 'No revert PR was opened.',
     '',
@@ -149,19 +163,37 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   if (green && !dryRun) return result('skip', { reason: `main went green again at ${short(green.sha)}` });
   if (green) io.log(`main went green again at ${short(green.sha)}; a live sheriff stops here, the dry run goes on`);
 
-  const { files, jobs } = await io.failures(run);
+  const { files, jobs, cancelled = [] } = await io.failures(run);
+  if (!jobs.length && cancelled.length) return result('skip', { reason: `no job failed; ${cancelled.join(', ')} cancelled, which is no signal` });
   if (Number(run.run_attempt) === 1) await io.rerunFailed(run.id);
-  const rerun = await io.waitRun(run.id, 2);
-  if ((await io.gate(rerun.id)) === 'success') {
+  let rerun = await io.waitRun(run.id, 2);
+  let verdict = rerunVerdict(await io.gate(rerun.id));
+  if (verdict === 'unknown') {
+    io.log(`the rerun of ${short(run.head_sha)} reached no CI gate verdict; rerunning its failed jobs once more`);
+    try {
+      await io.rerunFailed(run.id);
+      rerun = await io.waitRun(run.id, Number(rerun.run_attempt ?? 2) + 1);
+      verdict = rerunVerdict(await io.gate(rerun.id));
+    } catch (error) {
+      io.log(`the second rerun of ${short(run.head_sha)} could not be read: ${error.message}`);
+    }
+  }
+  if (verdict === 'success') {
     await io.logFlake({ run, files, jobs });
     return result('flake', { reason: `rerun passed; ${files.length ? files.join(', ') : 'no failing file recorded'}`, files });
   }
+  if (verdict === 'unknown') return result('skip', { reason: `two reruns of the failed jobs reached no CI gate verdict; the next red main run judges ${short(run.head_sha)}`, files });
   const healed = dryRun ? null : await io.greenAfter(run);
   if (healed) return result('skip', { reason: `main went green at ${short(healed.sha)} while the rerun ran` });
 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
   const ctx = { run, files, jobs, base, commits, culprits: [], probes: [], prs: [], self: io.self };
+  const tracked = files.length ? await io.openFlakes(files) : [];
+  if (files.length && tracked.length === files.length) {
+    await io.logFlake({ run, files, jobs, stayedRed: true });
+    return escalate(io, ctx, result, `every file still red already has ${tracked.length > 1 ? 'open flake rows' : 'an open flake row'} ${tracked.map((t) => `#${t.publicId} (${t.file})`).join(', ')}; the sheriff never convicts a commit for a tracked flake`);
+  }
   if (!commits.length) return escalate(io, ctx, result, 'no green main run to bisect from, or no commits since it');
 
   const held = (await io.openReverts()).find((pr) => pr.shas.some((sha) => commits.some((c) => c.sha === sha)));
@@ -191,6 +223,9 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const reverts = ctx.culprits.filter((c) => isRevert(c.message));
   if (reverts.length) return escalate(io, ctx, result, `the culprit range holds a revert (${reverts.map((c) => short(c.sha)).join(', ')}); the sheriff never reverts a revert`);
+
+  const cleared = dryRun ? null : await io.greenAfter(run);
+  if (cleared) return result('skip', { reason: `main went green at ${short(cleared.sha)} before the revert was opened; ${short(run.head_sha)} is cleared`, culprits: ctx.culprits.map((c) => c.sha) });
 
   const opened = await io.openRevert({ branch: revertBranch(ctx.culprits), shas: ctx.culprits.map((c) => c.sha), title: revertTitle(ctx), body: revertBody(ctx), message: revertMessage(ctx) });
   if (opened.exists) return result('skip', { reason: `${revertBranch(ctx.culprits)} already exists; this culprit was handled` });
@@ -229,7 +264,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     return out ? JSON.parse(out) : null;
   };
   const runs = (query) => api(`${base}/actions/workflows/test.yml/runs?${query}`).workflow_runs;
-  const gate = (id) => api(`${base}/actions/runs/${id}/jobs?filter=latest&per_page=100`).jobs.find((j) => j.name === 'CI gate')?.conclusion ?? null;
+  const gate = (id) => gateVerdict(api(`${base}/actions/runs/${id}/jobs?filter=latest&per_page=100`).jobs);
   const waitRun = async (id, attempt, minutes = 75) => {
     const deadline = Date.now() + minutes * 60_000;
     for (;;) {
@@ -289,14 +324,16 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       return cmp.commits.map((c) => ({ sha: c.sha, message: c.commit.message }));
     },
     failures: async (r) => {
-      const jobs = api(`${base}/actions/runs/${r.id}/attempts/1/jobs?per_page=100`).jobs.filter((j) => j.conclusion === 'failure' && j.name !== 'CI gate').map((j) => ({ name: j.name, html_url: j.html_url }));
+      const all = api(`${base}/actions/runs/${r.id}/attempts/1/jobs?per_page=100`).jobs.filter((j) => j.name !== 'CI gate');
+      const jobs = all.filter((j) => j.conclusion === 'failure').map((j) => ({ name: j.name, html_url: j.html_url }));
+      const cancelled = all.filter((j) => j.conclusion === 'cancelled').map((j) => j.name);
       const dir = mkdtempSync(join(tmpdir(), 'sheriff-'));
       try {
         try { run('gh', ['run', 'download', String(r.id), '-R', repo, '-p', 'ci-*', '-D', dir]); } catch {}
         const results = [];
         const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f.endsWith('.json')) { try { results.push(JSON.parse(readFileSync(p, 'utf8'))); } catch {} } } };
         walk(dir);
-        return { jobs, files: failingFiles(results) };
+        return { jobs, cancelled, files: failingFiles(results) };
       } finally { rmSync(dir, { recursive: true, force: true }); }
     },
     openReverts: async () => api(`${base}/pulls?state=open&per_page=100`).filter((p) => p.head.ref.startsWith(BRANCH_PREFIX)).map((p) => ({ number: p.number, shas: culpritsOf(p.body) })),
@@ -338,11 +375,20 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     },
     comment: async (number, text) => api(`${base}/issues/${number}/comments`, { method: 'POST', token: writeToken, body: { body: text } }),
     fileIssue: async ({ name, description }) => upsertIssue({ name, description, severity: 'High' }),
-    logFlake: async ({ run: r, files, jobs }) => {
+    openFlakes: async (files) => {
+      if (!env.WEAVE_TRACKER_TOKEN) throw new Error('WEAVE_TRACKER_TOKEN missing; cannot read the flake rows');
+      const found = [];
+      for (const file of files) {
+        const row = (await tracker('/tables/Issue/query', { method: 'POST', body: JSON.stringify({ where: [['Name', '=', flakeName(file)], ['Status', '=', 'Open']] }) })).items?.[0];
+        if (row) found.push({ file, publicId: row.publicId });
+      }
+      return found;
+    },
+    logFlake: async ({ run: r, files, jobs, stayedRed = false }) => {
       const names = files.length ? files : jobs.map((j) => j.name);
-      const line = `${new Date().toISOString().slice(0, 10)} ${short(r.head_sha)} failed, then passed on rerun: ${r.html_url}`;
+      const line = `${new Date().toISOString().slice(0, 10)} ${short(r.head_sha)} ${stayedRed ? 'failed and stayed red after a rerun; the sheriff escalated instead of reverting' : 'failed, then passed on rerun'}: ${r.html_url}`;
       for (const name of names.length ? names : ['the tests suite']) {
-        await upsertIssue({ name: `Error: ${name} flakes on main`, severity: 'Low', line, description: `Flake log kept by the sheriff. Each line is a main run whose failed jobs passed on one rerun.\n\n${line}` });
+        await upsertIssue({ name: flakeName(name), severity: 'Low', line, description: `Flake log kept by the sheriff. Each line is a main run whose failed jobs passed on one rerun.\n\n${line}` });
       }
     },
     alert: async (line) => {
@@ -360,6 +406,7 @@ export function dryIO(io) {
     rerunFailed: say('rerun failed jobs'),
     waitRun: async (id) => io.run(id),
     probe: async () => null,
+    openFlakes: async (files) => { try { return await io.openFlakes(files); } catch (error) { io.log(`dry run could not read the flake rows: ${error.message}`); return []; } },
     openRevert: async (spec) => { io.log(`dry run, would open ${spec.branch}: ${spec.title}\n${spec.body}`); return { branch: spec.branch, dryRun: true }; },
     comment: say('comment on PR'),
     fileIssue: async (spec) => { io.log(`dry run, would file Issue: ${spec.name}`); return null; },

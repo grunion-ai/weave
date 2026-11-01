@@ -18,6 +18,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const codes = new Map();
   const live = new Map();
+  const refreshTokens = new Map();
   const seen = { token: [], userinfo: 0, discovery: 0, jwks: 0, registered: [], authorized: 0, signInPages: 0, signIns: 0, consentPages: 0 };
   const clients = new Map();
   let issuer = '';
@@ -25,7 +26,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
   let browserLogin = null;
   const grant = (q, claims) => {
     const code = randomBytes(12).toString('hex');
-    codes.set(code, { claims, nonce: q.get('nonce'), challenge: q.get('code_challenge'), redirectUri: q.get('redirect_uri'), clientId: q.get('client_id') });
+    codes.set(code, { claims, nonce: q.get('nonce'), challenge: q.get('code_challenge'), redirectUri: q.get('redirect_uri'), clientId: q.get('client_id'), scope: q.get('scope') ?? '' });
     const back = new URL(q.get('redirect_uri'));
     back.searchParams.set('code', code);
     if (q.get('state') != null) back.searchParams.set('state', q.get('state'));
@@ -70,9 +71,10 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       const meta = JSON.parse(raw || '{}');
       if (!Array.isArray(meta.redirect_uris) || !meta.redirect_uris.length) return json(400, { error: 'invalid_redirect_uri' });
       const id = `dyn_${randomBytes(6).toString('hex')}`;
-      clients.set(id, { redirectUris: meta.redirect_uris, name: meta.client_name ?? null });
-      seen.registered.push({ id, name: meta.client_name ?? null });
-      return json(201, { client_id: id, client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: meta.redirect_uris, token_endpoint_auth_method: 'none', grant_types: ['authorization_code'], response_types: ['code'] });
+      const scope = meta.scope ?? 'email offline_access profile';
+      clients.set(id, { redirectUris: meta.redirect_uris, name: meta.client_name ?? null, scope });
+      seen.registered.push({ id, name: meta.client_name ?? null, scope });
+      return json(201, { scope, client_id: id, client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: meta.redirect_uris, token_endpoint_auth_method: 'none', grant_types: meta.grant_types ?? ['authorization_code'], response_types: ['code'] });
     }
     if (url.pathname === '/oauth/authorize' && req.method === 'GET') {
       seen.authorized += 1;
@@ -81,6 +83,13 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       if (q.get('client_id') !== clientId && !dyn) return json(400, { error: 'invalid_client' });
       if (dyn && !dyn.redirectUris.includes(q.get('redirect_uri'))) return json(400, { error: 'invalid_redirect_uri' });
       if (q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) return json(400, { error: 'invalid_request', error_description: 'PKCE S256 required' });
+      if (dyn && (q.get('scope') ?? '').split(/\s+/).filter(Boolean).some((scope) => !dyn.scope.split(/\s+/).includes(scope))) {
+        const back = new URL(q.get('redirect_uri'));
+        back.searchParams.set('error', 'invalid_scope');
+        if (q.get('state') != null) back.searchParams.set('state', q.get('state'));
+        res.writeHead(303, { Location: back.href });
+        return res.end();
+      }
       if (sessions) {
         const who = live.get(cookieIn(req, '__client'));
         if (!who) {
@@ -167,16 +176,17 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       const basic = /^Basic (.+)$/.exec(req.headers.authorization ?? '');
       const [id, secret] = basic ? Buffer.from(basic[1], 'base64').toString().split(':').map(decodeURIComponent) : [form.get('client_id'), form.get('client_secret')];
       seen.token.push({ form: Object.fromEntries(form), basic: Boolean(basic) });
-      const grant = codes.get(form.get('code'));
-      codes.delete(form.get('code'));
+      const refreshing = form.get('grant_type') === 'refresh_token';
+      const grant = refreshing ? refreshTokens.get(form.get('refresh_token')) : codes.get(form.get('code'));
+      if (!refreshing) codes.delete(form.get('code'));
       const publicClient = clients.has(id) && !secret;
       if (!publicClient && (id !== clientId || secret !== clientSecret)) return json(401, { error: 'invalid_client' });
       if (['invalid_client', 'invalid_scope', 'unauthorized_client'].includes(tamper)) return json(tamper === 'invalid_client' ? 401 : 400, { error: tamper });
-      if (!grant || form.get('grant_type') !== 'authorization_code') return json(400, { error: 'invalid_grant' });
+      if (!grant || (!refreshing && form.get('grant_type') !== 'authorization_code')) return json(400, { error: 'invalid_grant' });
       if (publicClient && grant.clientId !== id) return json(400, { error: 'invalid_grant', error_description: 'code was issued to another client' });
-      if (form.get('redirect_uri') !== grant.redirectUri) return json(400, { error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
+      if (!refreshing && form.get('redirect_uri') !== grant.redirectUri) return json(400, { error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
       const challenge = createHash('sha256').update(form.get('code_verifier') ?? '').digest('base64url');
-      if (challenge !== grant.challenge) return json(400, { error: 'invalid_grant', error_description: 'PKCE verifier mismatch' });
+      if (!refreshing && challenge !== grant.challenge) return json(400, { error: 'invalid_grant', error_description: 'PKCE verifier mismatch' });
       const now = Math.floor(Date.now() / 1000);
       const payload = {
         iss: tamper === 'iss' ? 'https://someone-else.example' : issuer,
@@ -194,7 +204,10 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       }
       const access = randomBytes(16).toString('hex');
       codes.set(`access:${access}`, grant);
-      return json(200, { access_token: access, token_type: 'Bearer', expires_in: 300, id_token: idToken });
+      const refresh = grant.scope?.split(/\s+/).includes('offline_access') ? randomBytes(16).toString('hex') : null;
+      if (refresh) refreshTokens.set(refresh, grant);
+      if (refreshing) refreshTokens.delete(form.get('refresh_token'));
+      return json(200, { ...(refresh ? { refresh_token: refresh } : {}), access_token: access, token_type: 'Bearer', expires_in: 300, ...(grant.scope?.split(/\s+/).includes('openid') ? { id_token: idToken } : {}) });
     }
     if (url.pathname === '/oauth/userinfo') {
       seen.userinfo += 1;

@@ -1,0 +1,1 @@
+- A guard holds the table-open query to one page with chip relations and a field projection, so a 2,000-row table opens in 234 KB instead of the 5 MB whole-table payload that froze the tab (Issue #1194).

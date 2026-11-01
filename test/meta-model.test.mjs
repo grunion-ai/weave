@@ -168,7 +168,7 @@ test('schema verbs that change the columns refresh the row', () => {
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Chip, Card');
   w.addRelation('Task', { name: 'Project', targetDb: 'Project', cardinality: 'many-to-one' });
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Points, Project, Chip, Card');
-  assert.equal(tval(w, tableRowOf(w, 'Project'), 'Field Order'), 'Name, Description, Tasks, Chip, Card',
+  assert.equal(tval(w, tableRowOf(w, 'Project'), 'Field Order'), 'Name, Description, Task, Chip, Card',
     'the inverse end lands on the far table row too');
   w.deleteField('Task', 'Points');
   assert.equal(tval(w, tableRowOf(w, 'Task'), 'Field Order'), 'Name, Description, Project, Chip, Card');

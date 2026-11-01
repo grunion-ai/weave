@@ -75,7 +75,7 @@ const BUDGET = () => ({
         name: 'Category',
         fields: [
           { name: 'Kind', type: 'select', options: [{ name: 'Needs' }, { name: 'Wants' }] },
-          { name: 'Spending', type: 'rollup', relationField: 'Transactions', targetField: 'Amount', aggregate: 'sum' },
+          { name: 'Spending', type: 'rollup', relationField: 'Transaction', targetField: 'Amount', aggregate: 'sum' },
         ],
         rows: [{ Name: 'Groceries', Kind: 'Needs' }, { Name: 'Fun', Kind: 'Wants' }],
       },

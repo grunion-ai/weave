@@ -119,13 +119,16 @@ test('the definitions match the target menu table', () => {
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
-  assert.deepEqual(shape('workspace'), { share: ['invite', 'link-preview'] });
+  assert.deepEqual(shape('workspace'), { delete: ['delete'] });
   assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
 });
 
-test('the workspace menu holds no delete row: workspace delete leaves the interface (Feature #297)', () => {
-  assert.equal(core.definition('workspace').delete, undefined);
-  assert.throws(() => core.assemble('workspace', { delete: { label: 'Delete workspace…', run() {} } }), /"delete" is not on the workspace menu/);
+test('the workspace menu holds one row, Delete workspace…; invite and link preview live elsewhere (Feature #347)', () => {
+  assert.deepEqual(core.definition('workspace'), { delete: ['delete'] });
+  const run = () => {};
+  assert.deepEqual(core.assemble('workspace', { delete: { label: 'Delete workspace…', run } }).map((r) => [r.section, r.id, r.label]), [['delete', 'delete', 'Delete workspace…']]);
+  assert.throws(() => core.assemble('workspace', { invite: { label: 'Invite people…', run } }), /"invite" is not on the workspace menu/);
+  assert.throws(() => core.assemble('workspace', { 'link-preview': { label: 'Link preview before sign-in', run } }), /"link-preview" is not on the workspace menu/);
 });
 
 test('table description creation and field settings occupy the settings section', () => {

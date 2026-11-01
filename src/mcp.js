@@ -4,6 +4,7 @@ import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
+export const QUERY_PAGE = 200;
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
@@ -71,7 +72,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_query',
-    description: 'Query entities in a table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+    description: 'Query entities in a table. 200 rows a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while rows remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -82,7 +83,7 @@ export const TOOLS = [
         offset: { type: 'number' },
         select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
         fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
-        relations: { type: 'string', enum: ['full', 'chip'], description: 'chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). Default full: every row embeds its related rows\' summaries.' },
+        relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related row\'s summary is sent once, in chips (keyed by id). full: every row embeds its related rows\' summaries.' },
         includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
         trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s rows are in the trash' },
         countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted rows before where and search' },
@@ -268,11 +269,11 @@ export const TOOLS = [
   },
   {
     name: 'weave_attach_file',
-    description: 'Attach a file to an entity (base64 content).',
+    description: 'Attach a file to a row, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
     inputSchema: {
       type: 'object',
-      properties: { entity: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' } },
-      required: ['entity', 'name', 'contentBase64'],
+      properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
+      required: ['entity', 'name'],
     },
   },
   {
@@ -282,10 +283,16 @@ export const TOOLS = [
   },
   {
     name: 'weave_update_space',
-    description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
+    description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused. access: private shows the space to its members and the workspace architects only; member (with an optional role that overrides the workspace role) and removeMember manage who belongs, which takes an architect of the workspace or of the space.',
     inputSchema: {
       type: 'object',
-      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' } },
+      properties: {
+        space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' },
+        access: { type: 'string', enum: ['open', 'private'], description: 'open: every account reads it at its workspace role. private: only its members and the workspace architects see it' },
+        member: { type: 'string', description: 'An account to add as a member, or whose space role to change' },
+        role: { type: 'string', description: 'The member\'s role in this space (observer, editor or architect); it overrides the workspace role. Omit to keep the workspace role' },
+        removeMember: { type: 'string', description: 'An account to remove from the space' },
+      },
       required: ['space'],
     },
   },
@@ -331,7 +338,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side). group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. nest: Parent link. collapsed: paths. hideEmpty: no empty groups. order: row #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -339,7 +346,7 @@ export const TOOLS = [
         move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
         position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
         widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, order: {}, phoneRow: {},
+        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, nest: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
       },
       required: ['view'],
     },
@@ -473,10 +480,10 @@ export const TOOLS = [
   },
   {
     name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
+    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor; space scopes the token to one space, and a token never reaches past the account that made it — observer reads and comments, editor writes rows, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
+      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, space: { type: 'string', description: 'create only: scope the token to this one space' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
       required: ['action'],
     },
   },
@@ -561,7 +568,7 @@ export const SUMMARY = {
   weave_build: 'spaces, tables, fields, relations and rows in one call (dryRun checks)',
   weave_ontology: 'short schema: outline, one table, changes',
   weave_schema: 'the full schema as JSON',
-  weave_query: 'rows of one table, filtered (where), sorted, paged',
+  weave_query: 'rows of one table, filtered (where), sorted, 200 a page',
   weave_get_entity: 'one row in full: values, document, comments, activity',
   weave_search: 'find rows, tables and spaces by text; each hit has a permalink',
   weave_create_entity: 'create one row',
@@ -594,7 +601,7 @@ export const SUMMARY = {
   weave_create_automation: 'create an automation rule',
   weave_automations: 'list, describe, update or delete rules',
   weave_export_csv: 'a table as CSV',
-  weave_attach_file: 'attach a file to a row (base64)',
+  weave_attach_file: 'attach or prepare raw upload',
   weave_files: 'read or delete an attached file',
   weave_update_space: 'rename a space; description, icon, template mark',
   weave_template_list: 'list template spaces',
@@ -725,7 +732,11 @@ export const ROLE_TOOLS = {
   observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
   editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
 };
-const mayCall = (caller, name) => !ROLE_TOOLS[caller?.tier] || ROLE_TOOLS[caller.tier].has(name);
+const WORKSPACE_TOOLS = new Set(['weave_create_space', 'weave_build', 'weave_apply_schema', 'weave_template_use', 'weave_create_automation', 'weave_automations', 'weave_registry', 'weave_views', 'weave_workspace', 'weave_forms', 'weave_import_json', 'weave_export_json', 'weave_keys', 'weave_shares', 'weave_accounts', 'weave_undo']);
+const mayCall = (caller, name) => {
+  const tier = WORKSPACE_TOOLS.has(name) ? caller?.workspaceTier ?? caller?.tier : caller?.tier;
+  return !ROLE_TOOLS[tier] || ROLE_TOOLS[tier].has(name);
+};
 const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -760,8 +771,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.describeSchema();
     case 'weave_query':
       return weave.query(args.db, {
-        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? null,
-        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'full',
+        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? QUERY_PAGE,
+        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'chip',
         includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
         groupBy: args.groupBy ?? null,
@@ -838,12 +849,24 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.exportCSV(args.db);
     case 'weave_import_csv':
       return weave.importCSV(args.db, args.csv);
-    case 'weave_attach_file':
-      return weave.attachFile(args.entity, { name: args.name, mime: args.mime, bytes: args.contentBase64 });
+    case 'weave_attach_file': {
+      if (args.prepare === true) {
+        if (!caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
+        return caller.prepareUpload(args);
+      }
+      if (typeof args.contentBase64 !== 'string') throw new Error('Send contentBase64, or prepare:true and size for a raw upload.');
+      const file = { name: args.name, mime: args.mime, bytes: args.contentBase64 };
+      return args.field == null ? weave.attachFile(args.entity, file) : weave.attachToField(args.entity, args.field, file);
+    }
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
-    case 'weave_update_space':
-      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template', 'position']));
+    case 'weave_update_space': {
+      if (args.member != null) weave.setSpaceMember(args.space, args.member, { role: args.role ?? null });
+      if (args.removeMember != null) weave.removeSpaceMember(args.space, args.removeMember);
+      const patch = pick(args, ['name', 'description', 'icon', 'template', 'position', 'access']);
+      const sp = Object.keys(patch).length ? weave.updateSpace(args.space, patch) : weave.getSpace(args.space);
+      return { ...sp, members: weave.spaceMembers(sp.id) };
+    }
     case 'weave_template_list':
       return { templates: weave.listTemplates() };
     case 'weave_template_use':
@@ -959,7 +982,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_accounts':
       switch (args.action) {
         case 'list': return { accounts: weave.listAccounts() };
-        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'editor' });
+        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'editor', space: args.space ?? null });
         case 'set': return weave.setAccountRole(args.account ?? args.name, args.role);
         case 'delete': return weave.deleteAccount(args.account);
         case 'require-auth': return weave.setRequireAuth(Boolean(args.on));

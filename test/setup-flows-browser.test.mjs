@@ -246,7 +246,7 @@ if (openHub) {
     await p.mouse.move(0, 0);
     await p.locator('main details summary').click();
     await p.click('.app[data-tool="codex"]');
-    assert.match(await p.locator('.steps li[data-at] code').textContent(), /^codex mcp add weave --url http:\/\/localhost:\d+\/w\/no-agent\/mcp$/, 'Codex copies its add command');
+    assert.match(await p.locator('.steps li[data-at] code').textContent(), /^codex mcp add weave-no-agent --url http:\/\/localhost:\d+\/w\/no-agent\/mcp$/, 'Codex copies its add command');
     assert.equal(await p.locator('main .btn-primary[data-copy="address"]').textContent(), 'Copy command');
     assert.equal(await p.locator('main [data-go="install"]').count(), 0, 'no install deeplink');
     await go(p, 'skip');

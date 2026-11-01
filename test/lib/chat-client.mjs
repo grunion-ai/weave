@@ -54,7 +54,7 @@ export async function beginConnect(mcpUrl, app = CHAT_APPS.claude, redirect = ap
       body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: clientId, code_verifier: verifier, resource: mcpUrl }),
     });
     if (!tok.ok) throw new Error(`token exchange answered ${tok.status} ${await tok.text()}`);
-    const { access_token: token } = await tok.json();
+    const { access_token: token, refresh_token: refreshToken } = await tok.json();
     trace.push('token');
 
     const init = await rpc(token, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: app.name, version: '1' } });
@@ -63,7 +63,7 @@ export async function beginConnect(mcpUrl, app = CHAT_APPS.claude, redirect = ap
     const list = await (await rpc(token, 'tools/list')).json();
     const names = (list.result?.tools ?? []).map((t) => t.name);
     const call = await (await rpc(token, 'tools/call', { name: 'weave_schema', arguments: {} })).json();
-    return { trace, clientId, tools: names, schema: call.result, token };
+    return { trace, clientId, tools: names, schema: call.result, token, refreshToken };
   }
 
   return { trace, clientId, state, authorize: auth.href, finish };

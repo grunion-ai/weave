@@ -140,7 +140,7 @@ if (s) {
       assert.ok(atEnd.within, `+ New space is still in the sidebar's window at the nav's end: ${JSON.stringify(atEnd)}`);
       assert.ok(Math.abs(atEnd.top - atTop.top) <= 20, `the button held its place while the nav ran ${spare}px: ${atTop.top} -> ${atEnd.top}`);
       const order = await page.evaluate(() => [...document.querySelectorAll('#sidebar .nav-pinned > *')].filter((n) => !n.hidden).map((n) => n.className.split(' ')[0]));
-      assert.deepEqual(order, ['nav-foot', 'nav-identity'], `the button leads the strip, the identity panel last (Issue #854, Feature #333): ${order}`);
+      assert.deepEqual(order, ['nav-foot', 'nav-system', 'nav-identity'], `the button leads the strip, the System space follows, the identity panel last (Issue #854, Feature #333): ${order}`);
       await page.click(btn);
       await page.waitForTimeout(150);
       const input = await seen('.nav-inline-add');
@@ -156,6 +156,8 @@ if (s) {
       assert.ok(webkit, 'WebKit is installed, so the Safari bar is measured');
       const page = await open(`#/table/${big.id}?e=${first.id}`, { theme, width: 1600, dockWidth: 380, engine: webkit });
       await page.waitForSelector('#dock:not([hidden]) .name-edit');
+      await page.locator('#dock .doc-section .vditor-reset p').filter({ hasText: 'Ledger paragraph 80 ' }).waitFor();
+      await settled(page.locator('#dock'));
       const bars = await page.evaluate(() => Object.fromEntries(['#nav', '#main', '#dock'].map((q) => {
         const n = document.querySelector(q);
         const cs = getComputedStyle(n);
@@ -169,13 +171,13 @@ if (s) {
     });
   }
 
-  test('the nav list is the one scroll box, between the head and the pinned foot, in the sidebar, the peek overlay and the phone drawer (Issue #957)', async () => {
+  test('the nav list is the one scroll box, between the head and the pinned foot, in the sidebar and the peek overlay, and the phone drawer scrolls as one column (Issue #957, Issue #1164)', async () => {
     const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });
     const frame = () => page.evaluate(() => {
       const nav = document.querySelector('#nav');
       const side = document.querySelector('#sidebar');
       const head = document.querySelector('#sidebar .nav-head');
-      const foot = document.querySelector('#sidebar .nav-pinned');
+      const foot = document.querySelector('#sidebar .nav-foot');
       const n = nav.getBoundingClientRect();
       const s = side.getBoundingClientRect();
       return {
@@ -190,12 +192,13 @@ if (s) {
     });
     const want = { navScrolls: true, sidebarScrolls: false, holdsHead: false, holdsFoot: false, clearOfHead: true, clearOfFoot: true, barAtEdge: 0 };
     assert.deepEqual(await frame(), want, 'the in-flow sidebar');
-    for (const [label, viewport] of [['peek', { width: 1470, height: 794 }], ['tablet peek', { width: 800, height: 1000 }], ['phone drawer', phoneProfile().page.viewport]]) {
+    const column = { ...want, navScrolls: false, sidebarScrolls: true };
+    for (const [label, viewport, shape] of [['peek', { width: 1470, height: 794 }, want], ['tablet peek', { width: 800, height: 1000 }, want], ['phone drawer', phoneProfile().page.viewport, column]]) {
       await page.setViewportSize(viewport);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));
       await settled(page.locator('#sidebar'));
-      assert.deepEqual(await frame(), want, `the ${label}`);
+      assert.deepEqual(await frame(), shape, `the ${label}`);
     }
     await page.close();
   });
@@ -235,11 +238,11 @@ if (s) {
     await page.click('#main .nav-menu');
     await page.waitForTimeout(250);
     before = await tops(page);
-    await swipeOver(page, '#nav');
+    await swipeOver(page, '#sidebar');
     after = await tops(page);
     assert.equal(after.doc, 0);
-    assert.ok(after.nav > before.nav + 50, `the drawer nav scrolls: ${before.nav} -> ${after.nav}`);
-    assert.equal(after.sidebar, 0, 'the drawer around the list holds still');
+    assert.ok(after.sidebar > before.sidebar + 50, `the drawer scrolls as one column: ${before.sidebar} -> ${after.sidebar}`);
+    assert.equal(after.nav, 0, 'the list inside the drawer has no scroller of its own');
     assert.equal(after.main, before.main, 'the page under the drawer holds');
     await page.close();
 

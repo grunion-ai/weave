@@ -489,7 +489,6 @@ const OVERLAY_STATES = [
   { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
   { name: 'personal-menu', route: 'home', cells: DESKTOP, root: '.nav-personal-menu', act: (page, ctx, cell) => tap(page, '#sidebar .nav-identity-more', cell) },
   { name: 'new-workspace', route: 'home', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
-  { name: 'workspace-menu', route: 'home', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Workspace actions"]', cell) },
   { name: 'nav-table-menu', route: 'home', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#nav .dots-btn[title="Task actions"]', cell) },
   {
     name: 'bug-report', route: 'home', cells: BOTH, root: '#bug-panel',
@@ -590,7 +589,7 @@ const TOUCH_STATES = [
   { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'], hold: { touch: [1222] } },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
-  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163, 1164] } },
+  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
@@ -599,7 +598,7 @@ const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
   { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
-  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1169, 1170] } },
+  { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH, hold: { touch: [1217] } },
   { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1152, 1161], touch: [1165, 1166, 1167, 1168] } },
 ];

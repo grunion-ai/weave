@@ -1,6 +1,9 @@
 (function (root) {
   const GROUPS = ['stacked', 'side'];
   const PICTURES = ['off', 'small', 'medium', 'large'];
+  const FITS = ['crop', 'fit', 'original', 'capped'];
+  const FRAMES = ['4:3', '1:1', '3:4', '16:9'];
+  const FLOWS = ['masonry', 'rows'];
   const CARD_PX = { small: 132, medium: 188, large: 256 };
   const COLUMN_PX = { small: 184, medium: 232, large: 288 };
   const PHONE_COLUMNS = { small: 3, medium: 2, large: 2 };
@@ -91,6 +94,9 @@
   }
 
   const groupsOf = (view) => (GROUPS.includes(view?.groups) ? view.groups : 'side');
+  const fitOf = (view) => (FITS.includes(view?.fit) ? view.fit : 'crop');
+  const frameOf = (view) => (FRAMES.includes(view?.frame) ? view.frame : '4:3');
+  const flowOf = (view) => (FLOWS.includes(view?.flow) ? view.flow : 'masonry');
 
   function pictureOf(db, view) {
     if (PICTURES.includes(view?.picture)) return view.picture;
@@ -103,5 +109,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, FITS, FRAMES, FLOWS, fitOf, frameOf, flowOf, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);
