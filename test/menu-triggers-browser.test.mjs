@@ -1,13 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-let scratch;
 const s = await launch('menu triggers', (weave) => {
-  scratch = new Weave();
-  scratch.state.meta.name = 'scratch';
-  scratch.markOnboarded();
   const space = weave.createSpace({ name: 'Product' });
   const tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.addField(tasks, { name: 'Stage', type: 'select', config: { options: ['Now', 'Later'] } });
@@ -16,7 +11,7 @@ const s = await launch('menu triggers', (weave) => {
   weave.setDoc(first.id, '# Plan\n\nShip it.', 'Notes');
   const view = weave.createView({ name: 'Focus', blocks: [{ table: 'Task' }] });
   return { tableId: tasks.id, spaceId: space.id ?? weave.describeSchema().find((x) => x.space === 'Product').spaceId, entityId: first.id, viewId: view.id };
-}, { server: () => ({ workspaces: { scratch } }) });
+});
 
 const ROWS = {
   table: ['Add description…', 'Move to space…', 'Duplicate', 'Share…', 'New share page…', 'Forms…', 'Copy create link', 'CSV', 'Move to trash'],
@@ -24,7 +19,7 @@ const ROWS = {
   doc: ['Markdown', 'Mermaid', 'HTML', 'PDF'],
   space: ['Move to trash'],
   'share-page': ['Move to trash'],
-  workspace: ['Delete workspace…'],
+  workspace: ['Invite people…', 'Link preview before sign-in'],
   field: ['Field settings…', 'Insert field…', 'Move to trash'],
 };
 
@@ -113,7 +108,7 @@ if (s) {
       },
     },
     {
-      kind: 'workspace', hash: `w/${scratch.state.meta.id}/`, ready: '#main .view-header .dots-btn[title="Workspace actions"]',
+      kind: 'workspace', hash: '', ready: '#main .view-header .dots-btn[title="Workspace actions"]',
       triggers: {
         'header ⋮': via('#main .view-header .dots-btn[title="Workspace actions"]'),
         'header right-click': via('#main .view-header .view-desc', 'right'),
@@ -135,7 +130,7 @@ if (s) {
           const names = Object.keys(seen);
           const want = ROWS[k.kind] ?? seen[names[0]].rows;
           for (const name of names) assert.deepEqual(seen[name].rows, want, `${name} opens the ${k.kind} menu`);
-          if (k.kind === 'workspace') assert.deepEqual(want, ['Delete workspace…'], 'the workspace menu holds Delete alone (Feature #347)');
+          if (k.kind === 'workspace') assert.deepEqual(want, ['Invite people…', 'Link preview before sign-in'], 'the workspace Share section invites, then the link preview switch (Issue #759)');
           for (const name of names.filter((n) => /right-click|nav row|tray/.test(n))) assert.equal(seen[name].head, 1, `${name} names the object in a head row`);
         } finally { await page.close(); }
       });

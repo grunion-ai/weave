@@ -39,7 +39,7 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 | Document section | | | | Markdown, Mermaid, HTML, PDF | |
 | Space | | | | | Move to trash |
 | Share page | | | | | Move to trash |
-| Workspace | | | | | Delete workspace… (Feature #347) |
+| Workspace | | | Link preview before sign-in (switch) | | (none, Feature #297) |
 | Field (column header) | Field settings… | Insert field… | | | Move to trash |
 
 Share… keeps its current place while its redesign is parked.
@@ -60,7 +60,7 @@ The multi-select toolbar trash uses the same verb, `TRASHED`, and the same Undo;
 
 A hold is for permanent delete only. The builder keeps `hold: true` rows for it, and no kind's definition uses one. **Delete forever** lives in Settings (`#/settings`, Feature #295): a typed name arms the builder's hold row, and the Trash page only restores.
 
-The workspace is the one kind whose Delete row is not `trashRow`: **Delete workspace…** opens a dialog that arms only on the workspace's exact name, then sends `DELETE /api/workspaces/:id` (Feature #347). The delete is permanent from the user's side: no Undo, no Trash entry, and the workspace's address answers 404; the hub keeps a tombstone only the operator restores. The row shows only where `GET /api/workspaces` marks the workspace `deletable`, so the default workspace has no workspace menu at all. Deleting the workspace you stand in opens the next workspace on the rail, or the `weave` workspace when it was your last. Settings lists the same workspaces with the same dialog. Invite lives on the workspace page's **Invite** button and **Link preview before sign-in** on the Settings page; neither is a menu row.
+Workspace delete lives in Settings beside it (Feature #297), behind the same typed name and hold, and no menu carries it. `DELETE /api/workspaces/:id` trashes a workspace and the Trash page restores it.
 
 ## Triggers
 
