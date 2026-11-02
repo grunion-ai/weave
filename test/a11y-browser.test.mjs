@@ -7,6 +7,8 @@ import { launch, settled, atRest } from './lib/browser.mjs';
 import { ROUTES, SEEDS, readyOf, walked } from './lib/states.mjs';
 import { createOidc } from '../src/oidc.js';
 import { createBilling } from '../src/billing.js';
+import { Weave } from '../src/engine.js';
+import { Store } from '../src/store.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AXE = readFileSync(join(HERE, 'vendor/axe-4.10.2.min.js'), 'utf8');
@@ -24,7 +26,33 @@ const partsOf = (key) => {
   return { route, state, theme, rule, target };
 };
 
-const s = await launch('a11y baseline', SEEDS.a11y);
+await import('../public/chip-core.js');
+const chips = globalThis.chipCore;
+const WORKSPACE = {
+  baseline: { id: '00000000-0000-4000-8000-000000000008', hue: 'blue' },
+  doors: { id: '00000000-0000-4000-8000-000000000004', hue: 'cyan' },
+};
+const pinnedWeave = (id) => () => {
+  const state = { version: 2, meta: { id, name: 'personal-workspace', createdAt: new Date().toISOString() }, spaces: {}, tables: {}, entities: {}, automations: {} };
+  const store = new Store(null);
+  store.load = () => state;
+  return new Weave({ store });
+};
+
+test('both a11y workspaces hold a pinned id, so axe sees the same selector pool every run (Issue #1232)', () => {
+  for (const [which, want] of Object.entries(WORKSPACE)) {
+    assert.equal(chips.hueForName(want.id), want.hue, `${which}'s pinned id has to hash to ${want.hue}`);
+    assert.notEqual(want.hue, 'green', `${which} must not take the hue the Done chip already carries`);
+  }
+});
+
+test('no a11y baseline key is coupled to a workspace hue (Issue #1232)', () => {
+  for (const key of Object.keys(BASELINE)) {
+    assert.doesNotMatch(key, /hue-/, `${key} pins a hue class, which moves with the seed workspace id`);
+  }
+});
+
+const s = await launch('a11y baseline', SEEDS.a11y, { weave: pinnedWeave(WORKSPACE.baseline.id) });
 
 const ISSUER = 'https://clerk.a11y.example.test';
 const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
@@ -36,12 +64,17 @@ const doors = s && await launch('a11y doors', (w) => {
   w.redeemIdentityInvite(w.linkIdentity('ada-sales', { issuer: ISSUER }).code, { issuer: ISSUER, subject: 'user_ada' });
   w.accountForIdentity({ issuer: ISSUER, subject: 'user_ada', email: 'ada-sales@example.com' });
   w.setRequireAuth(true);
-}, { server: () => ({
+}, { weave: pinnedWeave(WORKSPACE.doors.id), server: () => ({
   oidc: createOidc({ issuer: 'https://idp.a11y.example.test', clientId: 'test', clientSecret: 'test', name: 'Test' }),
   billing: createBilling({ secretKey: 'sk_test_x', plan: 'seat', issuer: ISSUER, publishableKey: null, fetch: nobody }),
 }) });
 
 if (s && doors) {
+  test('each a11y launch runs on its pinned workspace id, so no run draws a different hue (Issue #1232)', () => {
+    assert.equal(s.weave.state.meta.id, WORKSPACE.baseline.id, 'the baseline workspace is not pinned');
+    assert.equal(doors.weave.state.meta.id, WORKSPACE.doors.id, 'the doors workspace is not pinned');
+  });
+
   const { base, browser } = s;
 
   const { task, issue, entityId } = s;
