@@ -17,6 +17,7 @@ const roleOf = (role) => {
   if (!r) throw new Error(`No email copy for role '${role}' (${Object.keys(ROLES).join(', ')})`);
   return r;
 };
+export const TRIAL_STAGES = ['ending', 'last'];
 export const longDate = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
 
 const FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -167,6 +168,39 @@ ${members}
 You got this email because you sent an invite from the ${workspace} workspace on ${host}. weave deleted the address you entered for this invite when ${member} accepted it.
 `;
   return { subject, preheader, html: shell(theme, { origin, preheader, body, footer }), text };
+}
+
+export function trialEmail({ workspace, stage = 'ending', daysLeft, endsAt, billing, origin, host = new URL(origin).host, theme } = {}) {
+  if (!TRIAL_STAGES.includes(stage)) throw new Error(`No email copy for trial stage '${stage}' (${TRIAL_STAGES.join(', ')})`);
+  const last = stage === 'last';
+  const ends = longDate(endsAt);
+  const runs = last ? `ends today, ${ends}` : `runs until ${ends}`;
+  const tail = last ? 'Every Editor and Architect creates and edits until the day is out.' : 'Until then every Editor and Architect creates and edits as usual.';
+  const after = 'Editors and Architects read and comment until the workspace has a paid seat, and no row is deleted.';
+  const seats = 'One seat covers one Editor or Architect. Observers stay free.';
+  const subject = `Free trial of the ${workspace} workspace: ${last ? 'last day' : `${daysLeft} days left`}`;
+  const preheader = `Buy a seat on the billing page to keep creating and editing in ${workspace}. ${after}`;
+  const why = (w, h) => `You got this email because you are an Architect of the ${w} workspace on ${h}. weave sends it twice at most: three days before the free trial ends and on its last day.`;
+  const body = (at) => `
+<div${at('eyebrow')}>Free trial</div>
+<h1${at('h1')}>Your free trial ends ${last ? 'today' : `in ${esc(daysLeft)} days`}</h1>
+<p${at('lead')}>The free trial of the <b${at('ink')}>${esc(workspace)}</b> workspace on weave ${esc(runs)}. ${esc(tail)}</p>
+<table role="presentation" width="100%"${at('panel')}>
+${head(at, first(workspace), workspace, host)}
+${row(at, 'Trial ends', esc(ends))}
+${row(at, 'After that', esc(after))}
+</table>
+${button(at, billing, 'Open Billing')}
+<p${at('meta')}>${esc(seats)}</p>
+<p${at('fallback')}>If the button does nothing, paste this link into your browser:<br><a${at('flink')} href="${esc(billing)}">${esc(billing)}</a></p>`;
+  const text = `The free trial of the ${workspace} workspace on weave ${runs}. ${tail}
+When it ends, ${after}
+Buy a seat on the billing page:
+${billing}
+${seats}
+${why(workspace, host)}
+`;
+  return { subject, preheader, html: shell(theme, { origin, preheader, body, footer: why(esc(workspace), esc(host)) }), text };
 }
 
 const when = (v, s) => (v ? `{{#if ${v}}}${s}{{/if}}` : s);

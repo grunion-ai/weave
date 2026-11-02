@@ -26,6 +26,7 @@ import { evaluate, check as checkExpression, references as formulaReferences } f
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
+import { TRIAL_STAGES } from './mail.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -4069,6 +4070,15 @@ export class Weave {
     return this.state.meta.trialFrom;
   }
 
+  markTrialMail(stage, at = nowISO()) {
+    if (!TRIAL_STAGES.includes(stage)) throw new WeaveError(`'${stage}' is not a trial mail stage (${TRIAL_STAGES.join(', ')})`, 'invalid');
+    const marks = this.state.meta.trialMail ?? (this.state.meta.trialMail = {});
+    if (!marks[stage]) {
+      marks[stage] = at;
+      this.save();
+    }
+    return marks[stage];
+  }
   linkBillingOrg(orgId) {
     const id = String(orgId ?? '').trim();
     if (!/^org_[A-Za-z0-9]+$/.test(id)) throw new WeaveError(`'${orgId}' is not a Clerk organization id`, 'invalid');
