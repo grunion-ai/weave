@@ -36,7 +36,7 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 | Whiteboards, Timeline, Calendar, Reports | — | Not built. |
 | Forms | Forms | Public links at `/f/<id>` add one row to one table, with prefill links. |
 | Portals | — | Not built. |
-| Users, permissions, guest access | Accounts and roles | Three roles per workspace, private spaces with per-space roles, and read-only share links for saved views; no guest seats. |
+| Users, permissions, guest access | Accounts and roles | Three roles per workspace and read-only share links for saved views; no per-space permissions or guest seats. |
 | Integrations (Jira, GitHub, Slack…) | Webhooks + REST | Outbound webhooks and a full REST API; no connector catalog. |
 | AI assistant | MCP server | Agent-accessibility instead of built-in AI features. |
 
@@ -56,9 +56,9 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 
 ## Where Fibery wins
 
-- **Collaboration.** Guest access and real-time co-editing. weave has accounts
-  with three roles per workspace and per-space roles on private spaces, and no
-  live updates on an open page.
+- **Collaboration.** Per-space permissions, guest access and real-time
+  co-editing. weave has accounts with three roles per workspace, nothing finer,
+  and no live updates on an open page.
 - **View types.** Whiteboards, timeline/Gantt, calendar, and reports/charts —
   none of which weave has.
 - **Portals** for outside users to browse and work in the tool.

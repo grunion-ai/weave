@@ -346,11 +346,9 @@ Stated plainly, so you can rule it out fast:
 
 - **No field- or row-level permissions for accounts.** Each account holds one of
   three roles in a workspace: an observer reads and comments, an editor writes
-  rows, an architect also changes structure, accounts and keys. A private space
-  admits only its members and the workspace's architects, and a member can hold
-  a different role in that space. An architect can mint a share link that opens
-  one row, table, space or saved view to whoever holds it, but no rule narrows
-  an account's own role to one row or field.
+  rows, an architect also changes structure, accounts and keys. An architect can
+  mint a share link that opens one row, table, space or saved view to whoever
+  holds it, but no rule narrows an account's own role to one space, row or field.
 - **Auth is off until you turn it on.** Agents carry `wv_` tokens and people
   sign in through one OpenID Connect provider, but only after
   `weave workspace require-auth`. Until then, anyone who reaches the port can do
@@ -374,7 +372,7 @@ are the mature open-source options in this space.
 **Is weave a good open-source Airtable alternative?**
 Yes, if you liked Airtable for linked records, rollups, formulas, views and
 forms; you also get markdown documents on every record and an MCP server. No,
-if you rely on permissions narrower than a space role or on Airtable's
+if you rely on permissions narrower than a workspace role or on Airtable's
 marketplace apps.
 
 **Is there a self-hosted Fibery alternative?**
@@ -405,9 +403,8 @@ run `weave workspace require-auth`, and let them sign in through your OpenID
 Connect provider. Every change lands in the audit log under the account that
 made it. For someone without an account, an architect mints a share link to one
 row, table, space, saved view or the whole workspace, at read, edit or manage
-access, valid for thirty days unless renewed. A private space admits only its
-members and the workspace's architects, and a member can hold a different role
-in that space. No rule narrows an account to one row or field.
+access, valid for thirty days unless renewed. Account roles still cover the
+whole workspace: no rule narrows an account to one space, row or field.
 
 **Is there a hosted version?**
 Yes: weave cloud at https://weave.grunion.ai runs this repository's code behind
@@ -453,10 +450,8 @@ anyone else can reach a hosted install, put a door in front of it (see
 [Self-hosting](#self-hosting)) and run `require-auth`. Every page and API route
 then refuses a caller without a `wv_` token or a signed-in session.
 
-Roles stop at the space. An observer reads and comments, an editor writes rows,
-and an architect changes structure, accounts and keys. A private space answers
-404 to everyone but its members and the workspace's architects. An agent token
-can be scoped to one space and never reaches past the account that issued it.
+Roles stop at the workspace. An observer reads and comments, an editor writes
+rows, and an architect changes structure, accounts and keys.
 
 A document of kind `html` renders on the application's origin, so script an
 editor places in one runs for whoever opens it. We are reviewing that
