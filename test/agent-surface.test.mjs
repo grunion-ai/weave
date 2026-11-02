@@ -142,6 +142,7 @@ const INTERNAL = {
   agentSeen: 'setup state (Feature #326) — the setup page polls GET /api/start/workspaces/:slug/agent to learn an AI app connected; the agent is the thing being watched',
   noteAgent: 'auth path (Feature #326, Issue #915) — the /mcp door stamps an account\'s first answered agent call itself; an agent never calls it',
   startTrial: 'billing state (Feature #329) — POST /api/start/workspaces starts the free trial of the workspace it makes; nothing for an agent to do',
+  markTrialMail: 'billing state (Issue #1298) — the hourly trial sweep stamps which trial-end mail went out; nothing for an agent to do',
   affectedBy: 'read helper (Issue #257) — the rows a client must re-read after writing one; PATCH /api/entities/:ref ships it as `affected`',
   invitesForEmail: 'auth path (Feature #290) — the pending invites sent to the signed-in person\'s verified address; GET /api/start lists them as rows of kind "invite", and an agent holds no browser session',
   acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',

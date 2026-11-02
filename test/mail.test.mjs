@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inviteEmail, inviteAcceptedEmail, ROLES, art, longDate } from '../src/mail.js';
+import { inviteEmail, inviteAcceptedEmail, trialEmail, ROLES, art, longDate } from '../src/mail.js';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { LOCKUP_SIZES } from '../brand/build-logos.mjs';
@@ -13,6 +13,8 @@ const ORIGIN = 'https://weave.example.com';
 const LINK = `${ORIGIN}/api/auth/oidc/start?invite=wvi_abc`;
 const invite = (over = {}) => inviteEmail({ inviter: 'kyle', workspace: 'weave', role: 'editor', expires: 'October 10', link: LINK, origin: ORIGIN, ...over });
 const accepted = (over = {}) => inviteAcceptedEmail({ workspace: 'weave', role: 'editor', member: 'dana', joined: 'October 3', members: `${ORIGIN}/w/weave/#members`, origin: ORIGIN, ...over });
+const BILLING = `${ORIGIN}/w/weave/billing`;
+const trial = (over = {}) => trialEmail({ workspace: 'weave', stage: 'ending', daysLeft: 3, endsAt: '2026-10-10T00:00:00.000Z', billing: BILLING, origin: ORIGIN, ...over });
 
 test('invite: subject, preheader and plain text are the approved copy', () => {
   const m = invite();
@@ -100,7 +102,7 @@ test('text and html carry the same facts', () => {
 });
 
 test('the html is mail-client safe: no SVG, no rope, no web font, a PNG mark on the origin', () => {
-  for (const { html } of [invite(), accepted()]) {
+  for (const { html } of [invite(), accepted(), trial(), trial({ stage: 'last' })]) {
     assert.ok(!/<svg/i.test(html), 'Gmail strips SVG');
     assert.ok(!/<path/i.test(html), 'no rope graphic, only the lockup image');
     assert.ok(!html.includes('fonts.googleapis'), 'no Google Fonts link');
@@ -108,6 +110,31 @@ test('the html is mail-client safe: no SVG, no rope, no web font, a PNG mark on 
     assert.match(html, /<!--\[if !mso\]><!--><img class="mark-dark" style="display:none[^"]*" src="https:\/\/weave\.example\.com\/brand\/email-lockup-dark\.png" width="131" height="24" alt="weave"><!--<!\[endif\]-->/);
     assert.equal(html.match(/<img /g).length, 2, 'the lockup is the only image');
   }
+});
+
+test('trial: the subject, the heading and the plain text name the workspace, the end date and the seat rule', () => {
+  const m = trial();
+  assert.equal(m.subject, 'Free trial of the weave workspace: 3 days left');
+  assert.equal(trial({ stage: 'last', daysLeft: 1 }).subject, 'Free trial of the weave workspace: last day');
+  assert.match(m.preheader, /^Buy a seat on the billing page to keep creating and editing in weave\./);
+  assert.match(m.html, />Free trial</);
+  assert.match(m.html, />Your free trial ends in 3 days</);
+  assert.match(trial({ stage: 'last', daysLeft: 1 }).html, />Your free trial ends today</);
+  assert.match(m.html, />Open Billing</);
+  for (const fact of ['weave', 'October 10', BILLING, 'Editor', 'Architect', 'Observer', 'weave.example.com']) {
+    assert.ok(m.text.includes(fact), `text: ${fact}`);
+    assert.ok(m.html.includes(fact), `html: ${fact}`);
+  }
+  assert.ok(m.text.includes('runs until October 10'));
+  assert.ok(trial({ stage: 'last', daysLeft: 1 }).text.includes('ends today, October 10'));
+  assert.ok(!/[\u2014]/.test(m.text + m.html), 'no em dash in the copy');
+});
+
+test('trial: an unknown stage is refused, and the billing link and workspace are escaped', () => {
+  assert.throws(() => trial({ stage: 'someday' }), /ending, last/);
+  const m = trial({ workspace: 'a<b>&"', billing: `${ORIGIN}/w/a%3Cb/billing?x=1&y=2` });
+  assert.ok(!/<b>/.test(m.html.replace(/<style>[\s\S]*?<\/style>/, '')), 'the workspace name is escaped');
+  assert.ok(m.html.includes('x=1&amp;y=2'), 'the link is escaped');
 });
 
 test('critical styles are inline, so the card, button and chips survive a client that drops <style>', () => {
@@ -175,6 +202,9 @@ test('preview: Architect only, sample values, ?role and ?theme', async () => {
     assert.match(await (await get('/api/mail/preview/invite?theme=dark', architect)).text(), /background:#0b1220/);
     const acc = await (await get('/api/mail/preview/accepted?role=architect', architect)).text();
     assert.ok(acc.includes('>New Architect in weave<') && acc.includes('>dana<') && acc.includes('Joined October 3'));
+    const tr = await (await get('/api/mail/preview/trial', architect)).text();
+    assert.ok(tr.includes('>Your free trial ends in 3 days<') && tr.includes('https://weave.example.com/w/weave/billing'));
+    assert.ok((await (await get('/api/mail/preview/trial-last', architect)).text()).includes('>Your free trial ends today<'));
     assert.equal((await get('/api/mail/preview/nope', architect)).status, 404);
     assert.equal((await get('/api/mail/preview/invite?role=owner', architect)).status, 400);
     const png = await get('/brand/email-lockup-light.png');
