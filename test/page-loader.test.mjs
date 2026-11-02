@@ -156,7 +156,7 @@ test('a fast route never pays for the loader', () => {
 test('the rope waits 500ms; the skeleton covers the band above the flash ceiling', () => {
   assert.match(APP, /function route\(\) \{\s*return withPageLoader\(renderRouteSafely\);/);
   assert.match(APP, /window\.addEventListener\('hashchange', route\)/);
-  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRouteSafely\)\.catch\(paintRouteError\)\)/);
+  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\.catch\(paintRouteError\)\)/);
   const after = Number(APP.match(/const LOADER_SHOW_AFTER_MS = (\d+);/)[1]);
   assert.equal(after, 500, 'the rope belongs to loads longer than 500ms');
   assert.match(APP, /if \(loading\.depth > 0\) return;/);
