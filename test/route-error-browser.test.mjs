@@ -8,9 +8,17 @@ const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 test('both route entry points end in the one failure handler (Issue #118)', () => {
   const routeFn = APP.match(/\nfunction route\(\) \{[\s\S]*?\n\}/)?.[0] ?? '';
   assert.match(routeFn, /renderRouteSafely/, 'hashchange navigation catches its own failure');
-  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRoute\)\.catch\(paintRouteError\)\)/,
+  assert.match(APP, /withPageLoader\(\(\) => loadSchema\(\)\.then\(renderRouteSafely\)\.catch\(paintRouteError\)\)/,
     'and so does the first render at boot');
   assert.match(APP, /function paintRouteError\(/, 'the failure has somewhere to paint');
+});
+
+test('both route entry points render through the one chain, so a later route cannot lose to an earlier one (Issue #1138)', () => {
+  const routeFn = APP.match(/\nfunction route\(\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(routeFn, /renderRouteSafely/, 'hashchange navigation joins the chain');
+  const boot = APP.match(/\nwithPageLoader\(\(\) => loadSchema\(\)[^\n]*/)?.[0] ?? '';
+  assert.match(boot, /renderRouteSafely/, 'the boot render joins the same chain');
+  assert.doesNotMatch(boot, /then\(renderRoute\)/, 'the boot render does not call renderRoute outside the chain');
 });
 
 let deals;
