@@ -1,0 +1,1 @@
+- A space's tables card shows a plain count for a table with no term of its own, and a table's own word where it has one: `331`, `1,139 bugs`.
