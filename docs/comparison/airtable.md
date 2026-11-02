@@ -30,7 +30,7 @@ weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
 | Interfaces | — | Not built. |
 | Forms | Forms | Public links at `/f/<id>` add one row to one table; prefill links set fields. |
 | Sync / integrations | Webhooks + REST + CSV | Outbound webhooks and a full REST API; no prebuilt connector catalog. |
-| Collaborators & permissions | Accounts with three roles | Observer, editor or architect per workspace; nothing narrower. See below. |
+| Collaborators & permissions | Accounts with three roles | Observer, editor or architect per workspace, with per-space roles on private spaces; nothing narrower. See below. |
 
 ## Field types
 
@@ -61,8 +61,8 @@ AI-generated field types.
 ## Where Airtable wins
 
 - **Permissions and collaboration.** weave gives each account one of three
-  roles per workspace and has no per-table or per-field permissions and no live
-  co-editing. Authentication stays off until an operator runs
+  roles per workspace, with per-space roles on private spaces, and has no
+  per-table or per-field permissions and no live co-editing. Authentication stays off until an operator runs
   `weave workspace require-auth`.
 - **Interfaces.** Airtable's app-builder has no counterpart in weave.
 - **The marketplace.** Hundreds of prebuilt integrations and extensions versus
