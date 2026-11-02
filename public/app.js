@@ -12978,7 +12978,7 @@ wireTheme();
 wireSkipLink();
 (state.healthP ??= api('GET', '/health')).catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
-withPageLoader(() => loadSchema().then(renderRouteSafely).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();
 buildWsRail();
 wireWsNew();
