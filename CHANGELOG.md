@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.111 (2026-11-02)
+
+- Billing moves to one per-seat organization plan at $4.99 a seat, from a workspace's first person on: `WEAVE_BILLING_PLAN` replaces `WEAVE_BILLING_SOLO_PLAN` and `WEAVE_BILLING_TEAM_PLAN`, and `POST /api/billing/organization` (**Set up billing** on `/billing`) replaces `POST /api/billing/team`. Neither old variable was set on a deployment, so no workspace changes plan (Feature #256).
+- Scroll bars look the same in every pane in Chromium and Safari, whatever the macOS scroll bar setting: one 8px bar with a 4px thumb, in place of a thin overlay on a trackpad and a fat classic bar with a mouse. Bar ends stop short of rounded corners, 16px on the panes, modals and menus and 8px elsewhere. Panes keep the 8px gutter with nothing to scroll, so content does not shift when overflow appears. Firefox keeps its native thin bar and touch screens keep their overlay bars (Issue #1310).
+- A space's tables card shows a plain count for a table with no term of its own, and a table's own word where it has one: `331`, `1,139 bugs`.
+
 ## v0.4.110 (2026-11-01)
 
 - The Handbook "Agent access (MCP)" guide follows the MCP primer: read the `weave_ontology` outline, build with one `weave_build` call run with `dryRun` first, read rows with `weave_query` and `weave_search`, and reach every other tool through `weave_call`. Its tool and field-type counts come from the code, icons read `lucide:<name>`, and fields, tables and spaces restore from the trash. The guide now lives in the Handbook source, so a release's Handbook sync replaces the stale row, and a test fails when any Handbook page or doc states a tool or field-type count the code does not have (Issue #1246).
