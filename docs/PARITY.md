@@ -55,7 +55,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 35 | Comments | ✅ | per entity, CRUD; observers may comment |
 | 36 | Activity history | ✅ | creates, field/state/relation changes, automations; undo and field rollback |
 | 37 | Real-time co-editing | ❌ | each request reads the latest write; nothing pushes changes to an open page |
-| 38 | Granular permissions | 🟡 | three roles per workspace (observer, editor, architect) and `require-auth`; no per-space, per-row or per-field rules |
+| 38 | Granular permissions | 🟡 | three roles per workspace (observer, editor, architect), open or private spaces with per-space roles, and `require-auth`; no per-row or per-field rules |
 
 ## Views
 

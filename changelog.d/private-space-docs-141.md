@@ -1,0 +1,1 @@
+- The README and the Fibery and Airtable comparison pages describe private spaces and per-space roles, in place of saying roles stop at the workspace. `docs/PARITY.md` row 38 says the same and stays partial, since no rule reaches one row or field (Feature #141).
