@@ -10985,22 +10985,40 @@ function quickCreate(db) {
 }
 
 
-function newUserDialog(reg, after) {
+async function newUserDialog(reg, after) {
   const roles = ['Editor', 'Observer', 'Architect'].map((r) => ({ id: r, label: r }));
+  const here = await api('GET', '/workspace').then((w) => w.name, () => null);
+  const wsTable = allTables().find((d) => d.system === 'workspaces');
+  const rows = wsTable ? await api('GET', `/tables/${wsTable.id}/entities`).then((r) => r.items ?? [], () => []) : [];
+  const names = [...new Set([...(here ? [here] : []), ...rows.map((e) => e.name)])];
+  const workspaces = names.map((n) => ({ id: n, label: n }));
+  const owner = here ?? names[0] ?? null;
   modal('New user', [
     el('input', { name: 'email', type: 'email', placeholder: 'Email, to invite a person', class: 'form-control' }),
     el('input', { name: 'name', placeholder: 'Name, required for an agent', class: 'form-control' }),
-    pickerSelect({ name: 'role', title: 'Role', options: roles, value: 'Editor' }),
+    el('label', { class: 'form-label' }, 'Role'),
+    el('div', { class: 'wv-user-role' }, pickerSelect({ name: 'role', title: 'Role', options: roles, value: 'Editor' })),
+    ...(workspaces.length ? [
+      el('label', { class: 'form-label' }, 'Workspace'),
+      el('div', { class: 'wv-user-workspace' }, pickerSelect({ name: 'workspace', title: 'Workspace', options: workspaces, value: owner })),
+      el('div', { class: 'form-hint wv-user-workspace-hint' }, 'The account belongs to this workspace. A saved row cannot move to another, so check it before you create.'),
+    ] : []),
     el('div', { class: 'form-hint' }, 'An email invites a person with a one-time sign-in link. Leave it empty to make an agent account with a token.'),
   ], async (fd) => {
     const email = String(fd.get('email') ?? '').trim();
     const name = String(fd.get('name') ?? '').trim();
-    const values = { Role: fd.get('role'), ...(email ? { Email: email } : { Kind: 'Agent' }) };
+    const role = String(fd.get('role') ?? 'Editor');
+    const workspace = String(fd.get('workspace') ?? '').trim();
+    const values = { Role: role, ...(workspace && workspace !== owner ? { Workspace: workspace } : {}), ...(email ? { Email: email } : { Kind: 'Agent' }) };
     const made = await api('POST', `/tables/${reg.id}/entities`, { ...(name ? { name } : {}), values });
     await after();
     const secret = made.invite?.url ?? made.token;
     if (!secret) return;
-    setTimeout(() => modal(made.invite ? 'Invite link' : 'Agent token', [
+    const where = workspace || owner;
+    const title = made.invite
+      ? (where ? `${role} invite to ${where}` : 'Invite link')
+      : (where ? `${role} token for ${where}` : 'Agent token');
+    setTimeout(() => modal(title, [
       el('p', {}, made.invite ? `Send this link to ${email}. It works once and expires in seven days.` : `This token for ${made.name} is shown once. Store it now.`),
       el('input', { class: 'form-control wv-user-secret', readonly: '', value: secret, onfocus: (e) => e.target.select() }),
       el('button', { class: 'btn', type: 'button', onclick: () => copyText(secret) }, 'Copy'),
