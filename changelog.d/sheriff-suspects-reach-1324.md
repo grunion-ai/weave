@@ -1,0 +1,1 @@
+- The sheriff drops from its suspect list every commit whose diff cannot reach the failing suite, says in the row when nothing in the range can explain the red, and files a repeat failure onto the open row that already names the file ([[Issue#1324]]).

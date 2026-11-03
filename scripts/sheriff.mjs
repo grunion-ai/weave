@@ -56,6 +56,19 @@ export function flakeLine({ at, sha, url, outcome = 'rerun-green' }) {
 
 export const REOPEN = { Issue: { from: 'Fixed', to: 'Open' }, Feature: { from: 'Shipped', to: 'Building' } };
 
+export const REACHING = /^(?:src|public|bin|test|scripts|agents|tools)\/|^\.github\/workflows\/|^Dockerfile$|^[^/]+\.(?:json|js|mjs|cjs|yaml|yml|lock)$/;
+const BROWSER_SUITE = /-browser\.test\.mjs$/;
+
+export function clears(commit, files = [], paths = []) {
+  if (isRevert(commit.message)) return 'it is a revert';
+  if (!files.length || !paths.length) return null;
+  if (paths.some((path) => REACHING.test(path))) return null;
+  if (files.some((file) => !BROWSER_SUITE.test(file))) return null;
+  return `its diff reaches no path ${files.join(', ')} can read`;
+}
+
+export const NO_CULPRIT = 'no commit in the range can explain this red, so the failure is a flake or an ordering effect';
+
 export function revertedRefs(culprits = []) {
   const refs = [];
   for (const c of culprits) {
@@ -103,10 +116,11 @@ export function unresolvedFiles(results) {
 
 const prList = (prs) => prs.length > 3 ? `${prs.slice(0, 3).map((p) => `#${p.number}`).join(', ')} and ${prs.length - 3} more` : prs.map((p) => `#${p.number}`).join(', ');
 
-export function issueName({ files, prs, culprits, run }) {
+export function issueName({ files, prs, blamed = [], culprits = [], run }) {
   const test = files[0] ?? 'the tests suite';
   const more = files.length > 1 ? ` (+${files.length - 1} more)` : '';
-  const after = prs.length === 1 ? `PR #${prs[0].number}` : prs.length ? `PRs ${prList(prs)}` : `commit ${short(culprits[0]?.sha ?? run.head_sha)}`;
+  const named = blamed.length ? blamed : culprits;
+  const after = prs.length === 1 ? `PR #${prs[0].number}` : prs.length ? `PRs ${prList(prs)}` : `commit ${short(named[0]?.sha ?? run.head_sha)}`;
   return `Error: ${test}${more} fails on main after ${after}`;
 }
 
@@ -117,7 +131,7 @@ export function revertTitle({ culprits, prs, probes = [] }) {
 }
 
 function evidence(ctx) {
-  const { run, files, jobs, probes, base, commits, culprits, prs } = ctx;
+  const { run, files, jobs, probes, base, commits, culprits, blamed = [], cleared = [], prs } = ctx;
   const lines = [
     `Red run: ${run.html_url} (head ${short(run.head_sha)})`,
     `Rerun of the failed jobs: ${run.html_url}/attempts/2`,
@@ -132,8 +146,12 @@ function evidence(ctx) {
     'Failed jobs:',
     ...(jobs.length ? jobs.map((j) => `- ${j.name} ${j.html_url}`) : ['- none listed']),
     '',
-    'Culprit commits:',
-    ...culprits.map((c) => `- ${c.sha} ${subjectOf(c.message)}`),
+    ...(blamed.length
+      ? ['Culprit commits:', ...blamed.map((c) => `- ${c.sha} ${subjectOf(c.message)}`)]
+      : [`No culprit: ${NO_CULPRIT}.`]),
+    ...(cleared.length
+      ? ['', 'Cleared:', ...cleared.map((c) => `- ${c.sha} ${subjectOf(c.message)}: ${c.why}`)]
+      : []),
     '',
     `Original PR: ${prs.length ? prs.map((p) => `#${p.number} ${p.html_url}`).join(', ') : 'none found'}`,
   ];
@@ -178,7 +196,9 @@ export function issueDescription(ctx, revert, note) {
     '',
     evidence(ctx),
     '',
-    'Fix shape: reproduce with `npm test -- --targeted <file>` on the culprit commit, fix, and land the fix with the original change as a new PR.',
+    ctx.blamed?.length
+      ? 'Fix shape: reproduce with `npm test -- --targeted <file>` on the culprit commit, fix, and land the fix with the original change as a new PR.'
+      : `Fix shape: ${NO_CULPRIT}. Run \`npm test -- --targeted <file>\` on main; a pass there belongs on the standing row for that file, not on a commit.`,
     '',
     `Filed by the sheriff, run ${ctx.self ?? ctx.run.id}, ${new Date().toISOString().slice(0, 10)}.`,
   ].join('\n');
@@ -227,7 +247,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
-  const ctx = { run, files, jobs, unresolved, base, commits, culprits: [], probes: [], prs: [], self: io.self };
+  const ctx = { run, files, jobs, unresolved, base, commits, culprits: [], blamed: [], cleared: [], probes: [], prs: [], self: io.self };
   const tracked = files.length ? await io.openFlakes(files) : [];
   if (files.length && tracked.length === files.length) {
     await io.logFlake({ run, files, jobs, outcome: 'stayed-red' });
@@ -265,6 +285,11 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
     else { stopped = `probe at ${short(sha)} ended ${probe.conclusion}`; break; }
   }
   ctx.culprits = commits.slice(lo + 1, hi + 1);
+  for (const c of ctx.culprits) {
+    const why = clears(c, files, await io.pathsOf(c.sha));
+    if (why) ctx.cleared.push({ ...c, why });
+    else ctx.blamed.push(c);
+  }
   ctx.dispatched = dispatched;
   const seen = new Map();
   for (const c of ctx.culprits) for (const pr of await io.pullsFor(c.sha)) seen.set(pr.number, pr);
@@ -274,6 +299,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const reverts = ctx.culprits.filter((c) => isRevert(c.message));
   if (reverts.length) return escalate(io, ctx, result, `the culprit range holds a revert (${reverts.map((c) => short(c.sha)).join(', ')}); the sheriff never reverts a revert`);
+  if (!ctx.blamed.length) return escalate(io, ctx, result, `${NO_CULPRIT}: ${ctx.cleared.map((c) => `${short(c.sha)} ${c.why}`).join('; ')}`);
 
   const cleared = dryRun ? null : await io.greenAfter(run);
   if (cleared) return result('skip', { reason: `main went green at ${short(cleared.sha)} before the revert was opened; ${short(run.head_sha)} is cleared`, culprits: ctx.culprits.map((c) => c.sha) });
@@ -291,7 +317,11 @@ async function escalate(io, ctx, result, reason) {
 
 async function report(io, ctx, result, revert, outcome, action, note) {
   for (const pr of ctx.prs) await io.comment(pr.number, prComment(ctx, revert));
-  const issue = await io.fileIssue({ name: issueName(ctx), description: issueDescription(ctx, revert, note) });
+  const description = issueDescription(ctx, revert, note);
+  const open = ctx.files?.length ? await io.openIncidents(ctx.files) : [];
+  const issue = open[0]
+    ? await io.appendRow(open[0], description)
+    : await io.fileIssue({ name: issueName(ctx), description });
   const reopened = action === 'revert' ? await reopenReverted(io, ctx, revert) : [];
   await io.alert(alertLine(ctx, outcome + (issue?.url ? `; Issue ${issue.url}` : '')));
   return result(action, { reason: outcome, culprits: ctx.culprits.map((c) => c.sha), prs: ctx.prs.map((p) => p.number), probes: ctx.probes, revert, issue, reopened });
@@ -428,6 +458,22 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       return { conclusion: gate(id) ?? r.conclusion, url: r.html_url, id };
     },
     pullsFor: async (sha) => api(`${base}/commits/${sha}/pulls`).filter((p) => p.merged_at).map((p) => ({ number: p.number, html_url: p.html_url, title: p.title })),
+    pathsOf: async (sha) => (api(`${base}/commits/${sha}`)?.files ?? []).map((f) => f.filename),
+    openIncidents: async (files) => {
+      if (!env.WEAVE_TRACKER_TOKEN) throw new Error('WEAVE_TRACKER_TOKEN missing; cannot read the open rows');
+      const found = [];
+      for (const file of files) {
+        for (const row of (await tracker('/tables/Issue/query', { method: 'POST', body: JSON.stringify({ where: [['Name', 'contains', file], ['Status', '=', 'Open']] }) })).items ?? []) {
+          if (row.fields?.Name !== flakeName(file)) found.push({ id: row.id, publicId: row.publicId, file });
+        }
+      }
+      return found;
+    },
+    appendRow: async ({ id, publicId }, line) => {
+      if (!env.WEAVE_TRACKER_TOKEN) throw new Error(`WEAVE_TRACKER_TOKEN missing; cannot append to Issue #${publicId}`);
+      await tracker(`/entities/${id}/doc`, { method: 'POST', body: JSON.stringify({ doc: `\n\n${line}` }) });
+      return { id, publicId, url: `${env.WEAVE_TRACKER_URL || TRACKER}/e/${id}`, appended: true };
+    },
     openRevert: async ({ branch, shas, title, body, message }) => {
       let pushed = false;
       try { run('git', ['ls-remote', '--exit-code', 'origin', `refs/heads/${branch}`]); pushed = true; } catch {}
