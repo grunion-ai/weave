@@ -101,9 +101,19 @@ export function unresolvedFiles(results) {
   return [...fileRuns(results)].filter(([, v]) => v.red && v.runs === 1).map(([file]) => file).sort();
 }
 
+export function timedOutShards(results) {
+  const newest = new Map();
+  for (const result of results) {
+    const held = newest.get(result.id);
+    if (!held || Number(result.attempt ?? 1) > Number(held.attempt ?? 1)) newest.set(result.id, result);
+  }
+  return [...newest.values()].filter((r) => r.timedOut === true).map((r) => r.id).sort();
+}
+
 const prList = (prs) => prs.length > 3 ? `${prs.slice(0, 3).map((p) => `#${p.number}`).join(', ')} and ${prs.length - 3} more` : prs.map((p) => `#${p.number}`).join(', ');
 
-export function issueName({ files, prs, culprits, run }) {
+export function issueName({ files, prs, culprits, run, unresolved = [], timedOut = [] }) {
+  if (!files.length && !unresolved.length && timedOut.length) return `Error: tests shards ${timedOut.join(', ')} time out on main at ${short(run.head_sha)}`;
   const test = files[0] ?? 'the tests suite';
   const more = files.length > 1 ? ` (+${files.length - 1} more)` : '';
   const after = prs.length === 1 ? `PR #${prs[0].number}` : prs.length ? `PRs ${prList(prs)}` : `commit ${short(culprits[0]?.sha ?? run.head_sha)}`;
@@ -117,7 +127,7 @@ export function revertTitle({ culprits, prs, probes = [] }) {
 }
 
 function evidence(ctx) {
-  const { run, files, jobs, probes, base, commits, culprits, prs } = ctx;
+  const { run, files, jobs, probes, base, commits, culprits, prs, timedOut = [] } = ctx;
   const lines = [
     `Red run: ${run.html_url} (head ${short(run.head_sha)})`,
     `Rerun of the failed jobs: ${run.html_url}/attempts/2`,
@@ -128,6 +138,7 @@ function evidence(ctx) {
     'Failing tests:',
     ...(files.length ? files.map((f) => `- ${f}`) : ['- none recorded in the shard results']),
     ...(ctx.unresolved?.length ? ['', 'Red with no retry verdict, because the shard ended before its retry answered:', ...ctx.unresolved.map((f) => `- ${f}`)] : []),
+    ...(timedOut.length ? ['', `Shards that hit the test manager timeout: ${timedOut.join(', ')}`] : []),
     '',
     'Failed jobs:',
     ...(jobs.length ? jobs.map((j) => `- ${j.name} ${j.html_url}`) : ['- none listed']),
@@ -202,7 +213,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   if (green && !dryRun) return result('skip', { reason: `main went green again at ${short(green.sha)}` });
   if (green) io.log(`main went green again at ${short(green.sha)}; a live sheriff stops here, the dry run goes on`);
 
-  const { files, jobs, cancelled = [], unresolved = [] } = await io.failures(run);
+  const { files, jobs, cancelled = [], unresolved = [], timedOut = [] } = await io.failures(run);
   if (!jobs.length && cancelled.length) return result('skip', { reason: `no job failed; ${cancelled.join(', ')} cancelled, which is no signal` });
   if (Number(run.run_attempt) === 1) await io.rerunFailed(run.id);
   let rerun = await io.waitRun(run.id, 2);
@@ -227,7 +238,7 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
 
   const base = (await io.lastGreen(run)) ?? {};
   const commits = base.sha ? await io.range(base.sha, run.head_sha) : [];
-  const ctx = { run, files, jobs, unresolved, base, commits, culprits: [], probes: [], prs: [], self: io.self };
+  const ctx = { run, files, jobs, unresolved, timedOut, base, commits, culprits: [], probes: [], prs: [], self: io.self };
   const tracked = files.length ? await io.openFlakes(files) : [];
   if (files.length && tracked.length === files.length) {
     await io.logFlake({ run, files, jobs, outcome: 'stayed-red' });
@@ -236,6 +247,9 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   if (!files.length && unresolved.length) {
     await io.logFlake({ run, files: unresolved, jobs, outcome: 'no-verdict' });
     return escalate(io, ctx, result, `no file reached a retry verdict: ${unresolved.join(', ')} ${unresolved.length > 1 ? 'were' : 'was'} red with the shard ending before its retry answered, so nothing names what blocked main and the sheriff convicts no commit`);
+  }
+  if (!files.length && !unresolved.length && timedOut.length) {
+    return escalate(io, ctx, result, `shards ${timedOut.join(', ')} hit the test manager timeout and no test recorded a failure, before and after the rerun; a timeout names no culprit (a hang or a shard too heavy for its job), so the sheriff neither bisects nor reverts`);
   }
   if (!commits.length) return escalate(io, ctx, result, 'no green main run to bisect from, or no commits since it');
 
@@ -403,7 +417,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       const jobs = all.filter((j) => j.conclusion === 'failure').map((j) => ({ name: j.name, html_url: j.html_url }));
       const cancelled = all.filter((j) => j.conclusion === 'cancelled').map((j) => j.name);
       const results = shardResults(r.id);
-      return { jobs, cancelled, files: failingFiles(results), unresolved: unresolvedFiles(results) };
+      return { jobs, cancelled, files: failingFiles(results), unresolved: unresolvedFiles(results), timedOut: timedOutShards(results) };
     },
     probeFiles: async (id) => failingFiles(shardResults(id)),
     openReverts: async () => api(`${base}/pulls?state=open&per_page=100`).filter((p) => p.head.ref.startsWith(BRANCH_PREFIX)).map((p) => ({ number: p.number, shas: culpritsOf(p.body) })),
