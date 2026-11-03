@@ -8,7 +8,7 @@ const repo = 'grunion-ai/weave';
 const red = (patch = {}) => ({ id: 900, name: 'tests', path: '.github/workflows/test.yml', event: 'push', head_branch: 'main', head_repository: { full_name: repo }, status: 'completed', conclusion: 'failure', run_attempt: 1, head_sha: sha(100), html_url: 'https://github.com/grunion-ai/weave/actions/runs/900', created_at: '2026-10-12T10:00:00Z', ...patch });
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 
-function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, unresolved = [], probeRed = null, rows = {} } = {}) {
+function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, unresolved = [], probeRed = null, rows = {}, paths = {}, incidents = [] } = {}) {
   const head = commits.at(-1)?.sha;
   const run = given ?? red({ head_sha: head ?? sha(100) });
   const writes = [];
@@ -34,6 +34,9 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     lastGreen: async () => ({ sha: sha(1), url: 'https://github.com/grunion-ai/weave/actions/runs/800' }),
     range: async (from, to) => { assert.equal(from, sha(1)); assert.equal(to, head ?? run.head_sha); return commits; },
     openReverts: async () => reverts,
+    pathsOf: async (s) => paths[s] ?? ['src/engine.js'],
+    openIncidents: async (names) => incidents.filter((i) => names.includes(i.file)),
+    appendRow: async (row, line) => { writes.push(['append', row, line]); return { id: row.id, publicId: row.publicId, url: `https://weave.grunion.ai/w/weave/e/${row.id}`, appended: true }; },
     known: async (s) => known[s] ?? null,
     probe: async (s) => { writes.push(['probe', s]); return { conclusion: index(s) >= badFrom ? 'failure' : 'success', url: `https://github.com/grunion-ai/weave/actions/runs/p${index(s)}`, id: 7000 + index(s) }; },
     pullsFor: async (s) => [{ number: Number.parseInt(s, 16), html_url: `https://github.com/grunion-ai/weave/pull/${Number.parseInt(s, 16)}` }],
@@ -369,6 +372,48 @@ test('an inconclusive probe stops the bisect and reverts what is still suspect',
   const out = await sheriff(900, f.io);
   assert.deepEqual(out.culprits, commits.map((c) => c.sha));
   assert.equal(out.action, 'revert');
+});
+
+test('a culprit range holding only a revert names no culprit (Issue #1279)', async () => {
+  const f = fake({ commits: [commit(100, 'Revert "grid: tab order (Issue #551)"\n\nThis reverts commit abcdef1234.')] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.match(f.writes.at(-1)[1], /never reverts a revert/);
+  const row = f.writes.find((w) => w[0] === 'issue')[1];
+  assert.doesNotMatch(row.description, /Culprit commits:/);
+  assert.match(row.description, /No culprit: no commit in the range can explain this red/);
+  assert.match(row.description, new RegExp(`${sha(100)} .*: it is a revert`));
+  assert.doesNotMatch(row.description, /on the culprit commit/);
+});
+
+test('a documentation commit is no suspect for a browser suite, and an empty suspect list says so (Issue #1316)', async () => {
+  const docs = ['README.md', 'docs/PARITY.md', 'docs/comparison/airtable.md', 'changelog.d/private-space-docs-141.md'];
+  const f = fake({ commits: [commit(100, 'docs: private spaces in the README (#593)')], files: ['test/setup-flows-browser.test.mjs'], paths: { [sha(100)]: docs } });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.ok(!f.kinds().includes('revert'), f.kinds().join(','));
+  assert.match(out.reason, /no commit in the range can explain this red/);
+  assert.match(out.reason, /flake or an ordering effect/);
+  const row = f.writes.find((w) => w[0] === 'issue')[1];
+  assert.doesNotMatch(row.description, /Culprit commits:/);
+  assert.match(row.description, /its diff reaches no path test\/setup-flows-browser\.test\.mjs can read/);
+
+  const unit = fake({ commits: [commit(100, 'docs: private spaces in the README (#593)')], files: ['test/docs-drift.test.mjs'], paths: { [sha(100)]: docs } });
+  assert.equal((await sheriff(900, unit.io)).action, 'revert', 'a documentation suite still reads documentation');
+});
+
+test('a failing file that already has an open row is filed onto that row (Issue #1321)', async () => {
+  const file = 'test/grid.test.mjs';
+  const held = { id: 'row-1317', publicId: 1317, file };
+  const f = fake({ incidents: [held] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'revert');
+  assert.ok(!f.kinds().includes('issue'), f.kinds().join(','));
+  const append = f.writes.find((w) => w[0] === 'append');
+  assert.equal(append[1].publicId, 1317);
+  assert.match(append[2], /actions\/runs\/900/);
+  assert.match(append[2], new RegExp(file.replace('/', '\\/')));
+  assert.equal(out.issue.publicId, 1317);
 });
 
 test('a revert in the culprit range is never reverted: Issue and alert only', async () => {
