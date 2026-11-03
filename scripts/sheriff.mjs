@@ -42,6 +42,18 @@ export function gateVerdict(jobs = []) {
 
 export const flakeName = (file) => `Error: ${file} flakes on main`;
 
+const FLAKE_OUTCOMES = {
+  'rerun-green': 'failed, then passed on rerun',
+  'stayed-red': 'failed and stayed red after a rerun; the sheriff escalated instead of reverting',
+  'no-verdict': 'failed with no retry verdict, because the shard ended before its retry answered; the sheriff escalated instead of convicting a commit',
+};
+
+export function flakeLine({ at, sha, url, outcome = 'rerun-green' }) {
+  const what = FLAKE_OUTCOMES[outcome];
+  if (!what) throw new Error(`unknown flake outcome ${outcome}`);
+  return `${at} ${short(sha)} ${what}: ${url}`;
+}
+
 export const REOPEN = { Issue: { from: 'Fixed', to: 'Open' }, Feature: { from: 'Shipped', to: 'Building' } };
 
 export function revertedRefs(culprits = []) {
@@ -218,8 +230,12 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   const ctx = { run, files, jobs, unresolved, base, commits, culprits: [], probes: [], prs: [], self: io.self };
   const tracked = files.length ? await io.openFlakes(files) : [];
   if (files.length && tracked.length === files.length) {
-    await io.logFlake({ run, files, jobs, stayedRed: true });
+    await io.logFlake({ run, files, jobs, outcome: 'stayed-red' });
     return escalate(io, ctx, result, `every file still red already has ${tracked.length > 1 ? 'open flake rows' : 'an open flake row'} ${tracked.map((t) => `#${t.publicId} (${t.file})`).join(', ')}; the sheriff never convicts a commit for a tracked flake`);
+  }
+  if (!files.length && unresolved.length) {
+    await io.logFlake({ run, files: unresolved, jobs, outcome: 'no-verdict' });
+    return escalate(io, ctx, result, `no file reached a retry verdict: ${unresolved.join(', ')} ${unresolved.length > 1 ? 'were' : 'was'} red with the shard ending before its retry answered, so nothing names what blocked main and the sheriff convicts no commit`);
   }
   if (!commits.length) return escalate(io, ctx, result, 'no green main run to bisect from, or no commits since it');
 
@@ -447,9 +463,9 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       }
       return found;
     },
-    logFlake: async ({ run: r, files, jobs, stayedRed = false }) => {
+    logFlake: async ({ run: r, files, jobs, outcome = 'rerun-green' }) => {
       const names = files.length ? files : jobs.map((j) => j.name);
-      const line = `${new Date().toISOString().slice(0, 10)} ${short(r.head_sha)} ${stayedRed ? 'failed and stayed red after a rerun; the sheriff escalated instead of reverting' : 'failed, then passed on rerun'}: ${r.html_url}`;
+      const line = flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome });
       for (const name of names.length ? names : ['the tests suite']) {
         await upsertIssue({ name: flakeName(name), severity: 'Low', line, description: `Flake log kept by the sheriff. Each line is a main run whose failed jobs passed on one rerun.\n\n${line}` });
       }
