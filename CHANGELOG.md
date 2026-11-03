@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.112 (2026-11-02)
+
+- A main red whose only red test files never reached a retry verdict no longer convicts a commit. A shard killed by its own timeout reports each of its files once, so nothing says whether they stayed red; the sheriff now escalates with that file list and logs a line on each file's `flakes on main` row instead of bisecting and opening a revert PR. On 2026-11-02 that path reverted the healthy v0.4.111 release over `test/feedback-budget-browser.test.mjs` and `test/phone-new-row-sheet-browser.test.mjs`, neither of which the run ever judged (Issue #1322).
+
 ## v0.4.111 (2026-11-02)
 
 - Billing moves to one per-seat organization plan at $4.99 a seat, from a workspace's first person on: `WEAVE_BILLING_PLAN` replaces `WEAVE_BILLING_SOLO_PLAN` and `WEAVE_BILLING_TEAM_PLAN`, and `POST /api/billing/organization` (**Set up billing** on `/billing`) replaces `POST /api/billing/team`. Neither old variable was set on a deployment, so no workspace changes plan (Feature #256).
