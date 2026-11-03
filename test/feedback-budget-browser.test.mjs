@@ -18,6 +18,12 @@ if (s) {
     phone: { browser: handset ?? s.browser, options: { engine: handset ? CELLS.phone.engine : CELLS.desktop.engine, ...phoneProfile().page } },
   };
 
+  const wholeTable = async () => {
+    const r = await (await fetch(`${s.base}/api/tables/${s.table}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    return { total: r.total ?? (r.items ?? []).length, ids: (r.items ?? []).map((e) => e.id) };
+  };
+  const seeded = await wholeTable();
+
   for (const j of JOURNEYS) {
     for (const cell of cellsOf(j)) {
       const key = clickKey(j.name, cell);
@@ -44,4 +50,11 @@ if (s) {
       });
     }
   }
+
+  test('the journeys leave the grid table whole, so none of them reads a row an earlier one trashed (Issue #1109)', async () => {
+    const now = await wholeTable();
+    const gone = seeded.ids.filter((id) => !now.ids.includes(id));
+    assert.deepEqual([gone, now.total], [[], seeded.total],
+      `the journeys left the table ${seeded.total - now.total} row(s) short; these are missing from the first page: ${gone.join(', ') || 'none'}`);
+  });
 }

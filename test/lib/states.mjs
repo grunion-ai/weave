@@ -251,6 +251,11 @@ async function scrollTo(page, f) {
 }
 
 const beat = (page) => page.waitForTimeout(400);
+const missingRows = async ([table, want]) => {
+  const r = await (await fetch(`/api/tables/${table}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  const have = new Set((r.items ?? []).map((e) => e.id));
+  return want.filter((id) => !have.has(id));
+};
 const phoneCell = (page) => (page.viewportSize()?.width ?? 1440) < 768;
 
 const JOURNEY_STATES = [
@@ -342,8 +347,9 @@ const JOURNEY_STATES = [
   {
     name: 'trash-undo', layout: 'table',
     setup: table,
-    async run(page) {
-      const n = await page.locator(ROW).count();
+    async run(page, ctx) {
+      const rows = page.locator(ROW);
+      const picked = [await rows.nth(1).getAttribute('data-eid'), await rows.nth(2).getAttribute('data-eid')];
       const boxes = page.locator('.wv-grid tbody .sel-box');
       await boxes.nth(1).check();
       await boxes.nth(2).check();
@@ -351,7 +357,14 @@ const JOURNEY_STATES = [
       const toast = page.locator('.wv-toast', { hasText: 'Moved to trash' }).last();
       await toast.waitFor();
       await toast.locator('.wv-toast-action').click();
-      await page.waitForFunction(([sel, k]) => document.querySelectorAll(sel).length === k, [ROW, n], { timeout: 8000 });
+      let left = picked;
+      for (const end = Date.now() + 20000; left.length && Date.now() < end;) {
+        left = await page.evaluate(missingRows, [ctx.table, picked]);
+        if (left.length) await page.waitForTimeout(500);
+      }
+      if (left.length) {
+        throw new Error(`trash-undo left ${left.length} of the 2 rows it trashed in the trash: ${left.join(', ')}. Every journey after this one reads the same table, so a lost undo is a missing row for all of them (Issue #1109)`);
+      }
     },
   },
   {
@@ -422,7 +435,12 @@ const JOURNEY_STATES = [
     name: 'phone-open-row', layout: 'table', cells: PHONE,
     setup: table,
     async run(page, ctx) {
-      const name = await page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`).boundingBox();
+      const row = page.locator(`tr[data-eid="${ctx.ids[1]}"] .list-name`);
+      await row.waitFor({ timeout: 5000 }).catch(async () => {
+        const gone = await page.evaluate(missingRows, [ctx.table, [ctx.ids[1]]]);
+        throw new Error(`phone-open-row needs row ${ctx.ids[1]} and the phone grid drew ${await page.locator(ROW).count()} rows without it. The server ${gone.length ? 'no longer holds that row, so an earlier journey trashed it and never put it back' : 'still holds it, so this is a render that never arrived'} (Issue #1109)`);
+      });
+      const name = await row.boundingBox();
       await page.touchscreen.tap(name.x + 20, name.y + name.height / 2);
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await beat(page);
