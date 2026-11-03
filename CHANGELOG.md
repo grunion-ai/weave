@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.113 (2026-11-03)
+
+- The vitals, feedback and render budgets are judged on the fastest of their runs rather than the median, so a loaded CI shard no longer turns a budget miss into a budget raise ([[Issue#1327]]).
+- Step 0 of the overnight fixer now reads a range of Issue numbers in a merged main subject, so a row landed as part of `Issues #1118, #1143-#1148` stops sitting Open ([[Issue#1313]]).
+- The sheriff drops from its suspect list every commit whose diff cannot reach the failing suite, says in the row when nothing in the range can explain the red, and files a repeat failure onto the open row that already names the file ([[Issue#1324]]).
+
 ## v0.4.112 (2026-11-02)
 
 - A main red whose only red test files never reached a retry verdict no longer convicts a commit. A shard killed by its own timeout reports each of its files once, so nothing says whether they stayed red; the sheriff now escalates with that file list and logs a line on each file's `flakes on main` row instead of bisecting and opening a revert PR. On 2026-11-02 that path reverted the healthy v0.4.111 release over `test/feedback-budget-browser.test.mjs` and `test/phone-new-row-sheet-browser.test.mjs`, neither of which the run ever judged (Issue #1322).
