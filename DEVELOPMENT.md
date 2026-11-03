@@ -155,7 +155,12 @@ and sets each of those rows back from `Fixed` to `Open`, or from `Shipped` to
 instead of the row reading done while its fix is off main. A row in any other
 state is left alone. The test it names is
 a file still red after the in-run retry; a file whose shard ended before its
-retry answered is listed under its own heading in the evidence instead. Past the cap it
+retry answered is listed under its own heading in the evidence instead. When the
+run reached no retry verdict on any file and at least one file was red without
+one, as a shard killed by its own timeout leaves it, the sheriff convicts
+nothing: it escalates with that list and logs a `no-verdict` line on each of
+those files' flake rows, because a shard that ended before its retry answered
+says nothing about the commits under it (Issue #1322). Past the cap it
 reverts what is still suspect. A revert whose range took no bisect probe, the
 single-commit range among them, says so in its subject, so main's history shows
 how much evidence the revert carried. It never reverts a revert, never acts on a

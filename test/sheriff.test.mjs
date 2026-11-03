@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, flakeLine, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
@@ -141,12 +141,46 @@ test('a red held only by files with an open flake row escalates instead of convi
   assert.ok(!f.kinds().includes('probe'), f.kinds().join(','));
   assert.deepEqual(f.kinds(), ['rerun', 'flake', 'issue', 'alert']);
   assert.match(out.reason, /open flake row #1109/);
-  assert.equal(f.writes.find((w) => w[0] === 'flake')[1].stayedRed, true);
+  assert.equal(f.writes.find((w) => w[0] === 'flake')[1].outcome, 'stayed-red');
   assert.match(f.writes.find((w) => w[0] === 'issue')[1].description, /open flake row #1109/);
   const untracked = fake({ files: [file, 'test/grid.test.mjs'], flakes: { [file]: 1109 } });
   assert.equal((await sheriff(900, untracked.io)).action, 'revert');
   const none = fake({ files: [], flakes: { [file]: 1109 } });
   assert.equal((await sheriff(900, none.io)).action, 'revert');
+});
+
+test('a red whose only red files never reached a retry verdict escalates instead of convicting a commit (Issue #1322)', async () => {
+  const stuck = ['test/feedback-budget-browser.test.mjs', 'test/phone-new-row-sheet-browser.test.mjs'];
+  const f = fake({
+    files: [],
+    unresolved: stuck,
+    jobs: [{ name: 'tests browser-4', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/125445590524' }],
+    commits: [commit(101), commit(102, 'v0.4.111: 1 fix (#598)')],
+    badFrom: 1,
+  });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.deepEqual(f.kinds(), ['rerun', 'flake', 'issue', 'alert']);
+  assert.deepEqual(out.culprits, []);
+  assert.match(out.reason, /no file reached a retry verdict/);
+  for (const file of stuck) assert.ok(out.reason.includes(file), out.reason);
+  const flake = f.writes.find((w) => w[0] === 'flake')[1];
+  assert.deepEqual(flake.files, stuck);
+  assert.equal(flake.outcome, 'no-verdict');
+  assert.match(f.writes.find((w) => w[0] === 'issue')[1].description, /Red with no retry verdict/);
+  const resolved = fake({ files: ['test/grid.test.mjs'], unresolved: stuck, commits: [commit(101), commit(102)], badFrom: 1 });
+  assert.equal((await sheriff(900, resolved.io)).action, 'revert');
+  const silent = fake({ files: [], unresolved: [], commits: [commit(101), commit(102)], badFrom: 1 });
+  assert.equal((await sheriff(900, silent.io)).action, 'revert');
+});
+
+test('the flake ledger line names which of the three verdicts the run reached (Issue #1322)', () => {
+  const at = '2026-11-02';
+  const url = 'https://github.com/grunion-ai/weave/actions/runs/41494395090';
+  assert.equal(flakeLine({ at, sha: sha(100), url }), `${at} ${sha(100).slice(0, 10)} failed, then passed on rerun: ${url}`);
+  assert.match(flakeLine({ at, sha: sha(100), url, outcome: 'stayed-red' }), /failed and stayed red after a rerun; the sheriff escalated instead of reverting: /);
+  assert.match(flakeLine({ at, sha: sha(100), url, outcome: 'no-verdict' }), /failed with no retry verdict, because the shard ended before its retry answered; the sheriff escalated instead of convicting a commit: /);
+  assert.throws(() => flakeLine({ at, sha: sha(100), url, outcome: 'green' }), /unknown flake outcome green/);
 });
 
 test('the Issue and Feature rows a reverted commit names are read off its subject (Issue #1297)', () => {
