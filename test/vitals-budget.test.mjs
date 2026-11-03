@@ -53,3 +53,9 @@ test('the open-table INP budgets clear the slow-runner medians and cite Issue #1
   assert.ok(budget.vitals['open-table|phone|inp'] >= 104, 'phone medians reached 104 on slow runners');
   for (const k of ['open-table|desktop|inp', 'open-table|phone|inp']) assert.match(budget.raised[k], /Issue #1215/);
 });
+
+test('the budgets clear the loaded medians main read on 2026-10-31 and cite Issue #1273', () => {
+  assert.ok(budget.vitals['load-home|phone|lcp'] >= 448, 'phone LCP read a median of 448 on a loaded browser-1 shard');
+  assert.ok(budget.vitals['open-table|desktop|inp'] >= 184, 'desktop INP read a median of 184 in the in-shard retry');
+  for (const k of ['load-home|phone|lcp', 'open-table|desktop|inp']) assert.match(budget.raised[k], /Issue #1273/);
+});
