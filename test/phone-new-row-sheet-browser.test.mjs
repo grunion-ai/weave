@@ -63,6 +63,29 @@ if (s) {
     await page.mouse.up();
   };
 
+  const flickSheet = async (page, sel, dy) => {
+    await atRest(page.locator(sel));
+    await page.evaluate((s) => {
+      globalThis.wvFlick = null;
+      const mark = (e) => {
+        if (e.type === 'pointerdown') globalThis.wvFlick = { at: e.timeStamp, last: e.timeStamp };
+        else if (globalThis.wvFlick) globalThis.wvFlick.last = e.timeStamp;
+      };
+      for (const type of ['pointerdown', 'pointermove']) {
+        document.querySelector(`${s} .sheet-grip`).addEventListener(type, mark, { capture: true });
+      }
+    }, sel);
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy);
+    await page.mouse.up();
+    const seen = await page.evaluate(() => globalThis.wvFlick);
+    return Math.max(1, Math.round((seen?.last ?? 0) - (seen?.at ?? 0)));
+  };
+
   for (const [engine, make] of engines) {
     for (const theme of ['light', 'dark']) {
       test(`the new-row sheet grabber follows the finger and dismisses past a third (${engine}, ${theme}, Issue #808)`, async () => {
@@ -91,8 +114,33 @@ if (s) {
           await page.waitForTimeout(700);
           await page.click('.phone-bar .phone-new');
           await page.waitForSelector('.new-row-sheet .sheet-grip');
-          await dragSheet(page, '.new-row-sheet', h * 0.12, { step: 4 });
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          const reach = Math.round(h * 0.2);
+          const budget = Math.round(reach / 0.5);
+          const spans = [];
+          let standing = true;
+          for (let i = 0; i < 3 && standing; i += 1) {
+            spans.push(await flickSheet(page, '.new-row-sheet', reach));
+            standing = (await page.locator('.new-row-sheet').count()) > 0;
+          }
+          assert.equal(standing, false,
+            `a ${reach}px flick, a fifth of the sheet and under its one-third threshold, left it standing after ${spans.length} tries: the harness delivered them over ${spans.join(', ')} ms and a flick has under ${budget} ms (Issue #1110)`);
+        } finally { await page.close(); }
+      });
+
+      test(`a slow drag as far as a flick springs the new-row sheet back (${engine}, ${theme}, Issue #1110)`, async () => {
+        const page = await open(make, issues, theme);
+        try {
+          const before = (await rows(page, issues)).length;
+          await page.click('.phone-bar .phone-new');
+          await page.waitForSelector('.new-row-sheet .sheet-grip');
+          await atRest(page.locator('.new-row-sheet'));
+          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
+          await dragSheet(page, '.new-row-sheet', Math.round(h * 0.2), { step: 60 });
+          assert.ok(await page.isVisible('.new-row-sheet'),
+            'a fifth of the sheet is a dismissal only when the finger moves fast, so a slow drag that far springs back');
+          await atRest(page.locator('.new-row-sheet'));
+          assert.equal(await page.locator('.new-row-sheet').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true);
+          assert.equal((await rows(page, issues)).length, before);
         } finally { await page.close(); }
       });
 
