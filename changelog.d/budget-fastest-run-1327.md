@@ -1,1 +1,0 @@
-- The vitals, feedback and render budgets are judged on the fastest of their runs rather than the median, so a loaded CI shard no longer turns a budget miss into a budget raise ([[Issue#1327]]).
