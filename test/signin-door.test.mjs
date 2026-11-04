@@ -37,8 +37,10 @@ async function serve({ pane = true, open = { on: true, limit: 2 }, base = APEX }
   harbor.markOnboarded();
   harbor.createAccount({ name: 'skipper', role: 'architect' });
   harbor.setRequireAuth(true);
+  const docs = new Weave();
+  docs.state.meta.name = 'weave';
   const { server, port } = await startServer(main, {
-    port: 0, oidc, openSignup: open, workspaces: { harbor },
+    port: 0, oidc, openSignup: open, workspaces: { harbor, weave: docs },
     ...(base ? { baseDomain: base, origin: `http://${base}` } : { origin: null }),
     ...(pane ? { clerkKey: idp.publishableKey } : {}),
     limits: { options: 1000, failed: 1000, slugs: 1000 },
@@ -50,7 +52,7 @@ async function serve({ pane = true, open = { on: true, limit: 2 }, base = APEX }
     const done = await at(APEX)(back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
     return { done, cookie: cookieOf(done, 'wv_start') };
   };
-  return { idp, main, harbor, row, apex: at(base ? APEX : 'localhost'), host: at(HOST), held, stop: () => { server.close(); idp.stop(); } };
+  return { idp, main, harbor, row, at, apex: at(base ? APEX : 'localhost'), host: at(HOST), held, stop: () => { server.close(); idp.stop(); } };
 }
 const ownerLogin = (idp) => ({ sub: 'user_owner', email: 'owner@example.com', email_verified: true });
 const stranger = { sub: 'user_stranger', email: 'stranger@example.com', email_verified: true };
@@ -86,6 +88,23 @@ test('/auth on a host keeps sign-up mode and a hash route in the destination', a
     assert.deepEqual([apex.path, apex.mode, apex.next], ['/start', 'signup', '/w/harbor/'], 'the apex door keeps both too');
     const path = doorOf((await s.apex('/w/harbor/auth?mode=signup')).headers.location);
     assert.deepEqual([path.path, path.mode, path.next], ['/start', 'signup', '/w/harbor/'], 'and the path-style door');
+  } finally { s.stop(); }
+});
+
+test('the docs workspace host signs in through its path-style door, which any account can borrow', async () => {
+  const s = await serve();
+  try {
+    const docsHost = s.at('weave.weave.test');
+    const door = doorOf((await docsHost(`/auth?next=${encodeURIComponent('/#/guide/1')}`)).headers.location);
+    assert.deepEqual([door.origin, door.path, door.next], [`http://${APEX}`, '/start', '/w/weave/#/guide/1']);
+    const { cookie } = await s.held(ownerLogin(s.idp));
+    const me = JSON.parse((await s.apex('/api/start', { cookie })).text);
+    assert.deepEqual(me.docs, ['weave'], 'the start page knows a member elsewhere can open it');
+    assert.ok(!me.rows.some((r) => r.name === 'weave'));
+    const start = await s.apex(`/w/weave/api/auth/oidc/start?door=1&next=${encodeURIComponent('/w/weave/')}`);
+    const back = s.idp.approve(start.headers.location, ownerLogin(s.idp));
+    const member = await s.apex(back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
+    assert.equal(member.headers.location, '/w/weave/', 'an account elsewhere opens the docs');
   } finally { s.stop(); }
 });
 

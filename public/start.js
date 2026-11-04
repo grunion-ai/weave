@@ -817,7 +817,9 @@
     const linked = workspaceOf(q.next);
     const startName = /^\/api\/start\/open\/([^/?#\\]+)/.exec(startLink(q.next) ?? '')?.[1];
     const named = linked ?? startName;
-    const opens = (name) => (me.rows ?? []).some((r) => r.kind === 'workspace' && (encodeURIComponent(r.name).toLowerCase() === name.toLowerCase() || r.id === name));
+    const workspaces = (me.rows ?? []).filter((r) => r.kind === 'workspace');
+    const opens = (name) => workspaces.some((r) => encodeURIComponent(r.name).toLowerCase() === name.toLowerCase() || r.id === name)
+      || (workspaces.length > 0 && (me.docs ?? []).some((d) => d.toLowerCase() === name.toLowerCase()));
     if (!sendingBack && me.signedIn) {
       if (named && opens(named)) {
         location.replace((linked ? workspaceSignIn(q.next) : q.next) + carried);

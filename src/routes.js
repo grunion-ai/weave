@@ -1049,6 +1049,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
           if (clerkPane && hostOrigin) {
             const deep = hostPath(rx.searchParams?.get('next'));
+            if (isDocsWorkspace(weave)) return startDoorAt(`/w/${encodeURIComponent(hostSlug)}${deep ?? '/'}`);
             return startDoorAt(`/api/start/open/${encodeURIComponent(hostSlug)}${deep && deep !== '/' ? `?path=${encodeURIComponent(deep)}` : ''}`);
           }
           if (hasDoor && wsPrefix && !hostOrigin) return startDoorAt(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`);
@@ -1377,7 +1378,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(error instanceof BillingUnavailable)) throw error;
               }
             }
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, docs: hub.entries().filter(([, w]) => isDocsWorkspace(w)).map(([name]) => name), ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
