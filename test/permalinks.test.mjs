@@ -240,7 +240,7 @@ test('a space and a table get a permalink of the same shape', async () => {
     const sp = await s.get(`/w/acme-docs/s/${s.space.id}`);
     assert.equal(sp.status, 200);
     assert.equal(metaOf(sp.text, 'og:title'), 'Development · space');
-    assert.equal(metaOf(sp.text, 'og:description'), 'Acme Docs › Development\n1 table · 1 row');
+    assert.equal(metaOf(sp.text, 'og:description'), 'Acme Docs › Development\n1 table · 1 record');
     assert.equal(metaOf(sp.text, 'og:url'), `${s.base}/s/${s.space.id}`);
     assert.equal(titleOf(sp.text), 'Development · space · Acme Docs');
     assert.equal(routeOf(sp.text), `/w/acme-docs/#/space/${s.space.id}`);
@@ -248,7 +248,7 @@ test('a space and a table get a permalink of the same shape', async () => {
     const tb = await s.get(`/w/acme-docs/t/${s.issue.id}`);
     assert.equal(tb.status, 200);
     assert.equal(metaOf(tb.text, 'og:title'), 'Development / Issue · table');
-    assert.equal(metaOf(tb.text, 'og:description'), 'Acme Docs › Development › Issue\n1 row');
+    assert.equal(metaOf(tb.text, 'og:description'), 'Acme Docs › Development › Issue\n1 record');
     assert.equal(metaOf(tb.text, 'og:url'), `${s.base}/t/${s.issue.id}`);
     assert.equal(routeOf(tb.text), `/w/acme-docs/#/table/${s.issue.id}`);
     assert.match(tb.text, /id="app"/);

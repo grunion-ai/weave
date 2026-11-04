@@ -443,7 +443,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const tables = weave.listTables(sp.id);
           title = `${sp.name} · space`;
           trail = [site, sp.name];
-          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'row')}`;
+          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'record')}`;
           url = `/s/${sp.id}`;
           route = `${wsPrefix}/#/space/${sp.id}`;
         } else {
@@ -452,7 +452,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const space = weave.state.spaces[db.spaceId]?.name;
           title = `${space} / ${db.name} · table`;
           trail = [site, space, db.name];
-          detail = count(live([db]), 'row');
+          detail = count(live([db]), 'record');
           url = `/t/${db.id}`;
           route = `${wsPrefix}/#/table/${db.id}`;
         }

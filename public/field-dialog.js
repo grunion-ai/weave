@@ -281,10 +281,10 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
   const fmt = (v) => (typeof v === 'string' ? JSON.stringify(v) : v === null || v === undefined ? 'null' : Array.isArray(v) ? JSON.stringify(v) : String(v));
   const drawPick = () => {
     rowpick.hidden = !rows.length;
-    pickLabel.textContent = rows.length ? `row ${idx + 1} of ${rows.length} — ${JSON.stringify(rows[idx].name ?? '')}` : '';
+    pickLabel.textContent = rows.length ? `record ${idx + 1} of ${rows.length} — ${JSON.stringify(rows[idx].name ?? '')}` : '';
     prevBtn.disabled = nextBtn.disabled = rows.length < 2;
     const parts = [];
-    if (lastScan?.nulls) parts.push(`${lastScan.nulls} row${lastScan.nulls === 1 ? '' : 's'} → null`);
+    if (lastScan?.nulls) parts.push(`${lastScan.nulls} record${lastScan.nulls === 1 ? '' : 's'} → null`);
     if (lastScan?.errors) parts.push(`${lastScan.errors} → #ERR`);
     scanNote.textContent = parts.length ? `⚠ ${parts.join(' · ')}${lastScan.capped ? ' (first 200 records)' : ''}` : '';
   };

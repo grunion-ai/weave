@@ -57,7 +57,7 @@ if (s) {
       await rowsAre(page, LAUNCH());
       assert.equal(await page.inputValue('.table-search-input'), 'launch', 'the box shows the saved search');
       assert.deepEqual(await shown(page), weave.query(jobs, { search: 'launch' }).items.map((e) => e.id).sort(), 'the grid shows what the engine returns for it');
-      assert.match(await page.textContent('.wv-loaded'), /2 rows found/);
+      assert.match(await page.textContent('.wv-loaded'), /2 records found/);
     } finally { reset(); await page.close(); }
   });
 

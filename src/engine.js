@@ -9830,7 +9830,7 @@ export class Weave {
     const rows = this.#liveRowCounts().get(db.id) ?? 0;
     const sp = this.state.spaces[db.spaceId];
     const qualified = (t) => (!t ? '?' : this.#tableHidden(t) ? LOCKED_NAME : this.qualifiedName(t));
-    const lines = [`${this.qualifiedName(db)}: ${rows} row${rows === 1 ? '' : 's'}, space ${sp?.name ?? '?'} v${counts.get(db.spaceId) ?? 0}.${db.description ? ` ${db.description}` : ''}`, 'Fields:'];
+    const lines = [`${this.qualifiedName(db)}: ${rows} record${rows === 1 ? '' : 's'}, space ${sp?.name ?? '?'} v${counts.get(db.spaceId) ?? 0}.${db.description ? ` ${db.description}` : ''}`, 'Fields:'];
     for (const fid of db.fieldOrder) {
       const f = db.fields[fid];
       if (!f || f.type === 'view') continue;
