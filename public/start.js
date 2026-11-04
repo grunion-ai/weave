@@ -74,6 +74,7 @@
       template_failed: 'The {template} template did not build, so your workspace starts empty. Your AI app can build the tables in the next step.',
       build_failed: 'Setup did not finish. Try again, or skip setup to start an empty workspace.',
       network: 'Setup did not finish because weave did not answer. Try again.',
+      no_access: 'The account you signed in with has no access to {workspace}. A workspace architect can send you an invite link that adds you.',
     },
     copied: 'Copied', back: 'Back', next: 'Continue', skip: 'Skip setup', signOut: 'Sign out', addLogin: 'Use another account', accept: SLUG.start.accept,
   };
@@ -203,8 +204,9 @@
       provider: me?.provider ?? 'The sign-in provider',
       template: TEMPLATES.find((t) => t.id === error.template)?.work ?? TEMPLATES.find((t) => t.id === error.template)?.title ?? 'chosen',
       message: error.message ?? '',
+      workspace: error.workspace ?? '',
     });
-    return make('div', { class: `alert${error.code === 'template_failed' ? ' note' : ''}`, role: 'alert', 'data-code': error.code },
+    return make('div', { class: `alert${['template_failed', 'no_access'].includes(error.code) ? ' note' : ''}`, role: 'alert', 'data-code': error.code },
       make('span', { class: 'grow' }, text),
       make('button', { type: 'button', class: 'btn-link', 'aria-label': 'Dismiss', onclick: () => dispatch({ type: 'dismiss' }) }, 'Dismiss'));
   }
@@ -220,10 +222,27 @@
 
   const PICK = '/start?pick=1';
   const signInHref = (next) => `/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`;
-  const workspaceOf = (next) => /^\/w\/([^/?#]+)\//.exec(next ?? '')?.[1] ?? null;
-  const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?next=${encodeURIComponent(next)}`;
+  const workspaceOf = (next) => /^\/w\/([^/?#\\]+)\/(?!api\/)/.exec(next ?? '')?.[1] ?? null;
+  const workspaceSignIn = (next) => `/w/${workspaceOf(next)}/api/auth/oidc/start?door=1&next=${encodeURIComponent(next)}`;
   const startLink = (next) => (/^\/api\/start\/open\/[^/?#\\]+(?:\?[^#\\]*)?$/.test(next ?? '') ? next : null);
-  const returnOf = (next) => (workspaceOf(next) || startLink(next) ? next : null);
+  const inviteLink = (next) => (/^(?:\/w\/[^/?#\\]+)?\/api\/auth\/oidc\/start\?[^#\\]*\binvite=/.test(next ?? '') ? next : null);
+  const returnOf = (next) => (workspaceOf(next) || startLink(next) || inviteLink(next) ? next : null);
+  const providerReturn = (raw, pane) => {
+    try {
+      const u = new URL(raw);
+      if (u.origin !== new URL(pane.script).origin) return null;
+      if (/\blogin\b/.test(u.searchParams.get('prompt') ?? '')) u.searchParams.delete('prompt');
+      return u.href;
+    } catch { return null; }
+  };
+  let carried = '';
+  const doorUrl = (q, mode) => {
+    const p = new URLSearchParams();
+    if (returnOf(q.next)) p.set('next', q.next);
+    if (q.redirect_url) p.set('redirect_url', q.redirect_url);
+    if (mode) p.set('mode', mode);
+    return `/start${p.size ? `?${p}` : ''}${carried}`;
+  };
 
   let clerk = null;
   const inject = (src, attrs = {}) => new Promise((resolve, reject) => {
@@ -235,7 +254,7 @@
   const loadClerk = (pane) => clerk ?? (clerk = (async () => {
     const ui = pane.ui ?? `${new URL(pane.script).origin}/npm/@clerk/ui@1/dist/ui.browser.js`;
     await Promise.all([inject(ui), inject(pane.script, { 'data-clerk-publishable-key': pane.publishableKey })]);
-    await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+    await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor }, ...(entry.redirect_url ? { allowedRedirectOrigins: [location.origin, new URL(pane.script).origin] } : {}) });
     return window.Clerk;
   })());
 
@@ -252,12 +271,14 @@
     let mode = entry.mode === 'signup' ? 'signup' : 'signin';
     const pane = me.clerk;
     const onboard = signInHref(['skip', 'new', 'resume'].includes(entry.setup) ? `/start?setup=${entry.setup}` : entry.pick ? PICK : '/start');
-    const next = workspaceOf(entry.next) ? workspaceSignIn(entry.next) : startLink(entry.next) ? signInHref(entry.next) : onboard;
+    const sentBack = pane && entry.redirect_url ? providerReturn(entry.redirect_url, pane) : null;
+    const next = sentBack ?? (workspaceOf(entry.next) ? workspaceSignIn(entry.next) : startLink(entry.next) || inviteLink(entry.next) ? signInHref(entry.next) : onboard) + carried;
+    const newcomer = sentBack || inviteLink(entry.next) ? next : onboard;
     const title = make('h1', {}, COPY.account.signInTitle);
     const button = make('a', { class: 'btn btn-primary btn-wide', href: next, 'data-go': 'signin', hidden: !!pane }, COPY.account.go);
     const mount = pane ? make('div', { id: 'clerk-pane', 'aria-busy': 'true' }, make('p', { class: 'muted' }, COPY.account.loading)) : null;
     const switchLead = make('span', {});
-    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', `/start?mode=${mode}${returnOf(entry.next) ? `&next=${encodeURIComponent(entry.next)}` : ''}`); show(); } });
+    const switchGo = make('button', { type: 'button', class: 'btn-link strong', 'data-go': 'switch', onclick: () => { mode = mode === 'signup' ? 'signin' : 'signup'; history.replaceState(null, '', doorUrl(entry, mode)); show(); } });
     const toggle = make('p', { class: 'switch', hidden: true }, switchLead, ' ', switchGo);
     const show = async () => {
       title.textContent = mode === 'signup' ? COPY.account.title : COPY.account.signInTitle;
@@ -266,15 +287,16 @@
       switchGo.dataset.to = mode === 'signup' ? 'signin' : 'signup';
       try {
         const c = await loadClerk(pane);
-        if (c.user) { location.href = next; return; }
+        if (c.user && sentBack && /[?&]prompt=[^&]*login/.test(entry.redirect_url)) await c.signOut();
+        else if (c.user) { location.href = next; return; }
         c.unmountSignIn?.(mount);
         c.unmountSignUp?.(mount);
         mount.replaceChildren();
         mount.removeAttribute('aria-busy');
         mount.dataset.mode = mode;
         const appearance = clerkAppearance();
-        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: onboard, signInForceRedirectUrl: next, appearance });
-        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: onboard, appearance });
+        if (mode === 'signup' && c.mountSignUp) c.mountSignUp(mount, { routing: 'virtual', forceRedirectUrl: newcomer, signInForceRedirectUrl: next, appearance });
+        else c.mountSignIn(mount, { routing: 'virtual', withSignUp: true, forceRedirectUrl: next, signUpForceRedirectUrl: newcomer, appearance });
         toggle.hidden = !c.mountSignUp;
       } catch {
         mount.replaceChildren();
@@ -790,25 +812,36 @@
     const q = Object.fromEntries(new URLSearchParams(location.search));
     try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
     entry = q;
+    carried = returnOf(q.next) ? location.hash : '';
+    const sendingBack = !!(q.redirect_url && me.clerk);
     const linked = workspaceOf(q.next);
-    if (me.signedIn && linked && (me.rows ?? []).some((r) => r.kind === 'workspace' && encodeURIComponent(r.name).toLowerCase() === linked.toLowerCase())) {
-      location.replace(workspaceSignIn(q.next));
-      return;
-    }
-    if (me.signedIn && startLink(q.next)) {
-      location.replace(q.next);
-      return;
+    const startName = /^\/api\/start\/open\/([^/?#\\]+)/.exec(startLink(q.next) ?? '')?.[1];
+    const named = linked ?? startName;
+    const opens = (name) => (me.rows ?? []).some((r) => r.kind === 'workspace' && (encodeURIComponent(r.name).toLowerCase() === name.toLowerCase() || r.id === name));
+    if (!sendingBack && me.signedIn) {
+      if (named && opens(named)) {
+        location.replace((linked ? workspaceSignIn(q.next) : q.next) + carried);
+        return;
+      }
+      if (inviteLink(q.next)) {
+        location.replace(q.next);
+        return;
+      }
     }
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
-    s = q.setup === 'resume' ? resume(me, saved) : begin(me, q);
-    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : returnOf(q.next) ? `/start?next=${encodeURIComponent(q.next)}${q.mode === 'signup' ? '&mode=signup' : ''}` : q.mode === 'signup' ? '/start?mode=signup' : '/start');
+    s = q.setup === 'resume' ? resume(me, saved) : begin(sendingBack ? { ...me, signedIn: false } : me, q);
+    if (!sendingBack && me.signedIn && named) {
+      const decoded = decodeURIComponent(named);
+      s = { ...s, error: { code: 'no_access', workspace: /^[0-9a-f-]{36}$/.test(decoded) ? 'that workspace' : decoded } };
+    }
+    if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : doorUrl(q, q.mode === 'signup' ? 'signup' : null));
     if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;
     saveDraft();
 
     try { globalThis.WeaveConsent?.start(me.analytics); } catch (err) { console.warn('analytics did not start', err); }
     render();
-    if (me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
+    if (!sendingBack && me.signedIn && !(me.rows ?? []).some((r) => r.kind === 'workspace')) capture('signed_up');
   }
 
   addEventListener('grunion:consent-granted', () => { if (s) capture('onboarding_step_viewed', { step: s.step }); });

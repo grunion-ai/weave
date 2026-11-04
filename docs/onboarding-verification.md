@@ -5,16 +5,20 @@ These journeys are release behavior, not a one-time audit checklist. The PR auth
 | ID | Journey and required outcome | Executable coverage |
 | --- | --- | --- |
 | WEB-01 | Every website signup CTA preserves explicit signup intent; Sign in remains distinct; both are usable on desktop and phone in both themes | Website `tests/weave-entry.spec.js` and its required evidence validator |
-| ONB-01 | Direct `/start`, explicit signup and login-to-signup reach an authenticated account; refresh and mode switching preserve intent | `setup-flows-browser.test.mjs`, `setup-routes.test.mjs` |
+| ONB-01 | Direct `/start`, `/auth` and `/start` on a workspace host, explicit signup and login-to-signup reach an authenticated account on the one weave sign-in page; refresh and mode switching preserve intent | `setup-flows-browser.test.mjs`, `setup-routes.test.mjs`, `signin-door.test.mjs`, `workspace-signin-start-browser.test.mjs` (desktop/phone × light/dark) |
 | ONB-02 | First workspace: name/address validation, template search/selection, empty creation; entered values survive Back | `setup-flows-browser.test.mjs`, `setup-core.test.mjs` |
 | ONB-03 | Optional AI setup can be deferred; opening the workspace reaches usable content; simulated connector discovers tools and calls one | `setup-flows-browser.test.mjs` |
-| ONB-04 | Returning user opens the intended workspace or linked row; switching login/signup and reload retain the destination | `workspace-signin-start-browser.test.mjs` |
+| ONB-04 | Returning user opens the intended workspace or linked row from a path-style address or a workspace host; switching login/signup and reload retain the destination; a `next` that leaves the workspace is dropped | `signin-door.test.mjs`, `workspace-signin-start-browser.test.mjs` (desktop/phone × light/dark) |
 | ONB-05 | Existing member creates a second workspace with a fresh name; Back returns to the picker; refresh preserves its draft | `setup-flows-browser.test.mjs` (desktop/phone × light/dark) |
 | ONB-06 | Invited architect/editor/observer lands in the right existing workspace, with permitted actions, without the creator wizard | `setup-flows-browser.test.mjs` (three roles × empty/populated × desktop/phone) |
 | ONB-07 | Invite creation, copy, revocation and email success/failure provide usable feedback | `invites-browser.test.mjs`, `invites-mail-browser.test.mjs`, `invites.test.mjs` |
 | ONB-08 | Used/invalid invitation allows legitimate member recovery and never grants an outsider access | `setup-routes.test.mjs` |
 | ONB-09 | Refresh, interrupted creation, expired sign-in and blocked storage preserve a safe recovery path; no duplicate creation or cross-identity draft reuse | `setup-flows-browser.test.mjs`, `setup-core.test.mjs` |
 | ONB-10 | Rejected sign-in, occupied address, failed build, closed registration and blocked provider UI remain recoverable | `setup-flows-browser.test.mjs` |
+| ONB-11 | A signed-in person with no access to the linked workspace sees a notice naming it on the start page, with the login held | `signin-door.test.mjs`, `workspace-signin-start-browser.test.mjs` (desktop/phone × light/dark) |
+| ONB-12 | Invite link with no login opens the weave sign-in page and resumes the invite after sign-in or sign-up | `signin-door.test.mjs`, `workspace-signin-start-browser.test.mjs` (desktop/phone × light/dark) |
+| ONB-13 | AI app sign-in reaches the weave sign-in page once Clerk's sign-in path points at `/start`, returns only to the provider's OAuth path, and the trip completes against the simulated provider | `signin-door.test.mjs`, `workspace-signin-start-browser.test.mjs` (desktop/phone × light/dark); the live provider is a dated evidence check |
+| ONB-14 | Clerk offers the same methods at sign-up and sign-in | `clerk-methods.test.mjs` on the environment shape; `node scripts/clerk-methods.mjs` reads the live instance and exits 1 on a gap |
 | CORE-01 | The resulting product still opens tables, documents, entity detail and views with usable navigation and bounded click cost | Existing `SMOKE` suites in `scripts/ci-test.mjs` |
 
 ## Merge decision

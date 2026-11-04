@@ -60,15 +60,15 @@ test('page: the sign-in page has no passkey or register-device control and still
     assert.match(html, /Sign out/, 'sign-out stays');
     assert.match(html, /id="sessions"/, 'the session list stays');
   }
-  assert.match(renderAuthPage({ mount: '/w/docs', workspace: 'w', provider: 'Clerk' }), /id="oidc"[^>]*href="\/w\/docs\/api\/auth\/oidc\/start"[^>]*>Sign in with Clerk</);
+  assert.match(renderAuthPage({ mount: '/w/docs', workspace: 'w', provider: 'Clerk' }), /id="oidc"[^>]*href="\/w\/docs\/api\/auth\/oidc\/start"[^>]*>Sign in</);
   const s = await serve();
   try {
     const page = await (await s.call('GET', '/auth?signed-out=1')).text();
-    assert.match(page, /Sign in with Clerk/);
+    assert.match(page, />Sign in</);
     assert.doesNotMatch(page, /passkey|Register this device/i);
     const wall = await (await s.call('GET', '/', { token: 'wv_bogus' })).text();
     assert.doesNotMatch(wall, /passkey/i, 'the wall page no longer points at passkeys');
-    assert.match(wall, /Sign in with Clerk/);
+    assert.match(wall, />Sign in</);
   } finally { s.stop(); }
 });
 
@@ -136,7 +136,7 @@ test('routes: a signed-in visit to /auth, and the visit right after sign-out, ge
     const after = await s.call('GET', '/auth?signed-out=1');
     assert.equal(after.status, 200);
     const page = await after.text();
-    assert.match(page, /Sign in with Clerk/);
+    assert.match(page, />Sign in</);
     assert.doesNotMatch(page, /passkey/i);
   } finally { s.stop(); }
   const html = renderAuthPage({ workspace: 'w', provider: 'Clerk' });
