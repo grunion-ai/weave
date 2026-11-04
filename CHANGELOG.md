@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.114 (2026-11-04)
+
+- The cookie banner says "we record" instead of naming PostHog, keeps every disclosed item, and leaves the privacy policy to name the analytics processor ([[Issue#1344]]).
+- A server whose workspaces all detached under an earlier version now starts instead of exiting at `Cannot detach: copied rollup Spaces.Sessions · Cost (USD) · avg is missing`. The hub registry migration required a rollup it still holds to already exist in whichever workspace owns the rolled-up table; a workspace that finished its own migration before the rollup copy shipped never received one, so every start refused and the Mac read copy on `:4400` sat four releases behind from 2026-11-01. The migration now leaves such a rollup on the hub rather than refusing, and still refuses for a workspace it is detaching in that same pass ([[Issue#1307]]).
+
 ## v0.4.113 (2026-11-03)
 
 - The vitals, feedback and render budgets are judged on the fastest of their runs rather than the median, so a loaded CI shard no longer turns a budget miss into a budget raise ([[Issue#1327]]).
