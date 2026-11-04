@@ -1,1 +1,0 @@
-- **Board tile titles wrap instead of ending in an ellipsis** (Issue #1123): a long card title now wraps inside the tile on desktop and phone, and the tile grows to hold it, so the full name reads without opening the record.

@@ -27,6 +27,11 @@ export function median(xs) {
   return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2;
 }
 
+export function fastest(xs) {
+  const s = xs.filter(Number.isFinite);
+  return s.length ? Math.min(...s) : null;
+}
+
 export const feedbackOf = (acts) => {
   const answered = acts.filter((a) => Number.isFinite(a.ms));
   return answered.length ? Math.max(...answered.map((a) => a.ms)) : null;

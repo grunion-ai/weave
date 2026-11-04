@@ -87,11 +87,18 @@
   --tblr-body-bg: var(--wv-canvas);
 }
 
-* { box-sizing: border-box; scrollbar-width: thin; }
+* { box-sizing: border-box; }
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; } }
+@media (pointer: coarse) { * { scrollbar-width: thin; } }
+@media not (pointer: coarse) { @supports selector(::-webkit-scrollbar) { *, pre, .modal-body { scrollbar-color: auto; } } }
 ::-webkit-scrollbar, .modal-body::-webkit-scrollbar, pre::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; box-shadow: none; background-color: color-mix(in srgb, var(--tblr-scrollbar-color, var(--tblr-body-color)) 20%, transparent); }
+::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; box-shadow: none; min-height: 32px; min-width: 32px; background-color: color-mix(in srgb, var(--tblr-scrollbar-color, var(--tblr-body-color)) 20%, transparent); }
 :hover::-webkit-scrollbar-thumb, .modal-body:hover::-webkit-scrollbar-thumb, pre:hover::-webkit-scrollbar-thumb { box-shadow: none; background-color: color-mix(in srgb, var(--tblr-scrollbar-color, var(--tblr-body-color)) 40%, transparent); }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-track:vertical { margin-block: 8px; }
+::-webkit-scrollbar-track:horizontal { margin-inline: 8px; }
+:is(#main, #dock, #view-pane .vp-scroll, .share-scroll, .tray-body, .wv-act-list, #modal, #cmdk-results, .map-wrap, .chip-pop)::-webkit-scrollbar-track:vertical { margin-block: 16px; }
+:is(#main, #dock, .map-wrap)::-webkit-scrollbar-track:horizontal { margin-inline: 16px; }
 html, body { overscroll-behavior-x: none; }
 :root { margin-left: 0; }
 body { font-size: var(--fs-body); background: var(--wv-canvas); }
@@ -2906,3 +2913,14 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .launcher-failed { padding: 18px 0; color: var(--tblr-secondary); }
 .launcher-failed .btn { min-height: 44px; }
 @media (max-width: 600px) { #cmdk-results .result { height: 44px; } }
+
+@media (min-width: 601px) and (not (pointer: coarse)) {
+  @supports selector(::-webkit-scrollbar) {
+    #nav, #main, #dock, #view-pane .vp-scroll, .share-scroll, .tray-body, .wv-act-list, .table-field-list { overflow-y: scroll; }
+    #nav { padding-right: 4px; }
+    #view-pane .vp-scroll { padding-right: 2px; }
+    .share-scroll { padding-right: 8px; }
+    .tray-body { padding-right: 10px; }
+    .wv-act-list { padding-right: 0; }
+  }
+}

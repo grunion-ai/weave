@@ -1,1 +1,0 @@
-- The phone launcher labels records by table name, matching the desktop space home: "Deal 2, Contact 1" on a run and "Deal #48" on a recent record (Feature #351).

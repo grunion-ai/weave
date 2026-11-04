@@ -1,1 +1,0 @@
-- On a phone, the row page lists its fields flush on the page: the outlined, rounded panel around the Fields block is gone, the rows keep their hairline dividers, and each label starts on the same edge as the section headings below it (Issue #1285).

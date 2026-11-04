@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CONTEXT, DEFAULTS, judge, judgeBatch, describe, soak, report, config, smoke } from '../scripts/dev-soak.mjs';
+import { CONTEXT, DEFAULTS, judge, judgeBatch, describe, soak, report, config, smoke, writableTable } from '../scripts/dev-soak.mjs';
 
 const SHA = 'a'.repeat(40);
 const NEWER = 'b'.repeat(40);
@@ -42,6 +42,12 @@ function fakeIO({ healthAt, smokeAt = () => ({ ok: true, fivexx: 0 }), head = SH
 }
 
 const watching = (until) => (n) => ({ status: 200, body: health({ ok: n < until ? null : true }) });
+
+test('writableTable: the smoke writes to a user table, never the workspace registry (Issue #979)', () => {
+  const check = { id: 'c', qualified: 'Smoke/Check' };
+  assert.equal(writableTable([{ id: 's', qualified: 'System/Spaces' }, { id: 'u', qualified: 'System/Users' }, check]), check);
+  assert.equal(writableTable([{ id: 's', qualified: 'System/Spaces' }]), undefined);
+});
 
 test('judge: a watch still open on the expected commit is watching, a passed one is ok', () => {
   assert.equal(judge(health(), { sha: SHA }).verdict, 'watching');

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 import { clickKey, unexplainedRaises } from './lib/clicks.mjs';
-import { BUDGET_FILE, busyFaults, feedbackOf, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
+import { BUDGET_FILE, busyFaults, fastest, feedbackOf, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,6 +19,14 @@ test('the median of the runs is the middle one, or the mean of the middle two', 
   assert.equal(median([10, 30, 20, 40]), 25);
   assert.equal(median([null, 12]), 12, 'a run that painted nothing is left out');
   assert.equal(median([]), null);
+});
+
+test('the fastest of the runs is the lowest one a loaded runner could not inflate (Issue #1327)', () => {
+  assert.equal(fastest([300, 20, 40]), 20);
+  assert.equal(fastest([10, 30, 20, 40]), 10);
+  assert.equal(fastest([null, 12]), 12, 'a run that painted nothing is left out');
+  assert.equal(fastest([]), null);
+  assert.ok(fastest([448, 232, 252, 572, 496, 472, 300]) < median([448, 232, 252, 572, 496, 472, 300]));
 });
 
 test('a journey answers when its slowest action answers', () => {

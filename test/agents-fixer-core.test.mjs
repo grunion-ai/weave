@@ -407,6 +407,30 @@ test('mergedOpenRows reports open rows a merged main subject names, and skips re
   assert.deepEqual(mergedOpenRows([], rows), []);
 });
 
+test('mergedOpenRows expands a range a merged main subject writes', () => {
+  const line = '716f859b docs: README, Pages and screenshots match what ships (Issues #1118, #1143-#1148)';
+  const rows = [1118, 1143, 1144, 1145, 1146, 1147, 1148, 1149].map((n) => issue(n));
+  const found = mergedOpenRows([line], rows);
+  assert.deepEqual(found.map((r) => r.publicId), [1118, 1143, 1144, 1145, 1146, 1147, 1148]);
+  assert.deepEqual(found.find((r) => r.publicId === 1146).commits, [line]);
+});
+
+test('mergedOpenRows reads a range written without the second hash or with an en dash', () => {
+  const plain = 'aaaaaaaa grid: three fixes (Issues #20-22)';
+  const dash = 'bbbbbbbb grid: three more (Issues #30 – #32, and #40)';
+  const rows = [20, 21, 22, 23, 30, 31, 32, 40].map((n) => issue(n));
+  assert.deepEqual(mergedOpenRows([plain], rows).map((r) => r.publicId), [20, 21, 22]);
+  assert.deepEqual(mergedOpenRows([dash], rows).map((r) => r.publicId), [30, 31, 32, 40]);
+});
+
+test('mergedOpenRows leaves a range wider than the cap unexpanded, keeping the bounds it reads', () => {
+  const wide = 'cccccccc typo: a thousand rows (Issues #1000-#2000)';
+  const reversed = 'dddddddd backwards (Issues #60-#58)';
+  const rows = [1000, 1001, 1500, 2000, 58, 59, 60].map((n) => issue(n));
+  assert.deepEqual(mergedOpenRows([wide], rows).map((r) => r.publicId), [1000, 2000]);
+  assert.deepEqual(mergedOpenRows([reversed], rows).map((r) => r.publicId), [58, 60]);
+});
+
 const NOW = new Date('2026-10-31T12:00:00Z');
 const hoursAgo = (h) => new Date(NOW.getTime() - h * 3600 * 1000).toISOString();
 const line = (attempt, at, outcome, detail = 'x') => `${MARK} attempt ${attempt} · ${at} · ${outcome} · ${detail}`;

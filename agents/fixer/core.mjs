@@ -240,13 +240,28 @@ export function enrichCandidates(rows, { areas = [], worked = [], max = 5, now =
     .slice(0, max);
 }
 
+const RANGE_CAP = 20;
+const ISSUE_REF = String.raw`#(\d+)(?:(?:\s*[-\u2013\u2014]\s*#|[-\u2013\u2014])(\d+))?`;
+const ISSUE_LIST = new RegExp(String.raw`\bIssues? ${ISSUE_REF}(?:(?:,| and|, and) ${ISSUE_REF})*`, 'g');
+const ISSUE_REFS = new RegExp(ISSUE_REF, 'g');
+
+function rangeIds(lo, hi) {
+  const from = Number(lo);
+  const to = hi === undefined ? from : Number(hi);
+  const span = to - from + 1;
+  if (span < 1 || span > RANGE_CAP) return [...new Set([from, to])];
+  return Array.from({ length: span }, (_, i) => from + i);
+}
+
 export function mergedOpenRows(logLines, rows) {
   const named = new Map();
   for (const line of logLines) {
     const subject = line.slice(line.indexOf(' ') + 1);
     if (!line.trim() || subject.startsWith('Revert')) continue;
-    for (const [list] of subject.matchAll(/\bIssues? #\d+(?:(?:,| and|, and) #\d+)*/g)) {
-      for (const [, n] of list.matchAll(/#(\d+)/g)) named.set(+n, [...(named.get(+n) ?? []), line]);
+    for (const [list] of subject.matchAll(ISSUE_LIST)) {
+      for (const [, lo, hi] of list.matchAll(ISSUE_REFS)) {
+        for (const n of rangeIds(lo, hi)) named.set(n, [...(named.get(n) ?? []), line]);
+      }
     }
   }
   return rows.filter((r) => named.has(r.publicId))

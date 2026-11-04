@@ -1,2 +1,0 @@
-- The View pane's Group section has a **Hide empty groups** switch for List and Board layouts. With it on, groups with no rows drop out of the view and out of `weave_query` groups; with it off, an unfiltered view still shows every option of the group field. The choice saves on the view as `hideEmpty` and travels through `weave_table_view`, the CLI, REST, view copies and `describeSchema` (Feature #345).
-- `weave_table_view` names `hideEmpty` in its schema; the tool's byte budget rises from 1,680 to 1,725 to carry the key (Feature #345).

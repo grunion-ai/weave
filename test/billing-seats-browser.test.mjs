@@ -5,7 +5,7 @@ import { launch, styleOf } from './lib/browser.mjs';
 
 const ISSUER = 'https://clerk.weave.example.com';
 const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
-const billing = createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', issuer: ISSUER, publishableKey: null, fetch: nobody });
+const billing = createBilling({ secretKey: 'sk_test_x', plan: 'seat', issuer: ISSUER, publishableKey: null, fetch: nobody });
 
 let ada, dylan;
 const s = await launch('billing seats', (w) => {

@@ -1,1 +1,0 @@
-- The dev soak sends its write token only to the write workspace, so a token from another workspace no longer fails the read smoke and blocks promotion (Issue #1292).

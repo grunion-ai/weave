@@ -5,7 +5,7 @@ import { launch } from './lib/browser.mjs';
 
 const DAY = 86_400_000;
 const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
-const billing = createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', fetch: nobody });
+const billing = createBilling({ secretKey: 'sk_test_x', plan: 'seat', fetch: nobody });
 const shots = process.env.WEAVE_TRIAL_SHOTS;
 
 for (const [daysAgo, shown] of [[12, true], [5, false]]) {

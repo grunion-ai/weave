@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, engineOf, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
+import { barsOnEngine } from './lib/bars-engine.mjs';
+import { decodePng } from './lib/png.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 const ROWS = 2000;
@@ -17,11 +19,16 @@ const s = await launch('pane scroll shell', (weave) => {
     first ??= e;
   }
   weave.setDoc(first.id, para('Ledger', 80));
-  return { big, first };
+  const wide = weave.createTable({ space: 'Sales', name: 'Wide' });
+  for (let i = 0; i < 24; i++) weave.addField(wide, { name: `Column ${i + 1}`, type: 'text' });
+  for (let i = 0; i < 80; i++) weave.createEntity(wide, { name: `Wide row ${i + 1}` });
+  const short = weave.createTable({ space: 'Sales', name: 'Short' });
+  weave.createEntity(short, { name: 'Only row' });
+  return { big, first, wide, short };
 });
 
 if (s) {
-  const { base, browser, big, first } = s;
+  const { base, browser, big, first, wide, short } = s;
 
   const open = async (hash, { width = 1440, height = 900, theme = 'light', dockWidth = null, ready = '#main .wv-grid tbody tr[data-i]', phone = false, engine = browser } = {}) => {
     const page = phone ? await phonePage(await phoneBrowser()) : await engine.newPage({ viewport: { width, height } });
@@ -170,6 +177,149 @@ if (s) {
       await page.close();
     });
   }
+
+  const barOf = (page, q) => page.evaluate((sel) => {
+    const n = document.querySelector(sel);
+    const cs = getComputedStyle(n);
+    return {
+      v: n.offsetWidth - n.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth),
+      h: n.offsetHeight - n.clientHeight - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth),
+      spareV: n.scrollHeight - n.clientHeight,
+      spareH: n.scrollWidth - n.clientWidth,
+      radius: parseFloat(cs.borderTopRightRadius) || parseFloat(cs.borderBottomRightRadius) || 0,
+    };
+  }, q);
+  const stripOf = async (page, q, axis) => {
+    await page.evaluate(() => document.querySelector('.bug-fab')?.style.setProperty('display', 'none'));
+    const box = await page.locator(q).boundingBox();
+    const clip = axis === 'v' ? { x: box.x + box.width - 8, y: box.y, width: 8, height: box.height } : { x: box.x, y: box.y + box.height - 8, width: box.width, height: 8 };
+    return decodePng(await page.screenshot({ clip, animations: 'disabled' }));
+  };
+  const longestRun = (length, inked) => {
+    let best = null;
+    let start = -1;
+    for (let i = 0; i <= length; i++) {
+      if (i < length && inked(i)) { if (start < 0) start = i; continue; }
+      if (start >= 0 && i - start > (best?.length ?? 0)) best = { start, length: i - start };
+      start = -1;
+    }
+    return best;
+  };
+  const scrollPane = async (page, q, top, left = 0) => {
+    await page.evaluate(([sel, t, l]) => document.querySelector(sel).scrollTo({ top: t < 0 ? 1e9 : t, left: l < 0 ? 1e9 : l, behavior: 'instant' }), [q, top, left]);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  };
+  const thumbGaps = async (page, q, axis) => {
+    const img = await stripOf(page, q, axis);
+    const v = axis === 'v';
+    const length = v ? img.height : img.width;
+    const ground = v ? img.at(img.width - 1, Math.floor(img.height / 2)) : img.at(Math.floor(img.width / 2), img.height - 1);
+    const run = longestRun(length, (i) => {
+      const p = v ? img.at(img.width - 4, i) : img.at(i, img.height - 4);
+      return p.some((c, k) => Math.abs(c - ground[k]) > 2);
+    });
+    return run && { before: run.start, after: length - run.start - run.length, length: run.length };
+  };
+
+  for (const name of ['chromium', 'webkit']) {
+    for (const theme of ['light', 'dark']) {
+      test(`${name} ${theme}: every pane reserves one 8px bar and its ends clear the rounded corners (Issue #1310)`, async () => {
+        const engine = await barsOnEngine(name);
+        assert.ok(engine, `${name} is installed`);
+        const page = await open(`#/table/${big.id}?e=${first.id}`, { theme, width: 1600, dockWidth: 380, engine });
+        await page.waitForSelector('#dock:not([hidden]) .name-edit');
+        await page.locator('#dock .doc-section .vditor-reset p').filter({ hasText: 'Ledger paragraph 80 ' }).waitFor();
+        await settled(page.locator('#dock'));
+        await page.mouse.move(1, 1);
+        for (const q of ['#nav', '#main', '#dock']) {
+          const bar = await barOf(page, q);
+          assert.ok(bar.spareV > 100, `${q} overflows, so it draws a bar: ${JSON.stringify(bar)}`);
+          assert.equal(bar.v, 8, `${q} reserves exactly 8px in ${name}, whatever the OS scroll bar setting: ${JSON.stringify(bar)}`);
+        }
+        for (const q of ['#main', '#dock']) {
+          const { radius } = await barOf(page, q);
+          assert.equal(radius, 16, `${q} is the 16px card`);
+          await scrollPane(page, q, 0);
+          const top = await thumbGaps(page, q, 'v');
+          assert.ok(top && top.length > 10, `${q} paints a thumb at the top: ${JSON.stringify(top)}`);
+          assert.ok(top.before >= radius, `${q} thumb starts ${top.before}px below the corner, wanted at least ${radius}px: ${JSON.stringify(top)}`);
+          await scrollPane(page, q, -1);
+          const end = await thumbGaps(page, q, 'v');
+          assert.ok(end.after >= radius, `${q} thumb stops ${end.after}px above the corner, wanted at least ${radius}px: ${JSON.stringify(end)}`);
+          await scrollPane(page, q, 0);
+        }
+        await page.close();
+      });
+    }
+
+    test(`${name}: the grid draws 8px bars on both axes, clear of each other and transparent where they meet (Issue #1310)`, async () => {
+      const engine = await barsOnEngine(name);
+      const page = await open(`#/table/${wide.id}`, { width: 1100, height: 700, engine });
+      await page.mouse.move(1, 1);
+      const q = '#main .table-wrap.wv-grid-scroll';
+      const bar = await barOf(page, q);
+      assert.ok(bar.spareV > 100 && bar.spareH > 100, `the grid scrolls both ways: ${JSON.stringify(bar)}`);
+      assert.deepEqual([bar.v, bar.h], [8, 8], `8px each way: ${JSON.stringify(bar)}`);
+      assert.ok((await thumbGaps(page, q, 'v')).before >= 8, 'the vertical thumb starts past the corner');
+      assert.ok((await thumbGaps(page, q, 'h')).before >= 8, 'the horizontal thumb starts past the corner');
+      const img = await stripOf(page, q, 'h');
+      const inCorner = img.at(img.width - 4, img.height - 4);
+      const panel = await page.evaluate(() => {
+        const c = document.createElement('canvas').getContext('2d');
+        c.fillStyle = getComputedStyle(document.querySelector('#main')).backgroundColor;
+        c.fillRect(0, 0, 1, 1);
+        return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      });
+      assert.deepEqual(inCorner, panel, `the corner shows the panel through it, no white square: ${inCorner} against ${panel}`);
+      await page.close();
+    });
+
+    test(`${name}: a pane holds its gutter with nothing to scroll, so overflow never shifts its content (Issue #1310)`, async () => {
+      const engine = await barsOnEngine(name);
+      const page = await open(`#/table/${short.id}`, { width: 1440, engine });
+      const bar = await barOf(page, '#main');
+      assert.ok(bar.spareV <= 0, `the short table has nothing to scroll: ${JSON.stringify(bar)}`);
+      assert.equal(bar.v, 8, `the panel keeps the same 8px without overflow: ${JSON.stringify(bar)}`);
+      await page.close();
+    });
+
+    test(`${name}: the Share pane list, code blocks and modal bodies take the one spec, and the hidden bars stay hidden (Issue #1310)`, async () => {
+      const engine = await barsOnEngine(name);
+      const page = await open(`#/table/${big.id}`, { width: 1440, height: 500, engine });
+      await page.click('.table-share-btn');
+      await page.waitForSelector('#share-pane:not([hidden]) .share-add');
+      await page.evaluate(() => {
+        const list = document.querySelector('.share-scroll');
+        const tall = Object.assign(document.createElement('div'), { style: 'height:2000px' });
+        list.append(tall);
+        for (const [tag, cls] of [['pre', 'probe-pre'], ['div', 'modal-body probe-modal']]) {
+          const n = document.createElement(tag);
+          n.className = cls;
+          n.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:100px;overflow:auto;white-space:pre';
+          n.textContent = 'x'.repeat(800) + '\n'.repeat(40);
+          document.body.append(n);
+        }
+      });
+      for (const q of ['.share-scroll', '.probe-pre', '.probe-modal']) {
+        const bar = await barOf(page, q);
+        assert.equal(bar.v, 8, `${q} reserves 8px: ${JSON.stringify(bar)}`);
+      }
+      for (const q of ['#ws-rail', '.view-strip']) {
+        if (!await page.locator(q).count()) continue;
+        const bar = await barOf(page, q);
+        assert.deepEqual([bar.v, bar.h], [0, 0], `${q} still hides its bar: ${JSON.stringify(bar)}`);
+      }
+      await page.close();
+    });
+  }
+
+  test(`${PHONE}: a phone keeps its native overlay bars and no gutter (Issue #1310)`, async () => {
+    const page = await open(`#/entity/${first.id}`, { phone: true, ready: '#main .doc-section .vditor-reset p' });
+    const bar = await barOf(page, '#main');
+    assert.ok(bar.spareV > 100, `the page overflows: ${JSON.stringify(bar)}`);
+    assert.equal(bar.v, 0, `no gutter on a touch screen: ${JSON.stringify(bar)}`);
+    await page.close();
+  });
 
   test('the nav list is the one scroll box, between the head and the pinned foot, in the sidebar and the peek overlay, and the phone drawer scrolls as one column (Issue #957, Issue #1164)', async () => {
     const page = await open(`#/table/${big.id}`, { width: 1470, height: 794 });

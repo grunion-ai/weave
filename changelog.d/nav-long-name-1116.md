@@ -1,1 +1,0 @@
-- A long table name in the left nav now ends in an ellipsis, with the full name on hover, and the nav no longer scrolls sideways (Issue #1116).

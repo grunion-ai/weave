@@ -1,1 +1,0 @@
-- Board and list group heads now wrap a long group label onto as many lines as it needs, so a column or group always says which workflow state or option it holds. The label used to end in an ellipsis once it outgrew the column, which cut a 48-character state name by 175 px on desktop and 75 px on the phone (Issue #1157).

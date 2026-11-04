@@ -1,1 +1,0 @@
-- The entity pane keeps a 360px floor beside the View, Share and Activity panes. A window too narrow for every open pane at its floor hides the table panel until a pane closes, and if that is still not enough the View or Share pane floats over the right edge, so the record title no longer stacks one letter per line and the entity toolbar stays clickable (Issue #1286).

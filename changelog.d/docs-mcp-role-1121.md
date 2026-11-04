@@ -1,1 +1,0 @@
-- `/docs`, the README, AGENTS.md and the handbook no longer say MCP needs the Architect role. Any role connects, and `tools/list` names only the tools that role may call: an Observer reads and comments, an Editor also writes rows, an Architect also changes the schema and accounts (Issue #1121).

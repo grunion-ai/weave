@@ -6,12 +6,13 @@ import { launch } from './lib/browser.mjs';
 const HOST = 'clerk.weave.example.com';
 const KEY = `pk_test_${Buffer.from(`${HOST}$`).toString('base64')}`;
 const nobody = async () => new Response('{"errors":[{"code":"resource_not_found"}]}', { status: 404 });
-const billing = createBilling({ secretKey: 'sk_test_x', soloPlan: 'solo', teamPlan: 'team', publishableKey: KEY, fetch: nobody });
+const billing = createBilling({ secretKey: 'sk_test_x', plan: 'seat', publishableKey: KEY, fetch: nobody });
 
 const CLERK_JS = `window.Clerk = {
   user: { id: 'user_k' },
   loadedWith: null,
   async load(opts) { this.loadedWith = opts ?? null; },
+  async setActive() {},
   mountPricingTable(el, props) {
     if (typeof this.loadedWith?.ui?.ClerkUI !== 'function') throw new Error('Clerk was not loaded with Ui components');
     el.dataset.pricingFor = props.for;
@@ -19,7 +20,7 @@ const CLERK_JS = `window.Clerk = {
 };`;
 const UI_JS = 'window.__internal_ClerkUICtor = function ClerkUI() {};';
 
-const s = await launch('billing-checkout', () => {}, { server: () => ({ billing }) });
+const s = await launch('billing-checkout', (w) => { w.linkBillingOrg('org_1'); }, { server: () => ({ billing }) });
 if (s) {
   const { base, browser } = s;
   test('the billing page loads Clerk with its UI bundle, so the pricing table mounts (Issue #922)', async () => {
@@ -32,9 +33,9 @@ if (s) {
       return body ? route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body }) : route.fulfill({ status: 404, body: '' });
     });
     await page.goto(`${base}/billing`, { waitUntil: 'networkidle' });
-    const mounted = page.locator('#checkout [data-pricing-for="user"]');
+    const mounted = page.locator('#checkout [data-pricing-for="organization"]');
     await mounted.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {});
-    const seen = await page.evaluate(() => ({ text: document.getElementById('checkout').textContent, mounted: !!document.querySelector('#checkout [data-pricing-for="user"]') }));
+    const seen = await page.evaluate(() => ({ text: document.getElementById('checkout').textContent, mounted: !!document.querySelector('#checkout [data-pricing-for="organization"]') }));
     assert.deepEqual(seen, { text: '', mounted: true });
     assert.deepEqual(asked.sort(), ['/npm/@clerk/clerk-js@6/dist/clerk.browser.js', '/npm/@clerk/ui@1/dist/ui.browser.js']);
     await page.close();

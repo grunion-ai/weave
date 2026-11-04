@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { unexplainedRaises } from './lib/clicks.mjs';
-import { BUDGET_FILE, METRICS, VITALS, clsOf, judgeVital, vitalKey } from './lib/vitals.mjs';
+import { fastest, median } from './lib/feedback.mjs';
+import { BUDGET_FILE, METRICS, RUNS, VITALS, clsOf, judgeVital, vitalKey } from './lib/vitals.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const budget = JSON.parse(readFileSync(resolve(ROOT, BUDGET_FILE), 'utf8'));
@@ -48,8 +49,27 @@ const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show',
 test('this change raises no vitals budget without a reason (Issue #1042)', () => {
   assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, VITAL), []);
 });
-test('the open-table INP budgets clear the slow-runner medians and cite Issue #1215', () => {
-  assert.ok(budget.vitals['open-table|desktop|inp'] >= 160, 'desktop medians reached 144 on green-tip runners');
-  assert.ok(budget.vitals['open-table|phone|inp'] >= 104, 'phone medians reached 104 on slow runners');
+const RECORDED = {
+  'load-home|phone|lcp': { runs: [448, 232, 252, 572, 496, 472, 300], red: 350 },
+  'open-table|desktop|inp': { runs: [184, 208, 224, 184, 152, 184, 152], red: 160 },
+};
+
+test('a budget is judged on the fastest of the seven runs, which a loaded runner cannot inflate (Issue #1327)', () => {
+  for (const [key, { runs, red }] of Object.entries(RECORDED)) {
+    assert.equal(runs.length, RUNS, `${key}: the recorded runs are one full pass`);
+    assert.equal(fastest(runs), Math.min(...runs), `${key}: the judged value is the fastest run`);
+    assert.ok(fastest(runs) < median(runs), `${key}: the median ${median(runs)} carries the runner, the fastest ${fastest(runs)} does not`);
+    assert.equal(judgeVital(key, fastest(runs), { [key]: red }), null, `${key}: the fastest run clears ${red}, the budget main run 41238444862 held red against`);
+    assert.match(judgeVital(key, median(runs), { [key]: red }), /make the page faster/, `${key}: the median is what turned main red`);
+    assert.equal(judgeVital(key, fastest(runs), budget.vitals), null, `${key}: the fastest run clears the budget in force`);
+  }
+});
+
+test('the raised budgets stand over the fastest runs they were raised past, and keep their reasons', () => {
+  for (const [key, { runs }] of Object.entries(RECORDED)) {
+    assert.ok(budget.vitals[key] >= Math.min(...runs), `${key}: a budget under the fastest run of a red main pass would red it again`);
+  }
+  assert.ok(budget.vitals['open-table|phone|inp'] >= 64, 'phone INP measured 56 to 64 on the green tips');
   for (const k of ['open-table|desktop|inp', 'open-table|phone|inp']) assert.match(budget.raised[k], /Issue #1215/);
+  for (const k of ['load-home|phone|lcp', 'open-table|desktop|inp']) assert.match(budget.raised[k], /Issue #1273/);
 });

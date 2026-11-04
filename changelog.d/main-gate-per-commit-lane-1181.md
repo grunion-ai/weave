@@ -1,1 +1,0 @@
-- Every main push now runs its `tests` gate in its own concurrency lane, keyed by the commit it tests. A shared lane holds one pending run at a time, so a newer merge cancelled the one waiting behind it: eight merges in the half hour from 18:32Z on 2026-10-25 left nine consecutive main gates cancelled and the deploy watcher two hours behind the tip (Issue #1181).

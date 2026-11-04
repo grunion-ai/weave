@@ -346,7 +346,7 @@ test('routes: signing in provisions nobody — a stranger, and the linked email 
 });
 
 test('routes: with billing on, the No access page also offers a workspace of your own and holds the login for /start', async () => {
-  const billing = createBilling({ secretKey: 'clerk-test', soloPlan: 'solo', teamPlan: 'team', fetch: async () => new Response('{}', { status: 404 }) });
+  const billing = createBilling({ secretKey: 'clerk-test', plan: 'seat', fetch: async () => new Response('{}', { status: 404 }) });
   const s = await serve({ billing });
   try {
     const { res } = await s.signIn({ sub: 'user_x', email: 'stranger@example.com', email_verified: true });

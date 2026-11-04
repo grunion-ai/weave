@@ -57,6 +57,12 @@
     return `${n} ${n === 1 ? t.singular : (t.plural || pluralize(t.singular))}`;
   }
 
+  function tally(n, term) {
+    const shown = n.toLocaleString('en-US');
+    if (!term || !term.singular || term.singular === DEFAULT.singular) return shown;
+    return `${shown} ${n === 1 ? term.singular : (term.plural || pluralize(term.singular))}`;
+  }
+
   function cap(s) { s = String(s ?? ''); return s.charAt(0).toUpperCase() + s.slice(1); }
 
   function inverseName(tableName, term, many) {
@@ -70,5 +76,5 @@
     return GROUPS.flatMap((g) => g.terms.map((t) => ({ id: t, label: cap(t), group: g.name })));
   }
 
-  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, singularize, normalize, resolve, count, cap, inverseName, options };
+  root.WeaveTerm = { GROUPS, DEFAULT, MAX, pluralize, singularize, normalize, resolve, count, tally, cap, inverseName, options };
 })(globalThis);

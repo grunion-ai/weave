@@ -1,1 +1,0 @@
-- On a phone the header Share button is a 44 px glass circle beside the ⋮ on the workspace home, spaces and docked records, so it answers a full-size tap on both axes instead of a 16 px wide strip (Issue #1222).

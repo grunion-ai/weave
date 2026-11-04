@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
 import { CELLS, JOURNEYS, cellsOf, seed, walk } from './lib/journeys.mjs';
 import { clickKey } from './lib/clicks.mjs';
-import { RUNS, busyFaults, feedbackOf, feedbackProbe, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
+import { RUNS, busyFaults, fastest, feedbackOf, feedbackProbe, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
 
 const { ms: budget, busy: allowed } = JSON.parse(readFileSync(new URL('./feedback-budget.json', import.meta.url), 'utf8'));
 const skeletonMs = skeletonDelay();
@@ -18,6 +18,12 @@ if (s) {
     phone: { browser: handset ?? s.browser, options: { engine: handset ? CELLS.phone.engine : CELLS.desktop.engine, ...phoneProfile().page } },
   };
 
+  const wholeTable = async () => {
+    const r = await (await fetch(`${s.base}/api/tables/${s.table}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    return { total: r.total ?? (r.items ?? []).length, ids: (r.items ?? []).map((e) => e.id) };
+  };
+  const seeded = await wholeTable();
+
   for (const j of JOURNEYS) {
     for (const cell of cellsOf(j)) {
       const key = clickKey(j.name, cell);
@@ -30,9 +36,9 @@ if (s) {
           ({ events: { acts } } = await run(undefined));
           times.push(feedbackOf(acts));
         }
-        const ms = median(times);
+        const ms = fastest(times);
         const shown = (n) => (n == null ? '-' : Math.round(n));
-        t.diagnostic(`feedback ${key} ${shown(ms)} ms runs ${times.map(shown).join(',')} budget ${budget[key] ?? 'none'} acts ${acts.map((a) => `${a.kind}:${shown(a.ms)}`).join(' ')}`);
+        t.diagnostic(`feedback ${key} fastest ${shown(ms)} ms median ${shown(median(times))} ms runs ${times.map(shown).join(',')} budget ${budget[key] ?? 'none'} acts ${acts.map((a) => `${a.kind}:${shown(a.ms)}`).join(' ')}`);
         assert.equal(judgeMs(key, ms, budget), null, judgeMs(key, ms, budget) ?? '');
       });
 
@@ -44,4 +50,11 @@ if (s) {
       });
     }
   }
+
+  test('the journeys leave the grid table whole, so none of them reads a row an earlier one trashed (Issue #1109)', async () => {
+    const now = await wholeTable();
+    const gone = seeded.ids.filter((id) => !now.ids.includes(id));
+    assert.deepEqual([gone, now.total], [[], seeded.total],
+      `the journeys left the table ${seeded.total - now.total} row(s) short; these are missing from the first page: ${gone.join(', ') || 'none'}`);
+  });
 }

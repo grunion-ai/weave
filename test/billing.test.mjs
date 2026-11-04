@@ -22,15 +22,15 @@ const clerkFake = (routes) => {
 
 const sub = (slug, item = {}) => ({ object: 'commerce_subscription', status: 'active', subscription_items: [{ status: 'active', plan: { slug }, period_end: NOW + 20 * DAY, canceled_at: null, past_due_at: null, ...item }] });
 const human = (name, role, subject) => ({ name, role, identities: subject ? [{ issuer: ISSUER, subject }] : [] });
-const env = { WEAVE_CLERK_SECRET_KEY: 'sk_test_x', WEAVE_BILLING_SOLO_PLAN: 'solo', WEAVE_BILLING_TEAM_PLAN: 'team', WEAVE_BILLING_SINCE: '2026-10-16T00:00:00Z', WEAVE_OIDC_ISSUER: ISSUER };
+const env = { WEAVE_CLERK_SECRET_KEY: 'sk_test_x', WEAVE_BILLING_PLAN: 'seat', WEAVE_BILLING_SINCE: '2026-10-16T00:00:00Z', WEAVE_OIDC_ISSUER: ISSUER };
 const make = (routes, extra = {}) => {
   const { f, calls } = clerkFake(routes);
   return { billing: billingFromEnv({ ...env, ...extra }, { fetch: f, now: () => NOW }), calls };
 };
 const fresh = { createdAt: '2026-10-20T00:00:00Z', billing: {} };
 
-test('billingFromEnv: dark unless the key and both plan slugs are set', () => {
-  for (const drop of ['WEAVE_CLERK_SECRET_KEY', 'WEAVE_BILLING_SOLO_PLAN', 'WEAVE_BILLING_TEAM_PLAN']) {
+test('billingFromEnv: dark unless the key and the plan slug are set', () => {
+  for (const drop of ['WEAVE_CLERK_SECRET_KEY', 'WEAVE_BILLING_PLAN']) {
     assert.equal(billingFromEnv({ ...env, [drop]: ' ' }), null, drop);
   }
   assert.equal(billingFromEnv({}), null);
@@ -65,38 +65,41 @@ test('a workspace made before WEAVE_BILLING_SINCE is comped and asks Clerk nothi
   assert.equal(calls.length, 0);
 });
 
-test('one paid human on the solo plan is seated; Observers never need a seat', async () => {
-  const { billing, calls } = make({ 'GET /users/user_k/billing/subscription': [200, sub('solo')] });
+test('a workspace with no billing organization yet has no plan and asks Clerk nothing; Observers never need a seat', async () => {
+  const { billing, calls } = make({});
   const s = await billing.standing({ workspace: fresh, accounts: [human('kyle', 'architect', 'user_k'), human('obs', 'observer', 'user_o')] });
-  assert.equal(s.plan, 'solo');
+  assert.equal(s.plan, null);
   assert.equal(s.seats, 1);
-  assert.equal(s.seated('kyle'), true);
+  assert.equal(s.seated('kyle'), false);
   assert.equal(s.seated('obs'), true);
+  assert.equal(calls.length, 0);
+});
+
+test('one person on the seat plan is seated: the first seat is the onboarding', async () => {
+  const { billing, calls } = make({
+    'GET /organizations/org_1/billing/subscription': [200, sub('seat')],
+    'GET /organizations/org_1/memberships': [200, { data: [{ public_user_data: { user_id: 'user_k' } }] }],
+  });
+  const s = await billing.standing({ workspace: { ...fresh, billing: { orgId: 'org_1' } }, accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.equal(s.plan, 'paid');
+  assert.equal(s.seated('kyle'), true);
   assert.equal(calls[0].auth, 'Bearer sk_test_x');
 });
 
-test('one paid human with no plan is not seated', async () => {
-  const { billing } = make({});
-  const s = await billing.standing({ workspace: fresh, accounts: [human('kyle', 'architect', 'user_k')] });
+test('an organization on some other plan seats nobody', async () => {
+  const { billing } = make({ 'GET /organizations/org_1/billing/subscription': [200, sub('legacy')] });
+  const s = await billing.standing({ workspace: { ...fresh, billing: { orgId: 'org_1' } }, accounts: [human('kyle', 'architect', 'user_k')] });
   assert.equal(s.plan, null);
   assert.equal(s.seated('kyle'), false);
 });
 
-test('a solo plan stops covering once a second paid human joins without the team plan', async () => {
-  const { billing } = make({ 'GET /users/user_k/billing/subscription': [200, sub('solo')] });
-  const s = await billing.standing({ workspace: fresh, accounts: [human('kyle', 'architect', 'user_k'), human('ana', 'editor', 'user_a')] });
-  assert.equal(s.plan, null);
-  assert.equal(s.seated('kyle'), false);
-  assert.equal(s.seated('ana'), false);
-});
-
-test('on the team plan every paid human who is a member of the Clerk organization is seated', async () => {
+test('on the seat plan every paid human who is a member of the Clerk organization is seated', async () => {
   const { billing } = make({
-    'GET /organizations/org_1/billing/subscription': [200, sub('team')],
+    'GET /organizations/org_1/billing/subscription': [200, sub('seat')],
     'GET /organizations/org_1/memberships': [200, { data: [{ public_user_data: { user_id: 'user_k' } }, { public_user_data: { user_id: 'user_a' } }], total_count: 2 }],
   });
   const s = await billing.standing({ workspace: { ...fresh, billing: { orgId: 'org_1' } }, accounts: [human('kyle', 'architect', 'user_k'), human('ana', 'editor', 'user_a'), human('bo', 'editor', 'user_b')] });
-  assert.equal(s.plan, 'team');
+  assert.equal(s.plan, 'paid');
   assert.equal(s.seats, 3);
   assert.equal(s.seated('kyle'), true);
   assert.equal(s.seated('ana'), true);
@@ -132,9 +135,12 @@ test('a workspace on its trial seats every paid role, and says when the trial en
 });
 
 test('a plan bought during the trial wins over the trial', async () => {
-  const { billing } = make({ 'GET /users/user_k/billing/subscription': [200, sub('solo')] });
-  const s = await billing.standing({ workspace: trialing(2), accounts: [human('kyle', 'architect', 'user_k')] });
-  assert.deepEqual([s.plan, s.trial], ['solo', null]);
+  const { billing } = make({
+    'GET /organizations/org_1/billing/subscription': [200, sub('seat')],
+    'GET /organizations/org_1/memberships': [200, { data: [{ public_user_data: { user_id: 'user_k' } }] }],
+  });
+  const s = await billing.standing({ workspace: { ...trialing(2), billing: { orgId: 'org_1' } }, accounts: [human('kyle', 'architect', 'user_k')] });
+  assert.deepEqual([s.plan, s.trial], ['paid', null]);
 });
 
 test('after the trial the workspace needs a plan again', async () => {
@@ -144,8 +150,8 @@ test('after the trial the workspace needs a plan again', async () => {
 });
 
 test('Clerk down during a trial keeps the trial working', async () => {
-  const { billing } = make({ 'GET /users/user_k/billing/subscription': [500, {}] });
-  const s = await billing.standing({ workspace: trialing(1), accounts: [human('kyle', 'architect', 'user_k')] });
+  const { billing } = make({ 'GET /organizations/org_1/billing/subscription': [500, {}] });
+  const s = await billing.standing({ workspace: { ...trialing(1), billing: { orgId: 'org_1' } }, accounts: [human('kyle', 'architect', 'user_k')] });
   assert.deepEqual([s.plan, s.seated('kyle'), s.trial.daysLeft], ['trial', true, 13]);
 });
 
@@ -157,15 +163,18 @@ test('a workspace made before WEAVE_BILLING_SINCE stays comped, with no trial', 
 
 test('standing is cached for a minute, and a stale answer stands in while Clerk is down', async () => {
   let up = true;
-  const { f } = clerkFake({ 'GET /users/user_k/billing/subscription': () => (up ? [200, sub('solo')] : [500, {}]) });
+  const { f } = clerkFake({
+    'GET /organizations/org_1/billing/subscription': () => (up ? [200, sub('seat')] : [500, {}]),
+    'GET /organizations/org_1/memberships': [200, { data: [{ public_user_data: { user_id: 'user_k' } }] }],
+  });
   let now = NOW;
   const billing = billingFromEnv(env, { fetch: f, now: () => now });
-  const ws = { ...fresh, slug: 'acme' };
+  const ws = { ...fresh, slug: 'acme', billing: { orgId: 'org_1' } };
   const accounts = [human('kyle', 'architect', 'user_k')];
-  assert.equal((await billing.standing({ workspace: ws, accounts })).plan, 'solo');
+  assert.equal((await billing.standing({ workspace: ws, accounts })).plan, 'paid');
   up = false;
   now += 2 * 60_000;
-  assert.equal((await billing.standing({ workspace: ws, accounts })).plan, 'solo');
+  assert.equal((await billing.standing({ workspace: ws, accounts })).plan, 'paid');
   now += 20 * 60_000;
   await assert.rejects(billing.standing({ workspace: ws, accounts }), BillingUnavailable);
 });

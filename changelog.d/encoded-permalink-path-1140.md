@@ -1,1 +1,0 @@
-- `GET /api/entities/:id` and the other row routes take a URL-encoded permalink in the path, so `/api/entities/https%3A%2F%2F…%2Fe%2F<uuid>` names the row instead of answering not found (Issue #1140).

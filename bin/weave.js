@@ -266,7 +266,7 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      create workspaces from /start, WEAVE_SIGNUP_LIMIT each, default 1), WEAVE_OIDC_ISSUER + WEAVE_OIDC_CLIENT_ID (+ WEAVE_OIDC_CLIENT_SECRET, WEAVE_OIDC_NAME: sign in
      with one OpenID Connect provider, redirect URI <origin>/api/auth/oidc/callback; /mcp then signs agents in through it),
      WEAVE_MAIL_KEY + WEAVE_MAIL_FROM (email each invite through Resend; both or neither),
-     WEAVE_CLERK_SECRET_KEY + WEAVE_BILLING_SOLO_PLAN + WEAVE_BILLING_TEAM_PLAN (bill paid seats through Clerk Billing; all three or none),
+     WEAVE_CLERK_SECRET_KEY + WEAVE_BILLING_PLAN (bill paid seats through one per-seat Clerk Billing plan; both or neither),
      WEAVE_CLERK_PUBLISHABLE_KEY (checkout on the billing page), WEAVE_BILLING_SINCE (workspaces made before it are never billed),
      WEAVE_TRIAL_DAYS (free trial for a workspace made at /start, default 14, 0 for none),
      WEAVE_WEBHOOK_ALLOW_PRIVATE=1 (let workflow webhooks post to loopback, link-local and private addresses;

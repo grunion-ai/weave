@@ -1,1 +1,0 @@
-- A board tile sizes itself from its own content and is never stretched or shrunk to its row track, so a layout pass that undersizes the track, as desktop Safari 27 did while a board was still loading, can no longer clip the name down to its descenders. Tiles in a stacked board now take their own height instead of the tallest tile in their row (Issue #1202).

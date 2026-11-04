@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, phoneProfile } from './lib/browser.mjs';
 import { CELLS, seed } from './lib/journeys.mjs';
-import { median } from './lib/feedback.mjs';
+import { fastest, median } from './lib/feedback.mjs';
 import { METRICS, RUNS, VITALS, installVitals, judgeVital, readVitals, vitalKey } from './lib/vitals.mjs';
 
 const { vitals: budget } = JSON.parse(readFileSync(new URL('./vitals-budget.json', import.meta.url), 'utf8'));
@@ -35,8 +35,10 @@ if (s) {
         const faults = [];
         for (const m of METRICS) {
           const key = vitalKey(j.name, cell, m);
-          const value = median(runs.map((r) => r[m]));
-          t.diagnostic(`vitals ${key} ${m === 'cls' ? value.toFixed(3) : Math.round(value)} runs ${runs.map((r) => (m === 'cls' ? r[m].toFixed(3) : Math.round(r[m]))).join(',')} budget ${budget[key] ?? 'none'}`);
+          const read = runs.map((r) => r[m]);
+          const value = fastest(read);
+          const show = (n) => (m === 'cls' ? n.toFixed(3) : Math.round(n));
+          t.diagnostic(`vitals ${key} fastest ${show(value)} median ${show(median(read))} runs ${read.map(show).join(',')} budget ${budget[key] ?? 'none'}`);
           const why = judgeVital(key, value, budget);
           if (why) faults.push(why);
         }

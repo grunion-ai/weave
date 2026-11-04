@@ -1,1 +1,0 @@
-- **Date ranges fit their box on board tiles and the phone record page** (Issues #1126, #1162): a range input sizes to its value outside the grid, a tile gives its range the full card row, and a phone field row stacks the label over a range, so "Jan 1, 1999 – Dec 31, 2099" reads whole instead of running past the input. The grid cell keeps scrolling (Issue #897).

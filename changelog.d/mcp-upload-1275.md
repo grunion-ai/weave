@@ -1,1 +1,0 @@
-- MCP file uploads can prepare a one-use raw-byte upload grant for a row or attachments field. Local scripts upload directly without sending base64 through the model or creating another editor token. Grants expire after ten minutes and enforce workspace, destination, byte count and current account permissions (Issue #1275).

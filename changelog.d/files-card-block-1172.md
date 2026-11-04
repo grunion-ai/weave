@@ -1,1 +1,0 @@
-- The record page's Files card, which lists files no attachments field holds, is now a body block: it has a drag grip, a caret that folds it and remembers, and a place in the table's body order (`@files`). **Make a field** in its header adds an attachments field to the table and moves those files into it, so they take the field's preview and multiple settings (Issue #1172).

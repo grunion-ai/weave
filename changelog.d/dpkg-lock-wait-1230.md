@@ -1,1 +1,0 @@
-- CI browser jobs now wait for the dpkg frontend lock instead of failing on it: the apt drop-in every gating workflow writes carries `DPkg::Lock::Timeout "180"`, so the runner image's own boot-time `apt-get` no longer costs a shard its install step (Issue #1230).

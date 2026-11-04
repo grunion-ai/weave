@@ -1,1 +1,0 @@
-- A file tile with no picture (PDF, text, HTML and other files) now shows the file name as it is spelled instead of in capitals, keeps only its kind word (PDF, TEXT) in small capitals, underlines nothing on hover, and carries a 20 px remove button in place of the white box that crowded its corner (Issue #1192).

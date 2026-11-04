@@ -377,7 +377,7 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
     if (!db || !touches(weave, grant, db)) return missing();
     if (m[2] === 'entities' && method === 'POST') {
       if (!withinScope(weave, grant, { tableId: db.id })) return refuse(403, 'This share link reaches one record; it cannot add records beside it');
-      return rung >= RUNG.manage ? null : refuse(403, `A ${grant.mode} link cannot add rows; that takes manage`);
+      return rung >= RUNG.manage ? null : refuse(403, `A ${grant.mode} link cannot add records; that takes manage`);
     }
     if (!(m[2] === 'entities' ? read : method === 'POST')) return refuse(403, OUTSIDE);
     const opts = m[2] === 'query'
@@ -408,7 +408,7 @@ export function shareGate(weave, grant, { method, path, body = {}, searchParams 
     if (read && tail === '' && grant.scope.kind === 'entities') return answer(200, sharedRead(weave, grant, entityIn(m[1]).id));
     if (read && (tail === '' || tail === 'doc')) return null;
     if (method === 'DELETE' && tail === '') {
-      if (rung < RUNG.manage) return refuse(403, `A ${grant.mode} link cannot delete rows; that takes manage`);
+      if (rung < RUNG.manage) return refuse(403, `A ${grant.mode} link cannot delete records; that takes manage`);
       return searchParams?.get('hard') ? refuse(403, 'A share link moves records to the trash; it never purges them') : null;
     }
     const writes = (tail === '' && method === 'PATCH') || (tail === 'doc' && ['PUT', 'POST'].includes(method))
