@@ -325,6 +325,10 @@ if (s) {
           const again = page.locator('.alert[data-code="no_access"]');
           await again.waitFor({ timeout: 15000 });
           assert.match(await again.textContent(), /has no access to net/);
+        await page.goto(`${apex}/start?next=${encodeURIComponent('/w/%E0%A4%A/')}`);
+        const malformed = page.locator('.alert[data-code="no_access"]');
+        await malformed.waitFor({ timeout: 15000 });
+        assert.match(await malformed.textContent(), /has no access to %E0%A4%A/, 'a malformed name shows as typed and the page still boots');
         } finally { await page.context().close(); }
       });
 

@@ -1251,7 +1251,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               }
               if (c.start) {
                 const link = START_LINK.exec(c.next);
-                const opens = link && hub.bySlug(decodeURIComponent(link[1]).toLowerCase())?.accountForIdentity(who);
+                let slug = link?.[1] ?? '';
+                try { slug = decodeURIComponent(slug); } catch {}
+                const opens = link && hub.bySlug(slug.toLowerCase())?.accountForIdentity(who);
                 const back = link ? (opens ? c.next : `/start?next=${encodeURIComponent(c.next)}`) : /^\/start(?:[?#]|$)/.test(c.next) || inviteLink(c.next) ? c.next : '/start';
                 return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               }

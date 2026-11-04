@@ -3,10 +3,10 @@ import { pathToFileURL } from 'node:url';
 
 export function methodsOf(environment) {
   const settings = environment.user_settings;
-  const social = Object.values(settings.social ?? {}).filter((s) => s.enabled);
+  const social = Object.values(settings.social ?? {}).filter((s) => s.enabled && s.authenticatable).map((s) => s.strategy);
   const email = settings.attributes.email_address;
-  const signUp = [...(email?.enabled && (email.verifications ?? []).includes('email_code') ? ['email_code'] : []), ...social.map((s) => s.strategy)];
-  const signIn = [...(email?.enabled && email.used_for_first_factor ? (email.first_factors ?? []).filter((f) => f === 'email_code') : []), ...social.filter((s) => s.authenticatable).map((s) => s.strategy)];
+  const signUp = [...(email?.enabled && (email.verifications ?? []).includes('email_code') ? ['email_code'] : []), ...social];
+  const signIn = [...(email?.enabled && email.used_for_first_factor ? (email.first_factors ?? []).filter((f) => f === 'email_code') : []), ...social];
   return { signIn: signIn.sort(), signUp: signUp.sort() };
 }
 

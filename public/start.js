@@ -832,8 +832,9 @@
     try { saved = JSON.parse(sessionStorage.getItem('weave:setup')); } catch {}
     s = q.setup === 'resume' ? resume(me, saved) : begin(sendingBack ? { ...me, signedIn: false } : me, q);
     if (!sendingBack && me.signedIn && named) {
-      const decoded = decodeURIComponent(named);
-      s = { ...s, error: { code: 'no_access', workspace: /^[0-9a-f-]{36}$/.test(decoded) ? 'that workspace' : decoded } };
+      let shown = named;
+      try { shown = decodeURIComponent(named); } catch {}
+      s = { ...s, error: { code: 'no_access', workspace: /^[0-9a-f-]{36}$/.test(shown) ? 'that workspace' : shown } };
     }
     if (location.search || location.hash) history.replaceState(null, '', q.pick ? PICK : doorUrl(q, q.mode === 'signup' ? 'signup' : null));
     if (s.data.template && !TEMPLATES.some((t) => t.id === s.data.template)) s.data.template = null;

@@ -27,8 +27,8 @@ test('email code as a first factor closes the gap', () => {
   assert.deepEqual(parityGaps(fixed), { signUpOnly: [], signInOnly: [] });
 });
 
-test('a social provider that signs up but cannot sign in is a gap too', () => {
+test('a provider enabled only for connecting accounts counts at neither pane', () => {
   const env = environment({ firstFactor: true });
-  env.user_settings.social.oauth_google.authenticatable = false;
-  assert.deepEqual(parityGaps(env), { signUpOnly: ['oauth_google'], signInOnly: [] });
+  env.user_settings.social.oauth_apple = { enabled: true, authenticatable: false, strategy: 'oauth_apple' };
+  assert.deepEqual(methodsOf(env), { signIn: ['email_code', 'oauth_google'], signUp: ['email_code', 'oauth_google'] });
 });

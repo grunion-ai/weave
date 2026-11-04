@@ -213,6 +213,9 @@ test('a held login that opens no account on a start link goes back to the start 
     assert.equal(outsider.done.status, 302);
     assert.equal(outsider.done.headers.location, `/start?next=${encodeURIComponent(link)}`);
     assert.ok(outsider.cookie, 'the login stays held');
+    const malformed = await s.held(stranger, '/api/start/open/%E0%A4%A');
+    assert.equal(malformed.done.status, 302, 'a malformed name in the link is no crash');
+    assert.equal(malformed.done.headers.location, `/start?next=${encodeURIComponent('/api/start/open/%E0%A4%A')}`);
   } finally { s.stop(); }
 });
 
