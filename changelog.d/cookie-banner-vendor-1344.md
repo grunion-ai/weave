@@ -1,0 +1,1 @@
+- The cookie banner says "we record" instead of naming PostHog, keeps every disclosed item, and leaves the privacy policy to name the analytics processor ([[Issue#1344]]).
