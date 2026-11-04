@@ -102,7 +102,7 @@ if (keyed) {
     await step(p, 'account');
     await p.waitForSelector(banner);
     await p.waitForLoadState('networkidle');
-    assert.equal((await p.locator(`${banner} p`).textContent()).replace(/\s*Privacy$/, ''), 'If you accept, PostHog records pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.');
+    assert.equal((await p.locator(`${banner} p`).textContent()).replace(/\s*Privacy$/, ''), 'If you accept, we record pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.');
     assert.deepEqual(await p.locator(`${banner} button`).allTextContents(), ['Decline', 'Accept']);
     assert.equal(await p.locator(`${banner} a`).getAttribute('href'), '/privacy#cookies');
     assert.equal(await p.locator('[data-consent-open]').isVisible(), true, 'a Cookies link sits beside Privacy and Terms');

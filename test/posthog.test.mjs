@@ -176,7 +176,7 @@ test('PostHog runs with the shared contract settings and the banner says what it
     opt_out_capturing_by_default: true,
   });
   assert.ok(!('cookieless_mode' in OPTIONS), 'no cookieless mode: nothing runs without consent');
-  assert.equal(BANNER, 'If you accept, PostHog records pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.');
+  assert.equal(BANNER, 'If you accept, we record pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.');
 });
 
 test('no PostHog project key sits in source', () => {

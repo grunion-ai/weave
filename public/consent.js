@@ -1,7 +1,7 @@
 (function (root) {
   const NAME = 'grunion_consent';
   const YEAR = 31536000;
-  const BANNER = 'If you accept, PostHog records pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.';
+  const BANNER = 'If you accept, we record pages viewed, calls to action clicked, the link that brought you here and how far you get in weave setup. One cookie choice covers grunion.ai and weave.grunion.ai.';
   const OPTIONS = {
     api_host: '/ingest',
     ui_host: 'https://us.posthog.com',
