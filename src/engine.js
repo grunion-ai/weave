@@ -4585,6 +4585,7 @@ export class Weave {
         const owner = [...plans.map(p => p.state), ...resumed.map(w => w.state)].find(state => state.tables[f.config.via]);
         if (!owner) continue;
         const copied = Object.values(owner.tables).find(r => r.system === t.system)?.fields[f.id];
+        if (!copied && resumed.some(w => w.state === owner)) continue;
         if (!copied) throw new WeaveError(`Cannot detach: copied rollup ${t.name}.${f.name} is missing`, 'invalid');
         rollups.push([t, f.id]);
       }

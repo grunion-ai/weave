@@ -220,6 +220,28 @@ test('detach drops a registry rollup whose source table exists nowhere', () => {
   assert.ok(w.listEntities(w.getTable('System/Spaces').id).some(r => r.sysId === w.getSpace('Work').id));
 });
 
+test('detach ignores a root rollup whose owning workspace already detached without it', () => {
+  const root = new Weave({ name: 'root' });
+  const w = new Weave({ name: 'one' });
+  w.createSpace({ name: 'Work' });
+  const table = w.createTable({ space: 'Work', name: 'Task' });
+  w.createEntity(table.id, { name: 'Count me' });
+  w.joinRegistry(root);
+  root.addField('System/Spaces', { name: 'Late', type: 'rollup', config: { via: table.id, aggregate: 'count' } });
+  const late = Object.values(root.getTable('System/Spaces').fields).find(f => f.name === 'Late');
+  detachHubRegistry(root, [w]);
+  const rootSpaces = Object.values(root.state.tables).find(t => t.system === 'spaces');
+  const memberSpaces = Object.values(w.state.tables).find(t => t.system === 'spaces');
+  rootSpaces.fields[late.id] = structuredClone(late);
+  rootSpaces.fieldOrder = [...new Set([...rootSpaces.fieldOrder, late.id])];
+  delete memberSpaces.fields[late.id];
+  memberSpaces.fieldOrder = memberSpaces.fieldOrder.filter(id => id !== late.id);
+  assert.equal(detachHubRegistry(root, [w]).migrated, 0);
+  assert.equal(Object.values(w.getTable('System/Spaces').fields).some(f => f.id === late.id), false);
+  assert.ok(root.getTable('System/Spaces').fields[late.id]);
+  assert.ok(w.listEntities(w.getTable('System/Spaces').id).some(r => r.sysId === w.getSpace('Work').id));
+});
+
 test('detach preserves local select options missing from the root field', () => {
   const root = new Weave({ name: 'root' });
   const member = new Weave({ name: 'member' });
