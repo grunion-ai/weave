@@ -401,7 +401,7 @@ export function syncDevelopment(w, manifest) {
   if (!manifest || !Array.isArray(manifest.issues)) return { applied: false };
   const releases = Array.isArray(manifest.releases) ? manifest.releases : [];
   for (const r of releases) {
-    if (!(r.description ?? '').trim()) throw new Error(`release ${r.name} has no notes — every Development/Release row carries its notes`);
+    if (!(r.description ?? '').trim()) throw new Error(`release ${r.name} has no notes — every Development/Release record carries its notes`);
   }
   const stamp = `${manifest.version}:${manifest.generatedAt}:${(manifest.issues.length + (manifest.features?.length ?? 0) + releases.length)}`;
   if (w.state.meta.developmentSync === stamp) return { applied: false };

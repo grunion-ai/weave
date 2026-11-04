@@ -28,7 +28,7 @@
     waiting: { text: '{name} needs a plan before you can start another workspace.', link: 'Open billing' },
     work: {
       title: 'What you\'re building',
-      lead: 'weave builds the tables and a few sample rows for the setup you pick. You can change any of it later.',
+      lead: 'weave builds the tables and a few sample records for the setup you pick. You can change any of it later.',
       all: 'All',
       more: 'More',
       tables: 'Tables',
@@ -43,7 +43,7 @@
       emptyLabel: 'Work to track (optional)',
       emptyPlaceholder: 'Dog adoptions, with families, dogs and visits',
     },
-    build: { claim: 'Claim {address}', table: 'Create {table}', rows: 'Add sample rows', door: 'Allow your AI app in', empty: 'Start an empty workspace' },
+    build: { claim: 'Claim {address}', table: 'Create {table}', rows: 'Add sample records', door: 'Allow your AI app in', empty: 'Start an empty workspace' },
     agent: {
       title: 'Your agent',
       lead: 'Connect the agent you already use. You sign in; weave never asks for an API key.',

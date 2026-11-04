@@ -146,16 +146,16 @@ if (s) {
     await page.fill('#tray .fx-expr', 'dateadd([Close Date], 1, "days")');
     await page.waitForSelector('#tray .fx-status.ok');
     const pick = page.locator('#tray .fx-rowpick');
-    await page.waitForFunction(() => /row 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
+    await page.waitForFunction(() => /record 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
     assert.match(await pick.textContent(), /Acme deal/);
-    await page.waitForFunction(() => /1 row → null/.test(document.querySelector('#tray .fx-scan')?.textContent ?? ''));
+    await page.waitForFunction(() => /1 record → null/.test(document.querySelector('#tray .fx-scan')?.textContent ?? ''));
     await pick.locator('button.next').click();
-    await page.waitForFunction(() => /row 2 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
+    await page.waitForFunction(() => /record 2 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
     assert.match(await pick.textContent(), /Bolt deal/);
     await page.waitForFunction(() => /= null/.test(document.querySelector('#tray .fx-status')?.textContent ?? ''));
-    assert.match(await page.locator('#tray .fx-scan').textContent(), /1 row → null/, 'the scan figures stay while stepping');
+    assert.match(await page.locator('#tray .fx-scan').textContent(), /1 record → null/, 'the scan figures stay while stepping');
     await pick.locator('button.next').click();
-    await page.waitForFunction(() => /row 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
+    await page.waitForFunction(() => /record 1 of 2/.test(document.querySelector('#tray .fx-rowpick')?.textContent ?? ''));
     await page.close();
   });
 }

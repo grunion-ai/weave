@@ -476,7 +476,7 @@ test('a shared table page shows the rows its default view keeps (Issue #838)', a
     const html = await (await call('GET', `/s/${g.token}/table/${task.id}`)).text();
     assert.ok(html.includes('Two'), 'the row the view keeps is on the page');
     assert.ok(!html.includes('One'), 'the row the view filters out is not');
-    assert.ok(html.includes('1 row'), 'the count names what the page shows');
+    assert.ok(html.includes('1 record'), 'the count names what the page shows');
   } finally { stop(); }
 });
 

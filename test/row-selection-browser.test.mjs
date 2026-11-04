@@ -180,9 +180,9 @@ if (s) {
       const says = (text) => page.waitForFunction((t) =>
         document.querySelector('.sel-count')?.textContent.trim() === t, text, { timeout: 4000 });
       await boxes(page).nth(0).check();
-      await says('1 row');
+      await says('1 record');
       await boxes(page).nth(2).click({ modifiers: ['Shift'] });
-      await says('3 rows');
+      await says('3 records');
     } finally { await page.close(); }
   });
 
@@ -329,7 +329,7 @@ if (s) {
       await act(page, 'More').click();
       await page.waitForSelector('.picker-pop .picker-search:focus');
       const rows = (await page.locator('.picker-pop .picker-row .picker-label').allTextContents()).map((t) => t.trim());
-      assert.deepEqual(rows, ['Move to table…', 'Roll up into a new row…', 'Copy links']);
+      assert.deepEqual(rows, ['Move to table…', 'Roll up into a new record…', 'Copy links']);
     } finally { await page.close(); }
   });
 

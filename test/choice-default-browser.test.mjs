@@ -40,7 +40,7 @@ if (s) {
   for (const theme of ['light', 'dark']) {
     test(`a select's Default is a picker of its options, No default first (${theme})`, async () => {
       const page = await openTray('select', theme);
-      assert.equal(await page.locator('#tray-back input[placeholder="Default value for new rows (optional)"]').count(), 0, 'no free-text box');
+      assert.equal(await page.locator('#tray-back input[placeholder="Default value for new records (optional)"]').count(), 0, 'no free-text box');
       for (const n of ['Low', 'High']) {
         await page.click('#tray-back .opt-add');
         await page.locator('#tray-back .opt-name').last().fill(n);

@@ -134,7 +134,7 @@
         unmatched.length ? `${unmatched.length} unmatched (${unmatched.join(', ')})` : null,
       ].filter(Boolean).join('; ');
       if (failed.length) {
-        return { msg: `${verb.toLowerCase()}: ${failed.length} of ${results.reduce((n, r) => n + (r.done?.length ?? 0), 0) + failed.length} rows failed — ${failed[0].error}`, err: true };
+        return { msg: `${verb.toLowerCase()}: ${failed.length} of ${results.reduce((n, r) => n + (r.done?.length ?? 0), 0) + failed.length} records failed — ${failed[0].error}`, err: true };
       }
       if (!cells) return { msg: `Nothing ${verb.toLowerCase()}${aside ? ` — ${aside}` : ''}`, err: true };
       return { msg: `${verb} ${cells} cell${cells === 1 ? '' : 's'}${aside ? ` — ${aside}` : ''}`, err: false };

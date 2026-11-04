@@ -58,7 +58,7 @@ if (s) {
     assert.equal(drawn, LIST_CAP, 'the list draws one cap of rows, not every row');
     assert.ok(total < NODE_BUDGET, `${total} elements, budget ${NODE_BUDGET}: Issue #1266 measured 64,974 nodes drawing all ${ROWS} rows`);
     const more = page.locator('.wv-list .wv-more');
-    assert.equal((await more.textContent()).trim(), `Show ${LIST_CAP} more · ${LIST_CAP} of ${ROWS} rows`);
+    assert.equal((await more.textContent()).trim(), `Show ${LIST_CAP} more · ${LIST_CAP} of ${ROWS} records`);
     await more.click();
     assert.equal(await page.locator('.wv-list .list-row').count(), LIST_CAP * 2, 'Show more extends the list by one cap');
     assert.deepEqual(page.errors, []);
@@ -114,7 +114,7 @@ if (s) {
       const past = page.locator('.list-group[data-key="Past"]');
       assert.equal(await at.locator('.list-row').count(), LIST_CAP);
       assert.equal(await at.locator('.wv-more').count(), 0, 'a group of exactly the cap has nothing more to show');
-      assert.equal((await past.locator('.wv-more').textContent()).trim(), `Show 1 more · ${LIST_CAP} of ${LIST_CAP + 1} rows`);
+      assert.equal((await past.locator('.wv-more').textContent()).trim(), `Show 1 more · ${LIST_CAP} of ${LIST_CAP + 1} records`);
       assert.equal(await page.locator('.list-group[data-key="Empty"] .wv-more').count(), 0);
       await past.locator('.wv-more').click();
       assert.equal(await past.locator('.list-row').count(), LIST_CAP + 1);

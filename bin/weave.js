@@ -980,7 +980,7 @@ async function main() {
       if (sub === 'create' || sub === 'update') {
         const definition = parseJsonFlag('definition');
         if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new WeaveError('form create/update needs --definition as a JSON object');
-        if (definition.kind !== undefined) throw new WeaveError('Form management creates row forms');
+        if (definition.kind !== undefined) throw new WeaveError('Form management creates record forms');
         return out(sub === 'create' ? createForm(w, definition) : updateForm(w, ref, definition));
       }
       if (sub === 'submit') {

@@ -44,7 +44,7 @@ if (s) {
         await page.fill('.table-search-input', 'A');
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 1);
         await openPane(page);
-        assert.match(await page.getAttribute('#view-pane .view-reset', 'title'), /deleted rows or Σ rollups/);
+        assert.match(await page.getAttribute('#view-pane .view-reset', 'title'), /deleted records or Σ rollups/);
         await page.click('#view-pane .view-reset');
         await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length === 3);
         await page.waitForLoadState('networkidle');

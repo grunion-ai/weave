@@ -51,7 +51,7 @@ if (s) {
           assert.equal(h.copy, true, 'the header permalink copy shows on a phone');
           assert.equal(h.eye, true, 'Show or hide fields is a header button on a phone');
           const controls = h.controls.filter((c) => c.kind === 'control');
-          assert.deepEqual(controls.map((c) => c.label), ['Activity', 'Show or hide fields', 'Share (Beta)', 'Row actions', 'Close']);
+          assert.deepEqual(controls.map((c) => c.label), ['Activity', 'Show or hide fields', 'Share (Beta)', 'Record actions', 'Close']);
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');

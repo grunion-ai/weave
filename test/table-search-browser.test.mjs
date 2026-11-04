@@ -49,7 +49,7 @@ if (s) {
       await rowsAre(page, [named['Alpha launch'].id, named['Beta launch'].id]);
       const server = weave.query(jobs, { search: 'launch' }).items.map((e) => e.id).sort();
       assert.deepEqual(await shown(page), server, 'the grid shows what the engine returns');
-      assert.match(await page.textContent('.wv-loaded'), /2 rows found/, 'the foot counts the matches');
+      assert.match(await page.textContent('.wv-loaded'), /2 records found/, 'the foot counts the matches');
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the caret stays in the box');
       await page.waitForLoadState('networkidle');
       assert.ok(patches.length && patches.every((p) => JSON.stringify(Object.keys(p)) === '["search"]'), 'each PATCH carries the search alone');
@@ -84,7 +84,7 @@ if (s) {
     try {
       await typeSearch(page, 'zzzz nothing');
       await page.waitForSelector('.table-search-empty');
-      assert.match(await page.textContent('.table-search-empty'), /No rows match/);
+      assert.match(await page.textContent('.table-search-empty'), /No records match/);
       assert.equal((await shown(page)).length, 0);
       await page.click('.table-search-empty .table-search-clear');
       await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row').length > 3);
