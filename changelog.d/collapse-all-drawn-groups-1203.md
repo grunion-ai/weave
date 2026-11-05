@@ -1,0 +1,1 @@
+- Collapse all in the View pane folds every group the list or board drew, the option groups with no rows included; it read a model of its own that only knew the groups holding rows, so those stayed open and the button looked dead. (Issue #1203)
