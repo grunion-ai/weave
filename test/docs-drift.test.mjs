@@ -97,7 +97,7 @@ test('PARITY.md scores its own table and the build that ships', () => {
   assert.match(parity, new RegExp(`Total counted features: \\*\\*${rows.length}\\*\\*`), `the score counts ${rows.length} rows`);
   assert.ok(parity.includes(`= ${pct}%`), `the parity score is ${pct}%`);
   assert.ok(read('docs/comparison/fibery.md').includes(`**${pct}%**`), `docs/comparison/fibery.md quotes the ${pct}% score`);
-  for (const shipped of ['Board / kanban', 'List view', 'Forms', 'Avatars/icons on entities']) {
+  for (const shipped of ['Board / kanban', 'Forms', 'Avatars/icons on entities']) {
     assert.equal(rows.find((r) => r.name === shipped)?.status, '✅', `${shipped} ships and must score ✅`);
   }
   for (const file of ['docs/PARITY.md', 'docs/comparison/fibery.md', 'docs/comparison/airtable.md']) {
@@ -108,8 +108,9 @@ test('PARITY.md scores its own table and the build that ships', () => {
 
 const BOARD_LAYOUT = [
   'Board layout',
-  'layout: table|list|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
-  '[--layout table|list|board]',
+  'layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
+  '[--layout table|board]',
+  '`layout` is `table` or `board`',
 ];
 const offersBoard = /\bboards?\b/i;
 const bare = (text) => BOARD_LAYOUT.reduce((t, ok) => t.split(ok).join(''), text);

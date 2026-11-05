@@ -11,7 +11,7 @@ const unique = (list) => [...new Set(list)];
 const shared = STATES.filter((s) => !s.seeds);
 
 test('the catalog spans route, layout, open state, data seed, width and theme', () => {
-  assert.deepEqual(LAYOUTS, ['table', 'list', 'board']);
+  assert.deepEqual(LAYOUTS, ['table', 'board']);
   assert.deepEqual(OPENS, ['journey', 'rest', 'overlay', 'hover', 'drag']);
   assert.deepEqual(CELLS, ['desktop', 'phone']);
   assert.deepEqual(THEMES, ['light', 'dark']);
@@ -44,7 +44,7 @@ test('a state that names no seed renders on every seed, so every probe walks it'
 });
 
 test('the board and list views enter every probe that walks a route at rest (Issue #1119)', () => {
-  for (const layout of ['board', 'list']) {
+  for (const layout of ['board']) {
     const s = shared.find((x) => x.layout === layout && x.open === 'rest');
     assert.ok(s, `the catalog lists the ${layout} view once, for every seed`);
     for (const probe of ['cutoff', 'flicker', 'a11y', 'touch']) {
@@ -116,11 +116,11 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   assert.equal(JOURNEYS.length, 14);
   assert.equal(SWEEP_JOURNEYS.length, 15);
   assert.equal(OVERLAYS.length, 38);
-  assert.deepEqual(rests('cutoff'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
-  assert.deepEqual(rests('flicker'), ['board-view', 'list-view', 'sink-board', 'sink-list', 'sink-row', 'sink-table']);
-  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'list-view', 'map', 'published form', 'settings', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'start', 'trash']);
+  assert.deepEqual(rests('cutoff'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
+  assert.deepEqual(rests('flicker'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
+  assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
-  assert.deepEqual(rests('touch'), ['board-view', 'list-view', 'row page', 'sink-board', 'sink-list', 'sink-row', 'sink-table', 'table list', 'workspace home']);
+  assert.deepEqual(rests('touch'), ['board-view', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
   assert.deepEqual(overlays('touch'), ['bug panel', 'menu', 'picker sheet']);
 });
 
@@ -164,13 +164,13 @@ test('the kitchen-sink rows carry adversarial values: unbroken text, large curre
   assert.ok(value(full, 'Tags').length >= 3 && value(full, 'Parts').length >= 2, 'the chips stack');
   assert.ok(weave.getEntity(full.id).files.length >= 2, 'the attachments and avatar hold files');
   assert.ok(rows.some((r) => value(r, 'Name').length <= 2), 'a short name sits beside the long ones');
-  for (const layout of ['board', 'list']) assert.ok(handles.sink[layout], `the kitchen sink has a ${layout} view`);
+  for (const layout of ['board']) assert.ok(handles.sink[layout], `the kitchen sink has a ${layout} view`);
 });
 
 test('every probe that walks a rest state walks the kitchen sink on the table, list and board layouts (Issue #1119)', () => {
   for (const probe of ['cutoff', 'flicker', 'a11y', 'touch']) {
     const mine = plan(probe).filter((p) => p.state.route?.startsWith('sink-'));
-    assert.deepEqual(unique(mine.map((p) => p.state.layout)).filter(Boolean).sort(), ['board', 'list', 'table'], `${probe} walks the kitchen sink on every layout`);
+    assert.deepEqual(unique(mine.map((p) => p.state.layout)).filter(Boolean).sort(), ['board', 'table'], `${probe} walks the kitchen sink on every layout`);
     assert.ok(mine.some((p) => p.state.layout === null), `${probe} walks the kitchen-sink row with every field`);
   }
 });

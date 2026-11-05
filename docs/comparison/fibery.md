@@ -7,7 +7,7 @@ whole thing. [weave](https://github.com/grunion-ai/weave) implements that model
 as an MIT-licensed program you run yourself, against a single SQLite file.
 
 The [feature parity matrix](../PARITY.md) scores weave against Fibery's core
-work-platform feature set, feature by feature: **87.1%** at last count. Most of
+work-platform feature set, feature by feature: **85.5%** at last count. Most of
 the gap sits in collaboration (live co-editing, fine-grained permissions,
 connectors) and secondary view types. This page is the narrative version.
 
@@ -31,7 +31,7 @@ v0.4.109 (2026-10-25). Check fibery.io for current details.*
 | Workflow / multistate | Workflow field | Categories, default state, transition log. |
 | Rules / automations | Automations | created / field changed / state changed → set field, append doc, comment, webhook. |
 | Comments & activity | Comments & activity | Per entity, including automation-driven changes. |
-| Table / board / list views | Table view with Table, List and Board layouts | Board draws kanban columns, a picture gallery and swimlanes. |
+| Table / board / list views | Table view with Table and Board layouts | Board draws kanban columns, a picture gallery and swimlanes. |
 | Relation diagram | Relation map | Tables, cardinalities, and the automation layer in one picture. |
 | Whiteboards, Timeline, Calendar, Reports | — | Not built. |
 | Forms | Forms | Public links at `/f/<id>` add one row to one table, with prefill links. |

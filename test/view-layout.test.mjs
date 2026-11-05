@@ -10,221 +10,199 @@ import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
 
-function fresh() {
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  w.addField('Task', { name: 'State', type: 'select', config: { options: ['Open', 'Done'] } });
-  w.addField('Task', { name: 'Due', type: 'date' });
-  w.addField('Task', { name: 'Points', type: 'number' });
-  return w;
+const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
+
+function plans(w = new Weave()) {
+  w.createSpace({ name: 'Plans' });
+  const trip = w.createTable({ space: 'Plans', name: 'Trip' });
+  const todo = w.createTable({ space: 'Plans', name: 'To-do' });
+  w.addField(todo.id, { name: 'Done', type: 'checkbox' });
+  w.addField(todo.id, { name: 'Priority', type: 'select', config: { options: [{ name: 'P1', hue: 'red' }, { name: 'P2', hue: 'amber' }, { name: 'P3', hue: 'slate' }] } });
+  w.addField(todo.id, { name: 'Due', type: 'date' });
+  w.addField(todo.id, { name: 'Notes', type: 'text' });
+  w.addRelation(todo.id, { name: 'Trip', targetDb: trip.id, cardinality: 'many-to-one', inverseName: 'To-dos' });
+  w.addRelation(todo.id, { name: 'Parent', targetDb: todo.id, cardinality: 'many-to-one', inverseName: 'Children' });
+  w.addRelation(todo.id, { name: 'Trips seen', targetDb: trip.id, cardinality: 'many-to-many', inverseName: 'Seen by' });
+  return { w, trip, todo };
 }
 
-test('widths are names to pixels on the view; a write merges, null clears one', () => {
-  const w = fresh();
-  const v = w.tableView('Task/Standard', { widths: { Name: 240, Due: 150.4 } });
-  assert.deepEqual(v.widths, { Name: 240, Due: 150 }, 'rounded, by name');
-  assert.deepEqual(w.tableView('Task/Standard', { widths: { Points: 96 } }).widths, { Name: 240, Due: 150, Points: 96 }, 'a write names only what changes');
-  assert.deepEqual(w.tableView('Task/Standard', { widths: { Due: null } }).widths, { Name: 240, Points: 96 });
-  const none = w.tableView('Task/Standard', { widths: { Name: null, Points: null } });
-  assert.ok(!('widths' in none), 'no widths, no key: reads stay compact');
+test('a view saves the group keys and reads them back by name, compact', () => {
+  const { w } = plans();
+  const a = w.createEntity('To-do', { name: 'a' });
+  const b = w.createEntity('To-do', { name: 'b' });
+  const v = w.tableView('To-do/Standard', {
+    layout: 'board',
+    group: [{ field: 'Trip', heading: 'chip' }, 'Priority'],
+    completedBy: 'Done',
+    collapsed: ['Japan › P3', 'Completed'],
+    order: [b.publicId, `#${a.publicId}`],
+  });
+  assert.equal(v.layout, 'board');
+  assert.deepEqual(v.group, [{ field: 'Trip', heading: 'chip' }, { field: 'Priority' }], 'defaults drop out: names, not ids');
+  assert.equal(v.completedBy, 'Done');
+  assert.deepEqual(v.collapsed, ['Japan › P3', 'Completed']);
+  assert.deepEqual(v.order, [b.publicId, a.publicId], 'rows read as #ids');
+  const text = JSON.stringify(w.tableView('To-do/Standard'));
+  assert.ok(!text.includes(a.id) && !/"[0-9a-f]{8}-[0-9a-f]{4}-/.test(text.replace(/"id":"[^"]+"/, '')), `no UUIDs past the view's own id: ${text}`);
+  const stored = w.getTable('To-do').tableViews[0];
+  assert.deepEqual(stored.order, [b.id, a.id], 'stored by id so renames and #ids never drift');
+  assert.equal(stored.group[0].field, w.getField('To-do', 'Trip').id);
 });
 
-test('bad widths are refused whole', () => {
-  const w = fresh();
-  w.tableView('Task/Standard', { widths: { Name: 240 } });
-  const before = JSON.stringify(w.tableView('Task/Standard'));
-  assert.throws(() => w.tableView('Task/Standard', { widths: { Nope: 200 } }), /Nope/);
-  assert.throws(() => w.tableView('Task/Standard', { widths: { Due: 'wide' } }), /width/);
-  assert.throws(() => w.tableView('Task/Standard', { widths: { Due: 12 } }), /width/);
-  assert.throws(() => w.tableView('Task/Standard', { widths: { Due: 20000 } }), /width/);
-  assert.throws(() => w.tableView('Task/Standard', { widths: [200] }), /widths/);
-  assert.throws(() => w.tableView('Task/Standard', { widths: { Due: 200, Nope: 1 } }), /Nope/);
-  assert.equal(JSON.stringify(w.tableView('Task/Standard')), before, 'nothing half-written');
+test('a date level takes a grain; order and heading are checked against the field type', () => {
+  const { w } = plans();
+  assert.deepEqual(w.tableView('To-do/By due', { group: [{ field: 'Due', grain: 'week' }] }).group, [{ field: 'Due', grain: 'week' }]);
+  assert.deepEqual(w.tableView('To-do/By due', { group: 'Priority › Trip' }).group, [{ field: 'Priority' }, { field: 'Trip' }], 'a path string is shorthand');
+  for (const [group, re] of [
+    [['Notes'], /cannot group/],
+    [[{ field: 'Priority', heading: 'chip' }], /Only a link field/],
+    [[{ field: 'Priority', order: 'table' }], /only a link field/],
+    [['Trip', 'Priority', 'Due', 'Done', 'Trips seen', 'Parent'], /at most 5/],
+    [['Trip', 'Trip'], /once/],
+    [['Nope'], /Nope/],
+  ]) assert.throws(() => w.tableView('To-do/By due', { group }), re, JSON.stringify(group));
 });
 
-test('frozen counts the leading fields frozen after #; 0 is the default and is not emitted', () => {
-  const w = fresh();
-  assert.ok(!('frozen' in w.tableView('Task/Standard')), 'only # is frozen by default');
-  assert.equal(w.tableView('Task/Standard', { frozen: 2 }).frozen, 2);
-  assert.ok(!('frozen' in w.tableView('Task/Standard', { frozen: 0 })));
-  assert.throws(() => w.tableView('Task/Standard', { frozen: -1 }), /frozen/);
-  assert.throws(() => w.tableView('Task/Standard', { frozen: 1.5 }), /frozen/);
-  assert.throws(() => w.tableView('Task/Standard', { frozen: 6 }), /frozen/, 'no more than the fields that show');
+test('completedBy takes a checkbox or toggle; layout takes table or board', () => {
+  const { w } = plans();
+  assert.throws(() => w.tableView('To-do/X', { completedBy: 'Priority' }), /checkbox or toggle/);
+  assert.throws(() => w.tableView('To-do/X', { layout: 'grid' }), /table or board/);
+  const t = w.createEntity('Trip', { name: 'Japan' });
+  assert.throws(() => w.tableView('To-do/X', { order: [t.id] }), /not a row of/);
 });
 
-test('a move and its freeze land in one write (the grid\'s drop across the seam)', () => {
-  const w = fresh();
-  const v = w.tableView('Task/Standard', { move: { field: 'Due', before: 'Name' }, frozen: 1 });
-  assert.deepEqual(v.fields.slice(0, 2), ['Due', 'Name']);
-  assert.equal(v.frozen, 1);
-  const back = w.tableView('Task/Standard', { move: { field: 'Due', after: 'Name' }, frozen: 0 });
-  assert.deepEqual(back.fields.slice(0, 2), ['Name', 'Due']);
-  assert.ok(!('frozen' in back));
+test('null clears a key, Table keeps the group keys, and from copies them', () => {
+  const { w } = plans();
+  w.tableView('To-do/Standard', { layout: 'board', group: ['Priority'], completedBy: 'Done' });
+  const table = w.tableView('To-do/Standard', { layout: 'table' });
+  assert.equal(table.layout, 'table', 'a Table choice is kept, so a phone can tell it from a view nobody set (Issue #740)');
+  assert.deepEqual(table.group, [{ field: 'Priority' }], 'switching to Table loses nothing');
+  const copy = w.tableView('To-do/Copy', { from: 'Standard', layout: 'board' });
+  assert.equal(copy.completedBy, 'Done');
+  const cleared = w.tableView('To-do/Standard', { group: null, completedBy: null, collapsed: null, order: null });
+  for (const k of ['group', 'completedBy', 'collapsed', 'order']) assert.equal(cleared[k], undefined, k);
+  assert.deepEqual(w.tableView('To-do/Copy').group, [{ field: 'Priority' }], 'the copy is its own view');
 });
 
-test('a hidden field keeps its width and its place, and a frozen one its freeze', () => {
-  const w = fresh();
-  w.tableView('Task/Standard', { move: { field: 'Due', before: 'Name' }, widths: { Due: 150 } });
-  w.tableView('Task/Standard', { hide: ['Due'] });
-  const hidden = w.tableView('Task/Standard');
-  assert.ok(!hidden.fields.includes('Due'));
-  assert.equal(hidden.widths.Due, 150, 'the width stays with the view');
-  assert.deepEqual(w.tableView('Task/Standard', { show: ['Due'] }).fields,
-    ['Due', 'Name', 'Description', 'State', 'Points'], 'back where it was, not at its schema place');
-  w.tableView('Task/Standard', { frozen: 2 });
-  const h = w.tableView('Task/Standard', { hide: ['Due'] });
-  assert.equal(h.frozen, 1, 'Name stays frozen alone; nothing else is pulled into the zone');
-  const s = w.tableView('Task/Standard', { show: ['Due'] });
-  assert.equal(s.frozen, 2);
-  assert.deepEqual(s.fields.slice(0, 2), ['Due', 'Name']);
-  assert.equal(w.tableView('Task/Standard', { hide: ['Points'] }).frozen, 2);
+test('a deleted field or row falls out of the read; the rest of the view stands', () => {
+  const { w } = plans();
+  const a = w.createEntity('To-do', { name: 'a' });
+  const b = w.createEntity('To-do', { name: 'b' });
+  w.tableView('To-do/Standard', { group: ['Priority', 'Trip'], completedBy: 'Done', order: [a.publicId, b.publicId] });
+  w.deleteField('To-do', 'Priority');
+  w.deleteEntity(a.id);
+  const v = w.tableView('To-do/Standard');
+  assert.deepEqual(v.group, [{ field: 'Trip' }]);
+  assert.deepEqual(v.order, [b.publicId]);
+  assert.equal(v.completedBy, 'Done');
 });
 
-test('rename keeps the width; a dropped field leaves widths and the zone; a new field starts unsized', () => {
-  const w = fresh();
-  w.tableView('Task/Standard', { widths: { Due: 150, State: 130 }, frozen: 3 });
-  w.updateField('Task', 'Due', { name: 'Deadline' });
-  assert.deepEqual(w.tableView('Task/Standard').widths, { Deadline: 150, State: 130 });
-  w.deleteField('Task', 'State');
-  const v = w.tableView('Task/Standard');
-  assert.deepEqual(v.widths, { Deadline: 150 });
-  assert.equal(v.frozen, 2, 'the zone shrinks by the frozen field that left');
-  w.addField('Task', { name: 'Owner', type: 'text' });
-  assert.equal(w.tableView('Task/Standard').widths.Owner, undefined, 'a new field wears its type default until someone sizes it');
+test('duplicating the table keeps its group keys on the copy\'s own fields, and leaves the rows\' order behind', () => {
+  const { w } = plans();
+  const a = w.createEntity('To-do', { name: 'a' });
+  w.tableView('To-do/Standard', { layout: 'board', group: ['Priority', { field: 'Trip', heading: 'chip' }], completedBy: 'Done', order: [a.publicId] });
+  const copy = w.duplicateTable('To-do');
+  const v = w.tableView(`${copy.id}/Standard`);
+  assert.deepEqual(v.group, [{ field: 'Priority' }, { field: 'Trip', heading: 'chip' }]);
+  assert.equal(v.completedBy, 'Done');
+  assert.equal(v.order, undefined);
+  const stored = w.getTable(copy.id).tableViews[0];
+  assert.equal(stored.completedBy, w.getField(copy.id, 'Done').id, 'the copy\'s own Done field');
 });
 
-test('describeSchema carries widths and frozen, applySchema round-trips them, duplicate re-points them', () => {
-  const w = fresh();
-  w.tableView('Task/Standard', { widths: { Name: 240 }, frozen: 1 });
-  const doc = w.describeSchema();
-  const t = doc.flatMap((s) => s.tables).find((x) => x.name === 'Task');
-  assert.deepEqual(t.views[0].widths, { Name: 240 });
-  assert.equal(t.views[0].frozen, 1);
-  assert.deepEqual(w.applySchema(doc), [], 'an untouched document is a no-op');
-  t.views[0].widths = { Due: 120 };
-  t.views[0].frozen = 2;
-  w.applySchema(doc);
-  const v = w.tableView('Task/Standard');
-  assert.deepEqual(v.widths, { Due: 120 }, 'the document is the set: Name is no longer sized');
-  assert.equal(v.frozen, 2);
-  const copy = w.duplicateTable('Task');
-  const cv = w.tableView(copy.id).views[0];
-  assert.deepEqual(cv.widths, { Due: 120 });
-  assert.equal(cv.frozen, 2);
-  const w2 = new Weave();
-  w2.importJSON(w.exportJSON());
-  assert.deepEqual(w2.tableView('Task/Standard').widths, { Due: 120 }, 'export/import carries them');
-});
-
-test('Views rows carry Frozen and Widths, and editing them writes through the verb', () => {
-  const w = fresh();
-  w.tableView('Task/Standard', { widths: { Name: 240, Due: 120 }, frozen: 1 });
+test('the Views registry row shows Layout and Group, and writing them writes the view', () => {
+  const { w } = plans();
+  w.tableView('To-do/Standard', { layout: 'board', group: [{ field: 'Trip', heading: 'chip' }, 'Priority'] });
   const t = w.getTable('Views');
-  const row = w.listEntities(t.id).map((e) => w.readEntity(e.id)).find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'Task');
-  assert.equal(Number(row.fields.Frozen), 1);
-  assert.equal(row.fields.Widths, 'Name 240, Due 120');
-  w.updateEntity(row.id, { Frozen: 2, Widths: 'Due 130, Points 90' });
-  const v = w.tableView('Task/Standard');
-  assert.equal(v.frozen, 2);
-  assert.deepEqual(v.widths, { Due: 130, Points: 90 }, 'the row is the whole set');
-  assert.throws(() => w.updateEntity(row.id, { Widths: 'Due wide' }), /width/i);
+  const rowOf = () => w.listEntities(t.id).map((e) => w.readEntity(e.id)).find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'To-do');
+  assert.equal(rowOf().fields.Layout, 'board');
+  assert.equal(rowOf().fields.Group, 'Trip › Priority');
+  w.updateEntity(rowOf().id, { Group: 'Trip' });
+  assert.deepEqual(w.tableView('To-do/Standard').group, [{ field: 'Trip', heading: 'chip' }], 'a level that stays keeps its heading');
+  w.updateEntity(rowOf().id, { Layout: 'Table' });
+  assert.equal(w.tableView('To-do/Standard').layout, 'table');
+  assert.equal(rowOf().fields.Layout, 'table');
+  w.updateEntity(rowOf().id, { Layout: '' });
+  assert.equal(w.tableView('To-do/Standard').layout, undefined);
 });
 
-const call = (w, name, args) => dispatchTool(w, name, args ?? {});
-
-test('MCP: weave_table_view takes widths and frozen, and the tool list does not grow', () => {
-  const w = fresh();
-  const before = TOOLS.length;
-  const v = call(w, 'weave_table_view', { view: 'Task/Standard', widths: { Name: 250 }, frozen: 1 });
-  assert.deepEqual(v.widths, { Name: 250 });
-  assert.equal(v.frozen, 1);
-  const tool = TOOLS.find((t) => t.name === 'weave_table_view');
-  assert.ok(tool.inputSchema.properties.widths && tool.inputSchema.properties.frozen, 'both keys are in the schema');
-  assert.match(tool.description, /frozen/);
-  assert.equal(TOOLS.length, before);
-});
-
-test('REST and CLI speak the same keys', async () => {
-  const w = fresh();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    const res = await fetch(`${base}/api/tables/Task/views/Standard`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ widths: { Due: 140 }, frozen: 1 }),
-    });
-    const body = await res.json();
-    assert.equal(res.status, 200);
-    assert.deepEqual(body.widths, { Due: 140 });
-    assert.equal(body.frozen, 1);
-  } finally { server.close(); }
-  const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
-  const dir = tempDir('weave-view-layout-');
-  const data = join(dir, 'ws.db');
-  const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
-  try {
-    cli('space', 'create', 'Dev');
-    cli('table', 'create', 'Dev', 'Task');
-    const v = cli('table', 'view', 'Task/Standard', '--frozen', '1', '--widths', '{"Name":230}');
-    assert.equal(v.frozen, 1);
-    assert.deepEqual(v.widths, { Name: 230 });
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('system columns live in the view\'s one ordered list: shown, moved, frozen, sized by name', () => {
-  const w = fresh();
-  w.updateTable('Task', { systemFields: ['Created At', 'Modified By'] });
-  const v0 = w.tableView('Task/Standard');
-  assert.deepEqual(v0.fields, ['Name', 'Description', 'State', 'Due', 'Points', 'Created At', 'Modified By'],
-    'the table\'s shown system columns close the default view');
-  const moved = w.tableView('Task/Standard', { move: { field: 'Created At', before: 'Name' }, frozen: 1, widths: { 'Created At': 160 } });
-  assert.deepEqual(moved.fields.slice(0, 2), ['Created At', 'Name']);
-  assert.equal(moved.frozen, 1);
-  assert.deepEqual(moved.widths, { 'Created At': 160 });
-  const hidden = w.tableView('Task/Standard', { hide: ['Created At'] });
-  assert.ok(!hidden.fields.includes('Created At'));
-  assert.equal(hidden.widths['Created At'], 160, 'a hidden system column keeps its width');
-  const back = w.tableView('Task/Standard', { show: ['created at'] });
-  assert.deepEqual(back.fields.slice(0, 2), ['Created At', 'Name'], 'and its place, and its freeze');
-  assert.equal(back.frozen, 1);
-  assert.deepEqual(w.tableView('Task/Stamps', { fields: ['Modified By', 'Name'] }).fields, ['Modified By', 'Name']);
-  assert.deepEqual(w.tableView('Task/Stamps', { show: ['Created By'] }).fields, ['Modified By', 'Name', 'Created By'],
-    'a system column shown for the first time closes the list');
-  assert.throws(() => w.tableView('Task/Stamps', { fields: ['Activity'] }), /Activity/, 'Activity is the entity page\'s panel, not a column');
-  assert.deepEqual(w.tableView('Task/blank').fields, ['Name', 'Description', 'State', 'Due', 'Points'], 'Blank stays the raw fields');
-});
-
-test('a new field lands before the trailing system columns; the Views row and the schema document carry them', () => {
-  const w = fresh();
-  w.updateTable('Task', { systemFields: ['Created At'] });
-  w.addField('Task', { name: 'Owner', type: 'text' });
-  assert.deepEqual(w.tableView('Task/Standard').fields.slice(-2), ['Owner', 'Created At']);
-  const row = w.listEntities(w.getTable('Views').id).map((e) => w.readEntity(e.id))
-    .find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'Task');
-  assert.match(row.fields.Fields, /Owner, Created At$/);
-  w.updateEntity(row.id, { Fields: 'Created At, Name' });
-  assert.deepEqual(w.tableView('Task/Standard').fields, ['Created At', 'Name'], 'the row writes through the verb');
-  const doc = w.describeSchema();
-  assert.deepEqual(w.applySchema(doc), [], 'an untouched document is a no-op');
-  const t = doc.flatMap((s) => s.tables).find((x) => x.name === 'Task');
-  t.views[0].fields = ['Name', 'Modified At'];
-  w.applySchema(doc);
-  assert.deepEqual(w.tableView('Task/Standard').fields, ['Name', 'Modified At']);
-});
-
-test('a workspace from before this change: each table\'s shown system columns join every view once', () => {
-  const w = fresh();
-  w.tableView('Task/Other', { fields: ['Name'] });
-  const dump = w.exportJSON();
-  const task = Object.values(dump.tables).find((x) => x.name === 'Task');
-  task.systemFields = ['Created At', 'Activity'];
-  delete task.systemColumnsInViews;
+test('layout has three states: board, table, and unset, which null clears back to (Issue #740)', () => {
+  const { w } = plans();
+  assert.equal(w.tableView('To-do/Standard').layout, undefined, 'a new view has made no choice');
+  assert.equal(w.tableView('To-do/Standard', { layout: 'table' }).layout, 'table');
+  assert.equal(w.tableView('To-do/Standard', { layout: 'board' }).layout, 'board');
+  assert.equal(w.tableView('To-do/Standard', { layout: null }).layout, undefined);
+  w.tableView('To-do/Standard', { layout: 'table' });
   const w2 = new Weave();
-  w2.importJSON(dump);
-  assert.deepEqual(w2.tableView('Task/Standard').fields.at(-1), 'Created At');
-  assert.deepEqual(w2.tableView('Task/Other').fields, ['Name', 'Created At'], 'what every view showed before, it shows now');
-  w2.tableView('Task/Other', { hide: ['Created At'] });
-  const w3 = new Weave();
-  w3.importJSON(w2.exportJSON());
-  assert.deepEqual(w3.tableView('Task/Other').fields, ['Name'], 'once: a hidden system column stays hidden after the move');
+  w2.applySchema(w.describeSchema());
+  assert.equal(w2.tableView('To-do/Standard').layout, 'table', 'a Table choice travels with the schema');
+});
+
+test('describeSchema carries layout, group and completedBy into a fresh workspace; rows never travel', () => {
+  const { w } = plans();
+  const a = w.createEntity('To-do', { name: 'a' });
+  w.tableView('To-do/Standard', { layout: 'board', group: [{ field: 'Trip', heading: 'chip' }], completedBy: 'Done', order: [a.publicId], collapsed: ['Completed'] });
+  const w2 = new Weave();
+  w2.applySchema(w.describeSchema());
+  const v = w2.tableView('To-do/Standard');
+  assert.equal(v.layout, 'board');
+  assert.deepEqual(v.group, [{ field: 'Trip', heading: 'chip' }]);
+  assert.equal(v.completedBy, 'Done');
+  assert.equal(v.order, undefined);
+  assert.equal(v.collapsed, undefined);
+});
+
+test('the agent writes the group keys through weave_table_view with names, and the schema stays small', () => {
+  const { w } = plans();
+  const v = dispatchTool(w, 'weave_table_view', { view: 'To-do/Standard', layout: 'board', group: ['Trip', 'Priority'], completedBy: 'Done' });
+  assert.deepEqual(v.group, [{ field: 'Trip' }, { field: 'Priority' }]);
+  const tool = TOOLS.find((t) => t.name === 'weave_table_view');
+  for (const k of ['layout', 'group', 'completedBy', 'collapsed', 'order']) assert.ok(tool.inputSchema.properties[k], `schema names ${k}`);
+  assert.ok(JSON.stringify(tool).length < 2300, `weave_table_view is ${JSON.stringify(tool).length} bytes`);
+});
+
+test('a saved List view reads as Table and keeps its other keys; list and nest are refused', () => {
+  const { w } = plans();
+  w.tableView('To-do/Standard', { group: ['Priority'], completedBy: 'Done' });
+  const stored = w.getTable('To-do').tableViews[0];
+  stored.layout = 'list';
+  stored.nest = w.getField('To-do', 'Parent').id;
+  const v = w.tableView('To-do/Standard');
+  assert.equal(v.layout, undefined, 'the view opens as a Table');
+  assert.equal(v.nest, undefined);
+  assert.deepEqual(v.group, [{ field: 'Priority' }]);
+  assert.equal(v.completedBy, 'Done');
+  const row = w.listEntities(w.getTable('Views').id).map((e) => w.readEntity(e.id)).find((r) => r.name === 'Standard' && (r.fields.Table?.[0]?.name ?? r.fields.Table?.name) === 'To-do');
+  assert.equal(row.fields.Layout ?? '', '');
+  assert.throws(() => w.tableView('To-do/Standard', { layout: 'list' }), /table or board/);
+  assert.throws(() => w.tableView('To-do/Standard', { nest: 'Parent' }));
+  assert.ok(!TOOLS.find((t) => t.name === 'weave_table_view').inputSchema.properties.nest);
+});
+
+test('the CLI and REST take the same keys', async () => {
+  const dir = tempDir('weave-list-');
+  try {
+    const data = join(dir, 'w.db');
+    const fw = new Weave({ path: data });
+    plans(fw);
+    fw.save?.();
+    const cli = (...args) => JSON.parse(execFileSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8' }));
+    const v = cli('table', 'view', 'To-do/Standard', '--layout', 'board', '--group', 'Trip,Priority', '--completed-by', 'Done');
+    assert.equal(v.layout, 'board');
+    assert.deepEqual(v.group, [{ field: 'Trip' }, { field: 'Priority' }]);
+    assert.equal(v.completedBy, 'Done');
+    assert.equal(cli('table', 'view', 'To-do/Standard', '--group', '[{"field":"Trip","heading":"chip"}]').group[0].heading, 'chip');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  const { w } = plans();
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const tid = w.getTable('To-do').id;
+    const res = await fetch(`${base}/api/tables/${tid}/views/Standard`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ layout: 'board', collapsed: ['Completed'] }) });
+    assert.equal(res.status, 200);
+    assert.deepEqual((await res.json()).collapsed, ['Completed']);
+    const schema = await (await fetch(`${base}/api/schema`)).json();
+    const t = schema.flatMap((s) => s.tables).find((x) => x.id === tid);
+    assert.equal(t.views[0].layout, 'board', 'the client reads the keys from the schema');
+  } finally { server.close(); }
 });

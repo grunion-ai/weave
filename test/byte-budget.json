@@ -133,8 +133,8 @@
       "br": 3275
     },
     "/list-core.js": {
-      "gzip": 3420,
-      "br": 3113
+      "gzip": 3219,
+      "br": 2923
     },
     "/mark-icons.js": {
       "gzip": 1414,

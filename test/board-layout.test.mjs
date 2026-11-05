@@ -64,7 +64,7 @@ test('a board view saves fit, frame and flow, refuses other values by name, and 
 });
 test('unknown layout, groups and picture values are refused by name', () => {
   const { w } = shop();
-  assert.throws(() => w.tableView('Shopping List/X', { layout: 'gallery' }), /layout is table, list or board/);
+  assert.throws(() => w.tableView('Shopping List/X', { layout: 'gallery' }), /layout is table or board/);
   assert.throws(() => w.tableView('Shopping List/X', { groups: 'grid' }), /groups is stacked or side/);
   assert.throws(() => w.tableView('Shopping List/X', { picture: 'huge' }), /picture is off, small, medium or large/);
 });
@@ -110,7 +110,7 @@ test('weave_table_view takes groups and picture and tells agents a gallery and a
   assert.equal(v.groups, 'stacked');
   const tool = TOOLS.find((t) => t.name === 'weave_table_view');
   for (const k of ['groups', 'picture']) assert.ok(tool.inputSchema.properties[k], `schema names ${k}`);
-  assert.match(tool.description, /layout: table\|list\|board/);
+  assert.match(tool.description, /layout: table\|board/);
   assert.match(tool.description, /gallery/i);
   assert.match(tool.description, /kanban/i);
 });

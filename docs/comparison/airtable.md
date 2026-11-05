@@ -19,7 +19,7 @@ weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
 | Field | Field | See the field-type table below. |
 | Grid view | Table view | Inline editing on every cell. |
 | Kanban view | Board layout | Kanban columns with swimlanes, as a layout of the table view. |
-| Gallery / list | Board and List layouts | Board's gallery preset shows each row's cover picture. |
+| Gallery / list | Board layout | Board's gallery preset shows each row's cover picture. |
 | Linked record | Relation | Bidirectional and real — the inverse field is created and maintained for you. |
 | Lookup | Lookup | Pull a field across a relation. |
 | Rollup | Rollup | Aggregate across a relation. |

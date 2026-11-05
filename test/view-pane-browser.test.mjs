@@ -28,13 +28,13 @@ if (s) {
     weave.tableView(`${issue.id}/Standard`, { group: null, sort: [] });
     return weave.tableView(`${issue.id}/Standard`, {
       fields: STANDARD_FIELDS.filter((n) => !c.hidden.includes(n)), filters: c.filters, deleted: c.deleted, group: c.group, sort: c.sort,
-      layout: c.layout === 'list' ? 'list' : null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null, density: 'compact',
+      layout: null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null, density: 'compact',
     });
   };
   const open = async (theme = 'light', { height = 5000 } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1440, height }, colorScheme: theme });
     await page.goto(`${base}/#/table/${issue.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
+    await page.waitForSelector('#main .wv-grid');
     return page;
   };
   const api = (view) => weave.query(issue.id, { view: view.id, relations: 'chip', ...(view.group?.length ? {} : { includeDeleted: !!view.deleted }) });
@@ -148,35 +148,23 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test(`the combination sample in both layouts draws what the API returns (${SAMPLE.length} setups)`, async () => {
+  test(`the combination sample draws what the API returns (${SAMPLE.length} setups)`, async () => {
     const page = await open('light');
     try {
       for (const c of SAMPLE) {
         const view = write(c);
         const q = api(view);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main :is(.wv-grid, .wv-list)', { state: 'attached' });
+        await page.waitForSelector('#main .wv-grid', { state: 'attached' });
         const ctx = JSON.stringify({ f: c.filters, d: c.deleted, g: c.group.map((x) => x.field), la: c.layout, ro: c.rollups, su: c.subtotals });
-        if (c.layout === 'list') {
-          const got = await page.$$eval('#main .wv-list', ([l]) => ({
-            rows: l.querySelectorAll('.list-row:not(.ghost)').length,
-            heads: l.querySelectorAll('.list-group:not(.list-completed)').length,
-            sums: l.querySelectorAll('.list-sum').length,
-            grand: l.querySelector('.list-sum.grand')?.textContent ?? null,
-          }));
-          assert.equal(got.heads, c.group.length ? q.groups.length : 0, `list headers ${ctx}`);
-          if (c.rollups) assert.match(got.grand, new RegExp(`All · ${q.groupTotal?.count ?? LIVE.length} issue`), `list grand ${ctx}`);
-          else assert.equal(got.sums, 0, ctx);
-        } else {
-          const got = await page.$$eval('#main tbody', ([tb]) => ({
-            heads: tb.querySelectorAll('tr.group-head').length, sums: tb.querySelectorAll('tr.group-sum:not(.grand)').length,
-            grand: tb.querySelectorAll('tr.group-sum.grand').length,
-          }));
-          assert.equal(got.heads, q.groups.length, `table headers ${ctx}`);
-          const want = c.rollups ? q.groups.filter((g) => c.subtotals === 'all' || (c.subtotals === 'top' && g.path.length === 1)).length : 0;
-          assert.equal(got.sums, want, `table subtotals ${ctx}`);
-          assert.equal(got.grand, c.rollups ? 1 : 0, ctx);
-        }
+        const got = await page.$$eval('#main tbody', ([tb]) => ({
+          heads: tb.querySelectorAll('tr.group-head').length, sums: tb.querySelectorAll('tr.group-sum:not(.grand)').length,
+          grand: tb.querySelectorAll('tr.group-sum.grand').length,
+        }));
+        assert.equal(got.heads, q.groups.length, `table headers ${ctx}`);
+        const want = c.rollups ? q.groups.filter((g) => c.subtotals === 'all' || (c.subtotals === 'top' && g.path.length === 1)).length : 0;
+        assert.equal(got.sums, want, `table subtotals ${ctx}`);
+        assert.equal(got.grand, c.rollups ? 1 : 0, ctx);
       }
     } finally { await page.close(); }
   });

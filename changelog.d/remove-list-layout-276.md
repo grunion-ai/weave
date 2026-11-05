@@ -1,0 +1,1 @@
+- Table and Board are now the only layouts. A saved List view opens as a Table with its filters and group levels intact, and its ticked rows return to their groups. Nest by, the `nest` view key and the CLI `--nest` flag are gone, and `layout: "list"` is refused (reverses Feature #276).
