@@ -53,8 +53,19 @@ test('the Pages site carries a short title, a preview image and no empty handle 
   assert.match(title, /weave/);
   const tagline = CONFIG.match(/^tagline:\s*(.+)$/m)?.[1].trim();
   assert.ok(tagline && tagline.length <= 70, `tagline is ${tagline?.length} characters`);
-  const image = CONFIG.match(/^image:\s*(\S+)$/m)?.[1];
-  assert.ok(image, 'docs/_config.yml names an image');
-  assert.ok(existsSync(join(ROOT, 'docs', image.replace(/^\//, ''))), `docs/${image} exists`);
+  assert.doesNotMatch(CONFIG, /^image:/m, 'a site-level image key never reaches og:image: jekyll-seo-tag reads page["image"] and site["logo"] only, and site["logo"] feeds JSON-LD alone');
+  const defaults = CONFIG.match(/^defaults:\n((?:[ \t-][^\n]*\n)+)/m)?.[1];
+  assert.ok(defaults, 'docs/_config.yml sets front-matter defaults, the only place jekyll-seo-tag reads a site-wide image from');
+  assert.match(defaults, /-\s*scope:\s*\n\s*path:\s*""/, 'the defaults scope covers every page, including the README-derived home');
+  const image = defaults.match(/^\s*image:\s*(\S+)[ \t]*$/m)?.[1];
+  assert.ok(image, 'the front-matter defaults name an image, which is what og:image and twitter:image read');
+  assert.ok(existsSync(join(ROOT, 'docs', image.replace(/^\//, ''))), `docs${image} exists`);
   assert.doesNotMatch(CONFIG, /^twitter:/m);
+});
+
+test('the social preview is at least the 1280x640 the unfurlers read (Issue #1148)', () => {
+  const png = readFileSync(join(ROOT, 'docs/social-preview.png'));
+  assert.equal(png.subarray(1, 4).toString(), 'PNG', 'docs/social-preview.png is a PNG');
+  const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  assert.ok(width >= 1280 && height >= 640, `docs/social-preview.png is ${width}x${height}`);
 });
