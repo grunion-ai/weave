@@ -93,8 +93,12 @@ minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
 The `tests` workflow runs the full inventory on every main push. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
-only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
-a missing browser or skipped required browser suite fails the gate. Parallel CI
+only publish a main commit whose `CI gate` succeeded. Browser engines are installed on
+the browser lanes only, in both workflows: a unit shard opens no browser, and the
+two unit shards of run 39439094335 spent 46 and 37 seconds downloading Chromium
+and WebKit they never used (Issue #967). `test/ci-test.test.mjs` holds the lane
+condition and refuses a unit-lane test that reaches a browser at load.
+A missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
 Each main push holds its own concurrency lane, keyed by the commit under test.
 A shared lane keeps one pending run at a time, so the next merge cancelled the
