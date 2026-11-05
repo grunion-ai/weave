@@ -220,7 +220,7 @@ test('routes: an architect in one workspace signs in with the role held in anoth
   } finally { s.stop(); }
 });
 
-test('routes: all-workspace search requires a session on each protected workspace', async () => {
+test('routes: search answers the workspace it was asked, with or without a session elsewhere (Issue #1308)', async () => {
   const s = await serve();
   try {
     const b = browser(s);
@@ -228,8 +228,9 @@ test('routes: all-workspace search requires a session on each protected workspac
     const hits = async q => (await (await b.call('GET', `/api/search?all=1&q=${q}`)).json());
     assert.ok(!(await hits('alpha')).some(r => r.workspace === 'alpha'));
     await b.signIn('alpha');
-    assert.ok((await hits('alpha')).some(r => r.workspace === 'alpha'));
+    assert.ok(!(await hits('alpha')).some(r => r.workspace === 'alpha'), 'a session on alpha does not widen the home search');
     assert.ok(!(await hits('gamma')).some(r => r.workspace === 'gamma'));
+    assert.ok((await hits('alpha')).every(r => r.workspace === undefined), 'no hit carries a workspace tag');
   } finally { s.stop(); }
 });
 

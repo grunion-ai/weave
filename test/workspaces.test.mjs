@@ -100,10 +100,10 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     const hop = await fetch(`${base}${hit.url}`, { redirect: 'manual' });
     assert.equal(hop.headers.get('location'), `/w/weave/e/${hit.id}`, 'and that link finds its way back to weave');
 
-    const all = await (await fetch(`${base}/api/search?q=uno+thing&all=1`)).json();
-    assert.ok(all.some((h) => h.workspace === 'uno' && h.kind === 'entity'));
+    const all = await (await fetch(`${base}/w/weave/api/search?q=uno+thing&all=1`)).json();
+    assert.equal(all.some((h) => h.workspace === 'uno'), false, 'all=1 is ignored: weave never answers with uno rows (Issue #1308)');
     const allDocs = await (await fetch(`${base}/api/search?q=zero&all=1`)).json();
-    assert.ok(allDocs.some((h) => h.workspace === 'weave'));
+    assert.equal(allDocs.some((h) => h.workspace), false, 'and no hit carries a workspace tag');
 
     const page = await (await fetch(`${base}/w/weave/`)).text();
     assert.match(page, /id="app"/);

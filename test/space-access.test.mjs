@@ -86,6 +86,18 @@ test('search: a non-member finds nothing from a private space', async () => {
   assert.ok(leaks(member.json), 'a member finds it');
 });
 
+test('search: ?all=1 is ignored, so the palette cannot widen past this workspace (Issue #1308)', async () => {
+  const { call, t } = build();
+  const all = await call('GET', '/api/search?q=Acme&all=1', { token: t.olive });
+  assert.equal(all.status, 200);
+  assert.ok(!leaks(all.json), 'the private row stays hidden on the palette path');
+  const plain = await call('GET', '/api/search?q=Acme', { token: t.olive });
+  assert.deepEqual(all.json, plain.json, 'all=1 answers exactly what this workspace answers');
+  const member = await call('GET', '/api/search?q=Acme&all=1', { token: t.sam });
+  assert.ok(leaks(member.json), 'a member still finds it');
+  assert.equal(member.json.some((h) => h.workspace), false, 'no hit carries a workspace tag');
+});
+
 test('relations: a relation into a private space shows a locked chip to a non-member', async () => {
   const { call, t, plain, secret } = build();
   const res = await call('GET', `/api/entities/${plain.id}`, { token: t.olive });
