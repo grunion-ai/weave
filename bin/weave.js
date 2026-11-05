@@ -47,6 +47,14 @@ function parseJsonFlag(name) {
   }
 }
 
+function numberFlag(name, fallback = null) {
+  const raw = flags[name];
+  if (raw == null || raw === true || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) throw new WeaveError(`--${name} must be a number, not '${raw}'`, 'invalid');
+  return value;
+}
+
 function pickFlags(names) {
   const patch = {};
   for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = n === 'position' ? Number(flags[n]) : flags[n];
@@ -625,9 +633,9 @@ async function main() {
       throw new WeaveError(`Unknown key subcommand '${sub}'. Try: set, list, reveal, share, unshare, delete`);
     }
     case 'audit':
-      return out(w.listAudit({ limit: Number(flags.limit ?? 50) }));
+      return out(w.listAudit({ limit: numberFlag('limit', 50) }));
     case 'undo': {
-      if (flags.list) return out(w.listUndo({ limit: Number(flags.limit ?? 20) }));
+      if (flags.list) return out(w.listUndo({ limit: numberFlag('limit', 20) }));
       return out(w.undo({ steps: Math.max(1, Number(flags.steps ?? 1)) }));
     }
     case 'space': {
@@ -751,7 +759,7 @@ async function main() {
         relations: flags.relations ? String(flags.relations) : 'full',
         shape: flags.shape ? String(flags.shape) : 'full',
         sort: flags.sort ? [String(flags.sort)] : [],
-        limit: flags.limit ? Number(flags.limit) : null,
+        limit: numberFlag('limit'),
         offset: flags.offset ? Number(flags.offset) : 0,
         search: flags.search ? String(flags.search) : '',
         countAll: Boolean(flags['count-all']),
@@ -845,7 +853,7 @@ async function main() {
       const e = resolveEntityRef(w, args[0], flags.db);
       const docField = flags.field === true ? null : flags.field ?? null;
       if (flags.seq != null && flags.seq !== true) return out(w.getDocRevision(e.id, docField, Number(flags.seq)));
-      return out(w.listDocRevisions(e.id, docField, { limit: flags.limit ? Number(flags.limit) : 50 }));
+      return out(w.listDocRevisions(e.id, docField, { limit: numberFlag('limit', 50) }));
     }
     case 'doc-restore': {
       const e = resolveEntityRef(w, args[0], flags.db);
@@ -863,7 +871,7 @@ async function main() {
       return out(w.addComment(e.id, { author: flags.author ?? 'cli', text: rest.join(' ') }));
     }
     case 'search':
-      return out(w.search(args.join(' '), { limit: flags.limit ? Number(flags.limit) : 25 }));
+      return out(w.search(args.join(' '), { limit: numberFlag('limit', 25) }));
     case 'csv': {
       const [sub, ...rest] = args;
       if (sub === 'import') {
@@ -944,7 +952,7 @@ async function main() {
         tableRef: flags.table ?? null,
         kinds: flags.kinds ? splitList(flags.kinds) : null,
         since: flags.since ?? null,
-        limit: flags.limit ? Number(flags.limit) : null,
+        limit: numberFlag('limit'),
       }));
     }
     case 'workspace': {
