@@ -244,6 +244,20 @@ the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
 `:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
 `mcp-publisher` signed in through GitHub OIDC.
 
+Once the version PR is merged, write the merged commit onto the Release row:
+
+```bash
+node scripts/release-commit.mjs --from https://weave.grunion.ai/w/weave \
+  --token-env WEAVE_TRACKER_TOKEN --release v<version> --sha <merged sha>
+```
+
+That step appends one line to the notes rather than replacing the document, then
+reads the row back and refuses when the notes came back empty or without the
+commit. A release whose notes are lost by its own run is caught by that run
+(Issue #1329). An older row that has lost its notes stops nothing: the export
+names it, keeps the notes `docs/development.json` already carries, and carries
+on.
+
 ### Canonical tracker
 
 The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is

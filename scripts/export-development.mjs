@@ -69,7 +69,7 @@ const rows = (items, fields, relations = []) => items
     return scrubRow(row);
   });
 
-export function buildManifest(tracker, { version, generatedAt, fragments = [] }) {
+export function buildManifest(tracker, { version, generatedAt, fragments = [], previous = null, warn = () => {} }) {
   const manifest = {
     version,
     generatedAt,
@@ -77,8 +77,17 @@ export function buildManifest(tracker, { version, generatedAt, fragments = [] })
     features: rows(tracker.features, ['Status', 'Milestone']),
     releases: rows(tracker.releases, ['Date', 'Commit'], ['Fixes', 'Ships']),
   };
+  const held = new Map((previous?.releases ?? [])
+    .filter((r) => (r.description ?? '').trim())
+    .map((r) => [r.name, r.description]));
   for (const r of manifest.releases) {
-    if (!(r.description ?? '').trim()) throw new Error(`Release ${r.name} has no notes — write them in the weave workspace first`);
+    if ((r.description ?? '').trim()) continue;
+    if (r.name === `v${version}`) throw new Error(`Release ${r.name} has no notes — write them in the weave workspace first`);
+    const kept = held.get(r.name);
+    if (kept) r.description = kept;
+    warn(kept
+      ? `Release ${r.name} has no notes on the tracker. It is a historical row, so it does not block this export: the notes docs/development.json already carries are kept. Restore them on the tracker.`
+      : `Release ${r.name} has no notes on the tracker and none in docs/development.json to keep. It is a historical row, so it does not block this export. Restore its notes on the tracker.`);
   }
   if (!manifest.releases.some((r) => r.name === `v${version}`)) {
     throw new Error(`No Development/Release row named v${version} — create it with notes before exporting`);
@@ -103,19 +112,20 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const fragDir = join(root, 'changelog.d');
   const fragments = (existsSync(fragDir) ? readdirSync(fragDir).filter((n) => n.endsWith('.md')) : [])
     .map((name) => ({ name, text: readFileSync(join(fragDir, name), 'utf8') }));
+  const out = opts.out ? resolve(opts.out) : join(root, 'docs', 'development.json');
   let manifest;
   try {
+    const previous = existsSync(out) ? JSON.parse(readFileSync(out, 'utf8')) : null;
     if (opts['token-env'] && !opts.from) throw new Error('--token-env reads a bearer token for --from; pass --from <workspace base url>');
     if (opts['token-env'] && !process.env[opts['token-env']]) throw new Error(`--token-env ${opts['token-env']}: that variable is empty`);
     const tracker = opts.from
       ? await readHttpTracker(opts.from, opts['token-env'] ? process.env[opts['token-env']] : null)
       : readFileTracker(positionals[0] ?? join(homedir(), '.weave', 'weave.db'));
-    manifest = buildManifest(tracker, { version: pkg.version, generatedAt, fragments });
+    manifest = buildManifest(tracker, { version: pkg.version, generatedAt, fragments, previous, warn: (line) => console.warn(line) });
   } catch (err) {
     console.error(err.message);
     process.exit(1);
   }
-  const out = opts.out ? resolve(opts.out) : join(root, 'docs', 'development.json');
   writeFileSync(out, JSON.stringify(manifest, null, 1) + '\n');
   console.log(`${out}: ${manifest.issues.length} issues, ${manifest.features.length} features, ${manifest.releases.length} releases (v${manifest.version})`);
 }
