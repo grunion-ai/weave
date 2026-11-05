@@ -2483,7 +2483,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .wv-board[data-lanes] { --board-col-width: 85vw; }
   .wv-board[data-lanes] :is(.board-col-head, .board-group) { scroll-snap-align: start; }
   .wv-board[data-lanes] .board-col-head { position: sticky; top: 0; z-index: 3; min-height: 44px; background: var(--tblr-bg-surface); }
-  .board-lane-head .list-fold { width: 44px; height: 44px; }
+  :is(.board-lane-head, .board-group-head) .list-fold { width: 44px; height: 44px; }
   .wv-board[data-groups="side"] .board-group-head { position: sticky; top: 0; z-index: 2; min-height: 44px; margin: 0 -8px; padding: 0 8px; background: var(--tblr-bg-surface-secondary); }
   .tile-title { display: block; padding-block: 12px; line-height: 20px; }
   .tile-field > dt, .tile-field > dd { display: flex; align-items: center; min-height: 44px; }
