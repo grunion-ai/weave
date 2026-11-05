@@ -135,3 +135,36 @@ test('dev.yml waits for dev to report the commit instead of failing on a check e
   assert.match(script, /= skipped \]/, 'a skipped verdict still fails at once');
   assert.ok(fail.length > 0);
 });
+
+const INSTALL = '- name: Install browsers and system dependencies';
+const installSteps = () => {
+  const out = [];
+  for (const f of files) {
+    const src = text(f);
+    for (let at = src.indexOf(INSTALL); at >= 0; at = src.indexOf(INSTALL, at + 1)) {
+      const next = src.indexOf('\n      - ', at);
+      const body = src.slice(at, next < 0 ? src.length : next);
+      const job = src.lastIndexOf('\n  ', src.lastIndexOf('\n    runs-on', at));
+      out.push({ file: f, body, job: src.slice(job, at) });
+    }
+  }
+  return out;
+};
+
+test('the browser install step spends its whole budget on retries that can see the dpkg repair', () => {
+  const steps = installSteps();
+  assert.equal(steps.length, 2, 'pr.yml and test.yml each install browsers once');
+  for (const { file, body, job } of steps) {
+    const budget = Number(body.match(/timeout-minutes: (\d+)/)?.[1]);
+    const jobBudget = Number(job.match(/timeout-minutes: (\d+)/)?.[1]);
+    assert.ok(budget > 0 && jobBudget > 0, `${file}: both the step and its job carry a budget`);
+    assert.ok(budget < jobBudget, `${file}: the install step budget ${budget} fits inside its job's ${jobBudget}`);
+    const attempts = Number(body.match(/for attempt in ([\d ]+); do/)?.[1]?.trim().split(/\s+/).length ?? 1);
+    assert.ok(attempts >= 3, `${file}: the install makes ${attempts} attempts, and a third is cheaper than a re-run of the job`);
+    assert.doesNotMatch(body, /dpkg --configure -a \|\| true/, `${file}: the dpkg repair result is read rather than discarded`);
+    const lockWait = Number(body.match(/DPkg::Lock::Timeout "(\d+)"/)?.[1] ?? 0) / 60;
+    for (const cap of [...body.matchAll(/\btimeout (\d+)m\b/g)].map((m) => Number(m[1]))) {
+      assert.ok(cap >= budget - lockWait, `${file}: an inner timeout of ${cap}m under a ${budget}m step that waits up to ${lockWait}m for the dpkg lock`);
+    }
+  }
+});
