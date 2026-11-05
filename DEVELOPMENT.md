@@ -148,6 +148,12 @@ outside the manager, such as a bare `node --test` or a browser suite that only
 takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
 directories on the disk (Issue #1083).
 
+Each lane is spawned with `WEAVE_KEYSTORE` and `WEAVE_DATA` pinned into that
+lane's own temp directory, so a test that builds a `Weave` without a keystore
+path or runs the CLI without `--data` lands in the sandbox instead of the
+developer's `~/.weave` (Issue #949). `test/test-runner.test.mjs` fails when a
+lane resolves either default under the real home directory.
+
 ### Sheriff
 
 `.github/workflows/sheriff.yml` owns a red main (Feature #320). A failed main

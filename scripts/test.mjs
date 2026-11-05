@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
@@ -87,14 +87,21 @@ export function run(files, extraArgs = [], opts = {}) {
   return code;
 }
 
+export function sandboxHome(dir) {
+  const home = join(dir, 'home', '.weave');
+  mkdirSync(home, { recursive: true });
+  return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json') };
+}
+
 function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-test-'));
+  const laneEnv = { ...env, ...sandboxHome(dir) };
   try {
     let attempt = files;
     for (let i = 0; ; i++) {
       const failedPath = join(dir, `failed-${i}`);
       const status = spawnSync(process.execPath, argsFor(attempt, failedPath, extraArgs, undefined, cap),
-        { cwd: ROOT, stdio: 'inherit', env }).status;
+        { cwd: ROOT, stdio: 'inherit', env: laneEnv }).status;
       if (status === 0) {
         if (i) out(`# RETRIED and green: ${attempt.length} file(s) failed the first run and passed the second — ${attempt.join(' ')}`);
         return 0;
