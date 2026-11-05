@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
-import { ROUTES, SEEDS, held, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { ROUTES, SEEDS, STATES, held, readyOf, rootsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
@@ -120,6 +120,27 @@ if (s) {
         t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
         assert.ok(offenders.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs so the gate walks it`);
       });
+    }
+  }
+
+  const FOLD_BOXES = () => [...document.querySelectorAll('.wv-board :is(.board-lane-head, .board-group-head) .list-fold')].map((n) => {
+    const r = n.getBoundingClientRect();
+    return { label: n.getAttribute('aria-label') || 'a board fold', width: Math.round(r.width), height: Math.round(r.height) };
+  });
+  for (const [engine, b, profile] of engines) {
+    for (const state of STATES.filter((st) => st.layout === 'board' && st.open === 'rest')) {
+      for (const theme of themesOn(engine)) {
+        test(`on a phone every fold on the ${state.name} draws its own ${MIN}px box (${engine}, ${theme}, Issue #1217)`, async () => {
+          const page = await open(b, profile, theme, surfaceOf(state));
+          try {
+            const folds = await page.evaluate(FOLD_BOXES);
+            assert.ok(folds.length >= 1, `the ${state.name} draws a fold per head, got ${folds.length}`);
+            assert.deepEqual(folds.filter((f) => f.width < MIN || f.height < MIN)
+              .map((f) => `${f.label} draws ${f.width}x${f.height} of the ${MIN}px minimum`), [],
+            'each board head fold is a real box, so the board scroller cannot clip it the way it clips pseudo slop');
+          } finally { await page.close(); }
+        });
+      }
     }
   }
 
