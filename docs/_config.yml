@@ -2,7 +2,6 @@
 # Only this folder is published; the repo root is not.
 title: "weave: self-hosted work database for people and AI agents"
 tagline: Tables, relations, boards, forms and documents in one SQLite file
-image: /social-preview.png
 description: >-
   Open-source, self-hosted work database for people and AI agents: connected
   tables, kanban boards, forms and markdown documents in one SQLite file. MIT.
@@ -13,5 +12,10 @@ plugins:
   - jekyll-relative-links # rewrites relative .md links to their .html pages
 lang: en
 author: Grunion AI
+defaults:
+  - scope:
+      path: ""
+    values:
+      image: /social-preview.png
 exclude:
   - screenshots/README.md
