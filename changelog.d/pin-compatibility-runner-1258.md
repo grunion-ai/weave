@@ -1,0 +1,1 @@
+- The nightly compatibility matrix names `ubuntu-24.04` instead of `ubuntu-latest`, which GitHub now resolves to `ubuntu-26.04`, and a guard refuses any workflow that carries a floating runner label. PR #507 pinned every other job by name and left this matrix behind, so its WebKit install could stall the way the PR shards did ([[Issue#1258]]).
