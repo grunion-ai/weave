@@ -90,7 +90,7 @@ export const TOOLS = [
         search: { type: 'string', description: 'Only the rows weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
         view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
         groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
-        shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value, which a list or board draws from without the revision, url, db, dbId, timestamps, actors and documents.' },
+        shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value.' },
       },
       required: ['db'],
     },
