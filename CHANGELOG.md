@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.116 (2026-11-05)
+
+- The field-definition clear test times its hold on the page's own clock instead of fixed sleeps: `hold()` from `test/lib/hold.mjs` waits for `.hold-btn.holding` and for the sweep to finish before releasing, the new `releaseEarly()` pauses the sweep midway to prove a let-go hold changes nothing, and the engine is read with `eventually()`. Under load the old 1400 ms hold released before the 900 ms sweep ended and the 400 ms read landed before the write, which failed the gate on change 437 patch set 5 ([[Issue#475]]).
+- The full suite balances its four browser shards on measured runtime. The `plan` job downloads the `ci-results` artifacts of the most recent successful main run and weights each file by the `duration_ms` the reporter already records; a file the history does not name keeps its byte-size weight, and a run with no usable history plans by byte size as before. Byte size was anti-correlated with runtime for the worst offenders, since the slowest browser files are small files that loop: on the inventory of run 41959983156 the byte-weighted plan handed the shards 1,171, 1,107, 1,939 and 1,622 seconds of work, and the duration-weighted plan hands them 1,460 each ([[Issue#966]]).
+- The full suite's unit shards no longer download Chromium and WebKit. The engine cache and the install step in `.github/workflows/test.yml` carry `if: matrix.lane == 'browser'`, the condition `pr.yml` has had since the PR gate shipped, which gives back the 46 and 37 seconds the two unit jobs of run 39439094335 spent on engines they never opened. A new gate in `test/ci-test.test.mjs` walks every unit-lane test's imports and refuses one that reaches `test/lib/browser.mjs` or imports `playwright` at load, so the lane split stays true to what each shard needs ([[Issue#967]]).
+
 ## v0.4.115 (2026-11-04)
 
 - The browser install step of every gating workflow, the PR shards, the main shards and the dev soak, now makes three attempts inside its own budget instead of two capped at five minutes each, waits up to 300 seconds for the dpkg frontend lock, and reports whether `dpkg --configure -a` succeeded rather than discarding it with `|| true`. Three shards died on the runner's apt lock in one afternoon, each costing a full re-run of the job and reaching no test, because an attempt was killed mid-download with the step's budget unspent ([[Issue#1347]]).
