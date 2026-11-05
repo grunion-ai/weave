@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { testFiles, lanes } from '../scripts/test.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
@@ -79,6 +82,41 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
   assert.match(workflow, /max-parallel: 6/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+});
+
+test('only the browser lanes of the full suite download browser engines (Issue #967)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/,
+    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open');
+  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/ms-playwright\n/,
+    'the engine cache is restored for the lanes that use it');
+  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 2,
+    'the lane condition guards the cache and the install, and nothing else');
+});
+
+const STATIC_PLAYWRIGHT = /^\s*import\s(?:[^;]*?from\s*)?['"]playwright['"]/m;
+const SPECIFIER = /(?:^|[\s({,;=])from\s*['"](\.[^'"\n]+)['"]|(?:^|[\s({,;=])import\s*\(?\s*['"](\.[^'"\n]+)['"]/gm;
+
+function browsersReachedBy(file, seen = new Set()) {
+  const absolute = resolve(file);
+  if (seen.has(absolute)) return [];
+  seen.add(absolute);
+  let source;
+  try { source = readFileSync(absolute, 'utf8'); } catch { return []; }
+  const reached = STATIC_PLAYWRIGHT.test(source) ? [`${file} imports playwright at load`] : [];
+  for (const [, fromSpec, importSpec] of source.matchAll(SPECIFIER)) {
+    const next = relative('.', join(dirname(absolute), fromSpec ?? importSpec));
+    if (/(?:^|\/)lib\/browser\.mjs$/.test(next)) reached.push(`${file} reaches ${next}`);
+    else if (existsSync(next)) reached.push(...browsersReachedBy(next, seen));
+  }
+  return reached;
+}
+
+test('no unit-lane test opens a browser at load, so the unit shards need no engine (Issue #967)', () => {
+  const { unit } = lanes(testFiles(resolve('.')), resolve('.'));
+  assert.ok(unit.length > 100, 'the unit lane holds the bulk of the inventory');
+  assert.deepEqual(unit.flatMap((file) => browsersReachedBy(file)), [],
+    'a test that drives a browser belongs in the browser lane, which is the lane that installs the engines');
 });
 
 test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {
