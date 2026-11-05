@@ -5090,6 +5090,7 @@ function listRowPrefs(db, save) {
 function drawnGroupKeys(db) {
   const drawn = $('#main')?.wvDraw;
   if (!drawn || drawn.db.id !== db.id) return [];
+  if (drawn.groupKeys) return [...drawn.groupKeys];
   const levels = VP.levelsFor(db.view?.group, db.fields, { items: drawn.items });
   return VP.model(VP.rowsFor(drawn.items, levels), { levels }).nodes.map((n) => n.key);
 }
@@ -5539,8 +5540,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
 
   if (list) {
     state.inlineAdd = list.board ? null : async () => main.querySelector('.list-add-name')?.focus();
-    (list.board ? renderBoard : renderList)(main, db, items, list);
-    main.wvDraw = { db, items, trashCount, pager: null };
+    const groupKeys = (list.board ? renderBoard : renderList)(main, db, items, list);
+    main.wvDraw = { db, items, trashCount, pager: null, groupKeys };
     syncPhoneBar();
     paintGridWait();
     paneSync(db);
@@ -6014,6 +6015,7 @@ function renderList(main, db, items, ctx) {
       write(item, values, order);
     };
   }
+  return listCore.drawnKeys(arranged);
 }
 function boardCardFields(db) {
   const cover = boardCore.coverField(db);
@@ -6385,6 +6387,7 @@ function renderBoard(main, db, items, ctx) {
     const undo = Object.keys(values).length ? { text: `#${item.publicId} moved to ${where}`, values: back } : null;
     write(item, values, order, undo, settled);
   }
+  return listCore.drawnKeys(arranged);
 }
 function groupFieldOptions(db) {
   return db.fields.filter((f) => listCore.groupable(f))
