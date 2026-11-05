@@ -60,14 +60,9 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
     assert.equal(scoped.filter((h) => h.kind === 'entity').length, 4);
 
     const all = await (await fetch(`${base}/api/search?q=issue&all=1&limit=4`)).json();
-    assert.ok(all.some((h) => h.workspace === 'issues' && h.kind === 'workspace'), 'all: the named workspace is returned');
-    for (const ws of ['uno', 'issues']) {
-      assert.ok(all.some((h) => h.workspace === ws && h.kind === 'table'), `all: ${ws}'s table is returned`);
-      assert.ok(all.some((h) => h.workspace === ws && h.kind === 'view'), `all: ${ws}'s view is returned`);
-    }
-    assert.equal(all.filter((h) => h.kind === 'entity').length, 4, 'all: limit bounds rows across workspaces');
-    const view = all.find((h) => h.workspace === 'issues' && h.kind === 'view');
-    assert.match(view.url, /^\/w\/issues\/#\/view\//);
+    assert.equal(all.some((h) => h.workspace), false, 'all=1 is ignored and no hit names a workspace (Issue #1308)');
+    assert.deepEqual(all, scoped, 'all=1 answers exactly what the workspace answers');
+    assert.equal(all.some((h) => String(h.url).startsWith('/w/issues/')), false, 'no row from the other workspace is returned');
   } finally {
     server.close();
   }

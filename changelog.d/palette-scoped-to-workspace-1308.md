@@ -1,0 +1,1 @@
+- ⌘K searches the workspace you are in. The `all` parameter on `GET /api/search` is gone, so the palette no longer merges rows from every workspace a viewer can open, and no row carries a workspace tag; another workspace answers by name as a jump target read from the rail. (Issue #1308)
