@@ -31,9 +31,9 @@ weave is "an open-source, self-hosted alternative to Airtable, Fibery, Notion da
 
 Refused by the product, from `README.md` "What weave is not" unless noted:
 
-- No fine-grained permissions: three roles per workspace (observer, editor, architect), and "Nothing narrows access to one space, row or field."
+- No fine-grained permissions: three roles per workspace (observer, editor, architect). A share link opens one row, table, space or saved view to whoever holds it, but "no rule narrows an account's own role to one space, row or field."
 - Auth stays off until an architect runs `weave workspace require-auth`.
-- Not a plugin ecosystem: "No marketplace, no extensions, no third-party apps."
+- No plugin API: "weave has no third-party app store inside it." The repository is also a Claude Code plugin marketplace, which installs weave's own MCP connection into Claude Code and "adds nothing to weave."
 - Not battle-tested at scale: "a young project backed by a test suite, not by years of production mileage across thousands of installs."
 - No telemetry and no account for a local install: "A local install needs no account and sends no telemetry."
 - No runtime dependencies, no build step, nothing installed from npm; third-party code is vendored and pinned (`CLAUDE.md` house rules).
