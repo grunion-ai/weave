@@ -1,0 +1,1 @@
+- `weave audit`, `query`, `search`, `undo --list`, `doc-revisions` and `activity` refuse a `--limit` that is not a number with `--limit must be a number, not '<value>'`, in place of SQLite's `datatype mismatch` (Issue #1091).
