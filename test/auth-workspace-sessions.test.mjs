@@ -220,16 +220,17 @@ test('routes: an architect in one workspace signs in with the role held in anoth
   } finally { s.stop(); }
 });
 
-test('routes: all-workspace search requires a session on each protected workspace', async () => {
+test('routes: search answers for the workspace in the request and takes a session there', async () => {
   const s = await serve();
   try {
     const b = browser(s);
     await b.signIn('home');
-    const hits = async q => (await (await b.call('GET', `/api/search?all=1&q=${q}`)).json());
-    assert.ok(!(await hits('alpha')).some(r => r.workspace === 'alpha'));
+    const fromHome = async q => (await (await b.call('GET', `/api/search?all=1&q=${q}`)).json());
+    assert.equal((await b.call('GET', '/w/alpha/api/search?q=alpha')).status, 401);
+    assert.ok(!(await fromHome('alpha')).some(r => r.name === 'alpha'));
     await b.signIn('alpha');
-    assert.ok((await hits('alpha')).some(r => r.workspace === 'alpha'));
-    assert.ok(!(await hits('gamma')).some(r => r.workspace === 'gamma'));
+    assert.equal((await b.call('GET', '/w/alpha/api/search?q=alpha')).status, 200);
+    assert.ok(!(await fromHome('alpha')).some(r => r.name === 'alpha'), 'a session on alpha leaves home search at home');
   } finally { s.stop(); }
 });
 

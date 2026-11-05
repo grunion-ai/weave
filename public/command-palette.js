@@ -32,10 +32,9 @@ function paletteCreateRow(hit, i, onPick) {
   el('span', { class: 'cmdk-text' }, hit.name));
 }
 
-function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null }) {
+function paletteRow(hit, i, { needle, group, onPick, href, checked = null }) {
   if (hit.kind === 'create') return paletteCreateRow(hit, i, onPick);
   const P = weavePalette;
-  const foreign = hit.workspace && (here ? hit.workspace !== here : !hit.url.startsWith(`${WS_PREFIX}/`));
   const state = hit.chip?.state;
   const cat = state && chipCore.categoryOrDefault(state.category);
   return el('div', {
@@ -48,7 +47,6 @@ function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null 
   el('span', { class: 'cmdk-text' },
     el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
     group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
-  foreign ? el('span', { class: 'cmdk-ws' }, hit.workspace) : null,
   state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(state, cat)}` }, state.name) : null,
   el('span', { class: 'cmdk-where' }, P.whereText(hit)),
   el('button', {
@@ -146,7 +144,7 @@ function openCommandK({
       g.hits.map((h) => {
         const i = rowEls.length;
         const row = paletteRow(h, i, {
-          needle, group: g.key, here, onPick: pick, href: onPick || picking ? null : h.url,
+          needle, group: g.key, onPick: pick, href: onPick || picking ? null : h.url,
           checked: checks && h.kind !== 'create' ? chosen.has(h.id) : null,
         });
         row.addEventListener('mouseenter', () => setSel(i, false));
@@ -173,7 +171,7 @@ function openCommandK({
   };
   const searchUrl = (q) => (scope
     ? `/search?q=${encodeURIComponent(q)}&tables=${scope.map(encodeURIComponent).join(',')}&limit=50`
-    : `/search?q=${encodeURIComponent(q)}&all=1`);
+    : `/search?q=${encodeURIComponent(q)}`);
   const load = async (q) => {
     inflight?.abort();
     const ctl = inflight = new AbortController();
@@ -189,6 +187,7 @@ function openCommandK({
       return;
     }
     if (ctl.signal.aborted) return;
+    if (!scope && !onPick) hits = [...P.workspaceHits(state.wsList, q, here, wsHref), ...hits];
     if (kinds) hits = hits.filter((h) => kinds.includes(h.kind));
     render(q, scope ? scopedGroups(q, hits) : P.groupHits(hits, q), q ? `No matches for “${q}”.` : 'Nothing here yet.');
   };

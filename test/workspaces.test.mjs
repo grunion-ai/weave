@@ -59,7 +59,7 @@ test('weaver seed: docs, wiki, quality mirror, issues + roadmap', () => {
   assert.ok(w.search('quickstart').length >= 1);
 });
 
-test('multi-workspace hub: scoped routing, listing, cross-workspace search', async () => {
+test('multi-workspace hub: scoped routing, listing, search stays in its workspace', async () => {
   const uno = new Weave();
   uno.state.meta.name = 'uno';
   uno.createSpace({ name: 'Main' });
@@ -100,10 +100,10 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
     const hop = await fetch(`${base}${hit.url}`, { redirect: 'manual' });
     assert.equal(hop.headers.get('location'), `/w/weave/e/${hit.id}`, 'and that link finds its way back to weave');
 
-    const all = await (await fetch(`${base}/api/search?q=uno+thing&all=1`)).json();
-    assert.ok(all.some((h) => h.workspace === 'uno' && h.kind === 'entity'));
-    const allDocs = await (await fetch(`${base}/api/search?q=zero&all=1`)).json();
-    assert.ok(allDocs.some((h) => h.workspace === 'weave'));
+    const home = await (await fetch(`${base}/api/search?q=uno+thing`)).json();
+    assert.ok(home.some((h) => h.kind === 'entity'), 'the row is found in its own workspace');
+    const away = await (await fetch(`${base}/w/weave/api/search?q=uno+thing&all=1`)).json();
+    assert.ok(!away.some((h) => h.kind === 'entity' && home.some((r) => r.id === h.id)), '?all=1 stays in the workspace of the request');
 
     const page = await (await fetch(`${base}/w/weave/`)).text();
     assert.match(page, /id="app"/);

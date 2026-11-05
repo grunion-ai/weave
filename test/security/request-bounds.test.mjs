@@ -97,8 +97,6 @@ test('every limit a route takes is capped at 500, the most the UI asks for; a ro
     assert.ok((await get('/api/undo?limit=100000')).length <= 500, 'undo');
     const search = await get('/api/search?q=needle&limit=100000');
     assert.equal(search.filter((h) => h.kind === 'entity').length, 500, 'search');
-    const all = await get('/api/search?q=needle&all=1&limit=100000');
-    assert.equal(all.filter((h) => h.kind === 'entity').length, 500, 'search across workspaces');
   } finally { stop(); }
 });
 

@@ -67,6 +67,15 @@
       .filter((g) => g.hits.length);
   }
 
+  function workspaceHits(list, query, here, hrefOf) {
+    const needle = String(query ?? '').toLowerCase().trim();
+    if (!needle || !Array.isArray(list)) return [];
+    const home = String(here ?? '').toLowerCase();
+    return list
+      .filter((w) => !w.held && w.name.toLowerCase() !== home && w.name.toLowerCase().includes(needle))
+      .map((w) => ({ kind: 'workspace', id: w.id, name: w.name, workspace: w.name, url: hrefOf(w) }));
+  }
+
   const lastSegment = (name) => String(name ?? '').split('/').pop();
   function displayName(hit) {
     return hit.kind === 'table' ? lastSegment(hit.name) : String(hit.name ?? '');
@@ -98,5 +107,5 @@
     return [item, ...(Array.isArray(list) ? list : []).filter((r) => key(r) !== key(item))].slice(0, max);
   }
 
-  root.weavePalette = { plainText, excerpt, highlight, groupHits, displayName, whereText, groupJump, pushRecent, RECENT_MAX };
+  root.weavePalette = { plainText, excerpt, highlight, groupHits, workspaceHits, displayName, whereText, groupJump, pushRecent, RECENT_MAX };
 })(globalThis);
