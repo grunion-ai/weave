@@ -135,3 +135,13 @@ test('dev.yml waits for dev to report the commit instead of failing on a check e
   assert.match(script, /= skipped \]/, 'a skipped verdict still fails at once');
   assert.ok(fail.length > 0);
 });
+
+test('no workflow names the floating ubuntu-latest runner, so an Ubuntu bump is a deliberate edit', () => {
+  const floating = [];
+  for (const f of files) {
+    for (const [i, line] of text(f).split('\n').entries()) {
+      if (/ubuntu-latest/.test(line)) floating.push(`${f}:${i + 1} ${line.trim()}`);
+    }
+  }
+  assert.deepEqual(floating, [], 'pin the runner by name, as every gating job already does');
+});
