@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
+import { hold, releaseEarly } from './lib/hold.mjs';
 
 let specs;
 
@@ -14,6 +15,7 @@ const s = await launch('field definition', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   const freshSpec = () => weave.createEntity(specs, { name: 'Sensor board', values: { Definition: MONEY } }).id;
+  const definitionOf = (id) => weave.readEntity(id).raw.Definition ?? null;
 
   const openEntity = async (id) => {
     const page = await browser.newPage();
@@ -22,12 +24,12 @@ if (s) {
     return page;
   };
 
-  const hold = async (page, locator, ms = 1400) => {
-    const box = await locator.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(ms);
-    await page.mouse.up();
+  const openClear = async (id) => {
+    const page = await openEntity(id);
+    await page.locator('.entity-fields .fieldrow', { hasText: 'Definition' }).first().locator('.fielddef-edit .k-computed').click();
+    const clear = page.locator('#modal .hold-btn');
+    await clear.waitFor();
+    return { page, clear };
   };
 
   test('no bare × sits beside a definition — one click cannot erase it', async () => {
@@ -42,37 +44,29 @@ if (s) {
 
   test('the definition editor clears it, and only after the gesture completes', async () => {
     const id = freshSpec();
-    const page = await openEntity(id);
-    await page.locator('.entity-fields .fieldrow', { hasText: 'Definition' }).first().locator('.fielddef-edit .k-computed').click();
-    const clear = page.locator('#modal .hold-btn');
-    await clear.waitFor();
+    const { page, clear } = await openClear(id);
     assert.match(await clear.textContent(), /clear/i);
 
-    await hold(page, clear, 200);
-    await page.waitForTimeout(300);
-    assert.deepEqual(weave.readEntity(id).raw.Definition, MONEY, 'a cancelled hold must change nothing');
+    await releaseEarly(clear);
+    assert.deepEqual(definitionOf(id), MONEY, 'a cancelled hold must change nothing');
+    assert.equal(await page.locator('#modal-back').count(), 1, 'the editor is still open after a hold let go early');
 
-    await hold(page, clear);
-    await page.waitForTimeout(400);
-    assert.equal(weave.readEntity(id).raw.Definition ?? null, null);
+    await hold(clear);
+    assert.equal(await eventually(() => definitionOf(id), null), null);
     await page.close();
   });
 
   test('what the clear took, it offers straight back', async () => {
     const id = freshSpec();
-    const page = await openEntity(id);
-    await page.locator('.entity-fields .fieldrow', { hasText: 'Definition' }).first().locator('.fielddef-edit .k-computed').click();
-    await hold(page, page.locator('#modal .hold-btn'));
-    await page.waitForTimeout(400);
+    const { page, clear } = await openClear(id);
+    await hold(clear);
 
     const offer = page.locator('.wv-toast', { has: page.locator('.wv-toast-action') });
-    await offer.waitFor({ timeout: 3000 });
+    await offer.waitFor();
     assert.match(await offer.textContent(), /currency/i,
       'the toast names what went, not just that something did');
-    const undo = offer.locator('.wv-toast-action');
-    await undo.click();
-    await page.waitForTimeout(400);
-    assert.deepEqual(weave.readEntity(id).raw.Definition, MONEY, 'undo restores the exact type and config');
+    await offer.locator('.wv-toast-action').click();
+    assert.deepEqual(await eventually(() => definitionOf(id), MONEY), MONEY, 'undo restores the exact type and config');
     await page.close();
   });
 }
