@@ -23,6 +23,7 @@
 }
 .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
 .k-attach { max-width: 100%; }
+a.k-attach, a.k-attach:hover { text-decoration: none; }
 .k-rel { padding: 0; }
 .k-rel.k-locked { padding: 0 6px; gap: 4px; color: var(--tblr-secondary); cursor: default; }
 .k-rel.k-locked:hover { border-color: var(--tblr-border-color); color: var(--tblr-secondary); }
