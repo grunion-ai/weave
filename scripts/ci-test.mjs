@@ -108,7 +108,42 @@ export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
 
-const weightOf = file => statSync(join(ROOT, file)).size;
+export function durationsFrom(results) {
+  const seen = new Map();
+  for (const result of results) {
+    for (const summary of result?.summaries ?? []) {
+      if (!summary?.file || !(summary.duration_ms >= 0)) continue;
+      if (!seen.has(summary.file)) seen.set(summary.file, []);
+      seen.get(summary.file).push(summary.duration_ms);
+    }
+  }
+  const median = new Map();
+  for (const [file, samples] of seen) {
+    samples.sort((a, b) => a - b);
+    const middle = samples.length >> 1;
+    median.set(file, samples.length % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2);
+  }
+  return median;
+}
+
+export const weightWith = (durations, size) => file => durations.get(file) ?? size(file);
+
+const sizeOf = file => statSync(join(ROOT, file)).size;
+
+function recordedDurations(dir = process.env.WEAVE_CI_HISTORY) {
+  if (!dir) return new Map();
+  let names;
+  try { names = readdirSync(dir, { recursive: true }).filter(f => String(f).endsWith('.json')); }
+  catch { return new Map(); }
+  const results = [];
+  for (const name of names) {
+    try { results.push(JSON.parse(readFileSync(join(dir, name), 'utf8'))); } catch {}
+  }
+  const durations = durationsFrom(results);
+  console.error(`plan weights: ${durations.size} files with a recorded duration from ${dir}, the rest by byte size`);
+  return durations;
+}
+
 
 export function newestAttempts(results) {
   const newest = new Map();
@@ -121,13 +156,13 @@ export function newestAttempts(results) {
 
 function currentPlan() {
   const files = testFiles(ROOT);
-  return plan(files, lanes(files, ROOT), weightOf);
+  return plan(files, lanes(files, ROOT), weightWith(recordedDurations(), sizeOf));
 }
 
 function currentPrPlan() {
   const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
   const diff = execFileSync('git', ['diff', '-W', '--no-renames', 'HEAD^1', 'HEAD', '--', 'public', 'src', 'bin'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightOf, diff);
+  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
 }
 
 async function main() {

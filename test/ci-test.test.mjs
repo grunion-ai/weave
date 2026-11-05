@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith } from '../scripts/ci-test.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -82,6 +82,99 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
   assert.match(workflow, /max-parallel: 6/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+});
+
+const RESULT = (id, lane, durations) => ({
+  id, lane, attempt: 1, code: 0,
+  files: Object.keys(durations).sort(),
+  summaries: Object.entries(durations).map(([file, duration_ms]) => ({ file, duration_ms, success: true, counts: { tests: 1, failed: 0, cancelled: 0 } })),
+  skips: [],
+});
+
+test('a shard result yields the duration of every file it ran (Issue #966)', () => {
+  const durations = durationsFrom([
+    RESULT('browser-1', 'browser', { 'test/vitals-budget-browser.test.mjs': 85000, 'test/chip-browser.test.mjs': 4000 }),
+    RESULT('browser-2', 'browser', { 'test/render-budget-browser.test.mjs': 164000 }),
+  ]);
+  assert.equal(durations.get('test/vitals-budget-browser.test.mjs'), 85000);
+  assert.equal(durations.get('test/render-budget-browser.test.mjs'), 164000);
+  assert.equal(durations.size, 3);
+});
+
+test('two readings of one file give its median, and a broken result is ignored (Issue #966)', () => {
+  const durations = durationsFrom([
+    RESULT('browser-1', 'browser', { 'test/flicker-gate-browser.test.mjs': 60000 }),
+    RESULT('browser-1', 'browser', { 'test/flicker-gate-browser.test.mjs': 100000 }),
+    { id: 'browser-2', lane: 'browser' },
+    null,
+  ]);
+  assert.equal(durations.get('test/flicker-gate-browser.test.mjs'), 80000);
+  assert.equal(durations.size, 1);
+});
+
+test('a recorded duration outranks byte size, and a file with no history keeps its size (Issue #966)', () => {
+  const sizes = { 'test/vitals-budget-browser.test.mjs': 1903, 'test/grid-keymap-browser.test.mjs': 14731 };
+  const weight = weightWith(new Map([['test/vitals-budget-browser.test.mjs', 35097]]), (file) => sizes[file]);
+  assert.equal(weight('test/vitals-budget-browser.test.mjs'), 35097, 'the 1,903-byte file that loops its page loads weighs what it cost in run 41959983156');
+  assert.equal(weight('test/grid-keymap-browser.test.mjs'), 14731, 'a file the history does not name falls back to its byte size');
+});
+
+const REAL = {
+  'test/setup-flows-browser.test.mjs': { bytes: 52749, ms: 119137 },
+  'test/table-views-browser.test.mjs': { bytes: 23625, ms: 29604 },
+  'test/feedback-budget-browser.test.mjs': { bytes: 3131, ms: 321949 },
+  'test/render-budget-browser.test.mjs': { bytes: 1682, ms: 163971 },
+};
+
+test('measured durations split the two slowest browser files, which are also the two smallest (Issue #966)', () => {
+  const browser = Object.keys(REAL).sort();
+  const groups = { unit: [], browser };
+  const bytes = (file) => REAL[file].bytes;
+  const measured = new Map(Object.entries(REAL).map(([file, { ms }]) => [file, ms]));
+  const shardOf = (shards, file) => shards.find((shard) => shard.files.includes(file)).id;
+  const path = (shards) => Math.max(...shards.map((shard) => shard.files.reduce((n, f) => n + REAL[f].ms, 0)));
+
+  const byBytes = plan(browser, groups, bytes, 1, 2);
+  assert.equal(shardOf(byBytes, 'test/feedback-budget-browser.test.mjs'), shardOf(byBytes, 'test/render-budget-browser.test.mjs'),
+    'byte size lands the 322 s and the 164 s file in one shard, because at 3,131 and 1,682 bytes they are the two smallest');
+  assert.equal(path(byBytes), 515524);
+
+  const byDuration = plan(browser, groups, weightWith(measured, bytes), 1, 2);
+  assert.notEqual(shardOf(byDuration, 'test/feedback-budget-browser.test.mjs'), shardOf(byDuration, 'test/render-budget-browser.test.mjs'),
+    'the recorded durations put them in different shards');
+  assert.equal(path(byDuration), 321949, 'the critical path drops to the single slowest file');
+  assert.ok(path(byDuration) < path(byBytes));
+});
+
+test('the plan job reads the last green main run\'s durations and keeps them off CI\'s commits (Issue #966)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  plan:'), workflow.indexOf('  test:'));
+  assert.match(job, /permissions:\n      contents: read\n      actions: read\n/, 'the plan job may read another run\'s artifacts');
+  assert.match(job, /gh run list [^\n]*--workflow tests --branch main --status success --limit 1/, 'the durations come from the newest green main run');
+  assert.match(job, /--json databaseId [^\n]*\|\| true\)\n/, 'a repository with no green main run still plans, by byte size');
+  assert.match(job, /\|\| echo "run \$run kept no readable shard results"\n/, 'expired or unreadable artifacts still plan, by byte size');
+  assert.doesNotMatch(job, /continue-on-error/, 'tolerance lives in the shell here too, since a killed step never reaches it');
+  assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, 'the planner is told where the downloaded durations are');
+  assert.doesNotMatch(workflow, /git (commit|push|add)/, 'no baseline is committed from CI; weave refuses pull requests opened by Actions');
+});
+
+test('every job that rebuilds the manifest reads the same durations (Issue #966)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const jobs = {
+    plan: workflow.slice(workflow.indexOf('  plan:'), workflow.indexOf('  test:')),
+    test: workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:')),
+    gate: workflow.slice(workflow.indexOf('  gate:'), workflow.indexOf('  compatibility:')),
+  };
+  assert.match(jobs.plan, /name: plan-history\n          path: ci-history\/\n          if-no-files-found: ignore\n          overwrite: true\n/,
+    'the plan job publishes the durations it used, so the shards and the gate weigh what it weighed');
+  for (const [name, job] of Object.entries(jobs)) {
+    assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, `the ${name} job weighs by the run's own durations`);
+    assert.match(job, /node scripts\/ci-test\.mjs (plan|run|aggregate)/, `the ${name} job rebuilds the manifest`);
+    if (name !== 'plan') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, `the ${name} job takes the plan job's copy, and plans by byte size if it is not there`);
+  }
+  assert.doesNotMatch(jobs.gate, /pattern: plan-\*|pattern: '?\*/, 'the shard results and the durations land in separate directories');
+  assert.match(jobs.gate, /pattern: ci-\*\n          path: ci-results\n/,
+    'the durations artifact is named plan-history so the ci-* pattern never mixes a past run\'s shard results into this run\'s evidence');
 });
 
 test('only the browser lanes of the full suite download browser engines (Issue #967)', () => {
