@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.115 (2026-11-04)
+
+- The browser install step of every gating workflow, the PR shards, the main shards and the dev soak, now makes three attempts inside its own budget instead of two capped at five minutes each, waits up to 300 seconds for the dpkg frontend lock, and reports whether `dpkg --configure -a` succeeded rather than discarding it with `|| true`. Three shards died on the runner's apt lock in one afternoon, each costing a full re-run of the job and reaching no test, because an attempt was killed mid-download with the step's budget unspent ([[Issue#1347]]).
+- The nightly compatibility matrix names `ubuntu-24.04` instead of `ubuntu-latest`, which GitHub now resolves to `ubuntu-26.04`, and a guard refuses any workflow that carries a floating runner label. PR #507 pinned every other job by name and left this matrix behind, so its WebKit install could stall the way the PR shards did ([[Issue#1258]]).
+- A Development/Release row that has lost its notes now stops its own release and nothing else. The export refuses only the row whose version it is writing; an older empty row is named on stderr as historical, keeps the notes `docs/development.json` already carries, and does not block the export, and a boot sync refuses only the row its manifest is for. `scripts/release-commit.mjs` writes the merged commit onto the row by appending one line rather than replacing the document, then reads the row back and refuses when the notes came back empty or without the commit, so a lost document is caught by the run that caused it instead of by the next release eight hours later ([[Issue#1329]]).
+
 ## v0.4.114 (2026-11-04)
 
 - The cookie banner says "we record" instead of naming PostHog, keeps every disclosed item, and leaves the privacy policy to name the analytics processor ([[Issue#1344]]).
