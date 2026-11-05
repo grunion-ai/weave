@@ -347,14 +347,12 @@ test('the description block is compact', () => {
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
 });
 
-test('the description clamp is five description line-heights, toggled by a control the editor ignores', () => {
-  const desc = rulesFor('.view-desc');
-  const clamped = rulesFor('.view-desc-body.clamped');
+test('the description clamp counts five whole lines, toggled by a control the editor ignores', () => {
+  const clamped = rulesFor('.clamped');
   assert.equal(clamped.overflow, 'hidden');
-  const m = clamped['max-height']?.match(/calc\((\d+) \* ([\d.]+)em\)/);
-  assert.ok(m, `max-height is calc(<lines> * <line-height>em), got ${clamped['max-height']}`);
-  assert.equal(Number(m[1]), 5, 'five lines');
-  assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
+  assert.equal(clamped['-webkit-line-clamp'], 'var(--wv-lines-prose)');
+  assert.equal(clamped['max-height'], undefined, 'a height cannot count lines (Issue #1306)');
+  assert.equal(rulesFor(':root')['--wv-lines-prose'], '5', 'five lines');
   const vh = fnBody('viewHeader');
   assert.match(vh, /class: 'view-desc-body wv-prose clamped'/, 'the rendered markdown has its own body element, born clamped');
   assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');

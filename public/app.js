@@ -3398,8 +3398,8 @@ const filePanel = (() => {
   return { open, close, mounted, get isOpen() { return isOpen(); } };
 })();
 
-function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact, fit });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, wraps = false, label } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit, wraps });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
@@ -3470,7 +3470,7 @@ function optionChipEl(f, name) {
   }
 }
 
-function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
+function editorFor(f, item, db, onSaved, { compact = false, fit = false, wraps = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
   const saved = async () => {
@@ -3631,6 +3631,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
           await saved();
         },
       }),
+      title: '+ link',
     }, '+ link'));
     return box;
   }
@@ -3747,8 +3748,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     class: 'form-control form-control-sm wv-edit inline-edit',
     type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text',
     value: boxVal ?? '',
+    title: boxVal ?? null,
     onclick: (e) => e.stopPropagation(),
   });
+  input.addEventListener('input', () => { input.title = input.value; });
   input.addEventListener('change', () => patch(input.value === '' ? null
     : f.type === 'number' ? (isPercent ? Math.round(Number(input.value) * 1e8) / 1e10 : Number(input.value))
     : input.value));
@@ -3782,7 +3785,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
-  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
+  if ((!fit || wraps) && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 
@@ -3791,7 +3794,7 @@ function docPreviewCell(md, name, onOpen) {
   const box = el('span', {
     class: 'doc-preview' + (kind ? '' : ' is-empty'),
     tabindex: 0,
-    title: kind ? `Open ${name}` : `${name} is empty — click to write it`,
+    title: lines.length ? lines.join('\n') : kind ? `Open ${name}` : `${name} is empty — click to write it`,
     onclick: (e) => { e.stopPropagation(); onOpen(); },
   });
   if (!kind) {
@@ -6880,7 +6883,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const td = el('td', {
       dataset: { ftype: f.type, field: f.name },
       class: (isNumCell(f, item) ? 'num' : '') + extra + kind,
-    }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
+    }, cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true, wraps: gridDensity(db) === 'spacious' })));
     const at = phone.chips.indexOf(f.name) + 1;
     if (at) { td.dataset.phoneChip = String(at); td.style.order = String(at); }
     return f.type === 'attachments'
@@ -6911,7 +6914,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
           href: registryHref(db, item) ?? `#/entity/${item.id}`,
           title: db.system === 'tables' ? 'Open table' : db.system === 'spaces' ? 'Open space' : keyHint(`Open ${db.term.singular} beside the table — ⌘-click for a new tab`),
         }, `#${item.publicId} ↗`),
-        el('span', { class: 'list-name' }, item.name ?? ''))),
+        el('span', { class: 'list-name', title: item.name || null }, item.name ?? ''))),
       ...cols.map((c) => (isSysCol(c) ? sysCell(c, item) : fieldCell(db.fields.find((x) => x.name === c), item, c === cols[0] ? ' name-cell' : ''))),
       ...sysTail.map((n) => sysCell(n, item)),
       ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
@@ -7559,12 +7562,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (!f) continue;
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
       if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
-      td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
+      td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true, wraps: gridDensity(db) === 'spacious' })));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
     for (const td of tr.querySelectorAll(':scope > td.sys-cell')) td.replaceChildren(cellBox(sysValue(td.dataset.sys, item)));
     const listName = tr.querySelector(':scope > td.pid-cell .list-name');
-    if (listName && listName.textContent !== (item.name ?? '')) listName.textContent = item.name ?? '';
+    if (listName && listName.textContent !== (item.name ?? '')) {
+      listName.textContent = item.name ?? '';
+      listName.title = item.name ?? '';
+    }
     tr.classList.toggle('row-deleted', !!item.deleted);
   };
   const patchRows = async (fresh) => {
@@ -7603,8 +7609,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   const setDensity = (mode) => {
     if (!tbody?.isConnected) return saveGridDensity(db, mode);
     const { i: anchor, into } = topRow();
+    const wrapped = table.dataset.density === 'spacious';
     saveGridDensity(db, mode);
     table.dataset.density = mode;
+    if (wrapped !== (mode === 'spacious')) for (const item of ordered()) if (item && built.has(item.id)) repaintRow(built.get(item.id), item, null);
     rewindow();
     scrollToRow(anchor);
     for (let k = 0; k < 3; k++) {
@@ -8552,10 +8560,10 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
   const show = (r) => (r ? dc.formatDateRange(r, view) : '');
   const text = el('input', {
     class: 'form-control form-control-sm wv-edit inline-edit date-text range-text' + (compact ? '' : ' date-text-wide'),
-    value: show(current), placeholder,
+    value: show(current), placeholder, title: show(current) || null,
     onclick: (e) => e.stopPropagation(),
   });
-  const set = (r) => { current = r; text.value = show(current); onChange(current); };
+  const set = (r) => { current = r; text.value = show(current); text.title = text.value; onChange(current); };
   text.addEventListener('change', () => {
     const typed = text.value.trim();
     if (!typed) return set(null);

@@ -29,7 +29,7 @@ function paletteCreateRow(hit, i, onPick) {
     class: 'result cmdk-create', id: `cmdk-opt-${i}`, role: 'option', 'aria-selected': 'false', onclick: () => onPick(hit),
   },
   iconEl('lucide:plus', 'wv-icon cmdk-ic'),
-  el('span', { class: 'cmdk-text' }, hit.name));
+  el('span', { class: 'cmdk-text', title: hit.name }, hit.name));
 }
 
 function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null }) {
@@ -45,7 +45,7 @@ function paletteRow(hit, i, { needle, group, here, onPick, href, checked = null 
   },
   checked == null ? null : el('span', { class: 'cmdk-check', 'aria-hidden': 'true' }, iconEl('lucide:check', 'wv-icon')),
   paletteIcon(hit, group),
-  el('span', { class: 'cmdk-text' },
+  el('span', { class: 'cmdk-text', title: group === 'docs' ? `${P.displayName(hit)} ${P.excerpt(hit.snippet, needle)}` : P.displayName(hit) },
     el('span', { class: 'cmdk-name' }, ...marked(P.displayName(hit), needle)),
     group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
   foreign ? el('span', { class: 'cmdk-ws' }, hit.workspace) : null,
