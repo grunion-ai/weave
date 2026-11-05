@@ -3689,15 +3689,24 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       if (landed) await saved().catch((err) => toast(err.message, true));
     };
     const shown = ids.length ? String(val ?? `${ids.length}`) : '';
-    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' },
+    const files = (item.files ?? []).filter((x) => ids.includes(x.id));
+    const marks = [
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
-      shown ? el('span', { class: 'k-label' }, shown) : '—');
+      shown ? el('span', { class: 'k-label' }, shown) : '—',
+    ];
+    const viewable = files.filter(isViewableFile);
+    const chip = compact && viewable.length
+      ? el('a', {
+        class: 'k k-attach', title: shown || 'attachments', href: fileViewUrl(viewable[0]), target: '_blank',
+        dataset: { fileId: viewable[0].id },
+        onclick: (e) => { if (!plainClick(e)) return; e.preventDefault(); filePanel.open(viewable, 0); },
+      }, ...marks)
+      : el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' }, ...marks);
     chip.dropFiles = upload;
     if (compact) {
       if (ids.length === 1) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
       return chip;
     }
-    const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     const remove = (file) => el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
