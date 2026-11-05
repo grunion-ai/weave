@@ -1,1 +1,0 @@
-- Clicking an attachments cell in the grid opens its first viewable file in the file panel, the way a chip on the record already does; ⌘-click still opens the file in a browser tab. (Issue #1072)
