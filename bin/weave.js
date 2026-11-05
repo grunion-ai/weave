@@ -158,6 +158,7 @@ Schema
 Entities
   query <db> [--view name] [--group-by view] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
         [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
+        [--shape row]                         Lean list rows: id, publicId, name, fields and the raw a renderer reads
   get <ref> [--db name]               Read one entity ("Task#3" or id)
   create <db> <name> [--values '{json}'] [--doc 'markdown']
   update <ref> --values '{json}'
@@ -748,6 +749,7 @@ async function main() {
         select: flags.select ? String(flags.select).split(',').map((s) => s.trim()) : null,
         fields: flags.fields ? String(flags.fields).split(',').map((s) => s.trim()) : null,
         relations: flags.relations ? String(flags.relations) : 'full',
+        shape: flags.shape ? String(flags.shape) : 'full',
         sort: flags.sort ? [String(flags.sort)] : [],
         limit: flags.limit ? Number(flags.limit) : null,
         offset: flags.offset ? Number(flags.offset) : 0,
