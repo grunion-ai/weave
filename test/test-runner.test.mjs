@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { tmpdir, userInfo } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { RETRIES, argsFor, browserConcurrency, browserProblem, childEnv, lanes, run, testFiles } from '../scripts/test.mjs';
 import { tempDir } from './lib/temp.mjs';
@@ -211,4 +211,33 @@ test('npm test exits non-zero in seconds when the browser is missing (Issue #557
 
 test('an empty selection is refused instead of voting on nothing (Feature #236)', () => {
   assert.throws(() => run([]), /Empty test selection/);
+});
+
+test('a lane cannot fall through to the real ~/.weave keystore (Issue #949)', () => {
+  const dir = tempDir('weave-runner-home-');
+  const mark = join(dir, 'resolved.json');
+  const engine = pathToFileURL(join(ROOT, 'src/engine.js')).href;
+  const file = join(dir, 'keystore-default.test.mjs');
+  writeFileSync(file, `import test from 'node:test';
+import { writeFileSync } from 'node:fs';
+test('resolves the default keystore path', async () => {
+  const { Weave } = await import(${JSON.stringify(engine)});
+  writeFileSync(${JSON.stringify(mark)}, JSON.stringify({
+    keystore: new Weave().keystorePath,
+    data: process.env.WEAVE_DATA,
+  }));
+});
+`);
+  try {
+    const said = [];
+    const code = run([file], [], { out: (l) => said.push(l) });
+    assert.equal(code, 0, said.join('\n'));
+    const seen = JSON.parse(readFileSync(mark, 'utf8'));
+    const home = userInfo().homedir;
+    assert.ok(seen.keystore, 'the lane resolved a keystore path');
+    assert.ok(!seen.keystore.startsWith(home),
+      `a test that skips the keystore override wrote the developer's own keystore: ${seen.keystore}`);
+    assert.ok(seen.data && !seen.data.startsWith(home),
+      `a test that skips --data reached the developer's own workspace: ${seen.data}`);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
