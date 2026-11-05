@@ -12702,10 +12702,26 @@ function wireNavHold() {
     const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
     back?.focus();
   };
+  let holdFrame = null;
+  const holdAfterPaint = () => {
+    holdFrame = requestAnimationFrame(() => {
+      holdFrame = requestAnimationFrame(() => {
+        holdFrame = null;
+        if (!held && app.classList.contains('nav-peek') && narrowShell.matches) hold();
+      });
+    });
+  };
   new MutationObserver(() => {
     const open = app.classList.contains('nav-peek') && narrowShell.matches;
-    if (open && !held) hold();
-    else if (!open && held) release();
+    if (open) {
+      if (!held && holdFrame == null) holdAfterPaint();
+      return;
+    }
+    if (holdFrame != null) {
+      cancelAnimationFrame(holdFrame);
+      holdFrame = null;
+    }
+    if (held) release();
   }).observe(app, { attributes: true, attributeFilter: ['class'] });
   addEventListener('keydown', (e) => {
     if (!held || document.querySelector(NAV_KEY_OWNERS)) return;
