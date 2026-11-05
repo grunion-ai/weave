@@ -1,0 +1,1 @@
+- `test/feedback-budget.json` holds `phone-menu|phone` at 250 ms, down from 450. The main CI gate that set the old floor read 217, 259 and 373 ms; with the focus hold off the first frame it reads 147, 124 and 125 (Issue #1061).
