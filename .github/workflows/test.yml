@@ -27,6 +27,9 @@ jobs:
   plan:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -38,7 +41,28 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.12.0"
+      - name: Recorded durations from the last green main run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow tests --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId' || true)
+          if [ -n "$run" ]; then
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -p 'ci-*' -D ci-history || echo "run $run kept no readable shard results"
+          else
+            echo "no green main tests run to read durations from"
+          fi
+          echo "durations: $(find ci-history -name '*.json' 2>/dev/null | wc -l) shard results; every file without one is weighed by byte size"
+      - name: Hand the same durations to every job of this run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plan-history
+          path: ci-history/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
       - id: plan
+        env:
+          WEAVE_CI_HISTORY: ci-history
         run: echo "matrix=$(node scripts/ci-test.mjs plan)" >> "$GITHUB_OUTPUT"
 
   test:
@@ -46,6 +70,9 @@ jobs:
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       max-parallel: 6
@@ -83,10 +110,15 @@ jobs:
             fi
           done
           exit 1
+      - name: Durations the plan job used
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n plan-history -D ci-history || echo "this run recorded no durations; the plan weighed by byte size"
       - name: Run complete shard
         env:
           SHARD: ${{ matrix.id }}
           WEAVE_TEST_QUEUE_WAIT_MS: "60000"
+          WEAVE_CI_HISTORY: ci-history
         run: node scripts/ci-test.mjs run "$SHARD"
       - name: Retain execution evidence
         if: always()
@@ -103,6 +135,9 @@ jobs:
     needs: [plan, test]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Require every shard
         env:
@@ -121,7 +156,13 @@ jobs:
         with:
           pattern: ci-*
           path: ci-results
+      - name: Durations the plan job used
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n plan-history -D ci-history || echo "this run recorded no durations; the plan weighed by byte size"
       - name: Verify exact commit and complete executed coverage
+        env:
+          WEAVE_CI_HISTORY: ci-history
         run: node scripts/ci-test.mjs aggregate ci-results
 
   compatibility:

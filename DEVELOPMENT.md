@@ -91,7 +91,26 @@ to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
-The `tests` workflow runs the full inventory on every main push. Its final
+The `tests` workflow runs the full inventory on every main push. Its `plan` job
+downloads the `ci-results` artifacts of the most recent successful main run and
+weights each test file by the `duration_ms` the reporter recorded for it, so the
+four browser shards balance on measured runtime; a file with no recorded
+duration keeps the byte-size weight, and a run with no usable history (expired
+artifacts, a first run, a download failure) plans entirely by byte size. Byte
+size is anti-correlated with runtime for the worst offenders, because the
+slowest browser files are small files that loop:
+`test/render-budget-browser.test.mjs` is 1,682 bytes and ran 164 seconds in run
+41959983156, where `test/setup-flows-browser.test.mjs` is 52,749 bytes and ran
+119. On that run's inventory the byte-weighted plan gave the browser shards
+1,171, 1,107, 1,939 and 1,622 seconds of work; the duration-weighted plan gives
+them 1,460 each (Issue #966). The shards and the `CI gate` rebuild the same
+manifest from the same weights: the plan job publishes what it downloaded as
+the run's `plan-history` artifact and both take their copy from there, so a
+divergence can only come from a failed download, and `aggregate` then refuses
+the shard whose `manifest` digest does not match rather than passing a plan
+nobody ran. Every step that reaches for the durations tolerates their absence in
+the shell rather than through `continue-on-error`, which a killed step never
+reaches. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
 only publish a main commit whose `CI gate` succeeded. Browser engines are installed on
 the browser lanes only, in both workflows: a unit shard opens no browser, and the
