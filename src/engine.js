@@ -229,6 +229,22 @@ export const SYSTEM_SORT_KEYS = {
 };
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
+export const QUERY_SHAPES = ['full', 'row'];
+
+export function leanRow(row) {
+  const raw = {};
+  for (const [name, value] of Object.entries(row.raw ?? {})) {
+    if (value !== row.fields?.[name]) raw[name] = value;
+  }
+  return {
+    id: row.id,
+    publicId: row.publicId,
+    name: row.name,
+    fields: row.fields,
+    raw,
+    ...(row.deletedAt ? { deletedAt: row.deletedAt } : {}),
+  };
+}
 export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
@@ -8130,7 +8146,7 @@ export class Weave {
     return this.#framed(() => this.#queryIn(dbRef, opts, workspace));
   }
 
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null, shape = 'full' } = {}, workspace = null) {
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
@@ -8150,6 +8166,7 @@ export class Weave {
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
     if (fields && select) throw new WeaveError('Ask for select or fields, not both: select is a flat projection, fields cuts the entity', 'invalid');
     if (relations != null && relations !== 'full' && relations !== 'chip') throw new WeaveError(`relations must be 'full' or 'chip' (got '${relations}')`, 'invalid');
+    if (!QUERY_SHAPES.includes(shape ?? 'full')) throw new WeaveError(`shape must be 'full' or 'row' (got '${shape}')`, 'invalid');
     const pick = fields && { ids: new Set() };
     for (const name of fields ?? []) {
       const f = this.findField(db, name);
@@ -8213,7 +8230,10 @@ export class Weave {
     rows = rows.slice(offset, limit == null || limit < 0 ? undefined : offset + limit);
     const nextOffset = rows.length && offset + rows.length < total ? offset + rows.length : null;
     const items = rows.map((e) => {
-      if (!select) return this.#readEntityIn(e.id, { pick, chips });
+      if (!select) {
+        const row = this.#readEntityIn(e.id, { pick, chips });
+        return shape === 'row' ? leanRow(row) : row;
+      }
       const out = { id: e.id, publicId: e.publicId, name: this.entityName(e) };
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
