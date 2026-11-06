@@ -176,7 +176,8 @@ if (s) {
         assert.equal(r.nameShown, false, 'the phone name line stays hidden');
       }
       await page.click('#main tbody tr.entity-row >> nth=0 >> td.name-cell');
-      assert.equal(await page.evaluate(() => document.activeElement?.closest?.('td.name-cell') ? document.activeElement.tagName : null), 'INPUT', 'a click on a name cell edits it');
+      const editor = await page.evaluate(() => document.activeElement?.closest?.('td.name-cell') ? document.activeElement.tagName : null);
+      assert.ok(['INPUT', 'TEXTAREA'].includes(editor), `a click on a name cell edits it (${editor}; a clipped name opens the spill textarea, Issue #1367)`);
     } finally { await page.close(); }
   });
 }
