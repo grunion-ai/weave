@@ -6,6 +6,7 @@
 }
 :root, [data-bs-theme="light"] {
   --wv-canvas: #eceff3;
+  --wv-edit-ring: #4493dd;
   --wv-canvas-muted: #5f6474;
   --wv-held-bg: #d5d8de;
   --wv-held-ink: #4b5060;
@@ -43,6 +44,7 @@
   --wv-glass-shadow: 0 6px 20px rgba(17, 24, 39, .12), inset 0 1px 0 rgba(255, 255, 255, .8);
 }
 [data-bs-theme="dark"] {
+  --wv-edit-ring: #5985c8;
   --wv-canvas: #0f1115;
   --tblr-danger: #ff8787;
   --tblr-danger-rgb: 255, 135, 135;
@@ -249,10 +251,10 @@ body.nav-resizing { cursor: col-resize; user-select: none; }
 html.view-header-loose #main > .view-header { position: static; }
 #main > .view-header :is(.view-desc-body:not(.clamped), .view-desc-edit) { max-height: max(20vh, calc(5 * 1.45em)); overflow-y: auto; }
 .view-header .crumb { margin-bottom: 12px; }
-.wv-edit { padding: var(--wv-edit-pad); font-size: var(--wv-edit-fs); border: 1px solid transparent; border-radius: 6px; background-color: transparent; box-shadow: none; outline: none; }
+.wv-edit { padding: var(--wv-edit-pad); font-size: var(--wv-edit-fs); border: 1px solid transparent; border-radius: 8px; background-color: transparent; box-shadow: none; outline: none; }
 .wv-edit:not([readonly], [disabled], :focus):hover { border-color: var(--tblr-border-color); }
 .wv-edit:placeholder-shown { min-width: 8ch; }
-.wv-edit:focus, .wv-edit:focus-visible { border-color: transparent; background-color: var(--tblr-bg-surface); box-shadow: inset 0 0 0 1.5px var(--tblr-primary); outline: none !important; }
+.wv-edit:focus, .wv-edit:focus-visible { border-color: transparent; background-color: var(--tblr-bg-surface); box-shadow: inset 0 0 0 2px var(--wv-edit-ring); outline: none !important; }
 .view-title-row { margin-bottom: 0; }
 .view-title-h { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
 .title-edit { font-weight: 700; font-family: var(--tblr-font-sans-serif); color: var(--tblr-body-color); min-width: 0; flex: 1; }
@@ -441,7 +443,11 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid td.cell-computed { background: none; color: var(--tblr-secondary); cursor: default; }
 .wv-grid td.cell-computed:where([data-ftype="formula"], [data-ftype="rollup"], [data-ftype="lookup"]) { background: var(--wv-computed-bg); }
 .wv-grid .inline-edit:not(:focus):hover { border-color: transparent; background: none; }
-.wv-grid tbody td[tabindex]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--tblr-primary); border-radius: 4px; }
+.wv-grid tbody td[tabindex]:focus { outline: none; box-shadow: inset 0 0 0 2px var(--wv-edit-ring); border-radius: 8px; }
+@media (min-width: 601px) {
+  .wv-grid tbody .wv-cb > input.inline-edit:focus { --wv-edit-pad: 5px 8px; margin: -4px; width: calc(100% + 8px); max-width: none; }
+  .wv-grid tbody .wv-cb:has(> input.inline-edit:focus) { overflow: visible; }
+}
 .wv-grid tbody td[tabindex]:hover .inline-edit:not(:focus) { border-color: var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .wv-grid tbody td[tabindex]:hover .chip-trigger { border-color: var(--tblr-border-color); }
 
@@ -748,7 +754,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-fields .k-computed { white-space: normal; min-width: 0; max-width: 100%; align-items: baseline; }
 .entity-fields .fieldrow .inline-edit { --wv-edit-pad: 2px 6px; --wv-edit-fs: var(--fs-secondary); }
 .entity-fields .fieldrow > input.inline-edit, .entity-fields .fieldrow > select.inline-edit { width: min(100%, 360px); min-height: 26px; margin-left: -7px; }
-.entity-fields .fieldrow > .text-dressed { width: min(100%, 360px); margin-left: -7px; padding: 2px 6px; font-size: var(--fs-secondary); }
+.entity-fields .fieldrow > input.inline-edit:focus { width: min(calc(100% + 8px), 368px); margin: -4px -4px -4px -11px; --wv-edit-pad: 6px 10px; }
+.entity-fields .fieldrow > .text-dressed { width: min(100%, 360px); min-height: 26px; margin-left: -7px; padding: 2px 6px; font-size: var(--fs-secondary); line-height: 20px; }
 .entity-fields .fieldrow > .picker-wrap { width: min(100%, 360px); }
 .entity-body > [data-block] { border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
 .block-head { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; cursor: grab; }
