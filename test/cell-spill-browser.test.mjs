@@ -189,8 +189,8 @@ if (s) {
       box: { top: e.top, left: e.left, right: e.right, width: e.width, height: e.height },
       edge, scrolls: a.scrollHeight > a.clientHeight + 1,
       lines: Math.round((a.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / parseFloat(cs.lineHeight)),
-      border: cs.borderTopColor, accent: getComputedStyle(document.documentElement).getPropertyValue('--tblr-primary-rgb'),
       caret: [a.selectionStart, a.selectionEnd],
+      textLeft: e.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft),
     };
   }, gridEdge.toString());
 
@@ -198,12 +198,20 @@ if (s) {
     const page = await grid({ width: 640 });
     try {
       const cell = await tag(page, 3);
+      const rest = await page.evaluate(() => {
+        const i = document.querySelector('[data-t="cell"] input.inline-edit');
+        const r = i.getBoundingClientRect();
+        const cs = getComputedStyle(i);
+        return { left: r.left, top: r.top, textLeft: r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft) };
+      });
       await cell.click({ position: { x: 30, y: 10 } });
       const got = await readEditor(page);
       assert.equal(got.tag, 'TEXTAREA', 'the editor is a textarea, so it can wrap');
       assert.equal(got.inCell, true, 'and it lives in the cell, so the cell keys still apply');
-      assert.ok(Math.abs(got.box.top - got.cell.top) <= 1, `anchored on the cell's top (${got.box.top} vs ${got.cell.top})`);
-      assert.ok(Math.abs(got.box.left - got.cell.left) <= 1, `and its left (${got.box.left} vs ${got.cell.left})`);
+      assert.ok(Math.abs(got.box.top - (rest.top - 4)) <= 1, `anchored where the roomy editor opens, 4px above the value (${got.box.top} vs ${rest.top})`);
+      assert.ok(Math.abs(got.box.left - (rest.left - 4)) <= 1, `and 4px left of it (${got.box.left} vs ${rest.left})`);
+      assert.ok(Math.abs(got.textLeft - rest.textLeft) <= 1, `the value does not move (${got.textLeft} vs ${rest.textLeft})`);
+      assert.ok(got.box.left >= got.cell.left && got.box.top >= got.cell.top, 'inside the cell, from its own top-left corner');
       assert.ok(got.box.width > got.cell.width + 20, `wider than the cell (${got.box.width} vs ${got.cell.width})`);
       assert.ok(Math.abs(got.box.right - got.edge) <= 1, `capped at the grid edge (${got.box.right} vs ${got.edge})`);
       assert.ok(got.lines >= 2, `the rest wraps downward (${got.lines} lines)`);

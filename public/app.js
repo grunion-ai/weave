@@ -2352,7 +2352,6 @@ function hideCellPop(wrap) {
 }
 
 function spillEditor(td, input) {
-  const r = td.getBoundingClientRect();
   const at = input.getBoundingClientRect();
   const cs = getComputedStyle(input);
   const ta = el('textarea', { class: `${input.className} cell-spill-edit`, rows: 1, spellcheck: 'false' });
@@ -2361,20 +2360,23 @@ function spillEditor(td, input) {
   ta.tabIndex = input.tabIndex;
   copyCellType(input, ta);
   const px = (v) => parseFloat(v) || 0;
-  ta.style.paddingLeft = `${at.left - r.left + px(cs.paddingLeft)}px`;
-  ta.style.paddingRight = `${r.right - at.right + px(cs.paddingRight)}px`;
-  ta.style.paddingTop = `${at.top - r.top + px(cs.paddingTop) + (at.height - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.lineHeight)) / 2}px`;
-  ta.style.paddingBottom = ta.style.paddingTop;
+  const middle = (at.height - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.lineHeight)) / 2;
+  ta.style.paddingLeft = cs.paddingLeft;
+  ta.style.paddingRight = cs.paddingRight;
+  ta.style.paddingTop = `${px(cs.paddingTop) + middle}px`;
+  ta.style.paddingBottom = `${px(cs.paddingBottom) + middle}px`;
   const edges = px(cs.borderLeftWidth) + px(cs.borderRightWidth);
+  const rims = px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+  const padRight = px(cs.paddingRight);
   const fit = () => {
-    const cell = td.getBoundingClientRect();
+    const box = ta.getBoundingClientRect();
     ta.style.whiteSpace = 'pre';
     ta.style.width = '0px';
     ta.style.height = 'auto';
-    const text = ta.scrollWidth + px(ta.style.paddingRight) + edges + 1;
+    const text = ta.scrollWidth + padRight + edges + 1;
     ta.style.whiteSpace = '';
-    ta.style.width = `${Math.min(Math.max(cell.width, text), Math.max(cell.width, gridRightEdge(td) - cell.left))}px`;
-    ta.style.height = `${Math.max(cell.height, ta.scrollHeight + px(cs.borderTopWidth) + px(cs.borderBottomWidth))}px`;
+    ta.style.width = `${Math.min(Math.max(at.width, text), Math.max(at.width, gridRightEdge(td) - box.left))}px`;
+    ta.style.height = `${Math.max(at.height, ta.scrollHeight + rims)}px`;
     const short = ta.scrollHeight - ta.clientHeight;
     if (short > 0) ta.style.height = `${px(ta.style.height) + short}px`;
   };
@@ -2382,8 +2384,8 @@ function spillEditor(td, input) {
   td.classList.add('cell-spill');
   input.replaceWith(ta);
   const placed = ta.getBoundingClientRect();
-  ta.style.left = `${r.left - placed.left}px`;
-  ta.style.top = `${r.top - placed.top}px`;
+  ta.style.left = `${at.left - placed.left}px`;
+  ta.style.top = `${at.top - placed.top}px`;
   ta.focus({ preventScroll: true });
   try { ta.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? 'none'); } catch {}
   fit();
