@@ -1465,7 +1465,7 @@ Actions run in order. A rule needs at least one.
 | \`set-field\` | a value onto the firing row, a workflow field's state included |
 | \`append-doc\` | text at the end of a document field |
 | \`add-comment\` | a comment on the firing row |
-| \`webhook\` | a POST to an http(s) url |
+| \`webhook\` | a POST to an http(s) url, signed when the rule names a credential |
 | \`upsert-row\` | a row of another table, matched on a key |
 
 \`upsert-row\` is the one that writes somewhere else:
@@ -1502,6 +1502,37 @@ A \`webhook\` action POSTs to an \`http(s)\` url. The url is validated when the 
 Before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, and it follows no redirect. A refusal, a non-2xx answer, no answer within 5 seconds, or a connection that cannot be made marks the rule \`Failed\` with the reason in \`Health Reason\`. The write that fired it still lands.
 
 Set \`WEAVE_WEBHOOK_ALLOW_PRIVATE=1\` on an instance whose webhooks land on its own network, such as a Railway private service or a VPS sidecar, and the private ranges are allowed. A redirect stays refused either way. A \`weave_build\` dry run drops webhook actions, so a trial never posts.
+
+### Signing a delivery
+
+Add \`signWith\` to the action and the delivery is signed, so a receiver can tell weave from anyone else:
+
+\`\`\`json
+{ "type": "webhook", "url": "https://hooks.example.com/weave", "signWith": "hooks-example" }
+\`\`\`
+
+\`signWith\` is the NAME of a credential in the keystore (\`weave key set hooks-example\`), never the value: the Script, the Workflows row, the export and the backup hold the name alone. Three headers ride along:
+
+| Header | Value |
+| --- | --- |
+| \`X-Weave-Timestamp\` | the delivery clock, unix seconds |
+| \`X-Weave-Delivery\` | a uuid, new for each delivery |
+| \`X-Weave-Signature\` | \`sha256=\` and the hex HMAC-SHA256 of \`<timestamp>.<raw body>\` under the credential |
+
+The receiver recomputes it over the bytes it read, before any JSON parse, and compares in constant time:
+
+\`\`\`js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const ts = req.headers['x-weave-timestamp'];
+const hex = createHmac('sha256', process.env.WEAVE_HOOK_SECRET).update(ts + '.' + raw).digest('hex');
+const mine = Buffer.from('sha256=' + hex);
+const theirs = Buffer.from(req.headers['x-weave-signature'] ?? '');
+const ok = mine.length === theirs.length && timingSafeEqual(mine, theirs);
+if (!ok || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return reject();
+\`\`\`
+
+Refuse a timestamp older than your replay window and remember the \`X-Weave-Delivery\` ids you have already handled. A rule that names no credential posts exactly what it posted before, with \`Content-Type\` as its only header. A rule whose credential the keystore does not hold sends nothing and reads \`Failed\`: weave never falls back to an unsigned delivery.
 
 ## A worked example
 
