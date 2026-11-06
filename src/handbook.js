@@ -748,6 +748,8 @@ Files on a row. Bytes live in the workspace's sibling \`files/\` directory; the 
 
 Every path takes a file of up to 10 MB: the field in the browser, the REST attach routes, \`weave attach\` and MCP. A larger file is refused by name, with the limit in the message.
 
+An upload that fails stays in the field as a tile carrying the reason, a Retry button that sends the same file again and a Dismiss button that drops it. The file input empties after every attempt, so the same file can be picked again.
+
 \`\`\`bash
 weave field add Task Files attachments
 weave field add Person Headshot attachments --config '{"multiple":false,"preview":"cover"}'

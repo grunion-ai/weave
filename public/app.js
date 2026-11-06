@@ -57,6 +57,7 @@ function noteSchemaVersion(version, isRead) {
 }
 
 const FILE_MAX_BYTES = 10 * 1024 * 1024;
+const attachFailures = new Map();
 const fileTooBig = (file) => file && file.size > FILE_MAX_BYTES
   ? `${file.name} is ${fileSizeText(file.size)}; files can be up to ${fileSizeText(FILE_MAX_BYTES)}`
   : null;
@@ -3770,15 +3771,28 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'avatar') return avatarControl(item, f, { compact, saved, patch });
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    const upload = async (files) => {
+    const failKey = `${id}\u0000${f.name}`;
+    const keepFailures = (left) => {
+      if (left.length) attachFailures.set(failKey, left); else attachFailures.delete(failKey);
+    };
+    const upload = async (files, { retrying = null } = {}) => {
       let landed = 0;
-      try {
-        for (const file of files) {
+      const left = (attachFailures.get(failKey) ?? []).filter((x) => x !== retrying);
+      for (const file of files) {
+        try {
           await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file));
           landed += 1;
+        } catch (err) {
+          if (!compact) {
+            const seen = left.findIndex((x) => x.file.name === file.name);
+            if (seen >= 0) left.splice(seen, 1);
+            left.push({ file, reason: err.message });
+          }
+          toast(err.message, true);
         }
-      } catch (err) { toast(err.message, true); }
-      if (landed) await saved().catch((err) => toast(err.message, true));
+      }
+      if (!compact) keepFailures(left);
+      if (landed || !compact) await saved().catch((err) => toast(err.message, true));
     };
     const shown = ids.length ? String(val ?? `${ids.length}`) : '';
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
@@ -3804,6 +3818,22 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
+    const failedTileEl = (entry) => el('span', { class: 'attach-item is-failed', title: `${entry.file.name}: ${entry.reason}` },
+      el('span', { class: 'attach-fail-name' }, entry.file.name),
+      el('span', { class: 'attach-fail-why' }, entry.reason),
+      el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${entry.file.name}`,
+        onclick: (e) => { e.preventDefault(); e.stopPropagation(); upload([entry.file], { retrying: entry }); },
+      }, 'Retry'),
+      el('button', {
+        class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${entry.file.name}`,
+        onclick: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          keepFailures((attachFailures.get(failKey) ?? []).filter((x) => x !== entry));
+          saved().catch((err) => toast(err.message, true));
+        },
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
@@ -3817,10 +3847,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
     box.append(chips);
+    for (const entry of attachFailures.get(failKey) ?? []) chips.append(failedTileEl(entry));
     const input = el('input', { type: 'file', style: 'display:none' });
-    input.addEventListener('change', () => {
+    input.addEventListener('change', async () => {
       const file = input.files?.[0];
-      if (file) upload([file]);
+      if (!file) return;
+      try { await upload([file]); } finally { input.value = ''; }
     });
     chips.append(input, el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',

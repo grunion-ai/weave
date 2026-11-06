@@ -1486,7 +1486,8 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .entity-cover.fit-fill.size-small img { height: 140px; }
 .entity-cover.fit-fill.size-large img { height: 320px; }
 .fsv-nav { display: inline-flex; gap: 4px; } .attach-item { display: inline-flex; align-items: center; gap: 1px; font-size: var(--fs-grid); background: var(--tblr-bg-surface-secondary); border-radius: 5px; padding: 1px 3px 1px 7px; }
-.attach-item.is-missing { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
+.attach-item.is-missing, .attach-item.is-failed { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
+.attach-item.is-failed { color: var(--tblr-danger); }
 .wv-grid td.is-file-drop, .wv-grid[data-density] tbody tr.entity-row > td.is-file-drop, .attach-box.is-file-drop {
   box-shadow: inset 0 0 0 2px var(--tblr-primary);
   background: rgba(var(--tblr-primary-rgb), .08);
