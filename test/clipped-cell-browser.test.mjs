@@ -55,7 +55,7 @@ if (s) {
           const td = [...document.querySelectorAll('.wv-grid tbody td.name-cell.clipped')][0];
           if (!td) return null;
           td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 600));
           const pop = document.querySelector('.cell-pop');
           if (!pop) return { pop: false };
           return {
@@ -72,9 +72,9 @@ if (s) {
         assert.ok(shown.text.includes('at the same time'),
           `the copy holds the end of the value (${shown.text})`);
         assert.ok(shown.hidden <= 1, `and hides none of it (${shown.hidden}px overflowing)`);
-        assert.equal(shown.boxed, false, 'the value reads as text — a control could neither wrap nor grow');
-        assert.ok(shown.popHeight > shown.cellHeight,
-          `so it wraps onto lines the row had no room for (${shown.popHeight} vs ${shown.cellHeight})`);
+        assert.equal(shown.boxed, false, 'the value reads as text, not a second control');
+        assert.ok(Math.abs(shown.popHeight - shown.cellHeight) <= 1,
+          `it spills right on the row's one line instead of wrapping (${shown.popHeight} vs ${shown.cellHeight})`);
       } finally { await page.close(); }
     });
   }

@@ -467,6 +467,19 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
   border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius);
   box-shadow: var(--tblr-box-shadow); pointer-events: none;
 }
+.cell-pop.cell-spill-pop {
+  box-sizing: border-box; display: flex; align-items: center; white-space: nowrap; overflow: hidden;
+  border: 0; border-radius: 0; box-shadow: 4px 0 10px -6px rgba(var(--tblr-body-color-rgb), .35);
+}
+.cell-spill-pop .wv-cb { flex: none; }
+.cell-spill-pop.cell-pop-cut { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.wv-grid tbody td.cell-spill { position: relative; z-index: 7; overflow: visible; }
+.wv-grid tbody td.cell-spill > .wv-cb { overflow: visible; }
+.wv-grid tbody td.cell-spill > .wv-fill-handle { display: none; }
+.wv-grid tbody td.cell-spill textarea.cell-spill-edit {
+  position: absolute; top: 0; left: 0; max-width: none; min-width: 0; min-height: 0;
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden; resize: none;
+}
 .cell-pop .inline-edit { border-color: transparent; background: none; width: auto; }
 .cell-pop .wv-cb { height: auto; overflow: visible; display: block; }
 .cell-pop .ms-box { flex-wrap: wrap; white-space: normal; }
