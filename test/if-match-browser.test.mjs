@@ -13,16 +13,18 @@ const s = await launch('a stale cell commit is refused and repainted', (weave) =
 if (s) {
   const { base, browser, weave } = s;
   const cell = () => `tr[data-eid="${row.id}"] td[data-field="Stage"] input`;
+  const rest = () => `tr[data-eid="${row.id}"] td[data-field="Stage"] .text-dressed`;
   const open = async () => {
     const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     const page = await context.newPage();
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(cell());
+    await page.waitForSelector(rest());
     return { context, page };
   };
   const patched = (page) => page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
   const commit = async (page, text) => {
     const landed = patched(page);
+    await page.click(rest());
     await page.fill(cell(), text);
     await page.keyboard.press('Tab');
     return landed;
@@ -42,7 +44,7 @@ if (s) {
       const second = await commit(bob.page, 'Lost');
       assert.equal(second.status(), 412, 'the stale commit is refused');
       assert.equal(stage(), 'Won', 'and wrote nothing');
-      await bob.page.waitForFunction((sel) => document.querySelector(sel)?.value === 'Won', cell());
+      await bob.page.waitForFunction((sel) => document.querySelector(sel)?.textContent === 'Won', rest());
       const note = bob.page.locator('#wv-toasts .wv-toast.err');
       await note.waitFor();
       await settled(note);
@@ -55,7 +57,7 @@ if (s) {
       await note.locator('.wv-toast-action', { hasText: 'Use mine' }).click();
       assert.equal((await retried).status(), 200, 'the kept value commits on purpose from the fresh revision');
       assert.equal(stage(), 'Lost');
-      await bob.page.waitForFunction((sel) => document.querySelector(sel)?.value === 'Lost', cell());
+      await bob.page.waitForFunction((sel) => document.querySelector(sel)?.textContent === 'Lost', rest());
     } finally {
       await alice.context.close();
       await bob.context.close();
@@ -67,13 +69,16 @@ if (s) {
     const { context, page } = await open();
     try {
       await context.setOffline(true);
+      await page.click(rest());
       await page.fill(cell(), 'Typed offline');
       await page.keyboard.press('Tab');
       const note = page.locator('#wv-toasts .wv-toast.err');
       await note.waitFor();
       await settled(note);
       assert.match(await note.locator('.wv-toast-msg').textContent(), /Stage was not saved: could not reach the server/);
-      assert.equal(await page.inputValue(cell()), 'Typed offline', 'the typed text is still there to retry');
+      assert.equal(await page.textContent(rest()), 'Typed offline', 'the typed text is still there to retry');
+      await page.click(rest());
+      assert.equal(await page.inputValue(cell()), 'Typed offline', 'and reopens for the retry');
       assert.equal(stage(), 'Lead', 'nothing reached the row');
       await context.setOffline(false);
     } finally { await context.close(); }

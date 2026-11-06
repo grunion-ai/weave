@@ -9,6 +9,7 @@ const el = (tag, attrs = {}, ...children) => {
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
+  if ((tag === 'input' || tag === 'textarea') && !node.hasAttribute('autocomplete')) node.setAttribute('autocomplete', 'off');
   for (const c of children.flat()) {
     if (c == null) continue;
     node.append(c.nodeType ? c : document.createTextNode(c));
@@ -460,7 +461,7 @@ function externalLinksOpenInTabs(e) {
 }
 addEventListener('click', externalLinksOpenInTabs, true);
 
-const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable]';
+const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable], .text-dressed';
 function openNativeClick(e) {
   if (!nativeClick(e)) return;
   if (e.target?.closest?.(NATIVE_CLICK_KEEPS)) return;
@@ -1958,7 +1959,7 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   return pop;
 }
 const PHONE_SHORT_LIST = 8;
-const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
+const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 118 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -2238,12 +2239,13 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
   const step = () => {
     if (turn !== newRowTurn || frames-- <= 0 || (placed && grace-- <= 0)) return;
     const row = document.querySelector(`${scope} tr[data-eid="${eid}"]`);
-    const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
-      || row?.querySelector('td input:not([type="checkbox"])');
-    if (input && (!placed || document.activeElement === document.body)) {
+    const face = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] :is(input, .text-dressed)`))
+      || row?.querySelector('td :is(input:not([type="checkbox"]), .text-dressed)');
+    if (face && (!placed || document.activeElement === document.body)) {
       scrollTargetIntoView(row, { block: 'nearest', instant: true, padding: stuckHeaderHeight(row), bottom: stickyFootHeight(row) });
-      activateCell(input.closest('td'));
-      if (select) input.select();
+      const td = face.closest('td');
+      activateCell(td);
+      if (select) td.querySelector('input')?.select();
       if (!placed) {
         for (const ev of ['keydown', 'pointerdown']) document.addEventListener(ev, done, { once: true, capture: true });
       }
@@ -2274,13 +2276,23 @@ function contentRect(node) {
   const r = range.getBoundingClientRect();
   return r.width || r.height ? r : node.getBoundingClientRect();
 }
-const CELL_POP_DELAY = 180;
+const CELL_POP_DELAY = 400;
+const SPILL_TYPES = ['text'];
+const spillsRight = (td) => SPILL_TYPES.includes(td.dataset.ftype);
+function gridRightEdge(td) {
+  const wrap = td.closest('.table-wrap');
+  const w = wrap.getBoundingClientRect();
+  const view = w.left + wrap.clientLeft + wrap.clientWidth;
+  const grid = td.closest('.wv-grid')?.getBoundingClientRect();
+  return grid ? Math.min(view, grid.right) : view;
+}
 function showCellPop(td, wrap) {
   const layer = cellPopLayer(wrap);
   const base = wrap.getBoundingClientRect();
   const r = td.getBoundingClientRect();
   const left = r.left - base.left + wrap.scrollLeft;
   const top = r.top - base.top + wrap.scrollTop;
+  const spill = spillsRight(td);
   const pop = el('div', {
     class: 'cell-pop',
     style: `left:${left}px; top:${top}px; min-width:${r.width}px;`,
@@ -2308,6 +2320,16 @@ function showCellPop(td, wrap) {
     text.style.borderStyle = 'solid';
     copy.replaceWith(text);
   });
+  if (spill) {
+    pop.classList.add('cell-spill-pop');
+    const tdStyle = getComputedStyle(td);
+    for (const prop of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) pop.style[prop] = tdStyle[prop];
+    pop.style.height = `${r.height}px`;
+    pop.style.maxWidth = `${Math.max(r.width, gridRightEdge(td) - r.left)}px`;
+    layer.replaceChildren(pop);
+    pop.classList.toggle('cell-pop-cut', overflowsX(pop));
+    return;
+  }
   layer.replaceChildren(pop);
   const want = contentRect(td);
   const got = contentRect(pop);
@@ -2328,6 +2350,57 @@ function cellIsEditing(td) {
 
 function hideCellPop(wrap) {
   wrap.querySelector(':scope > .cell-pop-layer')?.replaceChildren();
+}
+
+function spillEditor(td, input) {
+  const at = input.getBoundingClientRect();
+  const cs = getComputedStyle(input);
+  const ta = el('textarea', { class: `${input.className} cell-spill-edit`, rows: 1, spellcheck: 'false' });
+  ta.defaultValue = input.defaultValue;
+  ta.value = input.value;
+  ta.tabIndex = input.tabIndex;
+  copyCellType(input, ta);
+  const px = (v) => parseFloat(v) || 0;
+  const middle = (at.height - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.lineHeight)) / 2;
+  ta.style.paddingLeft = cs.paddingLeft;
+  ta.style.paddingRight = cs.paddingRight;
+  ta.style.paddingTop = `${px(cs.paddingTop) + middle}px`;
+  ta.style.paddingBottom = `${px(cs.paddingBottom) + middle}px`;
+  const edges = px(cs.borderLeftWidth) + px(cs.borderRightWidth);
+  const rims = px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+  const padRight = px(cs.paddingRight);
+  const fit = () => {
+    const box = ta.getBoundingClientRect();
+    ta.style.whiteSpace = 'pre';
+    ta.style.width = '0px';
+    ta.style.height = 'auto';
+    const text = ta.scrollWidth + padRight + edges + 1;
+    ta.style.whiteSpace = '';
+    ta.style.width = `${Math.min(Math.max(at.width, text), Math.max(at.width, gridRightEdge(td) - box.left))}px`;
+    ta.style.height = `${Math.max(at.height, ta.scrollHeight + rims)}px`;
+    const short = ta.scrollHeight - ta.clientHeight;
+    if (short > 0) ta.style.height = `${px(ta.style.height) + short}px`;
+  };
+  const { selectionStart, selectionEnd, selectionDirection } = input;
+  td.classList.add('cell-spill');
+  input.replaceWith(ta);
+  const placed = ta.getBoundingClientRect();
+  ta.style.left = `${at.left - placed.left}px`;
+  ta.style.top = `${at.top - placed.top}px`;
+  ta.focus({ preventScroll: true });
+  try { ta.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? 'none'); } catch {}
+  fit();
+  ta.addEventListener('input', fit);
+  ta.addEventListener('blur', () => {
+    td.classList.remove('cell-spill');
+    if (!ta.isConnected) return;
+    const was = input.value;
+    input.value = ta.value;
+    ta.replaceWith(input);
+    if (input.value !== was) input.dispatchEvent(new Event('change'));
+    input.dispatchEvent(new FocusEvent('blur'));
+  });
+  return ta;
 }
 
 const overflowsX = (n) => n.scrollWidth > n.clientWidth + 1;
@@ -2405,7 +2478,6 @@ function phoneLeadEl(f, item) {
 }
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  const wrap = grid.dataset.phoneWrap != null;
   for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
     const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
     for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
@@ -2420,13 +2492,14 @@ function fitPhoneChipLines(grid) {
       cut[0].dataset.more = `+${cut.length}`;
       continue;
     }
-    const top = shown[0].getBoundingClientRect().top;
     const box = tr.getBoundingClientRect();
-    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    const trStyle = getComputedStyle(tr);
+    const edge = box.right - (parseFloat(trStyle.paddingRight) || 0);
+    const floor = box.bottom - (parseFloat(trStyle.borderBottomWidth) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
+      return r.bottom <= floor + 0.5 && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
     const hidden = cut.length + shown.length - n;
@@ -2451,8 +2524,9 @@ function markClippedCells(grid) {
     else if (chip.dataset.fieldTitle) chip.title = chip.dataset.fieldTitle;
     else chip.removeAttribute('title');
   }
+  const lines = parseInt(getComputedStyle(grid).getPropertyValue('--wv-lines'), 10) || 1;
   for (const td of grid.querySelectorAll('tbody td')) {
-    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > (grid.dataset.density === 'spacious' ? 2 : 1);
+    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > lines;
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
     const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
     const boxCut = !!cb && (overflowsX(cb) || overflowsY(cb)
@@ -2911,13 +2985,19 @@ function dressTokens(into, tokens) {
 }
 
 function dressedText(md, input, { literal = false } = {}) {
-  const tokens = literal ? [{ text: md }] : globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
-  const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
-  dressTokens(dressed, tokens);
+  const dressed = el('span', { class: 'text-dressed', tabindex: 0 });
+  let shown = null;
+  const show = (text) => {
+    const tokens = literal ? [{ text }] : globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept);
+    dressed.title = tokens.map((t) => t.text).join('');
+    dressTokens(dressed, tokens);
+    shown = text;
+  };
+  show(md);
   const open = () => {
     dressed.replaceWith(input);
-    input.focus();
     input.select();
+    if (input.isConnected) input.focus();
   };
   dressed.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2933,7 +3013,11 @@ function dressedText(md, input, { literal = false } = {}) {
     if (typed) document.execCommand('insertText', false, e.key);
   });
   dressed.wvEditor = input;
-  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+  input.addEventListener('blur', () => queueMicrotask(() => {
+    if (!input.isConnected || input === document.activeElement) return;
+    if (input.value !== shown) { dressed.replaceChildren(); show(input.value); }
+    input.replaceWith(dressed);
+  }));
   return dressed;
 }
 
@@ -3791,12 +3875,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
-  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
+  if (typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 
+const DOC_PREVIEW_LINES = 4;
 function docPreviewCell(md, name, onOpen) {
-  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
+  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: DOC_PREVIEW_LINES });
   const box = el('span', {
     class: 'doc-preview' + (kind ? '' : ' is-empty'),
     tabindex: 0,
@@ -7774,7 +7859,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         return true;
       }
       case 'caret': {
-        if (at.tagName !== 'INPUT' || typeof at.value !== 'string') return false;
+        if (!['INPUT', 'TEXTAREA'].includes(at.tagName) || typeof at.value !== 'string') return false;
         const to = verb.to === 'end' ? at.value.length : 0;
         try { at.setSelectionRange(to, to); } catch { return false; }
         return true;
@@ -8036,7 +8121,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
   let popTimer = 0;
   wrap.addEventListener('mouseover', (e) => {
-    const td = e.target.closest('td.clipped');
+    const td = canHover.matches ? e.target.closest('td.clipped') : null;
     clearTimeout(popTimer);
     if (td && wrap.contains(td) && !cellIsEditing(td)) {
       popTimer = setTimeout(() => { if (!cellIsEditing(td)) showCellPop(td, wrap); }, CELL_POP_DELAY);
@@ -8046,6 +8131,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
+  wrap.addEventListener('focusin', (e) => {
+    const input = e.target;
+    if (!canHover.matches || listRows() || !input.matches?.('input.inline-edit[type="text"]')) return;
+    const td = input.closest('tbody tr.entity-row > td[tabindex="0"]');
+    if (td && wrap.contains(td) && spillsRight(td) && (td.classList.contains('clipped') || overflowsX(input))) spillEditor(td, input);
+  });
   const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
   let press = null;
   wrap.addEventListener('pointerdown', (e) => {
@@ -8343,6 +8434,8 @@ function cellFitProbe(cell) {
     probe.style[prop] = cs[prop];
   }
   for (const node of cell.childNodes) probe.append(node.cloneNode(true));
+  const resting = cell.querySelectorAll('.text-dressed');
+  probe.querySelectorAll('.text-dressed').forEach((copy, i) => { if (resting[i]) copy.style.fontWeight = getComputedStyle(resting[i]).fontWeight; });
   const live = cell.querySelectorAll('input, textarea');
   probe.querySelectorAll('input, textarea').forEach((copy, i) => {
     const src = live[i] ?? copy;

@@ -115,7 +115,7 @@ if (s) {
       await page.keyboard.type('zzz');
       await page.keyboard.press('Escape');
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'back at rest');
-      assert.equal(await page.inputValue(`tr[data-eid="${second.id}"] td[data-field="Note"] input`), 'b', 'the value is restored');
+      assert.equal(await page.textContent(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`), 'b', 'the value is restored');
     } finally { await page.close(); }
   });
 
@@ -156,7 +156,7 @@ if (s) {
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'down one, at rest');
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'TD' }, 'still there once the commit has settled');
-      assert.equal(await page.inputValue(`tr[data-eid="${first.id}"] td[data-field="Note"] input`), 'A!', 'the edit landed');
+      assert.equal(await page.textContent(`tr[data-eid="${first.id}"] td[data-field="Note"] .text-dressed`), 'A!', 'the edit landed');
       const saved = await page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Note, first.id);
       assert.equal(saved, 'A!');
     } finally { await page.close(); }
@@ -258,10 +258,10 @@ if (s) {
     const page = await grid();
     try {
       const cell = page.locator(`tr[data-eid="${second.id}"] td[data-field="Note"]`);
-      const restBorder = await cell.locator('input').evaluate((n) => getComputedStyle(n).borderTopColor);
+      const restBorder = await cell.locator('.text-dressed').evaluate((n) => getComputedStyle(n).borderTopColor);
       await cell.hover();
       await page.waitForTimeout(300);
-      const armedBorder = await cell.locator('input').evaluate((n) => getComputedStyle(n).borderTopColor);
+      const armedBorder = await cell.locator('.text-dressed').evaluate((n) => getComputedStyle(n).borderTopColor);
       assert.notEqual(armedBorder, restBorder, 'the control shows itself under the pointer');
       await cell.click();
       assert.deepEqual(await at(page), { eid: second.id, field: 'Note', tag: 'INPUT' });

@@ -20,12 +20,12 @@ if (s) {
     await page.waitForSelector(`tr[data-eid="${row.id}"]`);
     const cells = await page.evaluate((id) => {
       const tr = document.querySelector(`tr[data-eid="${id}"]`);
-      const read = (f) => { const td = tr.querySelector(`td[data-field="${f}"]`); return { dressed: !!td.querySelector('.text-dressed'), input: td.querySelector('input')?.value ?? null, text: td.textContent.trim() }; };
+      const read = (f) => { const td = tr.querySelector(`td[data-field="${f}"]`); return { marks: !!td.querySelector('.text-dressed :is(strong, em, code)'), text: td.querySelector('.text-dressed')?.textContent ?? null }; };
       return { syntax: read('Syntax'), note: read('Note') };
     }, row.id);
-    assert.equal(cells.syntax.dressed, false, 'the literal column is not dressed');
-    assert.equal(cells.syntax.input, SYNTAX, 'its box holds the characters as typed');
-    assert.equal(cells.note.dressed, true, 'the plain column still wears its marks');
+    assert.equal(cells.syntax.marks, false, 'the literal column draws no marks');
+    assert.equal(cells.syntax.text, SYNTAX, 'it rests as the characters as typed (Issue #447)');
+    assert.equal(cells.note.marks, true, 'the plain column still wears its marks');
     await page.close();
   });
 }

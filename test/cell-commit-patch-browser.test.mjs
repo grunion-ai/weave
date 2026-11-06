@@ -74,7 +74,8 @@ if (s) {
       }, null, { timeout: 8000 });
       const eid = await target.jsonValue();
       await target.dispose();
-      await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] .text-dressed`);
+      await page.keyboard.press('End');
       const before = await shape(page);
       assert.ok(before.rows > 0 && before.rows < 200, `${before.rows} rows drawn`);
       arm(page);
@@ -97,7 +98,7 @@ if (s) {
       });
       assert.deepEqual(land, { eid, field: 'Description', tag: 'TD' }, `focus is where Tab put it: ${JSON.stringify(land)}`);
 
-      const value = await page.evaluate((e) => document.querySelector(`tr[data-eid="${e}"] td[data-field="Name"] input`).value, eid);
+      const value = await page.evaluate((e) => document.querySelector(`tr[data-eid="${e}"] td[data-field="Name"] .text-dressed`).textContent, eid);
       assert.match(value, / edited$/, 'and the cell shows what was committed');
     } finally { await page.close(); }
   });
@@ -106,7 +107,8 @@ if (s) {
     const page = await open();
     try {
       arm(page);
-      await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] .text-dressed`);
+      await page.keyboard.press('End');
       await page.keyboard.type('!');
       const landed = commitLands(page);
       await page.keyboard.press('Tab');
@@ -135,6 +137,7 @@ if (s) {
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       arm(page);
+      await page.click(`tr[data-eid="${ids[5]}"] td[data-field="Name"] .text-dressed`);
       await page.fill(`tr[data-eid="${ids[5]}"] td[data-field="Name"] input`, 'zzz last');
       const landed = commitLands(page);
       await page.keyboard.press('Tab');
@@ -150,8 +153,9 @@ if (s) {
     page.__seen = []; page.__body = new Map();
     try {
       await page.goto(`${base}/#/table/${small.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] input`);
+      await page.waitForSelector(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] .text-dressed`);
       const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
+      await page.click(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] .text-dressed`);
       await page.fill(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] input`, 'patched');
       await page.keyboard.press('Tab');
       await landed;
@@ -160,9 +164,9 @@ if (s) {
       await sortBy(page, 'Name');
       await page.waitForFunction(() => document.querySelector('#main .table-sort-btn')?.getAttribute('aria-label')?.startsWith('Sort: Name,'));
       await page.waitForLoadState('networkidle');
-      await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] input')?.value === 'a row', null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelectorAll('.wv-grid tbody tr.entity-row')[0]?.querySelector('td[data-field="Name"] .text-dressed')?.textContent === 'a row', null, { timeout: 5000 });
       assert.equal(
-        await page.inputValue(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] input`),
+        await page.textContent(`tr[data-eid="${smallIds[0]}"] td[data-field="Note"] .text-dressed`),
         'patched', 'the sorted redraw still shows the committed value');
     } finally { await page.close(); }
   });

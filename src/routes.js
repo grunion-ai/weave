@@ -54,7 +54,12 @@ export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
-const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
+const boundedLimit = (value, fallback = null) => {
+  if (value == null) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new WeaveError(`limit must be a number, not '${value}'`, 'invalid');
+  return Math.min(n, rowCap());
+};
 
 const prefersHtml = (accept) => {
   const q = {};

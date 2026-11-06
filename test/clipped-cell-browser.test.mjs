@@ -32,16 +32,16 @@ if (s) {
       try {
         const seen = await page.evaluate(() => [...document.querySelectorAll('.wv-grid tbody td.name-cell')]
           .map((td) => {
-            const inp = td.querySelector('input');
+            const face = td.querySelector('.wv-cb > :is(.text-dressed, input)');
             return {
-              value: inp?.value ?? '',
+              value: face?.value ?? face?.textContent ?? '',
               clipped: td.classList.contains('clipped'),
-              overflows: !!inp && inp.scrollWidth > inp.clientWidth + 1,
+              overflows: !!face && face.scrollWidth > face.clientWidth + 1,
             };
           }));
         const long = seen.find((c) => c.value.length > 40);
         assert.ok(long, 'the long name is on the page');
-        assert.equal(long.overflows, true, 'and its control really does cut the value off');
+        assert.equal(long.overflows, true, 'and its resting text really does cut the value off');
         assert.equal(long.clipped, true, 'so the cell is marked, and hover has something to open');
         const short = seen.find((c) => c.value === 'Short');
         assert.equal(short.clipped, false, 'a value that fits gets no marker');
@@ -55,7 +55,7 @@ if (s) {
           const td = [...document.querySelectorAll('.wv-grid tbody td.name-cell.clipped')][0];
           if (!td) return null;
           td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 600));
           const pop = document.querySelector('.cell-pop');
           if (!pop) return { pop: false };
           return {
@@ -72,9 +72,9 @@ if (s) {
         assert.ok(shown.text.includes('at the same time'),
           `the copy holds the end of the value (${shown.text})`);
         assert.ok(shown.hidden <= 1, `and hides none of it (${shown.hidden}px overflowing)`);
-        assert.equal(shown.boxed, false, 'the value reads as text — a control could neither wrap nor grow');
-        assert.ok(shown.popHeight > shown.cellHeight,
-          `so it wraps onto lines the row had no room for (${shown.popHeight} vs ${shown.cellHeight})`);
+        assert.equal(shown.boxed, false, 'the value reads as text, not a second control');
+        assert.ok(Math.abs(shown.popHeight - shown.cellHeight) <= 1,
+          `it spills right on the row's one line instead of wrapping (${shown.popHeight} vs ${shown.cellHeight})`);
       } finally { await page.close(); }
     });
   }
@@ -84,7 +84,7 @@ if (s) {
     try {
       const seen = await page.evaluate(() => {
         const td = [...document.querySelectorAll('.wv-grid tbody td[data-field="Notes"]')]
-          .find((t) => (t.querySelector('input')?.value ?? '').length > 40);
+          .find((t) => (t.querySelector('.wv-cb > .text-dressed')?.textContent ?? '').length > 40);
         return { clipped: td?.classList.contains('clipped') ?? null };
       });
       assert.equal(seen.clipped, true, 'a long note is marked too');
