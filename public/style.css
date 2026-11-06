@@ -509,9 +509,6 @@ body.wv-col-resizing, body.wv-col-resizing * { cursor: col-resize !important; -w
 
 .wv-grid:has(th.add-field-head) { width: max-content; }
 .wv-grid th.add-field-head { white-space: nowrap; padding-left: 4px; padding-right: 8px; cursor: default; }
-.wv-grid th.add-field-head { position: sticky; right: 0; z-index: 5; }
-.table-wrap.wv-overflow-x .wv-grid th.add-field-head::before { content: ''; position: absolute; top: 0; bottom: 1px; right: 100%; width: 16px; pointer-events: none; background: linear-gradient(to right, transparent, var(--tblr-bg-surface)); }
-.table-wrap.wv-overflow-x .add-field-btn { border-color: var(--tblr-border-color); }
 .add-field-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid transparent; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-size: var(--fs-body); line-height: 1; cursor: pointer; }
 .wv-grid tr.add-entity-row td { padding: 0; border-bottom: 0; position: sticky; bottom: 0; z-index: 1; background: var(--tblr-bg-surface); }
 .wv-grid[data-density] tbody tr.add-entity-row > td { height: var(--wv-row-h); box-sizing: border-box; }

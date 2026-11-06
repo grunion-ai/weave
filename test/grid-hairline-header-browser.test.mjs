@@ -126,37 +126,37 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${theme}: on a wide table the "+" holds at the right edge, scrolled to either end`, async () => {
+    test(`${theme}: on a wide table the "+" trails the last field and covers no header, scrolled to either end (Issue #1356)`, async () => {
       const page = await open(wide, theme);
       try {
-        const ground = await surface(page);
         const at = (x) => page.evaluate((to) => {
           const wrap = document.querySelector('.table-wrap');
           wrap.scrollLeft = to === 'end' ? wrap.scrollWidth : 0;
           const w = wrap.getBoundingClientRect();
           const th = wrap.querySelector('th.add-field-head');
           const b = th.querySelector('.add-field-btn').getBoundingClientRect();
-          const cs = getComputedStyle(th);
+          const heads = [...wrap.querySelectorAll('thead tr:first-child th.col-head')].map((h) => h.getBoundingClientRect());
           return {
             scrolls: wrap.scrollWidth > wrap.clientWidth, left: b.left, right: b.right,
             wrapLeft: w.left, wrapRight: w.left + wrap.clientWidth,
-            position: cs.position, rightPx: cs.right, bg: cs.backgroundColor,
+            lastRight: heads.at(-1).right,
+            covered: heads.filter((h) => b.left < h.right - 1 && b.right > h.left + 1).length,
             fade: getComputedStyle(th, '::before').content,
           };
         }, x);
         for (const end of ['start', 'end']) {
           const got = await at(end);
           assert.ok(got.scrolls, 'the wide grid overflows its card');
-          assert.equal(got.position, 'sticky');
-          assert.equal(got.rightPx, '0px');
-          assert.equal(got.bg, ground, 'an opaque surface under the "+"');
-          assert.ok(got.left >= got.wrapLeft && got.right <= got.wrapRight + 0.5,
-            `scrolled to the ${end}, the "+" is inside the wrap (${got.left}..${got.right} in ${got.wrapLeft}..${got.wrapRight})`);
-          assert.ok(got.fade !== 'none' && got.fade !== 'normal', 'the left fade shows while the grid overflows');
+          assert.equal(got.covered, 0, `scrolled to the ${end}, the "+" covers no header`);
+          assert.ok(got.left >= got.lastRight - 1 && got.left - got.lastRight <= 16,
+            `scrolled to the ${end}, the "+" sits right after the last field (last field ends ${got.lastRight}, "+" starts ${got.left})`);
+          assert.ok(got.fade === 'none' || got.fade === 'normal', `no fade rides over the fields (${got.fade})`);
         }
+        const end = await at('end');
+        assert.ok(end.left >= end.wrapLeft && end.right <= end.wrapRight + 0.5,
+          `scrolled to the end, the "+" is inside the wrap (${end.left}..${end.right} in ${end.wrapLeft}..${end.wrapRight})`);
       } finally { await page.close(); }
     });
-
     test(`${theme}: the header lifts with a faint shadow only once it is stuck`, async () => {
       const outer = (page) => page.evaluate((probe) => {
         const P = new Function(`return (${probe})()`)();
