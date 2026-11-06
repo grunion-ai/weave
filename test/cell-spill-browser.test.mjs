@@ -169,7 +169,7 @@ if (s) {
       const cell = await tag(page, 5);
       assert.equal((await hoverAndRead(page, cell)).pop, true, 'the spill is up');
       await page.evaluate(() => {
-        const other = [...document.querySelectorAll('.wv-grid tbody td[data-field="Owner"] input')][2];
+        const other = [...document.querySelectorAll('.wv-grid tbody td[data-field="Owner"] .text-dressed')][2];
         other.focus();
       });
       assert.equal(await page.locator('.cell-pop').count(), 0, 'focusin inside the grid hides it');
@@ -199,7 +199,7 @@ if (s) {
     try {
       const cell = await tag(page, 3);
       const rest = await page.evaluate(() => {
-        const i = document.querySelector('[data-t="cell"] input.inline-edit');
+        const i = document.querySelector('[data-t="cell"] .text-dressed');
         const r = i.getBoundingClientRect();
         const cs = getComputedStyle(i);
         return { left: r.left, top: r.top, textLeft: r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft) };
@@ -269,10 +269,10 @@ if (s) {
       await page.keyboard.press('Enter');
       const res = await landed;
       assert.equal(res.request().postDataJSON().values?.Name, `${SQUIRREL} now`, 'the new value is saved');
-      await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td.name-cell input`)?.value?.endsWith(' now'), squirrel.id, { timeout: 5000 });
+      await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td.name-cell .text-dressed`)?.textContent?.endsWith(' now'), squirrel.id, { timeout: 5000 });
       const after = await page.evaluate((id) => ({
         editors: document.querySelectorAll('.wv-grid textarea').length,
-        value: document.querySelector(`tr[data-eid="${id}"] td.name-cell input`)?.value,
+        value: document.querySelector(`tr[data-eid="${id}"] td.name-cell .text-dressed`)?.textContent,
         down: document.activeElement?.closest?.('tr')?.dataset.eid !== id,
       }), squirrel.id);
       assert.equal(after.editors, 0, 'the textarea is gone');
@@ -294,7 +294,7 @@ if (s) {
       await page.keyboard.press('Escape');
       const after = await page.evaluate(() => {
         const td = document.querySelector('[data-t="cell"]');
-        return { editors: document.querySelectorAll('.wv-grid textarea').length, value: td.querySelector('input')?.value, rest: document.activeElement === td };
+        return { editors: document.querySelectorAll('.wv-grid textarea').length, value: td.querySelector('.text-dressed')?.textContent, rest: document.activeElement === td };
       });
       assert.equal(after.editors, 0, 'the textarea is gone');
       assert.equal(after.value, was, 'the value is the one before the edit');

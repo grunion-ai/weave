@@ -64,7 +64,7 @@ if (s) {
     await page.click('#main .wv-route-error button');
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     assert.equal(await page.locator('#main .wv-route-error').count(), 0, 'the failure is cleared');
-    assert.equal(await page.locator('.wv-grid tbody td.name-cell input').inputValue(), 'Acme');
+    assert.equal(await page.locator('.wv-grid tbody td.name-cell .text-dressed').textContent(), 'Acme');
     await page.close();
   });
 

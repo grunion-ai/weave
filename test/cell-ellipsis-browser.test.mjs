@@ -20,13 +20,14 @@ if (s) {
   async function grid(colorScheme) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${row.id}"] td[data-field="Source"] input`);
+    await page.waitForSelector(`tr[data-eid="${row.id}"] td[data-field="Source"] .text-dressed`);
     await page.waitForTimeout(200);
     return page;
   }
   const cell = (field) => `tr[data-eid="${row.id}"] td[data-field="${field}"] input.inline-edit`;
+  const rest = (field) => `tr[data-eid="${row.id}"] td[data-field="${field}"] .wv-cb > .text-dressed`;
   const readInput = (page, sel) => page.$eval(sel, (i) => ({
-    value: i.value,
+    value: i.value ?? i.textContent,
     cut: i.scrollWidth > i.clientWidth + 1,
     textOverflow: getComputedStyle(i).textOverflow,
     focused: document.activeElement === i,
@@ -42,18 +43,18 @@ if (s) {
     test(`a long text value ends in an ellipsis at rest, and shows all of it while it is edited (${colorScheme})`, async () => {
       const page = await grid(colorScheme);
       try {
-        const rest = await readInput(page, cell('Source'));
-        assert.equal(rest.value, SOURCE);
-        assert.equal(rest.cut, true, 'the value really is longer than its 100px column');
-        assert.equal(rest.textOverflow, 'ellipsis', 'at rest the cut is an ellipsis, not mid-letter');
-        const name = await readInput(page, `tr[data-eid="${row.id}"] td.name-cell input.inline-edit`);
+        const resting = await readInput(page, rest('Source'));
+        assert.equal(resting.value, SOURCE);
+        assert.equal(resting.cut, true, 'the value really is longer than its 100px column');
+        assert.equal(resting.textOverflow, 'ellipsis', 'at rest the cut is an ellipsis, not mid-letter');
+        const name = await readInput(page, `tr[data-eid="${row.id}"] td.name-cell .wv-cb > .text-dressed`);
         assert.equal(name.textOverflow, 'ellipsis', 'the Name cell rests the same way');
-        await page.$eval(cell('Source'), (i) => i.focus());
+        await page.click(rest('Source'));
         const editing = await page.evaluate(() => {
           const a = document.activeElement;
           return { tag: a.tagName, value: a.value, cut: a.scrollWidth > a.clientWidth + 1 || a.scrollHeight > a.clientHeight + 1 };
         });
-        assert.equal(editing.tag, 'TEXTAREA', 'focused, the clipped cell opens the spill editor (Issue #1367)');
+        assert.equal(editing.tag, 'TEXTAREA', 'a click on the clipped resting text opens the spill editor (Issue #1367)');
         assert.equal(editing.value, SOURCE);
         assert.equal(editing.cut, false, 'and the editor shows the whole value, nothing scrolled out of sight');
       } finally { await page.close(); }

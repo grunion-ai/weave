@@ -44,13 +44,18 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the grid keeps its one-line input for a literal text value (Issue #1161)', async () => {
+  test('the grid rests a literal text value as one line of text ending in an ellipsis (Issue #447)', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(ROUTES['sink-table'].url(s), { waitUntil: 'networkidle' });
-      const cell = page.locator('tr.entity-row td[data-field="Notes"] input.inline-edit').first();
+      const cell = page.locator('tr.entity-row td[data-field="Notes"] .wv-cb > .text-dressed').first();
       await cell.waitFor();
-      assert.equal(await cell.inputValue(), UNBROKEN);
+      assert.equal(await cell.textContent(), UNBROKEN);
+      assert.deepEqual(await cell.evaluate((n) => [getComputedStyle(n).whiteSpace, getComputedStyle(n).textOverflow, n.scrollWidth > n.clientWidth + 1]), ['nowrap', 'ellipsis', true], 'one line, cut at an ellipsis');
+      await cell.click();
+      const editor = await page.evaluate(() => ({ tag: document.activeElement.tagName, value: document.activeElement.value, field: document.activeElement.closest('td')?.dataset.field }));
+      assert.ok(['INPUT', 'TEXTAREA'].includes(editor.tag), `a click opens an editor: ${editor.tag}`);
+      assert.deepEqual({ value: editor.value, field: editor.field }, { value: UNBROKEN, field: 'Notes' }, 'with the whole value, in the Notes cell');
     } finally { await page.close(); }
   });
 

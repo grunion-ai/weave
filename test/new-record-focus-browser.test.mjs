@@ -45,7 +45,7 @@ if (s) {
     test(`${theme}: + New record on the table page lands the caret in the new row's Name cell`, async () => {
       const page = await browser.newPage({ viewport: FIT });
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] input`);
+      await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] .text-dressed`);
       await setTheme(page, theme);
 
       await page.click('.wv-grid .add-entity-btn');
@@ -61,7 +61,7 @@ if (s) {
 
       await page.keyboard.type('fresh');
       await page.keyboard.press('Enter');
-      await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td[data-field="Name"] input`)?.value === 'fresh', at.eid);
+      await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td[data-field="Name"] .text-dressed`)?.textContent === 'fresh', at.eid);
       await settle(page);
       assert.equal(nameOf(at.eid), 'fresh', 'the typed name is stored');
       await page.close();
@@ -72,10 +72,10 @@ if (s) {
     const page = await browser.newPage({ viewport: FIT });
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     const first = seeded[0];
-    await page.waitForSelector(`tr[data-eid="${first}"] td[data-field="Name"] input`);
+    await page.waitForSelector(`tr[data-eid="${first}"] td[data-field="Name"] .text-dressed`);
     const known = await page.evaluate(() => [...document.querySelectorAll('tr[data-eid]')].map((r) => r.dataset.eid));
 
-    await page.click(`tr[data-eid="${first}"] td[data-field="Name"] input`);
+    await page.click(`tr[data-eid="${first}"] td[data-field="Name"] .text-dressed`);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     await page.keyboard.press('Shift+Enter');

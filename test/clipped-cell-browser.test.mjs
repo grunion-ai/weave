@@ -32,16 +32,16 @@ if (s) {
       try {
         const seen = await page.evaluate(() => [...document.querySelectorAll('.wv-grid tbody td.name-cell')]
           .map((td) => {
-            const inp = td.querySelector('input');
+            const face = td.querySelector('.wv-cb > :is(.text-dressed, input)');
             return {
-              value: inp?.value ?? '',
+              value: face?.value ?? face?.textContent ?? '',
               clipped: td.classList.contains('clipped'),
-              overflows: !!inp && inp.scrollWidth > inp.clientWidth + 1,
+              overflows: !!face && face.scrollWidth > face.clientWidth + 1,
             };
           }));
         const long = seen.find((c) => c.value.length > 40);
         assert.ok(long, 'the long name is on the page');
-        assert.equal(long.overflows, true, 'and its control really does cut the value off');
+        assert.equal(long.overflows, true, 'and its resting text really does cut the value off');
         assert.equal(long.clipped, true, 'so the cell is marked, and hover has something to open');
         const short = seen.find((c) => c.value === 'Short');
         assert.equal(short.clipped, false, 'a value that fits gets no marker');
@@ -84,7 +84,7 @@ if (s) {
     try {
       const seen = await page.evaluate(() => {
         const td = [...document.querySelectorAll('.wv-grid tbody td[data-field="Notes"]')]
-          .find((t) => (t.querySelector('input')?.value ?? '').length > 40);
+          .find((t) => (t.querySelector('.wv-cb > .text-dressed')?.textContent ?? '').length > 40);
         return { clipped: td?.classList.contains('clipped') ?? null };
       });
       assert.equal(seen.clipped, true, 'a long note is marked too');

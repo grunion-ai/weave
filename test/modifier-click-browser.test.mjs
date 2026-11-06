@@ -77,7 +77,7 @@ if (s) {
     const page = await open(ctx, `#/table/${s.deals.id}`, '.wv-grid tbody tr.entity-row');
     let opened = false;
     ctx.on('page', () => { opened = true; });
-    await page.click(`tr[data-eid="${s.acme.id}"] td.name-cell input`, { modifiers: ['Shift'] });
+    await page.click(`tr[data-eid="${s.acme.id}"] td.name-cell .text-dressed`, { modifiers: ['Shift'] });
     await page.waitForTimeout(400);
     assert.equal(opened, false, 'shift-click in a text field is the text field’s');
     await ctx.close();

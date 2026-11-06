@@ -293,7 +293,7 @@ const JOURNEY_STATES = [
     setup: table,
     async run(page, ctx) {
       const id = ctx.ids[2];
-      await page.click(`tr[data-eid="${id}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${id}"] td[data-field="Name"] .text-dressed`);
       await page.keyboard.type(`Task 2, edited ${Date.now() % 1e6}`);
       const landed = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/api\/entities\//.test(r.url()));
       await page.keyboard.press('Tab');
@@ -618,10 +618,10 @@ const TOUCH_STATES = [
 const SHARED_STATES = [
   { name: 'board-view', route: 'board', open: 'rest', layout: 'board', cells: BOTH },
   { name: 'list-view', route: 'list', open: 'rest', layout: 'list', cells: BOTH },
-  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH, hold: { 'cutoff|desktop': [1161], 'cutoff|phone': [1152, 1161] } },
+  { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { 'cutoff|phone': [1152, 1161], touch: [1165, 1166, 1167, 1168] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { touch: [1165, 1166, 1167, 1168] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];

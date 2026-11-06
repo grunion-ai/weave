@@ -43,9 +43,9 @@ if (s) {
   test('a redraw triggered by an edit leaves focus on the row the reader tabbed into', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
 
-    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     const landed = commitLands(page);
@@ -71,9 +71,9 @@ if (s) {
   test('a cell that rests as a span, not a form control, is restored too', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Name"] .text-dressed`);
 
-    await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] input`);
+    await page.click(`tr[data-eid="${second.id}"] td[data-field="Name"] .text-dressed`);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     const landed = commitLands(page);
@@ -90,14 +90,14 @@ if (s) {
   test('the cursor comes back however long the redraw takes', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
 
     await page.route('**/api/entities/*', async (route) => {
       await new Promise((r) => { setTimeout(r, 5500); });
       await route.continue();
     });
 
-    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] input`);
+    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     const landed = commitLands(page);

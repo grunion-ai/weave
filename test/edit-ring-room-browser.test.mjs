@@ -58,17 +58,17 @@ if (s) {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       try {
         await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-        for (const sel of [`tr[data-eid="${row.id}"] td.name-cell input.inline-edit`, `tr[data-eid="${row.id}"] td[data-field="Prompt"] input.inline-edit`]) {
-          await page.waitForSelector(sel);
-          const rest = await box(page, sel);
-          await page.click(sel);
-          const cell = sel.replace(/ input\.inline-edit$/, '');
-          const editor = `${cell} :is(input, textarea).inline-edit`;
+        for (const td of [`tr[data-eid="${row.id}"] td.name-cell`, `tr[data-eid="${row.id}"] td[data-field="Prompt"]`]) {
+          const quiet = `${td} .wv-cb > .text-dressed`;
+          const editor = `${td} :is(input, textarea).inline-edit`;
+          await page.waitForSelector(quiet);
+          const rest = await box(page, quiet);
+          await page.click(quiet);
           await page.waitForFunction((q) => document.activeElement?.matches?.(q), editor);
           await settled(page.locator(editor));
-          roomy(rest, await box(page, editor), sel);
+          roomy(rest, await box(page, editor), td);
           await page.keyboard.press('Escape');
-          await page.$eval(sel, (el) => el.blur());
+          await page.waitForSelector(quiet);
         }
       } finally { await page.close(); }
     });

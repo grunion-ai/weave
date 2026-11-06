@@ -461,7 +461,7 @@ function externalLinksOpenInTabs(e) {
 }
 addEventListener('click', externalLinksOpenInTabs, true);
 
-const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable]';
+const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable], .text-dressed';
 function openNativeClick(e) {
   if (!nativeClick(e)) return;
   if (e.target?.closest?.(NATIVE_CLICK_KEEPS)) return;
@@ -2239,12 +2239,13 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
   const step = () => {
     if (turn !== newRowTurn || frames-- <= 0 || (placed && grace-- <= 0)) return;
     const row = document.querySelector(`${scope} tr[data-eid="${eid}"]`);
-    const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
-      || row?.querySelector('td input:not([type="checkbox"])');
-    if (input && (!placed || document.activeElement === document.body)) {
+    const face = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] :is(input, .text-dressed)`))
+      || row?.querySelector('td :is(input:not([type="checkbox"]), .text-dressed)');
+    if (face && (!placed || document.activeElement === document.body)) {
       scrollTargetIntoView(row, { block: 'nearest', instant: true, padding: stuckHeaderHeight(row), bottom: stickyFootHeight(row) });
-      activateCell(input.closest('td'));
-      if (select) input.select();
+      const td = face.closest('td');
+      activateCell(td);
+      if (select) td.querySelector('input')?.select();
       if (!placed) {
         for (const ev of ['keydown', 'pointerdown']) document.addEventListener(ev, done, { once: true, capture: true });
       }
@@ -2523,8 +2524,9 @@ function markClippedCells(grid) {
     else if (chip.dataset.fieldTitle) chip.title = chip.dataset.fieldTitle;
     else chip.removeAttribute('title');
   }
+  const lines = parseInt(getComputedStyle(grid).getPropertyValue('--wv-lines'), 10) || 1;
   for (const td of grid.querySelectorAll('tbody td')) {
-    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > (grid.dataset.density === 'spacious' ? 2 : 1);
+    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > lines;
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
     const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
     const boxCut = !!cb && (overflowsX(cb) || overflowsY(cb)
@@ -2983,13 +2985,19 @@ function dressTokens(into, tokens) {
 }
 
 function dressedText(md, input, { literal = false } = {}) {
-  const tokens = literal ? [{ text: md }] : globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
-  const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
-  dressTokens(dressed, tokens);
+  const dressed = el('span', { class: 'text-dressed', tabindex: 0 });
+  let shown = null;
+  const show = (text) => {
+    const tokens = literal ? [{ text }] : globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept);
+    dressed.title = tokens.map((t) => t.text).join('');
+    dressTokens(dressed, tokens);
+    shown = text;
+  };
+  show(md);
   const open = () => {
     dressed.replaceWith(input);
-    input.focus();
     input.select();
+    if (input.isConnected) input.focus();
   };
   dressed.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -3005,7 +3013,11 @@ function dressedText(md, input, { literal = false } = {}) {
     if (typed) document.execCommand('insertText', false, e.key);
   });
   dressed.wvEditor = input;
-  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+  input.addEventListener('blur', () => queueMicrotask(() => {
+    if (!input.isConnected || input === document.activeElement) return;
+    if (input.value !== shown) { dressed.replaceChildren(); show(input.value); }
+    input.replaceWith(dressed);
+  }));
   return dressed;
 }
 
@@ -3863,12 +3875,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
-  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
+  if (typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 
+const DOC_PREVIEW_LINES = 4;
 function docPreviewCell(md, name, onOpen) {
-  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
+  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: DOC_PREVIEW_LINES });
   const box = el('span', {
     class: 'doc-preview' + (kind ? '' : ' is-empty'),
     tabindex: 0,
@@ -8421,6 +8434,8 @@ function cellFitProbe(cell) {
     probe.style[prop] = cs[prop];
   }
   for (const node of cell.childNodes) probe.append(node.cloneNode(true));
+  const resting = cell.querySelectorAll('.text-dressed');
+  probe.querySelectorAll('.text-dressed').forEach((copy, i) => { if (resting[i]) copy.style.fontWeight = getComputedStyle(resting[i]).fontWeight; });
   const live = cell.querySelectorAll('input, textarea');
   probe.querySelectorAll('input, textarea').forEach((copy, i) => {
     const src = live[i] ?? copy;

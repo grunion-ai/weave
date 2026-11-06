@@ -78,7 +78,7 @@ if (s) {
     const page = await open();
     await stopPaging(page);
     await sortBy(page, 'Cache Read', 'Smallest to largest');
-    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oct-01');
+    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'oct-01');
     assert.deepEqual(await order(page), ['oct-01', 'sep-12', 'sep-09'], '900 < 2,048 < 15,829,984');
     await page.close();
   });
@@ -88,7 +88,7 @@ if (s) {
     const cells = await page.$$eval('.wv-grid tbody tr.entity-row td[data-field="Window"] input', (ins) => ins.map((i) => i.value));
     assert.ok(cells.every((c) => / – /.test(c)), `the cells wear the painted span: ${cells.join(' | ')}`);
     await sortBy(page, 'Window', 'Oldest to newest');
-    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
+    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'sep-09');
     assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'paged: the server orders page one');
     await page.close();
   });
@@ -97,7 +97,7 @@ if (s) {
     const page = await open();
     await stopPaging(page);
     await sortBy(page, 'Window', 'Oldest to newest');
-    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'sep-09');
+    await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'sep-09');
     assert.deepEqual(await order(page), ['sep-09', 'sep-12', 'oct-01'], 'Sep 9–12 < Sep 9–30 < Oct 1–3');
     await page.close();
   });
@@ -119,7 +119,7 @@ if (s) {
         const head = page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' });
         assert.equal(await head.locator('.field-menu').count(), 0, 'a system column has no ⋮: sort lives on the toolbar');
         await sortBy(page, 'Created At', 'Newest to oldest');
-        await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
+        await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'newest');
         assert.deepEqual(await order(page), ['newest', 'middle', 'oldest'], 'paged: the server orders by the stamp');
         assert.equal(await page.locator('.wv-grid thead th.sys-head', { hasText: 'Created At' }).locator('.wv-icon-xs').count(), 1, 'the header wears the sort arrow');
         assert.deepEqual(s.weave.describeSchema().flatMap((sp) => sp.tables).find((x) => x.id === entries.id).sort, [{ field: 'Created At', dir: 'desc' }], 'the direction stored is still desc (on the default view, Feature #229)');
@@ -133,7 +133,7 @@ if (s) {
         const ink = await pop.evaluate((p) => [getComputedStyle(p).color, getComputedStyle(p).backgroundColor]);
         assert.notEqual(ink[0], ink[1], `${theme}: the Sort section reads`);
         await pop.locator('.sort-remove').click();
-        await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'middle');
+        await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'middle');
       } finally { await page.close(); }
     });
   }
@@ -143,13 +143,13 @@ if (s) {
     try {
       await stopPaging(page);
       await sortBy(page, 'Created At', 'Oldest to newest');
-      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'oldest');
+      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'oldest');
       assert.deepEqual(await order(page), ['oldest', 'middle', 'newest'], 'whole table: app.js orders by the stamp too');
       await sortBy(page, 'Public Id');
       let pop = await sortPop(page);
       assert.deepEqual(await labels(pop), ['Smallest to largest', 'Largest to smallest']);
       await sortBy(page, 'Public Id', 'Largest to smallest');
-      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'newest');
+      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'newest');
       assert.deepEqual(await order(page), ['newest', 'oldest', 'middle'], '#3, #2, #1');
       await sortBy(page, 'Stage');
       pop = await sortPop(page);
@@ -172,7 +172,7 @@ if (s) {
       await page.fill(`tr[data-eid="${last}"] td[data-field="Note"] input`, 'touched');
       await page.keyboard.press('Tab');
       await landed;
-      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell input')?.value === 'j12', null, { timeout: 5000 })
+      await page.waitForFunction(() => document.querySelector('.wv-grid tbody tr.entity-row td.name-cell .text-dressed')?.textContent === 'j12', null, { timeout: 5000 })
         .catch(() => {});
       assert.deepEqual((await order(page)).slice(0, 2), ['j12', 'j01'], 'the edited row leads, as the server orders it');
     } finally { await page.close(); }
