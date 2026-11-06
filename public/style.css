@@ -2499,6 +2499,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (max-width: 600px) {
   .wv-board { padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
   .wv-board:not([data-groups="side"]) .board-cards { grid-template-columns: repeat(var(--phone-cols), minmax(0, 1fr)); gap: 8px; }
+  .board-wrap[data-density="spacious"] > .wv-board:not([data-groups="side"]) .board-cards { grid-template-columns: minmax(0, 1fr); }
   .wv-board[data-picture="small"]:not([data-groups="side"]) .tile-fields { display: none; }
   .wv-board:not([data-groups="side"]) .tile-field:nth-child(n+3) { display: none; }
   .wv-board:not([data-groups="side"]) .tile-body { padding: var(--board-pad-y) var(--board-pad-x); }
