@@ -689,6 +689,8 @@ td .inline-edit { width: 100%; min-width: 70px; }
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+[autocomplete="off"]::-webkit-contacts-auto-fill-button,
+[autocomplete="off"]::-webkit-credentials-auto-fill-button { visibility: hidden; display: none !important; pointer-events: none; }
 .ms-box { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .btn.tiny { padding: 1px 7px; font-size: var(--fs-secondary); }
 .open-link { color: var(--tblr-secondary); text-decoration: none; font-size: var(--fs-secondary); white-space: nowrap; }

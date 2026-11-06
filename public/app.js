@@ -9,6 +9,7 @@ const el = (tag, attrs = {}, ...children) => {
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
+  if ((tag === 'input' || tag === 'textarea') && !node.hasAttribute('autocomplete')) node.setAttribute('autocomplete', 'off');
   for (const c of children.flat()) {
     if (c == null) continue;
     node.append(c.nodeType ? c : document.createTextNode(c));
