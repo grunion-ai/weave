@@ -128,6 +128,8 @@ export function sniffImage(bytes) {
 
 const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
 export const PREVIEW_MAX_BYTES = 256 * 1024;
+export const FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const mbText = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
 const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export function logoType(bytes) {
@@ -9579,6 +9581,7 @@ export class Weave {
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    if (buf.length > FILE_MAX_BYTES) throw new WeaveError(`${name} is ${mbText(buf.length)}; files can be up to ${mbText(FILE_MAX_BYTES)}`, 'too-large');
     const small = preview?.bytes == null ? null : Buffer.isBuffer(preview.bytes) ? preview.bytes : Buffer.from(String(preview.bytes), 'base64');
     const smallType = small && sniffImage(small);
     if (small && (!sniffImage(buf) || !PREVIEW_TYPES.has(smallType))) {

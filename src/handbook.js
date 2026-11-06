@@ -746,6 +746,8 @@ Files on a row. Bytes live in the workspace's sibling \`files/\` directory; the 
 
 \`fit\` — \`trim\` (default) shows the whole file and trims the cell to its shape, so a portrait page stands tall beside a wide screenshot; \`fill\` makes every cell the same box and crops the file to it. Nothing is ever stretched.
 
+Every path takes a file of up to 10 MB: the field in the browser, the REST attach routes, \`weave attach\` and MCP. A larger file is refused by name, with the limit in the message.
+
 \`\`\`bash
 weave field add Task Files attachments
 weave field add Person Headshot attachments --config '{"multiple":false,"preview":"cover"}'
