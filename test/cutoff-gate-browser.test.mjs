@@ -46,7 +46,7 @@ if (s) {
         const line = (top) => {
           const span = document.createElement('span');
           span.className = 'cutoff-fixture-line';
-          span.style.cssText = `position:absolute;left:0;top:${top}px;width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+          span.style.cssText = `position:absolute;left:0;top:${top}px;width:80px;overflow:hidden;text-overflow:clip;white-space:nowrap;`;
           span.textContent = 'a label far too long to sit inside eighty pixels of column';
           return span;
         };
@@ -73,7 +73,7 @@ if (s) {
           item.style.cssText = 'display:inline-flex;width:60px;overflow:hidden;';
           const nm = document.createElement('span');
           nm.className = 'crumb-nm';
-          nm.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          nm.style.cssText = 'min-width:0;overflow:hidden;text-overflow:clip;white-space:nowrap;';
           nm.textContent = 'a crumb label far too long for sixty pixels';
           item.append(nm);
           return item;

@@ -2,7 +2,7 @@ import { cellsOf, walk } from './journeys.mjs';
 import { OVERLAYS, overlaysFor } from './overlays.mjs';
 import { ROUTES, SEEDS, journeyOf, plan, statesOf, walked } from './states.mjs';
 
-export const KINDS = ['clipped', 'ellipsis', 'line-clamp', 'field-value', 'field-placeholder'];
+export const KINDS = ['clipped', 'field-value', 'field-placeholder'];
 export const DESKTOP = 'desktop';
 export const NOTE = '_';
 
@@ -74,11 +74,11 @@ export function probe(rootSelector = null) {
     m.remove();
     return over;
   };
-  const textOverflow = (e, own) => {
+  const clipBoxes = (e, from) => {
     const boxes = [];
     let alongX = true;
     let alongY = true;
-    for (let x = e; x && x !== document.documentElement && (alongX || alongY); x = x.parentElement) {
+    for (let x = from; x && x !== document.documentElement && (alongX || alongY); x = x.parentElement) {
       const cs = style(x);
       if (cs.display === 'inline' || cs.display === 'contents') continue;
       if (x !== e && cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible') alongX = false;
@@ -89,20 +89,36 @@ export function probe(rootSelector = null) {
       if (scrolls(cs.overflowX)) alongX = false;
       if (scrolls(cs.overflowY)) alongY = false;
     }
-    if (!boxes.length) return 0;
+    return boxes;
+  };
+  const overBy = (rects, boxes) => {
     let worst = 0;
-    const range = document.createRange();
-    for (const node of own) {
-      range.selectNodeContents(node);
-      for (const r of range.getClientRects()) {
-        if (!r.width || !r.height) continue;
-        for (const { box, cutX, cutY } of boxes) {
-          if (cutX) worst = Math.max(worst, box.left - r.left, r.right - box.right);
-          if (cutY) worst = Math.max(worst, box.top - r.top, r.bottom - box.bottom);
-        }
+    for (const r of rects) {
+      if (!r.width || !r.height) continue;
+      for (const { box, cutX, cutY } of boxes) {
+        if (cutX) worst = Math.max(worst, box.left - r.left, r.right - box.right);
+        if (cutY) worst = Math.max(worst, box.top - r.top, r.bottom - box.bottom);
       }
     }
     return worst;
+  };
+  const textOverflow = (e, own) => {
+    const boxes = clipBoxes(e, e);
+    if (!boxes.length) return 0;
+    const range = document.createRange();
+    const rects = [];
+    for (const node of own) {
+      range.selectNodeContents(node);
+      rects.push(...range.getClientRects());
+    }
+    return overBy(rects, boxes);
+  };
+  const boxOverflow = (e) => overBy([e.getBoundingClientRect()], clipBoxes(e, e.parentElement));
+  const lineShort = (e, cs) => {
+    const line = parseFloat(cs.lineHeight);
+    if (!(line > 0)) return 0;
+    const inner = e.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    return parseInt(cs.webkitLineClamp, 10) * line - inner;
   };
 
   const roots = rootSelector ? [...document.querySelectorAll(rootSelector)] : [document.body];
@@ -128,12 +144,10 @@ export function probe(rootSelector = null) {
         if (over > 1) push(kind, e, text, over);
         continue;
       }
-      if (ellipsis && e.scrollWidth - e.clientWidth > 1 && e.textContent.trim()) {
-        push('ellipsis', e, e.textContent, e.scrollWidth - e.clientWidth);
-        continue;
-      }
-      if (clamp && e.scrollHeight - e.clientHeight > 1 && e.textContent.trim()) {
-        push('line-clamp', e, e.textContent, e.scrollHeight - e.clientHeight);
+      const truncated = (ellipsis && e.scrollWidth - e.clientWidth > 1) || (clamp && e.scrollHeight - e.clientHeight > 1);
+      if (truncated && e.textContent.trim()) {
+        const over = Math.max(boxOverflow(e), clamp ? lineShort(e, cs) : 0);
+        if (over > 1) push('clipped', e, e.textContent, over);
         continue;
       }
       if (!own.length) continue;
