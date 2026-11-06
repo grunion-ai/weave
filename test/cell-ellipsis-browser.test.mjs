@@ -39,7 +39,7 @@ if (s) {
   const transparent = (c) => c === 'transparent' || /rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)/.test(c);
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`a long text value ends in an ellipsis at rest, and shows all of it while it is edited (${colorScheme})`, async () => {
+    test(`a long text value ends in an ellipsis at rest, and clips again while it is edited (${colorScheme})`, async () => {
       const page = await grid(colorScheme);
       try {
         const rest = await readInput(page, cell('Source'));
@@ -49,13 +49,9 @@ if (s) {
         const name = await readInput(page, `tr[data-eid="${row.id}"] td.name-cell input.inline-edit`);
         assert.equal(name.textOverflow, 'ellipsis', 'the Name cell rests the same way');
         await page.$eval(cell('Source'), (i) => i.focus());
-        const editing = await page.evaluate(() => {
-          const a = document.activeElement;
-          return { tag: a.tagName, value: a.value, cut: a.scrollWidth > a.clientWidth + 1 || a.scrollHeight > a.clientHeight + 1 };
-        });
-        assert.equal(editing.tag, 'TEXTAREA', 'focused, the clipped cell opens the spill editor (Issue #1367)');
-        assert.equal(editing.value, SOURCE);
-        assert.equal(editing.cut, false, 'and the editor shows the whole value, nothing scrolled out of sight');
+        const editing = await readInput(page, cell('Source'));
+        assert.equal(editing.focused, true);
+        assert.equal(editing.textOverflow, 'clip', 'focused, the input clips so the caret can scroll the whole value');
       } finally { await page.close(); }
     });
 

@@ -45,41 +45,23 @@ if (s) {
     return page;
   }
 
-  test('a clipped text cell spills right from its own edge, keeping the value’s left edge', async () => {
+  test('a clipped cell expands on its value’s left edge without covering it', async () => {
     const page = await grid();
     try {
       const off = await page.evaluate(async () => {
-        const td = [...document.querySelectorAll('.wv-grid tbody td.clipped[data-ftype="text"]')][0];
+        const td = [...document.querySelectorAll('.wv-grid tbody td.clipped')][0];
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const box = (n) => (n.firstElementChild ?? n).getBoundingClientRect();
         const a = box(td); const b = box(pop);
         const cell = td.getBoundingClientRect(); const p = pop.getBoundingClientRect();
-        return { dx: Math.round(b.left - a.left), top: Math.round(p.top - cell.top), left: Math.round(p.left - cell.left) };
+        return { dx: Math.round(b.left - a.left), clear: p.bottom <= cell.top || p.top >= cell.bottom };
       });
       assert.ok(off, 'hovering a clipped cell opens the expansion');
       assert.ok(Math.abs(off.dx) <= 1, `the value keeps its left edge (moved ${off.dx}px)`);
-      assert.ok(Math.abs(off.top) <= 1 && Math.abs(off.left) <= 1, `the spill sits on the cell's top-left (${off.left}, ${off.top})`);
-    } finally { await page.close(); }
-  });
-
-  test('a clipped description keeps its pop off the cell', async () => {
-    const page = await grid();
-    try {
-      const off = await page.evaluate(async () => {
-        const td = document.querySelector('.wv-grid tbody td.clipped:has(> .wv-cb > .doc-preview)');
-        if (!td) return null;
-        td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 600));
-        const pop = document.querySelector('.cell-pop');
-        if (!pop) return { pop: false };
-        const cell = td.getBoundingClientRect(); const p = pop.getBoundingClientRect();
-        return { pop: true, clear: p.bottom <= cell.top || p.top >= cell.bottom };
-      });
-      assert.ok(off?.pop, 'hovering a clipped description opens the expansion');
-      assert.equal(off.clear, true, 'a non-text copy still sits off the cell, never over the value');
+      assert.equal(off.clear, true, 'the copy sits off the cell, never over the value');
     } finally { await page.close(); }
   });
 
@@ -89,7 +71,7 @@ if (s) {
       const type = await page.evaluate(async () => {
         const td = document.querySelector('.wv-grid tbody td.name-cell.clipped');
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         if (!pop) return null;
         const read = (n) => {
@@ -176,7 +158,7 @@ if (s) {
           .filter((l) => getComputedStyle(l).display !== 'none').length;
         const inCell = visible(td);
         td.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 400));
         const pop = document.querySelector('.cell-pop');
         return pop ? { inCell, inPop: visible(pop) } : { inCell, inPop: 0 };
       });
