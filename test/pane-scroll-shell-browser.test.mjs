@@ -369,7 +369,7 @@ if (s) {
     const end = await page.evaluate((last) => ({
       doc: document.scrollingElement.scrollTop,
       main: document.querySelector('#main').scrollTop,
-      last: [...(document.querySelector(`#main .wv-grid tbody tr.entity-row[data-i="${last}"]`)?.querySelectorAll('input, textarea') ?? [])].map((n) => n.value).join(' '),
+      last: [...(document.querySelector(`#main .wv-grid tbody tr.entity-row[data-i="${last}"]`)?.querySelectorAll('input, textarea, .text-dressed') ?? [])].map((n) => n.value ?? n.textContent).join(' '),
     }), ROWS - 1);
     assert.equal(end.doc, 0, 'the document never scrolled');
     assert.ok(end.main > 1000, `the main panel scrolled: ${end.main}`);

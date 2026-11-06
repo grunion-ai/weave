@@ -52,11 +52,11 @@ if (s) {
       const before = await page.locator(headFor('Name')).evaluate((th) => th.getBoundingClientRect().width);
       assert.ok(before < 150, `the column starts squeezed, got ${Math.round(before)}px`);
       const needed = await page.locator(headFor('Name')).evaluate((th) => {
-        const input = th.closest('table').querySelector('tbody tr td input.inline-edit');
-        const cs = getComputedStyle(input);
+        const face = th.closest('table').querySelector('tbody tr td.name-cell .wv-cb > .text-dressed');
+        const cs = getComputedStyle(face);
         const ctx = document.createElement('canvas').getContext('2d');
         ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        return ctx.measureText(input.value).width;
+        return ctx.measureText(face.textContent).width;
       });
       await page.dblclick(gripFor('Name'));
       await page.waitForFunction(
@@ -68,8 +68,8 @@ if (s) {
       assert.ok(after >= needed, `fit ${after}px must cover the ${Math.round(needed)}px value`);
       assert.ok(after < needed + 80, `fit ${after}px must not overshoot the ${Math.round(needed)}px value`);
       const clipped = await page.locator(headFor('Name')).evaluate(() => {
-        const input = document.querySelector('table.wv-grid tbody tr td input.inline-edit');
-        return input.scrollWidth > input.clientWidth + 1;
+        const face = document.querySelector('table.wv-grid tbody tr td.name-cell .wv-cb > .text-dressed');
+        return face.scrollWidth > face.clientWidth + 1;
       });
       assert.equal(clipped, false, 'the longest value must render unclipped after a fit');
     } finally { await page.close(); }

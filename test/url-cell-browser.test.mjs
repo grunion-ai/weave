@@ -24,7 +24,7 @@ if (s) {
     return page;
   }
 
-  test('a url cell rests as a link; empty and non-http values rest as the text box', async () => {
+  test('a url cell rests as a link; an empty value rests as the text box and a non-http one as text (Issue #447)', async () => {
     const page = await open(`#/table/${vendors.id}`);
     const a = page.locator(`${cell(fibery.id)} a.url-link`);
     await a.waitFor();
@@ -34,7 +34,7 @@ if (s) {
     assert.equal(await a.locator('.url-host').textContent(), 'docs.example.test');
     assert.equal(await a.locator('.url-rest').textContent(), '/api/v2#entities');
     assert.equal(await page.locator(`${cell(blank.id)} input`).count(), 1, 'empty: the text box');
-    assert.equal(await page.locator(`${cell(junk.id)} input`).inputValue(), 'not a url', 'not a url: the text box, value intact');
+    assert.equal(await page.locator(`${cell(junk.id)} .text-dressed`).textContent(), 'not a url', 'not a url: resting text, value intact');
     assert.equal(await page.locator(`${cell(junk.id)} a`).count(), 0);
     await page.close();
   });

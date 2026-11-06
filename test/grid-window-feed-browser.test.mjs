@@ -50,7 +50,7 @@ if (s) {
       max: el.scrollHeight - el.clientHeight,
       pending: inView.filter((tr) => tr.classList.contains('entity-row-pending')).length,
       spacer: inView.filter((tr) => tr.classList.contains('wv-spacer')).length,
-      empty: inView.filter((tr) => tr.classList.contains('entity-row') && !tr.querySelector('td[data-field="Name"] input')?.value).length,
+      empty: inView.filter((tr) => tr.classList.contains('entity-row') && !tr.querySelector('td[data-field="Name"] .text-dressed')?.textContent).length,
       rows: inView.filter((tr) => tr.classList.contains('entity-row')).map((tr) => Number(tr.dataset.i)),
       more: more ? {
         inView: inView.includes(more),

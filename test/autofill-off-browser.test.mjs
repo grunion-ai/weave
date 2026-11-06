@@ -23,7 +23,8 @@ if (s) {
     const page = await s.browser.newPage({ viewport: { width: 1280, height: 800 } });
     try {
       await page.goto(`${s.base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('.inline-edit');
+      await page.click('.wv-grid tbody td.name-cell .text-dressed');
+      await page.waitForSelector('.wv-grid tbody td.name-cell .inline-edit');
       assert.deepEqual(await page.evaluate(unguarded), []);
     } finally { await page.close(); }
   });
