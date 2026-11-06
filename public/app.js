@@ -1958,7 +1958,7 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   return pop;
 }
 const PHONE_SHORT_LIST = 8;
-const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
+const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 118 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -2405,7 +2405,6 @@ function phoneLeadEl(f, item) {
 }
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  const wrap = grid.dataset.phoneWrap != null;
   for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
     const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
     for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
@@ -2420,13 +2419,14 @@ function fitPhoneChipLines(grid) {
       cut[0].dataset.more = `+${cut.length}`;
       continue;
     }
-    const top = shown[0].getBoundingClientRect().top;
     const box = tr.getBoundingClientRect();
-    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    const trStyle = getComputedStyle(tr);
+    const edge = box.right - (parseFloat(trStyle.paddingRight) || 0);
+    const floor = box.bottom - (parseFloat(trStyle.borderBottomWidth) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
+      return r.bottom <= floor + 0.5 && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
     const hidden = cut.length + shown.length - n;
