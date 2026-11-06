@@ -337,19 +337,23 @@ export class Store {
       const ids = all
         ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
         : (dirty ?? new Set());
+      if (all) db.exec('DELETE FROM entities_fts');
+      const dropEntity = db.prepare('DELETE FROM entities WHERE id = ?');
+      const putEntity = db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
+        updated_at = excluded.updated_at, json = excluded.json`);
+      const dropIndexed = db.prepare('DELETE FROM entities_fts WHERE id = ?');
+      const putIndexed = db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)');
       for (const id of ids) {
         const e = entities[id];
         if (e === undefined) {
-          db.prepare('DELETE FROM entities WHERE id = ?').run(id);
-          db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
+          dropEntity.run(id);
+          if (!all) dropIndexed.run(id);
         } else {
-          db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
-            updated_at = excluded.updated_at, json = excluded.json`)
-            .run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
-          db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
+          putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
+          if (!all) dropIndexed.run(id);
           if (!e.deletedAt) {
-            db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)').run(id, this.#ftsText(state, e));
+            putIndexed.run(id, this.#ftsText(state, e));
           }
         }
       }
