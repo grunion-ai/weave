@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -51,6 +51,8 @@ export function errorBody(err, code = 'internal') {
 }
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
+const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
 export const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
@@ -1109,7 +1111,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path.startsWith('/api/')) {
-        const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
+        const attaching = ATTACH_ROUTE.test(path);
+        const body = ['POST', 'PUT', 'PATCH'].includes(rx.method)
+          ? await rx.readBody(attaching ? MAX_ATTACH_BODY_BYTES : undefined).catch((err) => {
+            if (!attaching || err?.code !== 'too-large') throw err;
+            throw new WeaveError(`This upload is larger than ${mbText(FILE_MAX_BYTES)}, the most a file can be`, 'too-large');
+          })
+          : {};
         weave.actor = actorForRequest;
         const route = `${rx.method} ${path}`;
         if (share) {
@@ -1780,7 +1788,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const engine = oauth?.engine ?? weave;
             const account = oauth?.account ?? (authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null);
             if (!account) throw new WeaveError('Prepare uploads through OAuth or an account token', 'forbidden');
-            if (!Number.isSafeInteger(size) || size < 0 || size > MAX_BODY_BYTES) throw new WeaveError(`Upload size must be an integer from 0 to ${MAX_BODY_BYTES} bytes`, 'invalid');
+            if (!Number.isSafeInteger(size) || size < 0 || size > FILE_MAX_BYTES) throw new WeaveError(`Upload size must be an integer from 0 to ${FILE_MAX_BYTES} bytes`, 'invalid');
             if (contentBase64 != null || typeof name !== 'string' || !name.trim() || name.length > 255 || typeof mime !== 'string' || mime.length > 255) throw new WeaveError('Prepare with a filename, MIME type and size, without file content', 'invalid');
             const row = weave.getEntity(entity);
             if (row.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');

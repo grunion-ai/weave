@@ -56,6 +56,10 @@ function noteSchemaVersion(version, isRead) {
   syncSchema();
 }
 
+const FILE_MAX_BYTES = 10 * 1024 * 1024;
+const fileTooBig = (file) => file && file.size > FILE_MAX_BYTES
+  ? `${file.name} is ${fileSizeText(file.size)}; files can be up to ${fileSizeText(FILE_MAX_BYTES)}`
+  : null;
 function fileBase64(file) {
   return new Promise((res, rej) => {
     const reader = new FileReader();
@@ -3148,6 +3152,8 @@ function viewCell(v, f, { compact = false } = {}) {
 function avatarUpload(entityId, fieldName, done) {
   return async (file) => {
     if (!file) return;
+    const refusal = fileTooBig(file);
+    if (refusal) return toast(refusal, true);
     try {
       await api('POST', `/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
         name: file.name, mime: file.type || 'application/octet-stream', bytes: await fileBase64(file),
@@ -3282,6 +3288,8 @@ const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sa
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
 async function uploadBody(file) {
+  const refusal = fileTooBig(file);
+  if (refusal) throw new Error(refusal);
   const [bytes, preview] = await Promise.all([fileBase64(file), WeavePreview.make(file)]);
   return {
     name: file.name, mime: file.type || 'application/octet-stream', bytes,
@@ -9801,6 +9809,8 @@ async function uploadDocFiles(files, entityId, getEditor, onInput) {
   if (!entityId) return 'This document has no record to attach to';
   const editor = getEditor();
   for (const f of files) {
+    const refusal = fileTooBig(f);
+    if (refusal) return refusal;
     const contentBase64 = await fileBase64(f);
     let meta;
     try {
