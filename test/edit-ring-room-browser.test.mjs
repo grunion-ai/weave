@@ -62,9 +62,11 @@ if (s) {
           await page.waitForSelector(sel);
           const rest = await box(page, sel);
           await page.click(sel);
-          await page.waitForFunction((q) => document.activeElement === document.querySelector(q), sel);
-          await settled(page.locator(sel));
-          roomy(rest, await box(page, sel), sel);
+          const cell = sel.replace(/ input\.inline-edit$/, '');
+          const editor = `${cell} :is(input, textarea).inline-edit`;
+          await page.waitForFunction((q) => document.activeElement?.matches?.(q), editor);
+          await settled(page.locator(editor));
+          roomy(rest, await box(page, editor), sel);
           await page.keyboard.press('Escape');
           await page.$eval(sel, (el) => el.blur());
         }
