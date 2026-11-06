@@ -702,7 +702,7 @@ test('the <select> era leaves nothing behind', () => {
 test('an idle inline-edit cell casts no shadow', () => {
   assert.equal(rulesFor('.wv-edit')['box-shadow'], 'none',
     '.wv-edit must zero Tabler\'s --tblr-shadow-input');
-  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 2px var(--wv-edit-ring)',
     'and the focus rule draws the one ring over that reset (Issue #1030)');
 });
 

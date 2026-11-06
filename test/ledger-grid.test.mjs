@@ -65,7 +65,7 @@ test('hovering a row draws no box around each of its cells', () => {
 });
 
 test('the active cell is the only thing wearing a border', () => {
-  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 2px var(--wv-edit-ring)',
     'focus is where the control shows itself (Issue #1030)');
   assert.deepEqual(rulesFor('.wv-grid td.cell-pick'), {},
     'no cell-type gets its own outline — the row is the unit of feedback');

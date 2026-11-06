@@ -240,7 +240,7 @@ if (s && doors) {
       try {
         await ent.keyboard.press('Tab');
         const name = await ringContrast(ent, '.entity-head textarea.name-edit');
-        assert.ok(name.focused && name.style === 'none' && name.inset === 1.5 && name.alpha === 1, `the name field draws the one .wv-edit ring, no outline (Issue #1030) (${JSON.stringify(name)})`);
+        assert.ok(name.focused && name.style === 'none' && name.inset === 2 && name.alpha === 1, `the name field draws the one .wv-edit ring, no outline (Issue #1030) (${JSON.stringify(name)})`);
         assert.ok(name.ratio >= 3, `name field ring contrast ${name.ratio}:1 in ${theme}`);
         for (const sel of ['#nav .nav-db', '#search-btn']) {
           const r = await ringContrast(ent, sel);
