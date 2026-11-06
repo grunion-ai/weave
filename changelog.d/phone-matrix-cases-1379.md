@@ -1,0 +1,1 @@
+- Phone test cases for Issues #1379 to #1406 run on a five-device iPhone matrix (iPhone SE, iPhone 17, iPhone 17 Pro Max, and iPhone Duo closed and open, modeled from Xcode 27.2) in Chrome and Safari engines. Each case is marked todo until its Issue lands, so it reports without turning the suite red.
