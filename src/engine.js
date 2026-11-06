@@ -10,7 +10,7 @@ import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'node:fs';
-import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
+import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -8796,7 +8796,9 @@ export class Weave {
       if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
       if (a?.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
-        return { type: 'webhook', url: a.url };
+        if (a.signWith == null || a.signWith === '') return { type: 'webhook', url: a.url };
+        if (typeof a.signWith !== 'string') throw new WeaveError('A webhook action\'s signWith names a credential held in the keystore, as a string: its value never enters the Script', 'invalid');
+        return { type: 'webhook', url: a.url, signWith: a.signWith };
       }
       if (a?.type === 'upsert-row') return this.#compileUpsert(a);
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
@@ -8863,7 +8865,7 @@ export class Weave {
           };
           return { type: a.type, table: this.qualifiedName(target), key: tname(a.keyFieldId), fields: Object.fromEntries(a.fields.map(([fid, path]) => [tname(fid), path])) };
         }
-        return { type: a.type, url: a.url };
+        return { type: a.type, url: a.url, ...(a.signWith ? { signWith: a.signWith } : {}) };
       });
       return { table: this.qualifiedName(db), trigger, actions };
     } catch { return null; }
@@ -9273,11 +9275,13 @@ export class Weave {
       const reg = this.#reg;
       const ms = this.webhookTimeoutMs;
       const url = new URL(action.url);
+      const body = JSON.stringify(payload);
+      const headers = { 'Content-Type': 'application/json', ...this.#webhookHeaders(action.signWith, body) };
       const failed = (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err));
       webhookRefusal(url).then((refusal) => refusal ?? fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers,
+        body,
         redirect: 'manual',
         signal: AbortSignal.timeout(ms),
       }).then((res) => {
@@ -9322,6 +9326,17 @@ export class Weave {
     if (!hit) return { e: this.createEntity(target.id, { values }, { depth: depth + 1 }), created: true };
     delete values[key.name];
     return { e: this.updateEntity(hit.id, values, { depth: depth + 1 }), created: false };
+  }
+
+  #webhookHeaders(signWith, body) {
+    if (!signWith) return {};
+    const secret = this.resolveKey(signWith);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return {
+      'X-Weave-Timestamp': timestamp,
+      'X-Weave-Delivery': uuid(),
+      'X-Weave-Signature': `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`,
+    };
   }
 
   #webhookFailed(id, run, reason) {
