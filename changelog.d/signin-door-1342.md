@@ -1,0 +1,7 @@
+- A signed-out visit to a workspace host, a row link or `/auth` on a host now opens the weave sign-in page at `/start` and returns to the exact row after sign-in (Issue #1342).
+- An invite link with no login opens the same page and resumes the invite after sign-in or sign-up.
+- `/start` on a workspace host redirects to the apex `/start` instead of answering 404 (Issue #1343).
+- A signed-in person arriving through `/start?next=` for a workspace their account cannot open sees a notice naming it, and the login stays held (Issue #1331).
+- The workspace sign-in page says Sign in, names no vendor, asks a workspace architect for an invite, and links to sign-up when open sign-up is on (Issue #1335).
+- `/start` accepts a `redirect_url` on the identity provider's OAuth path, so Clerk's sign-in and sign-up paths can point at the weave page (Issue #1342).
+- `scripts/clerk-methods.mjs` compares the methods Clerk offers at sign-up and sign-in (Issue #1330).

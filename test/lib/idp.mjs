@@ -24,6 +24,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
   let issuer = '';
   let tamper = null;
   let browserLogin = null;
+  let hostedSignIn = null;
   const grant = (q, claims) => {
     const code = randomBytes(12).toString('hex');
     codes.set(code, { claims, nonce: q.get('nonce'), challenge: q.get('code_challenge'), redirectUri: q.get('redirect_uri'), clientId: q.get('client_id'), scope: q.get('scope') ?? '' });
@@ -92,6 +93,12 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       }
       if (sessions) {
         const who = live.get(cookieIn(req, '__client'));
+        if (!who && hostedSignIn) {
+          const to = new URL(hostedSignIn);
+          to.searchParams.set('redirect_url', url.href);
+          res.writeHead(302, { Location: to.href });
+          return res.end();
+        }
         if (!who) {
           seen.signInPages += 1;
           return html(200, page('Sign in', `<h1>Sign in to weave</h1><a id="idp-sign-in" href="/sign-in?return=${encodeURIComponent(url.href)}">Continue</a>`));
@@ -224,6 +231,8 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     get publishableKey() { return `pk_test_${Buffer.from(`${new URL(issuer).host}$`).toString('base64')}`; },
     tamper: (what) => { tamper = what; },
     signInBrowserAs: (claims) => { browserLogin = claims; },
+    sendSignInTo: (url) => { hostedSignIn = url; },
+    endBrowserSessions: () => live.clear(),
     approve(authorizeUrl, claims) {
       return grant(new URL(authorizeUrl).searchParams, claims);
     },

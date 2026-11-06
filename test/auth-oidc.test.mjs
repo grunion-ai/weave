@@ -171,11 +171,12 @@ test('config: WEAVE_OIDC_* is all or nothing, and the issuer is https off loopba
   assert.throws(() => oidcFromEnv({ WEAVE_OIDC_ISSUER: 'clerk', WEAVE_OIDC_CLIENT_ID: 'abc' }), /absolute URL/);
 });
 
-test('page: the sign-in page names the provider only when one is configured', () => {
+test('page: the sign-in page offers the provider door only when one is configured, and never names the vendor (Issue #1335)', () => {
   assert.ok(!renderAuthPage({ mount: '', workspace: 'w' }).includes('/api/auth/oidc/start'));
   const html = renderAuthPage({ mount: '/w/docs', workspace: 'w', provider: 'Clerk <b>' });
   assert.match(html, /id="oidc"[^>]*href="\/w\/docs\/api\/auth\/oidc\/start"/);
-  assert.match(html, /Sign in with Clerk &lt;b&gt;/);
+  assert.match(html, />Sign in</);
+  assert.doesNotMatch(html, /Clerk/);
 });
 
 async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 }, billing = null } = {}) {
@@ -219,7 +220,7 @@ test('routes: start sends the browser to the provider with state, nonce and a PK
     for (const k of ['state', 'nonce', 'code_challenge']) assert.ok(q.get(k)?.length >= 32, k);
     assert.notEqual(q.get('state'), q.get('nonce'));
     assert.equal((await s.call('GET', '/auth')).headers.get('location'), '/api/auth/oidc/start');
-    assert.match(await (await s.call('GET', '/auth?signed-out=1')).text(), /Sign in with Clerk/);
+    assert.match(await (await s.call('GET', '/auth?signed-out=1')).text(), />Sign in</);
   } finally { s.stop(); }
 });
 
@@ -468,7 +469,7 @@ test('routes: an identity with no account gets a page that offers a different ac
     const after = await s.call('GET', '/auth?signed-out=1');
     assert.equal(after.status, 200);
     assert.equal(after.headers.get('location'), null);
-    assert.match(await after.text(), /Sign in with Clerk/);
+    assert.match(await after.text(), />Sign in</);
   } finally { s.stop(); }
 });
 
