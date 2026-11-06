@@ -656,16 +656,20 @@ Batch the writes, or raise the budget with a new reason under
 
 ## Cut-off loop
 
-Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
-function that reports text cut by an overflow hidden or clip box (`clipped`), a
-truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
-holding more lines than it shows (`line-clamp`), and an input or textarea whose
-value or placeholder runs past its box (`field-value`, `field-placeholder`).
-Text inside an overflow auto or scroll container, visually hidden text and
-invisible elements are not cut-offs. The current breadcrumb's name is the one
-ellipsis the probe skips by design (Issue #1159): the title row under every
-crumb row shows the full name, so the crumb keeps a fixed share and gives way
-before any other crumb shrinks. A finding's fingerprint is its kind plus its
+Weave never shows cut-off text. Cut-off text is glyphs sliced by a box edge: a
+line cut through its middle, a letter cut in half, a chip cut at its cell's
+edge. An ellipsis is not a cut-off (Kyle, 2026-11-06): a `text-overflow:
+ellipsis` box or a `-webkit-line-clamp` box that ends on a whole line shows
+every glyph it draws, and its three dots say there is more. `test/lib/cutoff.mjs`
+is the probe: a page function that reports text cut by an overflow hidden or
+clip box, an ellipsis or line-clamp box that an ancestor box cuts, and a
+line-clamp box whose height falls short of its whole lines (all `clipped`), and
+an input or textarea whose value or placeholder runs past its box
+(`field-value`, `field-placeholder`). Text inside an overflow auto or scroll
+container, visually hidden text and invisible elements are not cut-offs. The
+current breadcrumb's name is skipped by design (Issue #1159): the title row
+under every crumb row shows the full name, so the crumb keeps a fixed share and
+gives way before any other crumb shrinks. A finding's fingerprint is its kind plus its
 selector with every number folded to `#`, and `|phone` for the phone cell.
 
 ```bash

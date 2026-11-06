@@ -54,19 +54,19 @@ if (s) {
       want: 'clipped', selector: /div\.box\.one$/,
     },
     {
-      name: 'a truncated ellipsis box is an ellipsis, counted once (rule 2)',
-      html: `<div class="box one" style="width:120px;overflow:hidden;text-overflow:ellipsis">${LONG}</div>`,
-      want: 'ellipsis', selector: /div\.box\.one$/,
+      name: 'an ellipsis chip cut by its overflow-hidden cell is clipped (rule 2)',
+      html: `<div class="cell one" style="width:80px;overflow:hidden"><span class="chip" style="display:inline-block;width:160px;overflow:hidden;text-overflow:ellipsis">${LONG}</span></div>`,
+      want: 'clipped', selector: /span\.chip$/,
     },
     {
-      name: 'an ellipsis box whose text sits in a child is one ellipsis on the box (rule 2)',
-      html: `<div class="box one" style="width:120px;overflow:hidden;text-overflow:ellipsis"><span class="label">${LONG}</span></div>`,
-      want: 'ellipsis', selector: /div\.box\.one$/,
+      name: 'a line-clamped box cut mid-line by a shorter row is clipped (rule 3)',
+      html: `<div class="row" style="width:120px;height:30px;overflow:hidden"><div class="box" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${LONG} ${LONG}</div></div>`,
+      want: 'clipped', selector: /div\.box$/,
     },
     {
-      name: 'a line-clamped box with more lines than the clamp is a line-clamp (rule 3)',
-      html: `<div class="box" style="width:120px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${LONG} ${LONG}</div>`,
-      want: 'line-clamp', selector: /div\.box$/,
+      name: 'a line-clamped box whose own height cuts its last line is clipped (rule 3)',
+      html: `<div class="box" style="width:120px;max-height:30px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${LONG} ${LONG}</div>`,
+      want: 'clipped', selector: /div\.box$/,
     },
     {
       name: 'an input whose value is wider than the input is a field-value (rule 4)',
@@ -91,6 +91,18 @@ if (s) {
   ];
 
   const QUIET = [
+    {
+      name: 'a truncated ellipsis box (three dots are a deliberate cut)',
+      html: `<div class="box one" style="width:120px;overflow:hidden;text-overflow:ellipsis">${LONG}</div>`,
+    },
+    {
+      name: 'an ellipsis box whose text sits in a child',
+      html: `<div class="box one" style="width:120px;overflow:hidden;text-overflow:ellipsis"><span class="label">${LONG}</span></div>`,
+    },
+    {
+      name: 'a line-clamped box that ends on a whole line',
+      html: `<div class="row" style="width:120px;height:40px;overflow:hidden"><div class="box" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${LONG} ${LONG}</div></div>`,
+    },
     {
       name: 'the skip link parked above the viewport',
       html: `<a class="skip-link" href="#main" style="position:fixed;left:12px;top:-48px;padding:8px 14px">Skip to content</a>`,
