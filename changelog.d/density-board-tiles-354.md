@@ -1,0 +1,1 @@
+- On a phone, a stacked board at Spacious density shows one card per row, so a card's long text reads at full width. Compact and Comfortable keep two cards per row, and cards show their text in full at every density, as before. (Feature #354)
