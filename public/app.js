@@ -1199,6 +1199,72 @@ document.addEventListener('dblclick', (e) => {
   renameNavTable(db, row);
 });
 
+function spacePath(spaceId) {
+  const path = [], seen = new Set();
+  let space = state.schema.find((s) => s.spaceId === spaceId);
+  while (space && !seen.has(space.spaceId)) {
+    path.unshift(space);
+    seen.add(space.spaceId);
+    space = state.schema.find((s) => s.spaceId === space.parentId);
+  }
+  return path;
+}
+
+function spaceCrumbs(spaceId) {
+  return [
+    { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
+    ...spacePath(spaceId).map((s) => ({ label: s.space, href: `#/space/${s.spaceId}` })),
+  ];
+}
+
+function spaceTray(parentId = null) {
+  tray(parentId ? 'New subspace' : 'New space', [
+    el('label', { class: 'form-label', for: 'space-name' }, 'Name'),
+    el('input', { id: 'space-name', name: 'name', class: 'form-control', required: '', placeholder: 'Space name' }),
+    el('div', { class: 'form-hint' }, parentId ? `In ${spacePath(parentId).map((s) => s.space).join(' / ')}` : 'In this workspace'),
+  ], async (fd) => {
+    const made = await api('POST', '/spaces', { name: String(fd.get('name')).trim(), parentId });
+    await loadSchema();
+    location.hash = `#/space/${made.id}`;
+  });
+}
+
+function spaceParentTray(space) {
+  const options = state.schema.filter((s) => !s.system && !spacePath(s.spaceId).some((p) => p.spaceId === space.spaceId));
+  tray('Parent space', [
+    el('label', { class: 'form-label' }, 'Parent'),
+    pickerSelect({ name: 'parent', title: 'Parent', value: space.parentId ?? '', options: [
+      { id: '', label: 'Workspace' },
+      ...options.map((s) => ({ id: s.spaceId, label: spacePath(s.spaceId).map((p) => p.space).join(' / ') })),
+    ] }),
+    el('div', { class: 'form-hint' }, 'Groups this space in navigation. Access and matching stay with each space.'),
+  ], async (fd) => {
+    await api('PATCH', `/spaces/${space.spaceId}`, { parentId: fd.get('parent') || null });
+    await loadSchema();
+    await showSpace(space.spaceId);
+  }, 'Save');
+}
+
+function overviewDisclosure(parent) {
+  const body = el('div', { class: 'home-overview-body' });
+  parent.append(el('details', { class: 'wv-schema home-overview' }, el('summary', {}, summaryChevron(), 'Overview'), body));
+  return body;
+}
+
+function spaceContents(parentId = null) {
+  const spaces = state.schema.filter((s) => !s.system && (s.parentId ?? null) === parentId);
+  return el('section', { class: 'home-contents', 'aria-label': parentId ? 'Space contents' : 'Workspace contents' },
+    el('div', { class: 'contents-head' },
+      el('h2', {}, parentId ? 'Subspaces' : 'Spaces'),
+      state.canManageForms ? el('button', { class: 'btn btn-sm btn-ghost-secondary', type: 'button', onclick: () => spaceTray(parentId) }, parentId ? '+ New subspace' : '+ New space') : null),
+    spaces.length ? el('div', { class: 'card list-rows space-children' }, ...spaces.map((s) => el('a', {
+      class: 'list-row', href: `#/space/${s.spaceId}`, dataset: { space: s.spaceId },
+    }, el('span', { class: 'list-row-name' }, iconEl(s.icon || 'lucide:folder', 'wv-icon'), s.space),
+    el('span', { class: 'spacer' }),
+    el('span', { class: 'pid' }, `${s.tables.length} table${s.tables.length === 1 ? '' : 's'}`, state.schema.some((c) => c.parentId === s.spaceId) ? ' · subspaces' : ''))))
+    : el('p', { class: 'contents-empty' }, parentId ? 'No subspaces.' : 'No spaces yet.'));
+}
+
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
@@ -1209,8 +1275,8 @@ function renderNav() {
     localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
     renderNav();
   };
-  for (const space of state.schema) {
-    if (space.system) continue;
+  const renderBranch = (space) => {
+    const branch = el('div', { class: 'nav-space-branch', dataset: { space: space.spaceId } });
     const isFolded = folded.has(space.spaceId);
     const spaceRow = el('div', { class: 'nav-space-row' },
       el('a', {
@@ -1234,8 +1300,11 @@ function renderNav() {
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
     kindContext(spaceRow, 'space', space);
-    nav.append(spaceRow);
-    if (isFolded) continue;
+    branch.append(spaceRow);
+    if (isFolded) return branch;
+    const children = el('div', { class: 'nav-space-children' });
+    branch.append(children);
+    for (const child of state.schema.filter((s) => !s.system && s.parentId === space.spaceId)) children.append(renderBranch(child));
     for (const db of space.tables) {
       if (db.system === 'workflows') continue;
       if (db.system === 'users') continue;
@@ -1248,16 +1317,15 @@ function renderNav() {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
       }
-      nav.append(row);
+      children.append(row);
     }
-  }
+    return branch;
+  };
+  for (const space of state.schema.filter((s) => !s.system && !s.parentId)) nav.append(renderBranch(space));
   const foot = el('div', { class: 'nav-foot' },
     el('button', {
       class: 'btn btn-sm btn-ghost-secondary', type: 'button', ...(state.canManageForms ? {} : { hidden: '' }),
-      onclick: () => foot.append(inlineNameInput('New space name…', async (name) => {
-        await api('POST', '/spaces', { name });
-        await loadSchema();
-      })),
+      onclick: () => spaceTray(),
     }, '+ New space'));
   const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
@@ -5232,10 +5300,7 @@ function tableChrome(db, trashCount) {
     if (input.value.trim() !== want.trim()) input.value = want;
   };
   chrome.header = viewHeader({
-    crumbs: [
-      { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
-      { label: db.space, href: `#/space/${db.spaceId}` },
-    ],
+    crumbs: spaceCrumbs(db.spaceId),
     permalink: () => {
       const v = ref.db.view;
       const byDefault = !v || v.id === pickTableView(allTables().find((d) => d.id === ref.db.id) ?? ref.db, null)?.id;
@@ -8609,7 +8674,7 @@ async function showSpace(spaceId) {
   const main = $('#main');
   main.replaceChildren(
     viewHeader({
-      crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
+      crumbs: spaceCrumbs(space.parentId),
       permalink: `${location.origin}/s/${spaceId}`,
       title: space.space,
       kind: 'space',
@@ -8630,6 +8695,7 @@ async function showSpace(spaceId) {
         await loadSchema();
       },
       actions: space.system ? [systemSpaceNote()] : [
+        ...(state.canManageForms ? [el('button', { class: 'btn btn-sm', type: 'button', onclick: () => spaceParentTray(space) }, 'Parent')] : []),
         el('button', { class: 'btn btn-sm share-btn', type: 'button', onclick: () => shareDialog('space', spaceId, space.space) }, 'Share…'),
         ...(space.template ? [useTemplateButton(space)] : []),
         kindDots('space', space, () => ({}), { title: 'Space actions' }),
@@ -8637,11 +8703,15 @@ async function showSpace(spaceId) {
     }),
   );
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  if (!space.system) main.append(spaceContents(spaceId));
+  main.append(el('h2', { class: 'contents-title' }, 'Tables'), spaceTablesCard(space));
+  if (space.match?.length) main.append(spaceGuestTablesCard(space));
+  const overview = overviewDisclosure(main);
   const tiles = await spaceStatTiles(space);
-  if (tiles) main.append(tiles);
-  main.append(spaceTablesCard(space));
+  if (tiles) overview.append(tiles);
   const card = await relationMapCard('Relation map', { spaceId });
-  if (card) main.append(card);
+  if (card) overview.append(card);
+  if (!tiles && !card) overview.append(el('p', { class: 'contents-empty' }, 'Table relations and rollups appear here.'));
   const reg = registryTable('tables');
   if (reg) {
     const onSaved = async () => {
@@ -8712,11 +8782,22 @@ function spaceTablesCard(space) {
       el('div', { class: 'card-body' }, el('p', { class: 'wv-start-lead' }, 'No tables in this space yet.'), add));
   }
   return el('div', { class: 'card list-rows space-tables' },
-    ...space.tables.map((t) => el('div', { class: 'list-row', dataset: { href: `#/table/${t.id}` }, onclick: () => { location.hash = `#/table/${t.id}`; } },
-      el('span', {}, t.name),
+    ...space.tables.map((t) => el('a', { class: 'list-row', href: `#/table/${t.id}`, dataset: { href: `#/table/${t.id}` } },
+      el('span', { class: 'list-row-name' }, t.name),
       el('span', { class: 'spacer' }),
       el('span', { class: 'pid' }, WeaveTerm.count(t.entityCount ?? 0, t.term)))),
     add ? el('div', { class: 'list-row list-row-add' }, add) : null);
+}
+
+function spaceGuestTablesCard(space) {
+  return el('section', { class: 'space-guests', 'aria-label': 'Matching tables' },
+    el('h2', { class: 'contents-title' }, 'Matching tables'),
+    el('p', { class: 'contents-empty' }, 'Tables from other spaces. Each opens in its home space.'),
+    space.guestTables?.length ? el('div', { class: 'card list-rows' }, ...space.guestTables.map((t) => el('a', {
+      class: 'list-row', href: `#/table/${t.id}`,
+    }, el('span', { class: 'list-row-name' }, t.name), el('span', { class: 'spacer' }),
+    el('span', { class: 'pid guest-home' }, `In ${spacePath(t.spaceId).map((s) => s.space).join(' / ') || t.space}`))))
+      : el('p', { class: 'contents-empty' }, 'No tables match yet.'));
 }
 
 const AUTO_ACTION = { 'set-field': (x) => `set ${x.field}`, 'append-doc': (x) => `append ${x.field}`, 'add-comment': () => 'comment' };
@@ -11167,7 +11248,10 @@ async function showHome() {
         kindDots('workspace', here, wsCtx, { title: 'Workspace actions' }),
       ],
     }),
-    ...(mine.length ? [] : [emptyWorkspace()]),
+    spaceContents(),
+    ...(mine.length ? [] : [emptyWorkspace()]));
+  const overview = overviewDisclosure(main);
+  overview.append(
     el('div', { class: 'card list-rows system-tables' },
       el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
         el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
@@ -11178,7 +11262,7 @@ async function showHome() {
   try {
     const views = await api('GET', '/views');
     if (views.length) {
-      main.append(el('div', { class: 'card list-rows' },
+      overview.append(el('div', { class: 'card list-rows' },
         ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
           el('span', {}, v.name),
           v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
@@ -11188,7 +11272,7 @@ async function showHome() {
   } catch {}
   if (mine.length) {
     const card = await relationMapCard('Relation map');
-    if (card) main.append(card);
+    if (card) overview.append(card);
   } else {
     maybeOnboard();
   }

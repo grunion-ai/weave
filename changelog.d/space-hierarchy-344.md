@@ -1,0 +1,1 @@
+- Workspace and space start pages put contents first. Optional subspaces organize navigation, and smart space matches show tables from other homes without changing ownership or sharing (Feature #344).

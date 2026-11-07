@@ -827,6 +827,21 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+function checkSpaceParents(spaces) {
+  for (const space of Object.values(spaces)) {
+    if (!space.parentId) continue;
+    const parent = spaces[space.parentId];
+    if (!parent) throw new WeaveError(`Parent of '${space.name}' is not in this workspace`, 'invalid');
+    if (space.system || parent.system) throw new WeaveError('System spaces cannot be nested', 'invalid');
+    if (!space.deletedAt && parent.deletedAt) throw new WeaveError('Restore the parent space first', 'invalid');
+    const seen = new Set([space.id]);
+    for (let at = parent; at; at = spaces[at.parentId]) {
+      if (seen.has(at.id)) throw new WeaveError('A space parent would create a cycle', 'invalid');
+      seen.add(at.id);
+    }
+  }
+}
+
 function schemaFingerprint(state) {
   const { spaces = {}, tables = {}, automations = {}, entities, ...meta } = state ?? {};
   const drop = (key, value) => (key === 'publicIdCounter' || key === 'activitySeq' ? undefined : value);
@@ -856,6 +871,7 @@ export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
   const move = (q) => (typeof q === 'string' && q.startsWith(prefix) ? `${to}/${q.slice(prefix.length)}` : q);
   const without = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
   const src = structuredClone(spaceDoc);
+  for (const key of ['parent', 'parentId', 'match', 'guestTables']) delete src[key];
   const skipped = [];
   const gone = new Map(src.tables.map((t) => [t.name, new Set()]));
   const tableOf = (q) => (inside.has(q) ? src.tables.find((t) => prefix + t.name === q) : null);
@@ -1482,13 +1498,67 @@ export class Weave {
     return this.#schemaVersion;
   }
 
-  createSpace({ name, description = '', icon = '', template = false }) {
+  #spaceParent(ref, childId = null) {
+    if (ref == null || ref === '') return null;
+    const parent = this.findSpace(ref);
+    if (!parent) throw new WeaveError(`Parent space '${ref}' not found in this workspace`, 'not-found');
+    if (parent.system || this.state.spaces[childId]?.system) throw new WeaveError('System spaces cannot be nested', 'invalid');
+    if (parent.deletedAt) throw new WeaveError('Restore the parent space first', 'invalid');
+    const seen = new Set(childId ? [childId] : []);
+    for (let at = parent; at; at = this.state.spaces[at.parentId]) {
+      if (seen.has(at.id)) throw new WeaveError('A space parent would create a cycle', 'invalid');
+      seen.add(at.id);
+    }
+    return parent.id;
+  }
+
+  #spaceMatch(value) {
+    if (value == null) return [];
+    if (typeof value === 'string') {
+      try { value = value.trim() ? JSON.parse(value) : []; }
+      catch { throw new WeaveError('Match must be a JSON array of query predicates', 'invalid'); }
+    }
+    if (!Array.isArray(value)) throw new WeaveError('Match must be an array of query predicates', 'invalid');
+    const check = (node) => {
+      if (Array.isArray(node) && node.length === 3 && typeof node[0] === 'string') {
+        if (!['=', '!=', '<', '<=', '>', '>=', 'contains', 'in', 'is-empty', 'not-empty'].includes(node[1])) throw new WeaveError(`Unknown Match operator '${node[1]}'`, 'invalid');
+        this.#reg.#checkWhere(this.#sysTable('tables'), node);
+        return;
+      }
+      if (node && !Array.isArray(node) && typeof node === 'object' && Object.keys(node).length === 1 && (Array.isArray(node.and) || Array.isArray(node.or))) {
+        for (const n of node.and ?? node.or) check(n);
+        return;
+      }
+      throw new WeaveError('Invalid Match predicate', 'invalid');
+    };
+    value.forEach(check);
+    return structuredClone(value);
+  }
+
+  #spaceGuests(space, counts) {
+    if (!space.match?.length) return [];
+    const reg = this.#reg;
+    const table = this.#sysTable('tables');
+    return this.userTables().filter((db) => {
+      if (db.spaceId === space.id) return false;
+      const row = this.#sysRow('tables', db.id);
+      return row && reg.#matchNode(row, table, { and: space.match });
+    }).map((db) => ({
+      id: db.id, name: db.name, description: db.description ?? '', icon: db.icon ?? '',
+      qualified: this.qualifiedName(db), spaceId: db.spaceId, space: this.state.spaces[db.spaceId].name,
+      url: this.permalink('table', db.id), entityCount: counts.get(db.id) ?? 0,
+    }));
+  }
+
+  createSpace({ name, description = '', icon = '', template = false, parentId = null, match = [] }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     refuseReserved('space', name);
     if (Object.values(this.state.spaces).some((s) => !s.deletedAt && s.name.toLowerCase() === String(name).toLowerCase())) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
     const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
     if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
-    const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
+    parentId = this.#spaceParent(parentId);
+    match = this.#spaceMatch(match);
+    const space = { id: uuid(), name, description, ...(parentId ? { parentId } : {}), ...(match.length ? { match } : {}), ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.#settlePositions();
     this.save();
@@ -1521,7 +1591,12 @@ export class Weave {
     if (patch.name != null) refuseReserved('space', patch.name);
     if (patch.position != null) checkPosition(patch.position);
     if (patch.template != null && typeof patch.template !== 'boolean') throw new WeaveError(`A space's template is true or false, got ${JSON.stringify(patch.template)}`, 'invalid');
+    const parentId = 'parentId' in patch ? this.#spaceParent(patch.parentId, s.id) : s.parentId;
+    const match = 'match' in patch ? this.#spaceMatch(patch.match) : s.match;
+    if (s.system && ('parentId' in patch || 'match' in patch)) throw new WeaveError('System spaces cannot have a parent or Match', 'invalid');
     this.#audit('space-updated', { name: s.name, patch: Object.keys(patch) }, s.id);
+    if ('parentId' in patch) { if (parentId) s.parentId = parentId; else delete s.parentId; }
+    if ('match' in patch) { if (match?.length) s.match = match; else delete s.match; }
     if (patch.name != null) s.name = patch.name;
     if (patch.description != null) s.description = patch.description;
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
@@ -1535,6 +1610,7 @@ export class Weave {
   deleteSpace(ref, { hard = false } = {}) {
     const s = this.getSpace(ref);
     if (s.system) throw new WeaveError(`Space '${s.name}' is the workspace's own system space and cannot be deleted`, 'invalid');
+    if (Object.values(this.state.spaces).some((child) => child.parentId === s.id && (hard || !child.deletedAt))) throw new WeaveError('Move or remove the subspaces before deleting their parent', 'invalid');
     if (!hard) {
       if (s.deletedAt) return s;
       s.deletedAt = nowISO();
@@ -1559,6 +1635,7 @@ export class Weave {
     if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own System space is a tombstone', 'invalid');
     const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
     if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
+    this.#spaceParent(s.parentId, s.id);
     s.deletedAt = null;
     this.#restoreSysRow('spaces', s.id);
     this.#audit('space-restored', { name: s.name }, s.id);
@@ -2560,6 +2637,17 @@ export class Weave {
       for (const t of sp.tables) current.set(`${sp.space}/${t.name}`, t);
     }
     const wanted = doc.filter((sp) => !sp.system);
+    const hierarchy = Object.fromEntries(Object.values(this.state.spaces).map((sp) => [sp.name, { ...sp, id: sp.name, parentId: this.state.spaces[sp.parentId]?.name }]));
+    const parentName = (sp) => {
+      if ('parent' in sp) return sp.parent || null;
+      if ('parentId' in sp) return doc.find((entry) => entry.spaceId === sp.parentId)?.space ?? this.findSpace(sp.parentId)?.name ?? sp.parentId;
+      return hierarchy[sp.space]?.parentId ?? null;
+    };
+    for (const sp of wanted) {
+      hierarchy[sp.space] = { ...hierarchy[sp.space], id: sp.space, name: sp.space, parentId: parentName(sp) };
+      if ('match' in sp) this.#spaceMatch(sp.match);
+    }
+    checkSpaceParents(hierarchy);
     const docTable = (q) => {
       const cut = String(q ?? '').lastIndexOf('/');
       return doc.find((sp) => sp.space === String(q).slice(0, cut))?.tables?.find((t) => t.name === String(q).slice(cut + 1));
@@ -2766,6 +2854,17 @@ export class Weave {
         }
       });
     }
+    const moves = wanted.filter((sp) => {
+      const have = this.findSpace(sp.space);
+      return parentName(sp) !== (this.state.spaces[have?.parentId]?.name ?? null);
+    });
+    if (!dryRun) for (const sp of moves) this.updateSpace(sp.space, { parentId: null });
+    for (const sp of moves) act('update-space-parent', sp.space, () => this.updateSpace(sp.space, { parentId: parentName(sp) }));
+    for (const sp of wanted) {
+      if (!('match' in sp)) continue;
+      const match = this.#spaceMatch(sp.match);
+      if (JSON.stringify(match) !== JSON.stringify(this.findSpace(sp.space)?.match ?? [])) act('update-space-match', sp.space, () => this.updateSpace(sp.space, { match }));
+    }
     const spacesT = this.#sysTable('spaces');
     const reg = this.#reg;
     const spacesDoc = doc.find((sp) => sp.system === 'workspace')?.tables?.find((t) => t.system === 'spaces');
@@ -2917,12 +3016,12 @@ export class Weave {
     listAt('spaces', spec.spaces).forEach((sp, i) => {
       const at = `spaces[${i}]`;
       if (!isObj(sp)) return fail(at, new WeaveError('A space is an object: {name, icon?, description?, tables}', 'invalid'));
-      extra(at, sp, ['name', 'icon', 'description', 'tables']);
+      extra(at, sp, ['name', 'icon', 'description', 'tables', 'parentId', 'match']);
       sp = cosmetic(at, sp, 'icon', iconValue);
       let space = sp.name ? this.findSpace(sp.name) : null;
       if (space) existing.push(`space ${space.name}`);
       else {
-        space = step(at, () => this.createSpace({ name: sp.name, description: sp.description ?? '', icon: sp.icon ?? '' }));
+        space = step(at, () => this.createSpace({ name: sp.name, description: sp.description ?? '', icon: sp.icon ?? '', parentId: sp.parentId, match: sp.match }));
         if (!space) return undefined;
         created.spaces += 1;
       }
@@ -4082,6 +4181,7 @@ export class Weave {
     if (!this.#sysTable('spaces')) return;
     this.#syncWorkspaceRow();
     for (const sp of Object.values(this.state.spaces)) this.#syncSpaceRow(sp);
+    for (const sp of Object.values(this.state.spaces)) if (sp.parentId) this.#syncSpaceRow(sp);
     for (const t of Object.values(this.state.tables)) this.#syncTableRow(t);
     for (const t of Object.values(this.state.tables)) {
       if (t.system) continue;
@@ -4464,6 +4564,12 @@ export class Weave {
     };
     const spacesT = this.#sysTable('spaces')
       ?? mkTable('Spaces', 'spaces', 'Every space in this workspace, as a row. Creating a row creates the space; renaming it renames the space; hard-deleting it deletes the space and everything in it.');
+    if (!this.#sysField(spacesT, 'Parent')) {
+      const { field, inverse } = this.addRelation(spacesT.id, { name: 'Parent', targetDb: spacesT.id, cardinality: 'many-to-one', inverseName: 'Subspaces' });
+      field.system = true;
+      inverse.system = true;
+    }
+    if (!this.#sysField(spacesT, 'Match')) this.addField(spacesT.id, { name: 'Match', type: 'text' }).system = true;
     if (!this.#sysField(spacesT, 'Template')) this.addField(spacesT.id, { name: 'Template', type: 'checkbox' }).system = true;
     const tablesT = this.#sysTable('tables')
       ?? mkTable('Tables', 'tables', 'Every table in this workspace, as a row related to its space. Creating a row creates the table; renaming it renames the table; hard-deleting it deletes the table and its rows.');
@@ -4639,9 +4745,13 @@ export class Weave {
       reg.#mark(row);
       if (space.deletedAt) reg.#metaSync(() => reg.deleteEntity(row.id));
       reg.save();
-      return row;
     }
     const patch = {};
+    const parentRow = space.parentId ? this.#sysRow('spaces', space.parentId) : null;
+    const parentF = this.#sysField(t, 'Parent');
+    if (parentF && (row.values[parentF.id] ?? null) !== (parentRow?.id ?? null)) patch.Parent = parentRow?.id ?? null;
+    const matchF = this.#sysField(t, 'Match');
+    if (matchF && (row.values[matchF.id] ?? '') !== (space.match?.length ? JSON.stringify(space.match) : '')) patch.Match = space.match?.length ? JSON.stringify(space.match) : '';
     if (reg.entityName(row) !== space.name) patch.Name = space.name;
     const descF = this.#sysField(t, 'Description');
     if ((row.values[descF.id] ?? '') !== (space.description ?? '')) patch.Description = space.description ?? '';
@@ -4856,7 +4966,13 @@ export class Weave {
       }
       const template = !!values.Template;
       delete values.Template;
-      made = this.#sysRow('spaces', owner.createSpace({ name, description, template }).id);
+      const parentRow = values.Parent == null ? null : this.findEntity(db.id, values.Parent);
+      if (values.Parent != null && (!parentRow || this.#ownerOf(parentRow) !== owner)) throw new WeaveError('Parent must be a space in the same workspace', 'invalid');
+      if ('Subspaces' in values) throw new WeaveError('Set Parent on the child space instead', 'invalid');
+      const match = values.Match;
+      delete values.Parent;
+      delete values.Match;
+      made = this.#sysRow('spaces', owner.createSpace({ name, description, template, parentId: parentRow?.sysId, match }).id);
     } else if (db.system === 'tables') {
       const spaceRef = values.Space;
       delete values.Space;
@@ -4968,6 +5084,16 @@ export class Weave {
         delete patch.Space;
       }
       const structural = {};
+      if (db.system === 'spaces') {
+        if ('Subspaces' in patch) throw new WeaveError('Set Parent on the child space instead', 'invalid');
+        if ('Parent' in patch) {
+          const parentRow = patch.Parent == null ? null : this.findEntity(db.id, patch.Parent);
+          if (patch.Parent != null && (!parentRow || this.#ownerOf(parentRow) !== this.#ownerOf(e))) throw new WeaveError('Parent must be a space in the same workspace', 'invalid');
+          structural.parentId = parentRow?.sysId ?? null;
+          delete patch.Parent;
+        }
+        if ('Match' in patch) { structural.match = patch.Match; delete patch.Match; }
+      }
       if ('Name' in patch) { structural.name = patch.Name; delete patch.Name; }
       if ('Description' in patch) { structural.description = patch.Description; delete patch.Description; }
       if (db.system === 'spaces' && 'Template' in patch) { structural.template = !!patch.Template; delete patch.Template; }
@@ -8959,6 +9085,8 @@ export class Weave {
     return this.listSpaces().map((sp) => ({
       space: sp.name,
       spaceId: sp.id,
+      ...(sp.parentId ? { parentId: sp.parentId, parent: this.state.spaces[sp.parentId]?.name } : {}),
+      ...(sp.match?.length ? { match: structuredClone(sp.match), guestTables: this.#spaceGuests(sp, counts) } : {}),
       url: this.permalink('space', sp.id),
       description: sp.description ?? '',
       ...(sp.system ? { system: sp.system } : {}),
@@ -9137,7 +9265,12 @@ export class Weave {
     const maps = [state.spaces, tables, state.entities, state.automations, state.meta?.views, state.meta?.accounts,
       ...Object.values(tables).map((t) => t?.fields)];
     for (const m of maps) for (const k of Object.keys(m ?? {})) refuseReserved('row id', k);
+    checkSpaceParents(state.spaces ?? {});
+    const previous = this.state;
     this.state = JSON.parse(JSON.stringify(state));
+    try {
+      for (const sp of Object.values(this.state.spaces ?? {})) if (sp.match != null) this.#spaceMatch(sp.match);
+    } catch (err) { this.state = previous; throw err; }
     this.#migrate();
     this.#keepSecrets(prior);
     if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();

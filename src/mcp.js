@@ -208,8 +208,8 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_space',
-    description: 'Create a space (top-level grouping of tables).',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } }, required: ['name'] },
+    description: 'Create a space. parentId nests it in this workspace; match selects guest table references using registry Tables query predicates. Ownership and sharing stay unchanged.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, parentId: { type: ['string', 'null'] }, match: { type: 'array', items: {} } }, required: ['name'] },
   },
   {
     name: 'weave_create_table',
@@ -285,7 +285,7 @@ export const TOOLS = [
     description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused.',
     inputSchema: {
       type: 'object',
-      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' } },
+      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, parentId: { type: ['string', 'null'], description: 'Parent space id or name; null moves to the root' }, match: { type: 'array', items: {}, description: 'Query predicates over registry Tables; an empty array removes guest references' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' } },
       required: ['space'],
     },
   },
@@ -822,7 +822,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_create_space':
-      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon', 'template'])));
+      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon', 'template', 'parentId', 'match'])));
     case 'weave_create_table':
       return guided(weave, 'table', weave.createTable(pick(args, ['space', 'name', 'description', 'icon'])));
     case 'weave_add_field':
@@ -842,7 +842,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_update_space':
-      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template', 'position']));
+      return weave.updateSpace(args.space, pick(args, ['name', 'description', 'icon', 'template', 'position', 'parentId', 'match']));
     case 'weave_template_list':
       return { templates: weave.listTemplates() };
     case 'weave_template_use':

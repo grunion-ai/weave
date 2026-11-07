@@ -2713,3 +2713,17 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid > tbody > tr.group-sum > td.group-sum-cell:nth-child(3) { display: block; flex: 1; min-width: 0; height: auto; border: 0; padding: 0 14px; white-space: normal; }
 }
 .group-head-in > :not(.group-count) { flex: none; }
+
+.nav-space-children .nav-space-branch { margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--tblr-border-color); }
+.nav-space-branch .nav-space { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-contents { margin: 12px 0 20px; }
+.contents-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.contents-head h2, .contents-title { margin: 0; font-size: var(--fs-h3); font-weight: 600; }
+.contents-title { margin: 18px 0 8px; }
+.contents-empty { color: var(--tblr-secondary); font-size: var(--fs-secondary); margin: 8px 0 12px; }
+a.list-row { color: inherit; text-decoration: none; }
+a.list-row:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
+.space-children .list-row-name { display: flex; align-items: center; gap: 10px; }
+.home-overview-body { display: grid; gap: 14px; }
+.home-overview-body > .card { margin: 0; }
+.guest-home { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

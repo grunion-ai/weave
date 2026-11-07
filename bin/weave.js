@@ -629,9 +629,11 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
+      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template), parentId: flags.parent === 'null' ? null : flags.parent, match: flags.match == null ? [] : JSON.parse(flags.match) })));
       if (sub === 'update') {
         const patch = pickFlags(['name', 'description', 'icon', 'position']);
+        if (flags.parent !== undefined) patch.parentId = flags.parent === 'null' ? null : flags.parent;
+        if (flags.match !== undefined) patch.match = JSON.parse(flags.match);
         if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
         return out(w.updateSpace(name, patch));
       }
