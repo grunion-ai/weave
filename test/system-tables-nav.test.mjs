@@ -110,7 +110,8 @@ test('the Workflows row always shows, resolved through the registry a member rea
 test('the sidebar lists user spaces only; the registry lives on the workspace page (Issue #874)', () => {
   const nav = fnBodyOf('renderNav');
   assert.match(nav, /for \(const space of state\.schema\) \{\s*if \(space\.system\) continue;/, 'a system space never renders as a sidebar space');
-  const home = fnBodyOf('showHome');
+  assert.match(fnBodyOf('showHome'), /workspaceSystemCard\(\)/, 'the workspace page draws the registry card');
+  const home = fnBodyOf('workspaceSystemCard');
   assert.match(home, /state\.schema\.filter\(\(s\) => s\.system === 'workspace'\)/, 'the workspace page reads its own registry space, never the root\'s');
   assert.match(home, /dataset: \{ href: `#\/table\/\$\{db\.id\}`, registry: db\.system \}/, 'each registry table is a row that opens it');
 });

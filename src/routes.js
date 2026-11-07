@@ -1603,6 +1603,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
         }
 
+        if (route === 'GET /api/workspace/home') return out(200, weave.workspaceHome());
+
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });

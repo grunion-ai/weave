@@ -1146,6 +1146,11 @@ function keyboardInset() {
   const vv = window.visualViewport;
   return vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
 }
+function publishKeyboardInset() {
+  const v = `${Math.round(keyboardInset())}px`;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue('--wv-keyboard') !== v) root.style.setProperty('--wv-keyboard', v);
+}
 function publishHeaderOn(holder, box, pane) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
@@ -1162,6 +1167,9 @@ function stickViewHeader(box) {
 }
 addEventListener('resize', publishViewHeaderHeight);
 window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
+addEventListener('resize', publishKeyboardInset);
+for (const ev of ['resize', 'scroll']) window.visualViewport?.addEventListener(ev, publishKeyboardInset);
+publishKeyboardInset();
 
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: weaveBreadcrumbs.ROW_MARK };
 function crumbIconEl(c) {
@@ -11797,6 +11805,32 @@ async function showView(id) {
 const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
 let bootHomeReads = null;
 
+function workspaceSystemCard() {
+  const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
+    return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
+      el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? 'row' : 'rows'}`));
+  });
+  return el('div', { class: 'card list-rows system-tables' },
+    el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
+      el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, 'every event in this workspace')),
+    ...registryRows);
+}
+
+async function savedPagesCard() {
+  const views = await api('GET', '/views').catch(() => []);
+  if (!views.length) return null;
+  return el('div', { class: 'card list-rows' },
+    ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
+      el('span', {}, v.name),
+      v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)), 'share-page', v)));
+}
+
 async function showHome() {
   state.route = { page: 'home' };
   syncDocTitle(null);
@@ -11809,12 +11843,6 @@ async function showHome() {
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
-  const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
-    return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
-      el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
-      el('span', { class: 'spacer' }),
-      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? 'row' : 'rows'}`));
-  });
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -11834,25 +11862,12 @@ async function showHome() {
         kindDots('workspace', here, wsCtx, { title: 'Workspace actions' }),
       ],
     }),
-    ...(mine.length ? [] : [emptyWorkspace()]),
-    el('div', { class: 'card list-rows system-tables' },
-      el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
-        el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
-        el('span', { class: 'spacer' }),
-        el('span', { class: 'pid' }, 'every event in this workspace')),
-      ...registryRows));
+    ...(mine.length ? [] : [emptyWorkspace()]));
   kindContext(main.querySelector('.view-header'), 'workspace', here, wsCtx, { skip: `${OWN_CONTEXT}, .crumb-path a, .ws-logo` });
-  try {
-    const views = await api('GET', '/views');
-    if (views.length) {
-      main.append(el('div', { class: 'card list-rows' },
-        ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
-          el('span', {}, v.name),
-          v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
-          el('span', { class: 'spacer' }),
-          el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)), 'share-page', v))));
-    }
-  } catch {}
+  if (mine.length && dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showWorkspaceLauncher(main, here.title);
+  main.append(workspaceSystemCard());
+  const pages = await savedPagesCard();
+  if (pages) main.append(pages);
   if (mine.length) {
     const card = await relationMapCard('Relation map');
     if (card) main.append(card);

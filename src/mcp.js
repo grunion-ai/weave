@@ -681,8 +681,16 @@ const DESTRUCTIVE = new Set([
   'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
 ]);
 const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+const IDEMPOTENT = new Set([
+  ...READ_ONLY,
+  'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity', 'weave_set_state', 'weave_link', 'weave_unlink',
+  'weave_doc_restore', 'weave_delete_comment', 'weave_update_space', 'weave_delete_space', 'weave_restore_space',
+  'weave_update_table', 'weave_table_view', 'weave_move_table', 'weave_delete_table', 'weave_restore_table',
+  'weave_update_field', 'weave_rollback_field', 'weave_delete_field', 'weave_restore_field', 'weave_apply_schema',
+  'weave_automations', 'weave_workspace', 'weave_keys', 'weave_files', 'weave_registry', 'weave_import_json',
+]);
 for (const t of TOOLS) {
-  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
+  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), idempotentHint: IDEMPOTENT.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
 }
 
 export function toolTable() {

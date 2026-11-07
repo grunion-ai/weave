@@ -1,0 +1,1 @@
+- Every MCP tool now carries `idempotentHint` beside its other annotations, so a client knows which calls it may safely retry. Reads, updates, sets, deletes and restores are marked idempotent; creates, appends, row imports, comments, undo, token and share mints, form submits and `weave_call` are not (Issue #1319).
