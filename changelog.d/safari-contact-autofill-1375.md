@@ -1,1 +1,0 @@
-- Text fields across the app now carry `autocomplete="off"` by default, so Safari no longer offers a Contacts card when you edit a Name cell in a grid (Issue #1375).

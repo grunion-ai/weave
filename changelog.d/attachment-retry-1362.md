@@ -1,1 +1,0 @@
-- A failed upload stays in the attachments field as a tile naming the reason, with a Retry button that sends the same file again and a Dismiss button that drops it, and the field's file input empties after every attempt so the same file can be picked again (Issue #1362).

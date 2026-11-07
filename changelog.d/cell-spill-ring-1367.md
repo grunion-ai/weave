@@ -1,1 +1,0 @@
-- The long-text editor that spills right and wraps now opens on the same roomy, ringed box as every other inline editor, 4px outside the value, and a value that fits before the grid edge stays on one line instead of wrapping early. (Issue #1367)
