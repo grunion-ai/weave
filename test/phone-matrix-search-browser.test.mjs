@@ -44,7 +44,7 @@ if (s) {
     });
   });
 
-  test('with the keyboard up the New task sheet keeps its Name field and Create button above the keyboard (keyboard modeled, Issue #1386)', { todo: 'Issue #1386' }, async (t) => {
+  test('with the keyboard up the New task sheet keeps its Name field and Create button above the keyboard (keyboard modeled, Issue #1386)', async (t) => {
     await eachPhone(t, matrix, async (page, run) => {
       await page.addInitScript(stubKeyboard);
       await openTable(page, base, tasks);

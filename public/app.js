@@ -1127,6 +1127,11 @@ function keyboardInset() {
   const vv = window.visualViewport;
   return vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
 }
+function publishKeyboardInset() {
+  const v = `${Math.round(keyboardInset())}px`;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue('--wv-keyboard') !== v) root.style.setProperty('--wv-keyboard', v);
+}
 function publishHeaderOn(holder, box, pane) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
@@ -1143,6 +1148,9 @@ function stickViewHeader(box) {
 }
 addEventListener('resize', publishViewHeaderHeight);
 window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
+addEventListener('resize', publishKeyboardInset);
+for (const ev of ['resize', 'scroll']) window.visualViewport?.addEventListener(ev, publishKeyboardInset);
+publishKeyboardInset();
 
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: weaveBreadcrumbs.ROW_MARK };
 function crumbIconEl(c) {
