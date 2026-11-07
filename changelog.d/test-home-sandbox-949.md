@@ -1,1 +1,0 @@
-- The test runner pins `WEAVE_KEYSTORE` and `WEAVE_DATA` into a per-run temp directory, so a test that skips the override can no longer read or write the developer's own `~/.weave` (Issue #949).
