@@ -3,7 +3,6 @@ import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer, connect } from 'node:net';
 import { Weave } from '../../src/engine.js';
-import { launch } from './browser.mjs';
 import { tempDir } from './temp.mjs';
 import { inkOn } from './contrast.mjs';
 
@@ -169,10 +168,10 @@ function filesOf(weave, id) {
   return (weave.getEntity(id).files ?? []).map((f) => f.name);
 }
 
-export async function uploadMatrix(suite, scenarios) {
+export function matrixWorld(scenarios) {
   const dir = tempDir('weave-upload-matrix-');
   const rows = {};
-  const s = await launch(suite, (weave) => {
+  const seed = (weave) => {
     weave.createSpace({ name: 'Product' });
     const decks = weave.createTable({ space: 'Product', name: 'Deck' });
     weave.addField(decks, { name: 'Files', type: 'attachments' });
@@ -180,7 +179,11 @@ export async function uploadMatrix(suite, scenarios) {
       rows[sc.id] = weave.createEntity(decks, { name: sc.id });
       weave.setDoc(rows[sc.id].id, 'upload target paragraph\n', 'Description');
     }
-  }, { weave: () => new Weave({ path: join(dir, 'weave.db') }) });
+  };
+  return { dir, rows, seed, options: { weave: () => new Weave({ path: join(dir, 'weave.db') }) } };
+}
+
+export function matrixCases(s, { dir, rows }, scenarios) {
   if (!s) return [];
   const cases = [];
   const { base, browser, weave, server } = s;

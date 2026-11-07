@@ -1,5 +1,6 @@
 import test from 'node:test';
-import { uploadMatrix, file, KB, MB, LIMIT, MSG, TILE, RETRY, CHOOSE } from './lib/upload-matrix.mjs';
+import { launch } from './lib/browser.mjs';
+import { matrixWorld, matrixCases, file, KB, MB, LIMIT, MSG, TILE, RETRY, CHOOSE } from './lib/upload-matrix.mjs';
 
 const LONG = `${'board-pack-'.repeat(18)}final.pdf`;
 const UNICODE = 'Résumé 日本語 📄 v2.pdf';
@@ -7,7 +8,7 @@ const SPACED = 'quarterly  report   final copy.pdf';
 const red = (text, action) => ({ kind: 'err', text, action });
 const amber = (text, action = null) => ({ kind: 'warn', text, action });
 
-const cases = await uploadMatrix('upload matrix (core)', [
+const SCENARIOS = [
   { id: 'picker-10k', entry: 'picker', files: [file('notes.txt', 10 * KB, 'text/plain')],
     expect: () => ({ landed: ['notes.txt'], failed: [], toast: null }) },
   { id: 'picker-empty', entry: 'picker', files: [file('empty.txt', 0, 'text/plain')],
@@ -56,5 +57,8 @@ const cases = await uploadMatrix('upload matrix (core)', [
     expect: () => ({ landed: [UNICODE], failed: [], toast: null }) },
   { id: 'doc-spaced-name', entry: 'doc', files: [file(SPACED, 10 * KB)],
     expect: () => ({ landed: [SPACED], failed: [], toast: null }) },
-]);
-for (const c of cases) test(...c);
+];
+
+const world = matrixWorld(SCENARIOS);
+const s = await launch('upload matrix (core)', world.seed, world.options);
+for (const c of matrixCases(s, world, SCENARIOS)) test(...c);

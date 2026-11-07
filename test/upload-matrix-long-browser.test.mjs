@@ -1,11 +1,12 @@
 import test from 'node:test';
-import { uploadMatrix, file, KB, MB, LIMIT, MSG, TILE, RETRY } from './lib/upload-matrix.mjs';
+import { launch } from './lib/browser.mjs';
+import { matrixWorld, matrixCases, file, KB, MB, LIMIT, MSG, TILE, RETRY } from './lib/upload-matrix.mjs';
 
 const red = (text, action) => ({ kind: 'err', text, action });
 const amber = (text, action = null) => ({ kind: 'warn', text, action });
 const many = Array.from({ length: 25 }, (_, i) => file(`photo-${String(i + 1).padStart(2, '0')}.txt`, 10 * KB, 'text/plain'));
 
-const cases = await uploadMatrix('upload matrix (long)', [
+const SCENARIOS = [
   { id: 'picker-5m-slow', entry: 'picker', net: 'slow', files: [file('deck.pdf', 5 * MB)], timeout: 90_000,
     expect: () => ({ landed: ['deck.pdf'], failed: [], toast: null }) },
   { id: 'drop-1m-slow', entry: 'drop', net: 'slow', files: [file('contract.pdf', MB)],
@@ -38,5 +39,8 @@ const cases = await uploadMatrix('upload matrix (long)', [
     expect: () => ({ landed: ['s1.pdf', 's3.pdf'], failed: [{ name: 's2.pdf', tile: TILE.offline, retry: true }], toast: amber(MSG.oneFailed(2, 3, 's2.pdf', 'no connection'), RETRY) }) },
   { id: 'drop-25-files-one-over', entry: 'drop', files: [...many.slice(0, 12), file('too-big.zip', 25 * MB, 'application/zip'), ...many.slice(12, 24)], timeout: 120_000,
     expect: () => ({ landed: many.slice(0, 24).map((f) => f.name), failed: [{ name: 'too-big.zip', tile: TILE.over, retry: false }], toast: amber(MSG.oneFailed(24, 25, 'too-big.zip', 'over 10 MB'), 'Choose another file') }) },
-]);
-for (const c of cases) test(...c);
+];
+
+const world = matrixWorld(SCENARIOS);
+const s = await launch('upload matrix (long)', world.seed, world.options);
+for (const c of matrixCases(s, world, SCENARIOS)) test(...c);
