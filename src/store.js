@@ -284,9 +284,8 @@ export class Store {
         db = new DatabaseSync(p, { readOnly: true });
         db.exec('PRAGMA busy_timeout = 5000');
         const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
-        for (const t of ['entities', 'weave_meta']) {
-          if (tables.has(t) && db.prepare(`SELECT 1 FROM ${t} WHERE instr(json, ?) > 0 LIMIT 1`).get(blobId)) return true;
-        }
+        if (tables.has('entities') && db.prepare('SELECT 1 FROM entities WHERE instr(json, ?) > 0 LIMIT 1').get(blobId)) return true;
+        if (tables.has('weave_meta') && db.prepare('SELECT 1 FROM weave_meta WHERE instr(json, ?) > 0 LIMIT 1').get(blobId)) return true;
       } catch {
         return true;
       } finally {
