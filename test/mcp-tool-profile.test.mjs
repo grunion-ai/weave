@@ -47,7 +47,7 @@ test('the core list costs well under half the full one', () => withEnv(null, () 
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 17900, `core tools/list is ${core} bytes; the Issue #1270 row shape on weave_query raised the budget from 17600, which the Issue #1267 paging contract had raised from 17400, the Feature #331 annotations from the Issue #857 figure of 15400`);
+  assert.ok(core < 18200, `core tools/list is ${core} bytes; the Issue #1319 idempotentHint raised the budget from 17900, which the Issue #1270 row shape on weave_query had raised from 17600, which the Issue #1267 paging contract had raised from 17400, the Feature #331 annotations from the Issue #857 figure of 15400`);
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {
