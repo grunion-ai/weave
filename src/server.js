@@ -8,7 +8,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError, detachHubRegistry } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
-import { createRequestHandler, decodePath, MAX_BODY_BYTES } from './routes.js';
+import { createRequestHandler, decodePath, MAX_BODY_BYTES, errorBody, statusFor } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
@@ -642,10 +642,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
 
   const gzCache = new Map();
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
-  const fail = (res, status, error, code) => {
+  const fail = (res, status, error, code, id) => {
     if (res.headersSent) return res.destroy();
     res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
-    res.end(JSON.stringify({ error, code }));
+    res.end(JSON.stringify({ error, code, ...(id ? { id } : {}) }));
   };
   const server = createHttpServer(async (req, res) => {
     try {
@@ -682,8 +682,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       res.writeHead(fresh.status, secure(req, headers));
       res.end(body);
     } catch (err) {
-      console.error(`weave: ${req.method} ${req.url} failed:`, err);
-      fail(res, 500, 'Internal error', 'internal');
+      const { error, code, id } = errorBody(err);
+      console.error(`weave: ${req.method} ${req.url} failed${id ? ` as request ${id}` : `: ${err?.message}`}`);
+      fail(res, statusFor(err), error, code, id);
     }
   });
   server.on('close', () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); });

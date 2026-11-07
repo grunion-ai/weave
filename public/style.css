@@ -936,6 +936,7 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .wv-toast.warn { --wv-toast-accent: var(--wv-toast-warn); }
 .wv-toast.err, .wv-toast.warn { padding-left: 9px; border-left: 4px solid var(--wv-toast-accent); background: color-mix(in srgb, var(--wv-toast-accent) 14%, var(--wv-toast-bg)); }
 .wv-toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.wv-error-id { font-family: var(--tblr-font-monospace); }
 .wv-toast-count { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--wv-toast-line); font: 600 var(--fs-meta)/16px var(--tblr-font-monospace); }
 .wv-toast-action { flex: 0 0 auto; padding: 0 4px; background: none; border: 0; border-radius: 4px; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .wv-toast-close { flex: 0 0 24px; width: 24px; height: 24px; margin-top: -2px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; border-radius: 5px; color: var(--wv-toast-muted); cursor: pointer; }

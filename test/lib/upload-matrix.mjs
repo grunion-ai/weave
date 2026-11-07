@@ -12,10 +12,14 @@ export const LIMIT = 10 * MB;
 export const FEEDBACK_MS = 150;
 export const SLOW = { offline: false, latency: 40, downloadThroughput: 4e6 / 8, uploadThroughput: 4e6 / 8 };
 
+export const ERROR_ID = 'c0ffee12';
+
 export const MSG = {
   over: (n, size) => `${n} is ${size}, over the 10 MB limit, so it was not saved.`,
-  server: (n) => `The server returned an error, so ${n} was not saved.`,
-  unavailable: (n) => `The server is unavailable, so ${n} was not saved.`,
+  server: (n, id = ERROR_ID) => `The weave server hit a bug, so ${n} was not saved. Include error ${id} when you report it to whoever runs your weave.`,
+  restarting: (n) => `The weave server is still restarting, so ${n} was not saved. Try again in a minute.`,
+  storage: (n) => `The weave server is out of storage, so ${n} was not saved. Ask whoever runs your weave to add storage; uploads will work again after that.`,
+  restartingInBatch: (done, total, n) => `${done} of ${total} files uploaded. ${n} was not saved: the server is still restarting.`,
   offline: (n) => `Could not reach the server; ${n} was not saved. Check your connection.`,
   timeout: (n) => `${n} took too long to upload and was not saved.`,
   oneFailed: (done, total, n, reason) => `${done} of ${total} files uploaded. ${n} was not saved: ${reason}.`,
@@ -24,11 +28,13 @@ export const MSG = {
   empty: (n) => `${n} is empty and was saved anyway. Remove it if that was a mistake.`,
   many: (total) => `${total} files uploaded.`,
 };
-export const TILE = { over: 'Over 10 MB', server: 'Server error', unavailable: 'Server unavailable', offline: 'No connection', timeout: 'Timeout' };
+export const TILE = { over: 'Over 10 MB', server: `Error ${ERROR_ID}`, restarting: 'Still restarting', waiting: 'Server restarting', storage: 'Storage full', offline: 'No connection', timeout: 'Timed out' };
+export const RETRY_WAIT_MS = [30, 60, 90];
 export const RETRY = 'Retry';
 export const CHOOSE = 'Choose another file';
 
 const HTML_502 = '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>';
+const HTML_503 = '<html><head><title>503 Service Unavailable</title></head><body><center><h1>503 Service Unavailable</h1></center></body></html>';
 const HTML_504 = '<html><head><title>504 Gateway Time-out</title></head><body><center><h1>504 Gateway Time-out</h1></center></body></html>';
 const UPLOAD_POST = /\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
 
@@ -52,6 +58,7 @@ function recorder() {
       bars,
       saving: [...document.querySelectorAll('[data-upload-job]')].some((n) => n.querySelector('.attach-up-what')?.textContent === 'Saving'),
       failed: document.querySelectorAll('.attach-item.is-failed').length,
+      waiting: [...document.querySelectorAll('[data-upload-job]')].some((n) => n.querySelector('.attach-up-what')?.textContent === 'Server restarting'),
     });
   };
   new MutationObserver(snap).observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true, attributeFilter: ['aria-busy', 'aria-valuenow', 'class'] });
@@ -106,17 +113,23 @@ async function act(page, s) {
 
 async function faults(page, s) {
   const plan = s.faults ?? {};
+  const tries = {};
   let held;
   const holding = new Promise((r) => { held = r; });
-  if (!Object.keys(plan).length) return { holding };
+  if (!Object.keys(plan).length) return { holding, tries };
+  const json = (status, body) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route(UPLOAD_POST, async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     const name = route.request().postDataJSON()?.name;
     const fault = plan[name];
     if (!fault) return route.continue();
-    if (fault === '413') return route.fulfill({ status: 413, contentType: 'application/json', body: JSON.stringify({ error: 'This upload is larger than 10.0 MB, the most a file can be', code: 'too-large', limit: LIMIT }) });
-    if (fault === '500') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Internal error', code: 'internal' }) });
+    tries[name] = (tries[name] ?? 0) + 1;
+    if (fault === '413') return route.fulfill(json(413, { error: 'This upload is larger than 10.0 MB, the most a file can be', code: 'too-large', limit: LIMIT }));
+    if (fault === '500') return route.fulfill(json(500, { error: `Internal error (request ${ERROR_ID})`, code: 'internal', id: ERROR_ID }));
+    if (fault === '507') return route.fulfill(json(507, { error: 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.', code: 'storage-full' }));
     if (fault === '502html') return route.fulfill({ status: 502, contentType: 'text/html', body: HTML_502 });
+    if (fault === '503') return route.fulfill({ status: 503, contentType: 'text/html', body: HTML_503 });
+    if (fault === '502twice') return tries[name] <= 2 ? route.fulfill({ status: 502, contentType: 'text/html', body: HTML_502 }) : route.continue();
     if (fault === '504') return route.fulfill({ status: 504, contentType: 'text/html', body: HTML_504 });
     if (fault === 'offline') return route.abort('internetdisconnected');
     if (fault === '504stored') { await route.fetch(); return route.fulfill({ status: 504, contentType: 'text/html', body: HTML_504 }); }
@@ -124,7 +137,7 @@ async function faults(page, s) {
     if (fault === 'hang') return held();
     return route.continue();
   });
-  return { holding };
+  return { holding, tries };
 }
 
 export function cutProxy(port, cutAt, { stall = false } = {}) {
@@ -203,6 +216,7 @@ export function matrixCases(s, { dir, rows }, scenarios) {
       const page = await context.newPage();
       let proxy = null;
       try {
+        await context.addInitScript((waits) => { globalThis.WEAVE_UPLOAD_RETRY_MS = waits; }, RETRY_WAIT_MS);
         if (sc.clock) await page.clock.install();
         proxy = sc.net === 'cut' || sc.net === 'stall' ? await cutProxy(port, Math.floor(sc.files[0].size * 0.68), { stall: sc.net === 'stall' }) : null;
         await page.goto(`${proxy?.base ?? base}/#/entity/${rows[sc.id].id}`, { waitUntil: 'networkidle' });
@@ -212,7 +226,7 @@ export function matrixCases(s, { dir, rows }, scenarios) {
         await page.evaluate(recorder);
         const cdp = needsCdp ? await context.newCDPSession(page) : null;
         if (needsCdp) await cdp.send('Network.emulateNetworkConditions', SLOW);
-        const { holding } = await faults(page, sc);
+        const { holding, tries } = await faults(page, sc);
         const names = await page.evaluate((list) => Object.fromEntries(list.map((n) => [n, globalThis.uploadCore?.shortName(n) ?? n])), sc.files.map((f) => f.name));
         const want = sc.expect(names);
         const blobsBefore = orphans();
@@ -254,9 +268,15 @@ export function matrixCases(s, { dir, rows }, scenarios) {
           assert.ok(rec.frames.some((f) => f.saving), 'the tile never said Saving once the body was sent');
         }
 
+        if (want.waiting !== undefined) assert.equal(rec.frames.some((f) => f.waiting), want.waiting, want.waiting ? 'the tile never read Server restarting while weave waited' : 'a tile read Server restarting with nothing to wait for');
+        if (sc.files.length === 1) assert.ok(!rec.frames.some((f) => f.waiting && f.failed), 'the tile turned red while weave still waited to retry');
+        for (const [n, count] of Object.entries(want.tries ?? {})) assert.equal(tries[n], count, `${n} was sent ${tries[n]} times`);
+
         const tiles = await page.locator('.attach-item.is-failed').evaluateAll((ns) => ns.map((n) => ({
           name: n.querySelector('.attach-fail-name')?.textContent ?? '',
           tile: n.querySelector('.attach-fail-why')?.textContent ?? '',
+          mono: n.querySelector('.attach-fail-why .wv-error-id')?.textContent ?? null,
+          monoFace: (() => { const m = n.querySelector('.attach-fail-why .wv-error-id'); return m ? getComputedStyle(m).fontFamily : null; })(),
           retry: [...n.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Retry'),
         })));
         assert.deepEqual(tiles.map((t) => t.name).sort(), want.failed.map((f) => f.name).sort(), 'the failed tiles name the wrong files');
@@ -264,6 +284,10 @@ export function matrixCases(s, { dir, rows }, scenarios) {
           const got = tiles.find((t) => t.name === w.name);
           assert.equal(got.tile, w.tile, `${w.name} tile reason`);
           assert.equal(got.retry, w.retry, `${w.name} ${w.retry ? 'has no' : 'should have no'} Retry button`);
+          if (w.mono) {
+            assert.equal(got.mono, w.mono, `${w.name} tile shows the error id in its own element`);
+            assert.match(got.monoFace, /mono|menlo|consolas|courier/i, `${w.name} tile id is not monospace: ${got.monoFace}`);
+          }
         }
         if (failedCount) {
           const look = await page.locator('.attach-item.is-failed').first().evaluate(inkOn);
@@ -273,13 +297,20 @@ export function matrixCases(s, { dir, rows }, scenarios) {
 
         const toasts = await page.locator('.wv-toast').evaluateAll((ns) => ns.map((n) => ({
           kind: ['err', 'warn', 'success', 'info'].find((k) => n.classList.contains(k)),
-          text: n.querySelector('.wv-toast-msg')?.firstChild?.textContent ?? '',
+          text: [...(n.querySelector('.wv-toast-msg')?.childNodes ?? [])].filter((c) => !c.classList?.contains('wv-toast-count')).map((c) => c.textContent).join(''),
           action: n.querySelector('.wv-toast-action')?.textContent ?? null,
+          mono: n.querySelector('.wv-toast-msg .wv-error-id')?.textContent ?? null,
+          monoFace: (() => { const m = n.querySelector('.wv-toast-msg .wv-error-id'); return m ? getComputedStyle(m).fontFamily : null; })(),
         })));
         if (!want.toast) assert.deepEqual(toasts, [], 'a toast showed where none was due');
         else {
           assert.equal(toasts.length, 1, `one summary toast, got ${JSON.stringify(toasts)}`);
-          assert.deepEqual(toasts[0], want.toast, 'the toast');
+          const { mono, monoFace, ...shown } = toasts[0];
+          assert.deepEqual(shown, want.toast, 'the toast');
+          if (want.mono) {
+            assert.equal(mono, want.mono, 'the toast shows the error id in its own element');
+            assert.match(monoFace, /mono|menlo|consolas|courier/i, `the toast id is not monospace: ${monoFace}`);
+          }
           const region = want.toast.kind === 'err' ? 'wv-live-alert' : 'wv-live-status';
           await page.waitForFunction(([id, text]) => document.getElementById(id)?.textContent === text, [region, want.toast.text], { timeout: 5000 });
         }
