@@ -8228,6 +8228,7 @@ export class Weave {
       if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
+    const liveTotal = includeDeleted ? rows.reduce((n, e) => n + (e.deletedAt ? 0 : 1), 0) : null;
     const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !grouped.hideEmpty && !filtered && !String(search ?? '').trim() }) : null;
     rows = rows.slice(offset, limit == null || limit < 0 ? undefined : offset + limit);
     const nextOffset = rows.length && offset + rows.length < total ? offset + rows.length : null;
@@ -8240,7 +8241,7 @@ export class Weave {
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, ...(nextOffset != null ? { nextOffset } : {}), items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
+    return { total, ...(liveTotal != null ? { liveTotal } : {}), ...(nextOffset != null ? { nextOffset } : {}), items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
   }
 
   #groupFieldShape(f) {
