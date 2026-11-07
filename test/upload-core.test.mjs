@@ -35,12 +35,14 @@ test('every failure maps to its approved reason, message and retry rule', () => 
   const cases = [
     [{ kind: 'too-large' }, 'too-large', 'Over 10 MB', false, 'deck.pdf is 25 MB, over the 10 MB limit, so it was not saved.'],
     [{ status: 413 }, 'too-large', 'Over 10 MB', false, 'deck.pdf is 25 MB, over the 10 MB limit, so it was not saved.'],
-    [{ status: 500 }, 'server', 'Server error', true, 'The server returned an error, so deck.pdf was not saved.'],
-    [{ status: 502 }, 'unavailable', 'Server unavailable', true, 'The server is unavailable, so deck.pdf was not saved.'],
-    [{ status: 503 }, 'unavailable', 'Server unavailable', true, 'The server is unavailable, so deck.pdf was not saved.'],
-    [{ status: 504 }, 'unavailable', 'Server unavailable', true, 'The server is unavailable, so deck.pdf was not saved.'],
+    [{ status: 500, id: 'ab12cd34' }, 'server', 'Error ab12cd34', true, 'The weave server hit a bug, so deck.pdf was not saved. Include error ab12cd34 when you report it to whoever runs your weave.'],
+    [{ status: 500 }, 'server', 'Error HTTP 500', true, 'The weave server hit a bug, so deck.pdf was not saved. Include error HTTP 500 when you report it to whoever runs your weave.'],
+    [{ status: 502 }, 'restarting', 'Still restarting', true, 'The weave server is still restarting, so deck.pdf was not saved. Try again in a minute.'],
+    [{ status: 503 }, 'restarting', 'Still restarting', true, 'The weave server is still restarting, so deck.pdf was not saved. Try again in a minute.'],
+    [{ status: 504 }, 'timeout', 'Timed out', true, 'deck.pdf took too long to upload and was not saved.'],
+    [{ status: 507, code: 'storage-full' }, 'storage-full', 'Storage full', false, 'The weave server is out of storage, so deck.pdf was not saved. Ask whoever runs your weave to add storage; uploads will work again after that.'],
     [{ kind: 'offline' }, 'offline', 'No connection', true, 'Could not reach the server; deck.pdf was not saved. Check your connection.'],
-    [{ kind: 'timeout' }, 'timeout', 'Timeout', true, 'deck.pdf took too long to upload and was not saved.'],
+    [{ kind: 'timeout' }, 'timeout', 'Timed out', true, 'deck.pdf took too long to upload and was not saved.'],
   ];
   for (const [err, reason, tile, retry, message] of cases) {
     const f = U.failure(file, err);
@@ -70,7 +72,7 @@ const bad = (name, err, size = 10) => ({ ok: false, name, size, ...U.failure({ n
 
 test('one file: no toast when it lands, red with its own message when it does not', () => {
   assert.equal(U.summary([ok('a.pdf')]), null);
-  assert.deepEqual(U.summary([bad('a.pdf', { status: 500 })]), { kind: 'err', text: 'The server returned an error, so a.pdf was not saved.', action: 'retry' });
+  assert.deepEqual(U.summary([bad('a.pdf', { status: 500, id: 'ab12cd34' })]), { kind: 'err', text: 'The weave server hit a bug, so a.pdf was not saved. Include error ab12cd34 when you report it to whoever runs your weave.', action: 'retry', mono: 'ab12cd34' });
   assert.deepEqual(U.summary([bad('a.zip', { kind: 'too-large' }, 25 * MB)]), { kind: 'err', text: 'a.zip is 25 MB, over the 10 MB limit, so it was not saved.', action: 'choose' });
 });
 
@@ -83,8 +85,8 @@ test('a batch that lands whole is a success toast naming the count', () => {
 });
 
 test('a batch with one failure names it and its lowercase reason', () => {
-  assert.deepEqual(U.summary([ok('a.pdf'), bad('b.pdf', { status: 500 }), ok('c.pdf')]),
-    { kind: 'warn', text: '2 of 3 files uploaded. b.pdf was not saved: server error.', action: 'retry' });
+  assert.deepEqual(U.summary([ok('a.pdf'), bad('b.pdf', { status: 500, id: 'AB12cd34' }), ok('c.pdf')]),
+    { kind: 'warn', text: '2 of 3 files uploaded. b.pdf was not saved: error AB12cd34.', action: 'retry', mono: 'AB12cd34' });
   assert.deepEqual(U.summary([ok('a.pdf'), bad('b.zip', { kind: 'too-large' }, 25 * MB), ok('c.pdf')]),
     { kind: 'warn', text: '2 of 3 files uploaded. b.zip was not saved: over 10 MB.', action: 'choose' });
 });
@@ -99,18 +101,41 @@ test('a batch with several failures of mixed kinds counts them and retries when 
     { kind: 'warn', text: '1 of 3 files uploaded. 2 files were not saved.', action: 'retry' });
 });
 
+test('a batch with one restarting failure says the server is still restarting (Issue #1413)', () => {
+  assert.deepEqual(U.summary([ok('a.pdf'), bad('b.pdf', { status: 503 }), ok('c.pdf')]),
+    { kind: 'warn', text: '2 of 3 files uploaded. b.pdf was not saved: the server is still restarting.', action: 'retry' });
+  assert.deepEqual(U.summary([ok('a.pdf'), bad('b.pdf', { status: 504 })]),
+    { kind: 'warn', text: '1 of 2 files uploaded. b.pdf was not saved: timed out.', action: 'retry' });
+  assert.deepEqual(U.summary([ok('a.pdf'), bad('b.pdf', { status: 507, code: 'storage-full' })]),
+    { kind: 'warn', text: '1 of 2 files uploaded. b.pdf was not saved: storage full.', action: null });
+});
+
+test('storage full offers neither Retry nor another file (Issue #1413)', () => {
+  assert.deepEqual(U.summary([bad('a.pdf', { status: 507, code: 'storage-full' })]),
+    { kind: 'err', text: 'The weave server is out of storage, so a.pdf was not saved. Ask whoever runs your weave to add storage; uploads will work again after that.', action: null });
+  assert.equal(U.summary([bad('a', { status: 507 }), bad('b', { code: 'storage-full' })]).action, null);
+});
+
+test('502 and 503 wait about 2, 5 and 10 seconds under a Server restarting tile (Issue #1413)', () => {
+  assert.deepEqual(U.RESTART_WAIT_MS, [2000, 5000, 10000]);
+  assert.equal(U.RESTARTING, 'Server restarting');
+});
+
 test('the page loads upload-core before app.js', () => {
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.match(html, /<script src="\/upload-core\.js" defer><\/script>/);
   assert.ok(html.indexOf('/upload-core.js') < html.indexOf('/app.js'));
 });
 
-test('the api() fallback names the status class, never a bare number', () => {
-  assert.equal(U.statusText(502, 'GET'), 'The server is unavailable');
-  assert.equal(U.statusText(504, 'POST'), 'The server is unavailable; nothing was saved');
-  assert.equal(U.statusText(500, 'PATCH'), 'The server returned an error; nothing was saved');
-  assert.equal(U.statusText(500, 'GET'), 'The server returned an error');
+test('the api() fallback names the cause and the next step (Issue #1413)', () => {
+  assert.equal(U.statusText(502, 'GET'), 'The weave server is restarting. Try again in a minute.');
+  assert.equal(U.statusText(503, 'PATCH'), 'The weave server is restarting, so nothing was saved. Try again in a minute.');
+  assert.equal(U.statusText(504, 'POST'), 'The weave server is restarting, so nothing was saved. Try again in a minute.');
+  assert.equal(U.statusText(507, 'PATCH'), 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.');
+  assert.equal(U.statusText(500, 'PATCH', 'ab12cd34'), 'The weave server hit a bug, so nothing was saved. Include error ab12cd34 when you report it to whoever runs your weave.');
+  assert.equal(U.statusText(500, 'GET', 'ab12cd34'), 'The weave server hit a bug, so nothing was saved. Include error ab12cd34 when you report it to whoever runs your weave.');
   assert.equal(U.statusText(404, 'GET'), 'The server refused the request (HTTP 404)');
-  assert.equal(U.serverError(500, 'Internal error'), null, 'the generic 500 body gives way to the status message');
+  assert.equal(U.serverError(500, 'Internal error (request ab12cd34)'), null, 'a 500 body gives way to the approved message');
+  assert.equal(U.serverError(507, 'The weave server is out of storage'), null);
   assert.equal(U.serverError(400, 'Name is required'), 'Name is required');
 });

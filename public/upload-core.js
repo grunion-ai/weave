@@ -2,6 +2,8 @@
   const LIMIT = 10 * 1024 * 1024;
   const NAME_MAX = 48;
   const MB = 1048576;
+  const RESTART_WAIT_MS = [2000, 5000, 10000];
+  const RESTARTING = 'Server restarting';
 
   const sizeText = (n) => {
     if (n < MB) return `${Math.ceil(n / 1024)} KB`;
@@ -21,11 +23,14 @@
     return stem.slice(0, head).join('') + '…' + (tail > 0 ? stem.slice(-tail).join('') : '') + ext.join('');
   }
 
+  const errorId = (err) => (typeof err?.id === 'string' && err.id ? err.id : `HTTP ${err?.status}`);
+
   function reasonOf(err) {
     if (err?.kind === 'too-large' || err?.status === 413 || err?.code === 'too-large') return 'too-large';
-    if (err?.kind === 'timeout') return 'timeout';
+    if (err?.status === 507 || err?.code === 'storage-full') return 'storage-full';
+    if (err?.kind === 'timeout' || err?.status === 504) return 'timeout';
     if (err?.kind === 'offline' || err?.code === 'offline') return 'offline';
-    if ([502, 503, 504].includes(err?.status)) return 'unavailable';
+    if (err?.status === 502 || err?.status === 503) return 'restarting';
     if (err?.status >= 500) return 'server';
     return 'refused';
   }
@@ -36,15 +41,21 @@
     const limit = sizeText(err?.limit > 0 ? err.limit : LIMIT);
     switch (reason) {
       case 'too-large': return { reason, tile: `Over ${limit}`, retry: false, message: `${name} is ${sizeText(file.size)}, over the ${limit} limit, so it was not saved.` };
-      case 'server': return { reason, tile: 'Server error', retry: true, message: `The server returned an error, so ${name} was not saved.` };
-      case 'unavailable': return { reason, tile: 'Server unavailable', retry: true, message: `The server is unavailable, so ${name} was not saved.` };
+      case 'storage-full': return { reason, tile: 'Storage full', retry: false, message: `The weave server is out of storage, so ${name} was not saved. Ask whoever runs your weave to add storage; uploads will work again after that.` };
+      case 'restarting': return { reason, tile: 'Still restarting', retry: true, message: `The weave server is still restarting, so ${name} was not saved. Try again in a minute.` };
+      case 'server': {
+        const id = errorId(err);
+        return { reason, id, tile: `Error ${id}`, retry: true, message: `The weave server hit a bug, so ${name} was not saved. Include error ${id} when you report it to whoever runs your weave.` };
+      }
       case 'offline': return { reason, tile: 'No connection', retry: true, message: `Could not reach the server; ${name} was not saved. Check your connection.` };
-      case 'timeout': return { reason, tile: 'Timeout', retry: true, message: `${name} took too long to upload and was not saved.` };
+      case 'timeout': return { reason, tile: 'Timed out', retry: true, message: `${name} took too long to upload and was not saved.` };
       default: return { reason, tile: 'Not saved', retry: true, message: err?.error || err?.message || `${name} was not saved.` };
     }
   }
 
+  const nextOf = (f) => (f.retry ? 'retry' : f.reason === 'storage-full' ? null : 'choose');
   const emptyText = (name) => `${shortName(name)} is empty and was saved anyway. Remove it if that was a mistake.`;
+  const why = (f) => (f.reason === 'restarting' ? 'the server is still restarting' : `${f.tile[0].toLowerCase()}${f.tile.slice(1)}`);
 
   function summary(results, { limit = LIMIT } = {}) {
     const total = results.length;
@@ -55,27 +66,29 @@
     if (total === 1) {
       const [r] = results;
       if (r.ok) return empty ? { kind: 'warn', text: emptyText(r.name), action: null } : null;
-      return { kind: 'err', text: r.message, action: r.retry ? 'retry' : 'choose' };
+      return { kind: 'err', text: r.message, action: nextOf(r), ...(r.id ? { mono: r.id } : {}) };
     }
     if (!failed.length) return empty ? { kind: 'warn', text: emptyText(empty.name), action: null } : { kind: 'success', text: `${total} files uploaded.`, action: null };
     const head = `${done} of ${total} files uploaded.`;
     if (failed.length === 1) {
       const [f] = failed;
-      return { kind: 'warn', text: `${head} ${shortName(f.name)} was not saved: ${f.tile[0].toLowerCase()}${f.tile.slice(1)}.`, action: f.retry ? 'retry' : 'choose' };
+      return { kind: 'warn', text: `${head} ${shortName(f.name)} was not saved: ${why(f)}.`, action: nextOf(f), ...(f.id ? { mono: f.id } : {}) };
     }
     if (failed.every((f) => f.reason === 'too-large')) {
       return { kind: 'warn', text: `${head} ${failed.length} files were over the ${sizeText(limit)} limit and not saved.`, action: 'choose' };
     }
-    return { kind: 'warn', text: `${head} ${failed.length} files were not saved.`, action: failed.some((f) => f.retry) ? 'retry' : 'choose' };
+    const action = failed.some((f) => f.retry) ? 'retry' : failed.every((f) => f.reason === 'storage-full') ? null : 'choose';
+    return { kind: 'warn', text: `${head} ${failed.length} files were not saved.`, action };
   }
 
-  function statusText(status, method) {
-    const saved = method === 'GET' ? '' : '; nothing was saved';
-    if ([502, 503, 504].includes(status)) return `The server is unavailable${saved}`;
-    if (status >= 500) return `The server returned an error${saved}`;
+  function statusText(status, method, id) {
+    const read = method === 'GET';
+    if ([502, 503, 504].includes(status)) return read ? 'The weave server is restarting. Try again in a minute.' : 'The weave server is restarting, so nothing was saved. Try again in a minute.';
+    if (status === 507) return 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.';
+    if (status >= 500) return `The weave server hit a bug, so nothing was saved. Include error ${errorId({ id, status })} when you report it to whoever runs your weave.`;
     return `The server refused the request (HTTP ${status})`;
   }
-  const serverError = (status, error) => (!error || (status >= 500 && /^Internal error\b/.test(error)) ? null : error);
+  const serverError = (status, error) => (!error || status === 507 || (status >= 500 && /^Internal error\b/.test(error)) ? null : error);
 
-  root.uploadCore = { LIMIT, NAME_MAX, sizeText, tooBig, shortName, reasonOf, failure, emptyText, summary, statusText, serverError };
+  root.uploadCore = { LIMIT, NAME_MAX, RESTART_WAIT_MS, RESTARTING, sizeText, tooBig, shortName, reasonOf, failure, emptyText, summary, statusText, serverError };
 })(typeof window !== 'undefined' ? window : globalThis);

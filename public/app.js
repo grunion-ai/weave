@@ -100,7 +100,7 @@ function sendUpload(path, body, onProgress = () => {}) {
         return end(resolve, data);
       }
       if (data.code === 'seat-required') seatToast(data);
-      fail({ status: xhr.status, code: data.code, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
+      fail({ status: xhr.status, code: data.code, id: data.id, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
     };
     xhr.open('POST', WS_PREFIX + '/api' + path);
     xhr.responseType = 'json';
@@ -118,8 +118,14 @@ async function landedFile(entityId, file, before, fieldName = null) {
   return (e.files ?? []).find((x) => x.name === file.name && x.size === file.size && !seen.has(x.id) && (!inField || inField.includes(x.id))) ?? null;
 }
 
+const withErrorId = (text, id) => {
+  const at = id ? text.indexOf(id) : -1;
+  return at < 0 ? [text] : [text.slice(0, at), el('span', { class: 'wv-error-id' }, id), text.slice(at + id.length)];
+};
+const uploadWaits = () => globalThis.WEAVE_UPLOAD_RETRY_MS ?? uploadCore.RESTART_WAIT_MS;
+
 function paintUploadTile(tile, job) {
-  tile.querySelector('.attach-up-what').textContent = job.state === 'saving' ? 'Saving' : `Uploading ${job.percent}%`;
+  tile.querySelector('.attach-up-what').textContent = job.state === 'restarting' ? uploadCore.RESTARTING : job.state === 'saving' ? 'Saving' : `Uploading ${job.percent}%`;
   const bar = tile.querySelector('[role="progressbar"]');
   bar.setAttribute('aria-valuenow', String(job.percent));
   bar.firstChild.style.width = `${job.percent}%`;
@@ -131,7 +137,7 @@ function uploadTileEl(key, job) {
   if (job.state === 'failed') {
     return el('span', { class: 'attach-item is-failed', title: `${name}: ${job.failure.tile}`, dataset: { uploadJob: job.id } },
       el('span', { class: 'attach-fail-name' }, name),
-      el('span', { class: 'attach-fail-why' }, job.failure.tile),
+      el('span', { class: 'attach-fail-why' }, ...withErrorId(job.failure.tile, job.failure.id)),
       job.failure.retry ? el('button', {
         type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${name}`,
         onclick: (e) => { stop(e); runJobs(key, [job]); },
@@ -224,12 +230,25 @@ async function runJobs(key, jobs) {
       continue;
     }
     const before = st.ctl.known?.();
+    const repaint = () => { for (const t of document.querySelectorAll(`[data-upload-job="${job.id}"]`)) if (!t.classList.contains('is-failed')) paintUploadTile(t, job); };
+    const progress = (p) => {
+      job.percent = Math.min(100, Math.max(job.percent, Math.floor(p * 100)));
+      job.state = p >= 1 ? 'saving' : 'pending';
+      repaint();
+    };
     try {
-      const data = await st.ctl.send(file, (p) => {
-        job.percent = Math.min(100, Math.max(job.percent, Math.floor(p * 100)));
-        job.state = p >= 1 ? 'saving' : 'pending';
-        for (const t of document.querySelectorAll(`[data-upload-job="${job.id}"]`)) if (!t.classList.contains('is-failed')) paintUploadTile(t, job);
-      });
+      let data;
+      for (const wait of [...uploadWaits(), null]) {
+        try {
+          data = await st.ctl.send(file, progress);
+          break;
+        } catch (err) {
+          if (wait == null || uploadCore.reasonOf(err) !== 'restarting') throw err;
+          job.state = 'restarting';
+          repaint();
+          await new Promise((r) => setTimeout(r, wait));
+        }
+      }
       await land(data);
     } catch (err) {
       const lost = err.kind === 'timeout' || err.status === 504;
@@ -245,7 +264,7 @@ async function runJobs(key, jobs) {
   const action = sum.action === 'retry' && retryable.length
     ? { label: 'Retry', run: () => runJobs(key, retryable.filter((j) => uploadState(key).jobs.includes(j) && j.state === 'failed')) }
     : sum.action === 'choose' && st.ctl.choose ? { label: 'Choose another file', run: () => st.ctl.choose() } : null;
-  toast(sum.text, sum.kind === 'err', action, { kind: sum.kind });
+  toast(sum.text, sum.kind === 'err', action, { kind: sum.kind, mono: sum.mono });
 }
 
 function fileBase64(file) {
@@ -305,7 +324,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
   if (!res.ok) {
-    const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method);
+    const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method, data.id);
     throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity });
   }
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
@@ -378,7 +397,7 @@ function seatToast(data) {
   return toast(data.error, true, { label: 'Open billing', run: () => { location.href = href; } }, { key: 'seat' });
 }
 
-function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
+function toast(msg, isErr = false, action = null, { kind, key = null, mono = null } = {}) {
   kind ??= isErr ? 'err' : action ? 'success' : 'info';
   const text = String(msg);
   const layer = toastLayer();
@@ -396,7 +415,7 @@ function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
   countEl.hidden = true;
   const node = el('div', { class: `wv-toast ${kind}` },
     iconEl(TOAST_ICON[kind], 'wv-toast-icon'),
-    el('span', { class: 'wv-toast-msg' }, text, countEl));
+    el('span', { class: 'wv-toast-msg' }, ...withErrorId(text, mono), countEl));
   const item = { msg: text, kind, action, key, node, countEl, count: 1, life, left: life };
   if (action) {
     node.append(el('button', {

@@ -25,7 +25,7 @@ if (s) {
 
   const picker = (page) => page.locator('.attach-box input[type=file]');
   const refuse = (page) => page.route(/\/fields\/Files\/files$/, (route) => route.fulfill({
-    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'The server fell over', code: 'internal' }),
+    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Internal error (request 1a2b3c4d)', code: 'internal', id: '1a2b3c4d' }),
   }));
   const pick = (page, name = 'deck.pdf') => picker(page).setInputFiles({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 fake') });
   const stored = (row) => (weave.getEntity(rows[row].id).files ?? []).map((f) => f.name);
@@ -38,7 +38,7 @@ if (s) {
         await pick(page);
         const tile = page.locator('.attach-item.is-failed', { hasText: 'deck.pdf' });
         await tile.waitFor();
-        assert.match(await tile.textContent(), /Server error/, 'the failed tile names no reason');
+        assert.match(await tile.textContent(), /Error 1a2b3c4d/, 'the failed tile names no reason or drops the request id');
         await tile.getByRole('button', { name: /retry/i }).waitFor();
         assert.equal(await picker(page).evaluate((n) => n.files.length), 0, 'the input still holds the picked file');
         assert.deepEqual(stored(theme), [], 'the refused file landed');

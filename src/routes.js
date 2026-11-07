@@ -31,8 +31,9 @@ export const ifMatchRevision = (header) => {
 };
 export const ownsEntity = (ws, id) => Object.hasOwn(ws.state.entities, id);
 
+export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
 export function statusFor(err) {
-  if (!(err instanceof WeaveError)) return 500;
+  if (!(err instanceof WeaveError)) return storageFull(err) ? 507 : 500;
   return { 'not-found': 404, conflict: 409, stale: 412, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
 }
 
@@ -47,6 +48,7 @@ export function errorBody(err, code = 'internal') {
   if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
   const id = crypto.randomUUID().slice(0, 8);
   if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
+  if (storageFull(err)) return { error: 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.', code: 'storage-full', id };
   return { error: `Internal error (request ${id})`, code: 'internal', id };
 }
 

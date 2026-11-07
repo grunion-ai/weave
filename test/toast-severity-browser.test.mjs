@@ -20,7 +20,7 @@ if (s) {
         await page.goto(`${base}/`, { waitUntil: 'networkidle' });
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.evaluate(() => {
-          toast('The server returned an error, so deck.pdf was not saved.', true, { label: 'Retry', run: () => {} });
+          toast('The weave server is still restarting, so deck.pdf was not saved. Try again in a minute.', true, { label: 'Retry', run: () => {} });
           toast('2 of 3 files uploaded. b.pdf was not saved: server error.', false, { label: 'Retry', run: () => {} }, { kind: 'warn' });
           toast('3 files uploaded.', false, null, { kind: 'success' });
         });
@@ -46,7 +46,7 @@ if (s) {
         }
         assert.notDeepEqual(looks.err.text.base, looks.success.text.base, 'an err toast wears the same ground as a success toast, so only its icon says red');
         assert.notDeepEqual(looks.warn.accent.ink, looks.err.accent.ink, 'warn and err share one accent');
-        await page.waitForFunction(() => document.getElementById('wv-live-alert')?.textContent?.startsWith('The server returned an error'));
+        await page.waitForFunction(() => document.getElementById('wv-live-alert')?.textContent?.startsWith('The weave server is still restarting'));
         await page.waitForFunction(() => document.getElementById('wv-live-status')?.textContent === '3 files uploaded.');
       } finally { await page.close(); }
     });

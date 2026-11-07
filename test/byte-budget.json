@@ -241,8 +241,8 @@
       "br": 1276
     },
     "/upload-core.js": {
-      "gzip": 1551,
-      "br": 1349
+      "gzip": 1958,
+      "br": 1716
     },
     "/usage-core.js": {
       "gzip": 793,
@@ -269,6 +269,7 @@
     "/start.js": "PR #541 (Issue #1284) added startLink and returnOf so a signed-out start link signs in and goes on to the workspace: gzip 12,917 to 12,974, br 11,513 to 11,566. Budget set 5% above",
     "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above. PR #555 reverts Issue #1286 (PR #546) and removes its raise to gzip 41,000, br 33,600, restoring the earlier gzip 40,868, br 33,428. Feature #348 (PR #542) had added the group header, crumb and breakdown rules under that headroom and raised no budget for this asset, so the reverted file still carries them: served gzip 40,871 over 40,868, br 33,451 over 33,428. Budget set 5% above at gzip 42,915, br 35,124. Issues #1361 to #1364 (upload progress and failure tiles, the amber warn toast, the red accent on error toasts): served gzip 43,180 over 42,915, br 35,313 over 35,124. Budget set 5% above",
     "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
+    "/upload-core.js": "Issue #1413 (upload error causes) added the restarting, storage-full and request-id failures, the retry waits and the generic-call strings: gzip 1,551 to 1,864, br 1,349 to 1,634 served. Budget set 5% above",
     "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above",
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above"
   }
