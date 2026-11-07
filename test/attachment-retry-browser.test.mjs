@@ -38,7 +38,7 @@ if (s) {
         await pick(page);
         const tile = page.locator('.attach-item.is-failed', { hasText: 'deck.pdf' });
         await tile.waitFor();
-        assert.match(await tile.textContent(), /The server fell over/, 'the failed tile names no reason');
+        assert.match(await tile.textContent(), /Server error/, 'the failed tile names no reason');
         await tile.getByRole('button', { name: /retry/i }).waitFor();
         assert.equal(await picker(page).evaluate((n) => n.files.length), 0, 'the input still holds the picked file');
         assert.deepEqual(stored(theme), [], 'the refused file landed');
@@ -62,7 +62,8 @@ if (s) {
       await picker(page).setInputFiles({ name: 'huge.zip', mimeType: 'application/zip', buffer: Buffer.alloc(11 * 1024 * 1024) });
       const tile = page.locator('.attach-item.is-failed', { hasText: 'huge.zip' });
       await tile.waitFor();
-      assert.match(await tile.textContent(), /files can be up to 10\.0 MB/, 'the tile names no limit');
+      assert.match(await tile.textContent(), /Over 10 MB/, 'the tile names no limit');
+      assert.equal(await tile.getByRole('button', { name: 'Retry' }).count(), 0, 'Retry cannot fix a file over the limit');
       assert.deepEqual(posts, [], 'the browser sent an oversized file');
       assert.equal(await picker(page).evaluate((n) => n.files.length), 0, 'the input still holds the picked file');
       await picker(page).setInputFiles({ name: 'huge.zip', mimeType: 'application/zip', buffer: Buffer.alloc(11 * 1024 * 1024) });

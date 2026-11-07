@@ -2220,6 +2220,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     } catch (err) {
       const status = statusFor(err);
       const json = errorBody(err, 'internal');
+      if (json.code === 'too-large' && ATTACH_ROUTE.test(path)) json.limit = FILE_MAX_BYTES;
       return status === 404 ? notFound(json) : out(status, json, status === 429 ? { 'Retry-After': '60' } : {});
     }
   };

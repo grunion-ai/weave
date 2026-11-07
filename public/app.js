@@ -56,11 +56,198 @@ function noteSchemaVersion(version, isRead) {
   syncSchema();
 }
 
-const FILE_MAX_BYTES = 10 * 1024 * 1024;
-const attachFailures = new Map();
-const fileTooBig = (file) => file && file.size > FILE_MAX_BYTES
-  ? `${file.name} is ${fileSizeText(file.size)}; files can be up to ${fileSizeText(FILE_MAX_BYTES)}`
-  : null;
+const UPLOAD_STALL_MS = 30_000;
+const UPLOAD_ANSWER_MS = 60_000;
+const uploadStates = new Map();
+let uploadSeq = 0;
+const fileTooBig = (file) => (uploadCore.tooBig(file) ? uploadCore.failure(file, { kind: 'too-large' }).message : null);
+const uploadState = (key) => {
+  if (!uploadStates.has(key)) uploadStates.set(key, { jobs: [], ctl: {}, refreshing: null, again: false });
+  return uploadStates.get(key);
+};
+const uploadHostsFor = (key) => [...document.querySelectorAll('[data-upload-key]')].filter((n) => n.dataset.uploadKey === key);
+
+function sendUpload(path, body, onProgress = () => {}) {
+  warmGets.clear();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let timer = null;
+    let over = false;
+    const end = (fn, value) => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const fail = (fields) => end(reject, Object.assign(new Error(fields.error ?? fields.kind ?? `${fields.status}`), fields));
+    const wait = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { fail({ kind: 'timeout' }); xhr.abort(); }, ms);
+    };
+    xhr.upload.onprogress = (e) => {
+      const whole = e.lengthComputable && e.total > 0;
+      if (whole) onProgress(e.loaded / e.total);
+      wait(whole && e.loaded >= e.total ? UPLOAD_ANSWER_MS : UPLOAD_STALL_MS);
+    };
+    xhr.upload.onload = () => { onProgress(1); wait(UPLOAD_ANSWER_MS); };
+    xhr.onerror = () => fail({ kind: 'offline' });
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || '{}') ?? {}; } catch {}
+      noteSchemaVersion(xhr.getResponseHeader('X-Weave-Schema-Version'), false);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        noteRevisions('POST', path, data);
+        noteUsage('POST', path, body, data);
+        return end(resolve, data);
+      }
+      if (data.code === 'seat-required') seatToast(data);
+      fail({ status: xhr.status, code: data.code, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
+    };
+    xhr.open('POST', WS_PREFIX + '/api' + path);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('X-Weave-Zone', LOCAL_ZONE);
+    wait(UPLOAD_STALL_MS);
+    xhr.send(JSON.stringify(body));
+  });
+}
+
+async function landedFile(entityId, file, before, fieldName = null) {
+  const seen = (await before) ?? new Set();
+  const e = await api('GET', `/entities/${entityId}`);
+  const inField = fieldName == null ? null : [].concat(e.raw?.[fieldName] ?? []);
+  return (e.files ?? []).find((x) => x.name === file.name && x.size === file.size && !seen.has(x.id) && (!inField || inField.includes(x.id))) ?? null;
+}
+
+function paintUploadTile(tile, job) {
+  tile.querySelector('.attach-up-what').textContent = job.state === 'saving' ? 'Saving' : `Uploading ${job.percent}%`;
+  const bar = tile.querySelector('[role="progressbar"]');
+  bar.setAttribute('aria-valuenow', String(job.percent));
+  bar.firstChild.style.width = `${job.percent}%`;
+}
+
+function uploadTileEl(key, job) {
+  const name = job.file.name;
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  if (job.state === 'failed') {
+    return el('span', { class: 'attach-item is-failed', title: `${name}: ${job.failure.tile}`, dataset: { uploadJob: job.id } },
+      el('span', { class: 'attach-fail-name' }, name),
+      el('span', { class: 'attach-fail-why' }, job.failure.tile),
+      job.failure.retry ? el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${name}`,
+        onclick: (e) => { stop(e); runJobs(key, [job]); },
+      }, 'Retry') : null,
+      el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
+        onclick: (e) => {
+          stop(e);
+          const st = uploadState(key);
+          st.jobs = st.jobs.filter((x) => x !== job);
+          paintUploads(key);
+        },
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
+  }
+  const tile = el('span', { class: 'attach-item is-pending', title: name, dataset: { uploadJob: job.id } },
+    el('span', { class: 'attach-up-name' }, name),
+    el('span', { class: 'attach-up-what' }),
+    el('span', { class: 'attach-up-bar', role: 'progressbar', 'aria-label': `Uploading ${name}`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' },
+      el('span', { class: 'attach-up-fill' })));
+  paintUploadTile(tile, job);
+  return tile;
+}
+
+function drawUploads(host) {
+  const key = host.dataset.uploadKey;
+  const { jobs } = uploadState(key);
+  const slot = host.uploadSlot ?? host;
+  for (const n of slot.querySelectorAll(':scope > [data-upload-job]')) n.remove();
+  for (const job of jobs) slot.insertBefore(uploadTileEl(key, job), host.uploadBefore?.parentNode === slot ? host.uploadBefore : null);
+  const busy = jobs.some((j) => j.state !== 'failed');
+  if (busy) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');
+}
+const paintUploads = (key) => { for (const host of uploadHostsFor(key)) drawUploads(host); };
+
+function uploadHost(host, key, { slot = host, before = null } = {}) {
+  host.dataset.uploadKey = key;
+  host.uploadSlot = slot;
+  host.uploadBefore = before;
+  drawUploads(host);
+  return host;
+}
+
+function refreshUploads(st) {
+  if (st.refreshing) { st.again = true; return st.refreshing; }
+  st.refreshing = (async () => {
+    do {
+      st.again = false;
+      await st.ctl.refresh?.()?.catch?.((err) => toast(err.message, true));
+    } while (st.again);
+    st.refreshing = null;
+  })();
+  return st.refreshing;
+}
+
+function runUploads(key, files) {
+  const st = uploadState(key);
+  const jobs = [...files].map((file) => {
+    st.jobs = st.jobs.filter((j) => !(j.state === 'failed' && j.file.name === file.name));
+    return { id: String(++uploadSeq), file, state: 'pending', percent: 0, failure: null };
+  });
+  return runJobs(key, jobs);
+}
+
+async function runJobs(key, jobs) {
+  const st = uploadState(key);
+  for (const job of jobs) {
+    Object.assign(job, { state: 'pending', percent: 0, failure: null });
+    if (!st.jobs.includes(job)) st.jobs.push(job);
+  }
+  paintUploads(key);
+  const results = [];
+  let landed = 0;
+  for (const job of jobs) {
+    const { file } = job;
+    const fail = (err) => {
+      job.state = 'failed';
+      job.failure = uploadCore.failure(file, err);
+      results.push({ ok: false, name: file.name, size: file.size, shown: !!err.shown, ...job.failure });
+    };
+    const land = async (data) => {
+      st.jobs = st.jobs.filter((x) => x !== job);
+      await st.ctl.landed?.(file, data);
+      results.push({ ok: true, name: file.name, size: file.size });
+      landed += 1;
+      refreshUploads(st);
+    };
+    if (uploadCore.tooBig(file)) {
+      fail({ kind: 'too-large' });
+      paintUploads(key);
+      continue;
+    }
+    const before = st.ctl.known?.();
+    try {
+      const data = await st.ctl.send(file, (p) => {
+        job.percent = Math.min(100, Math.max(job.percent, Math.floor(p * 100)));
+        job.state = p >= 1 ? 'saving' : 'pending';
+        for (const t of document.querySelectorAll(`[data-upload-job="${job.id}"]`)) if (!t.classList.contains('is-failed')) paintUploadTile(t, job);
+      });
+      await land(data);
+    } catch (err) {
+      const lost = err.kind === 'timeout' || err.status === 504;
+      const kept = lost ? await st.ctl.found?.(file, before)?.catch?.(() => null) : null;
+      if (kept) await land(kept); else fail(err);
+    }
+    paintUploads(key);
+  }
+  if (landed) await refreshUploads(st);
+  const sum = uploadCore.summary(results);
+  if (!sum || results.some((r) => r.shown)) return;
+  const retryable = jobs.filter((j) => j.state === 'failed' && j.failure.retry);
+  const action = sum.action === 'retry' && retryable.length
+    ? { label: 'Retry', run: () => runJobs(key, retryable.filter((j) => uploadState(key).jobs.includes(j) && j.state === 'failed')) }
+    : sum.action === 'choose' && st.ctl.choose ? { label: 'Choose another file', run: () => st.ctl.choose() } : null;
+  toast(sum.text, sum.kind === 'err', action, { kind: sum.kind });
+}
+
 function fileBase64(file) {
   return new Promise((res, rej) => {
     const reader = new FileReader();
@@ -117,7 +304,10 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     seatToast(data);
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code, entity: data.entity });
+  if (!res.ok) {
+    const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method);
+    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity });
+  }
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -165,7 +355,7 @@ async function copyText(text, label = 'Copied') {
 
 const TOAST_MS = { info: 4000, action: 8000, err: 10000, perChar: 60, max: 20000 };
 const TOAST_LIMIT = 3;
-const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
+const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', warn: 'lucide:triangle-alert', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
 const toastsUp = [];
 
 function toastLayer() {
@@ -200,7 +390,7 @@ function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
     same.left = same.life;
     return same.node;
   }
-  const floor = action ? TOAST_MS.action : kind === 'err' ? TOAST_MS.err : TOAST_MS.info;
+  const floor = action ? TOAST_MS.action : kind === 'err' || kind === 'warn' ? TOAST_MS.err : TOAST_MS.info;
   const life = Math.min(TOAST_MS.max, Math.max(floor, text.length * TOAST_MS.perChar));
   const countEl = el('span', { class: 'wv-toast-count' });
   countEl.hidden = true;
@@ -223,7 +413,7 @@ function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
   node.addEventListener('pointerup', (e) => { if (x0 != null && Math.abs(e.clientX - x0) >= 48) dropToast(item); x0 = null; });
   toastsUp.push(item);
   layer.append(node);
-  while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err') ?? toastsUp[0]);
+  while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err' && t.kind !== 'warn') ?? toastsUp[0]);
   const live = layer.querySelector(kind === 'err' ? '#wv-live-alert' : '#wv-live-status');
   live.textContent = '';
   setTimeout(() => { live.textContent = text; }, 50);
@@ -3151,21 +3341,28 @@ function viewCell(v, f, { compact = false } = {}) {
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
 function avatarUpload(entityId, fieldName, done) {
-  return async (file) => {
+  const key = `${entityId}:${fieldName}:avatar`;
+  return (file, choose = null) => {
     if (!file) return;
-    const refusal = fileTooBig(file);
-    if (refusal) return toast(refusal, true);
-    try {
-      await api('POST', `/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
-        name: file.name, mime: file.type || 'application/octet-stream', bytes: await fileBase64(file),
-      });
-      await done();
-    } catch (err) { toast(err.message, true); }
+    uploadState(key).ctl = {
+      send: async (f, progress) => sendUpload(`/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
+        name: f.name, mime: f.type || 'application/octet-stream', bytes: await fileBase64(f),
+      }, progress),
+      known: () => api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id))),
+      found: (f, before) => landedFile(entityId, f, before),
+      refresh: done,
+      choose,
+    };
+    return runUploads(key, [file]);
   };
 }
 function avatarPicker(face, { cls, title, upload, onClear = null }) {
   const input = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: 'display:none' });
-  input.addEventListener('change', () => upload(input.files?.[0]));
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    input.value = '';
+    upload(file, () => input.click());
+  });
   const pick = el('button', {
     type: 'button', class: 'av-pick', title, 'aria-label': title,
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); input.click(); },
@@ -3174,7 +3371,7 @@ function avatarPicker(face, { cls, title, upload, onClear = null }) {
     type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onClear(); },
   }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null;
-  return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0]));
+  return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0], () => input.click()));
 }
 function avatarControl(item, f, { compact, saved, patch }) {
   const face = item.avatar;
@@ -3771,29 +3968,17 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'avatar') return avatarControl(item, f, { compact, saved, patch });
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    const failKey = `${id}\u0000${f.name}`;
-    const keepFailures = (left) => {
-      if (left.length) attachFailures.set(failKey, left); else attachFailures.delete(failKey);
+    const upKey = `${id}:${f.name}`;
+    const known = new Set((item.files ?? []).map((x) => x.id));
+    uploadState(upKey).ctl = {
+      send: async (file, progress) => sendUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file), progress),
+      known: () => new Set(known),
+      found: (file, before) => landedFile(id, file, before, f.name),
+      landed: (file, meta) => { if (meta?.id) known.add(meta.id); },
+      refresh: saved,
+      choose: compact ? null : () => uploadHostsFor(upKey).find((n) => n.isConnected)?.querySelector('input[type=file]')?.click(),
     };
-    const upload = async (files, { retrying = null } = {}) => {
-      let landed = 0;
-      const left = (attachFailures.get(failKey) ?? []).filter((x) => x !== retrying);
-      for (const file of files) {
-        try {
-          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file));
-          landed += 1;
-        } catch (err) {
-          if (!compact) {
-            const seen = left.findIndex((x) => x.file.name === file.name);
-            if (seen >= 0) left.splice(seen, 1);
-            left.push({ file, reason: err.message });
-          }
-          toast(err.message, true);
-        }
-      }
-      if (!compact) keepFailures(left);
-      if (landed || !compact) await saved().catch((err) => toast(err.message, true));
-    };
+    const upload = (files) => runUploads(upKey, files);
     const shown = ids.length ? String(val ?? `${ids.length}`) : '';
     const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     const marks = [
@@ -3818,22 +4003,6 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
-    const failedTileEl = (entry) => el('span', { class: 'attach-item is-failed', title: `${entry.file.name}: ${entry.reason}` },
-      el('span', { class: 'attach-fail-name' }, entry.file.name),
-      el('span', { class: 'attach-fail-why' }, entry.reason),
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${entry.file.name}`,
-        onclick: (e) => { e.preventDefault(); e.stopPropagation(); upload([entry.file], { retrying: entry }); },
-      }, 'Retry'),
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${entry.file.name}`,
-        onclick: (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          keepFailures((attachFailures.get(failKey) ?? []).filter((x) => x !== entry));
-          saved().catch((err) => toast(err.message, true));
-        },
-      }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
     const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
     const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
     const present = files.filter((x) => !x.missing);
@@ -3847,17 +4016,17 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
     box.append(chips);
-    for (const entry of attachFailures.get(failKey) ?? []) chips.append(failedTileEl(entry));
-    const input = el('input', { type: 'file', style: 'display:none' });
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try { await upload([file]); } finally { input.value = ''; }
+    const input = el('input', { type: 'file', multiple: f.multiple === false ? null : '', style: 'display:none' });
+    input.addEventListener('change', () => {
+      const picked = [...(input.files ?? [])];
+      input.value = '';
+      if (picked.length) upload(picked);
     });
     chips.append(input, el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
+    uploadHost(box, upKey, { slot: chips, before: input });
     return fileDropZone(box, upload);
   }
   if (f.type === 'date') {
@@ -9725,7 +9894,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
-      handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput),
+      handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput, host),
     },
     outline: { enable: false, position: 'left' },
     preview: {
@@ -9837,28 +10006,44 @@ for (const ev of ['resize', 'scroll']) {
   });
 }
 
-async function uploadDocFiles(files, entityId, getEditor, onInput) {
+let docUploadSeq = 0;
+const DOC_UPLOAD_INPUT = '.vditor-toolbar [data-type="upload"] input[type="file"]';
+function docUploadStrip(host) {
+  if (host.uploadStrip?.isConnected) return host.uploadStrip;
+  host.uploadKey ??= `doc:${++docUploadSeq}`;
+  const strip = el('div', { class: 'doc-uploads attach-chips' });
+  host.after(strip);
+  host.uploadStrip = uploadHost(strip, host.uploadKey);
+  return strip;
+}
+
+async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) {
   if (!entityId) return 'This document has no record to attach to';
-  const editor = getEditor();
-  for (const f of files) {
-    const refusal = fileTooBig(f);
-    if (refusal) return refusal;
-    const contentBase64 = await fileBase64(f);
-    let meta;
-    try {
-      meta = await api('POST', `/entities/${entityId}/files`, {
-        name: f.name, mime: f.type || 'application/octet-stream', contentBase64,
-      });
-    } catch (e) { return `Upload failed: ${e.message}`; }
-    const url = `${WS_PREFIX}/api/files/${meta.id}`;
-    const mime = f.type || '';
-    const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
-      : mime === 'application/pdf'
-        ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
-        : `[${f.name}](${url})`;
-    editor.insertValue(md + '\n');
-  }
-  onInput?.(editor.getValue());
+  const input = host?.querySelector(DOC_UPLOAD_INPUT);
+  if (input) input.value = '';
+  const key = host?.parentNode ? docUploadStrip(host).dataset.uploadKey : `doc:${entityId}`;
+  const seen = api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id)), () => new Set());
+  const mine = new Set();
+  uploadState(key).ctl = {
+    send: async (f, progress) => sendUpload(`/entities/${entityId}/files`, {
+      name: f.name, mime: f.type || 'application/octet-stream', contentBase64: await fileBase64(f),
+    }, progress),
+    known: () => seen.then((ids) => new Set([...ids, ...mine])),
+    found: (f, before) => landedFile(entityId, f, before),
+    landed: (f, meta) => {
+      mine.add(meta.id);
+      const url = `${WS_PREFIX}/api/files/${meta.id}`;
+      const mime = f.type || '';
+      const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
+        : mime === 'application/pdf'
+          ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
+          : `[${f.name}](${url})`;
+      getEditor().insertValue(md + '\n');
+    },
+    refresh: async () => onInput?.(getEditor().getValue()),
+    choose: host ? () => host.querySelector(DOC_UPLOAD_INPUT)?.click() : null,
+  };
+  await runUploads(key, [...files]);
   return null;
 }
 

@@ -54,6 +54,7 @@ test('the attach route answers 413 and names the file and the limit', async () =
     const body = await res.json();
     assert.equal(body.code, 'too-large');
     assert.equal(body.error, 'deck.pdf is 10.2 MB; files can be up to 10.0 MB');
+    assert.equal(body.limit, FILE_MAX_BYTES, 'the 413 body names no limit in bytes');
   } finally { close(); }
 });
 
@@ -67,6 +68,7 @@ test('a body too big for the attach route answers 413 with the limit, not 400 in
     const body = await res.json();
     assert.equal(body.code, 'too-large');
     assert.match(body.error, /10\.0 MB/, 'the refusal names no limit');
+    assert.equal(body.limit, FILE_MAX_BYTES, 'the 413 body names no limit in bytes');
   } finally { close(); }
 });
 
@@ -87,8 +89,8 @@ test('the attach body cap carries a file at the limit plus its preview, and noth
 });
 
 test('the browser refuses the same size the engine does', () => {
-  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  const m = app.match(/^const FILE_MAX_BYTES = (.+);$/m);
-  assert.ok(m, 'public/app.js names no file size limit');
+  const app = readFileSync(new URL('../public/upload-core.js', import.meta.url), 'utf8');
+  const m = app.match(/^  const LIMIT = (.+);$/m);
+  assert.ok(m, 'public/upload-core.js names no file size limit');
   assert.equal(Number(eval(m[1])), FILE_MAX_BYTES, 'the browser and the engine disagree on the file size limit');
 });

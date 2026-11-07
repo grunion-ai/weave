@@ -37,9 +37,9 @@ if (s) {
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
         await page.waitForSelector(sel);
         await drop(page, sel, OVER);
-        const refusal = page.locator('.wv-toast.err', { hasText: 'deck.pdf is 11.0 MB' });
+        const refusal = page.locator('.wv-toast.err', { hasText: 'deck.pdf is 11 MB' });
         await refusal.waitFor();
-        assert.match(await refusal.textContent(), /files can be up to 10\.0 MB/, 'the refusal names no limit');
+        assert.match(await refusal.textContent(), /over the 10 MB limit, so it was not saved\./, 'the refusal names no limit');
         assert.deepEqual(posts, [], 'the browser sent the file before the server refused it');
         assert.deepEqual(weave.getEntity(rows[theme].id).files ?? [], [], 'the oversized file landed anyway');
       } finally { await page.close(); }
