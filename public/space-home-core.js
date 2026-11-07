@@ -2,7 +2,7 @@
   function homeSections(payload, recents) {
     const { space, tables = [], runs = [] } = payload ?? {};
     const byId = new Map(tables.map((t) => [t.id, t]));
-    const qualified = new Set(tables.map((t) => `${space?.name}/${t.name}`));
+    const qualified = new Set(tables.map((t) => `${t.space ?? space?.name}/${t.name}`));
     const list = (Array.isArray(recents) ? recents : []).filter((r) => r && typeof r === 'object');
     const views = list.flatMap((r) => {
       if (r.kind !== 'table-view') return [];
@@ -21,12 +21,24 @@
     return out;
   }
 
+  function workspaceSections(payload, recents) {
+    const { workspace, spaces = [], runs = [] } = payload ?? {};
+    const tables = spaces.flatMap((sp) => (sp.tables ?? []).map((t) => ({ ...t, space: sp.name })));
+    const out = homeSections({ space: { description: workspace?.description ?? '' }, tables, runs }, recents);
+    if (spaces.length) {
+      out.spaces = spaces.map(({ tables: list = [], ...sp }) => ({ ...sp, rowCount: list.reduce((n, t) => n + (t.rowCount ?? 0), 0) }));
+      out.overview = { description: workspace?.description ?? '' };
+    }
+    return out;
+  }
+
   const filterRuns = (runs, outcome) => (outcome === 'all' ? runs : runs.filter((r) => r.outcome === outcome));
 
-  function runSubject(run, spaceName) {
-    const where = run.originSpace && run.originSpace !== spaceName ? `${run.originSpace} → ${spaceName}` : spaceName;
+  function runSubject(run, spaceName = null) {
+    const from = run.originSpace;
+    const where = spaceName == null ? from : (from && from !== spaceName ? `${from} → ${spaceName}` : spaceName);
     const changed = (run.changedTables ?? []).map((t) => `${t.table} ${t.count.toLocaleString('en-US')}`).join(', ');
-    return `${where} · ${changed || 'nothing changed'}`;
+    return [where, changed || 'nothing changed'].filter(Boolean).join(' · ');
   }
 
   function rowsByTable(rows) {
@@ -52,5 +64,5 @@
     return { kind: 'table-view', id: v.id, name: v.name, tableId: table.id, table: table.name, layout: v.layout ?? 'table', url: `#/table/${table.id}/view/${v.id}` };
   }
 
-  globalThis.WeaveSpaceHome = { homeSections, filterRuns, runSubject, rowsByTable, runResult, viewRecent };
+  globalThis.WeaveSpaceHome = { homeSections, workspaceSections, filterRuns, runSubject, rowsByTable, runResult, viewRecent };
 })();
