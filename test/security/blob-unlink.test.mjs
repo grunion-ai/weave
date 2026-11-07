@@ -84,3 +84,46 @@ test('a blob another row still names is kept when one record goes (Issue #540)',
   w.deleteFile(twin.id, f.id);
   assert.equal(existsSync(blob(f.id)), false, 'the last reference takes the blob');
 });
+function pair() {
+  const dir = join(ROOT, `case-${++n}`);
+  mkdirSync(dir, { recursive: true });
+  const open = (name) => new Weave({ path: join(dir, `${name}.db`), keystorePath: process.env.WEAVE_KEYSTORE });
+  const a = open('a');
+  a.createSpace({ name: 'S' });
+  a.createTable({ space: 'S', name: 'T' });
+  const e = a.createEntity('T', { Name: 'row' });
+  const f = a.attachFile(e.id, { name: 'a.txt', mime: 'text/plain', bytes: Buffer.from('bytes of a') });
+  const b = open('b');
+  b.importJSON(a.exportJSON());
+  return { a, b, e, f, blob: (id) => join(dir, 'files', id) };
+}
+
+test('a delete in one workspace keeps a blob another workspace in the data dir still names (Issue #1359)', () => {
+  const { a, b, e, f, blob } = pair();
+  assert.deepEqual(b.readFile(f.id).bytes, Buffer.from('bytes of a'), 'the import names the same file id');
+  b.deleteFile(e.id, f.id);
+  assert.ok(existsSync(blob(f.id)), 'workspace a still names the blob');
+  assert.deepEqual(a.readFile(f.id).bytes, Buffer.from('bytes of a'));
+  a.deleteFile(e.id, f.id);
+  assert.equal(existsSync(blob(f.id)), false, 'the last reference in the data dir takes the blob');
+});
+
+test('a purged row and a hard-deleted table keep blobs a sibling workspace names (Issue #1359)', () => {
+  const { a, b, e, f, blob } = pair();
+  b.deleteEntity(e.id, { hard: true });
+  b.deleteTable('T', { hard: true });
+  assert.deepEqual(a.readFile(f.id).bytes, Buffer.from('bytes of a'));
+  a.deleteEntity(e.id, { hard: true });
+  assert.equal(existsSync(blob(f.id)), false);
+});
+
+test('removing a logo keeps the blob a sibling workspace still uses as its logo (Issue #1359)', () => {
+  const { a, b, blob } = pair();
+  const logo = a.setWorkspaceLogo({ name: 'logo.png', bytes: PNG });
+  b.importJSON(a.exportJSON());
+  b.deleteWorkspaceLogo();
+  assert.ok(existsSync(blob(logo.id)), 'workspace a still shows the logo');
+  assert.ok(a.getWorkspaceLogo());
+  a.deleteWorkspaceLogo();
+  assert.equal(existsSync(blob(logo.id)), false);
+});

@@ -9563,7 +9563,7 @@ export class Weave {
     if (this.state.meta.logo?.id === id) return;
     for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
     const p = this.#blobPath(id);
-    if (p) rmSync(p, { force: true });
+    if (p && !this.store.siblingNames(id)) rmSync(p, { force: true });
   }
 
   #writeBlob(id, buf) {

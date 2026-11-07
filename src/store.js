@@ -1,5 +1,5 @@
-import { readFileSync, existsSync, statSync, accessSync, constants } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 let DatabaseSync = null;
 try {
@@ -268,6 +268,32 @@ export class Store {
   deleteFileStorage(fileId) {
     if (!this.#db) { this.#memFileStorage.delete(fileId); return; }
     this.#db.prepare('DELETE FROM file_storage WHERE file_id = ?').run(fileId);
+  }
+
+  siblingNames(blobId) {
+    if (!this.path || !DatabaseSync) return false;
+    const own = resolve(this.path);
+    const dir = dirname(own);
+    let names;
+    try { names = readdirSync(dir); } catch { return true; }
+    for (const n of names) {
+      const p = join(dir, n);
+      if (!n.endsWith('.db') || p === own) continue;
+      let db;
+      try {
+        db = new DatabaseSync(p, { readOnly: true });
+        db.exec('PRAGMA busy_timeout = 5000');
+        const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        for (const t of ['entities', 'weave_meta']) {
+          if (tables.has(t) && db.prepare(`SELECT 1 FROM ${t} WHERE instr(json, ?) > 0 LIMIT 1`).get(blobId)) return true;
+        }
+      } catch {
+        return true;
+      } finally {
+        db?.close();
+      }
+    }
+    return false;
   }
 
   setAuditDetail(seq, detail) {
