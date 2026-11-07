@@ -868,7 +868,7 @@ An icon is \`lucide:<name>\` from the inventory. An emoji is refused. An \`iconl
 
 ## Trash and restore
 
-A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a row, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed rows. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone.
+A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a row, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed rows. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone. An \`includeDeleted\` answer also carries \`liveTotal\`, the live rows among everything the query matched, so a paged read of a view that shows trashed rows counts the whole table rather than the page in hand.
 
 ## Local file uploads
 

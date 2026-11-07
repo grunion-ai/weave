@@ -1,0 +1,2 @@
+- A table view that shows deleted rows now opens on a page and feeds the rest as you scroll, the way the standard view already did. On the weave workspace's 3,980-row Case table the open drops from 5,187,491 bytes to 244,702. Trashed rows keep their strike-through on every page, and the filter readout counts the live rows of the whole table, not of the page in hand. (Issue #1269)
+- `weave_query` and `POST /api/tables/<table>/query` answer `liveTotal` beside `total` when a read asks for `includeDeleted`: the live rows among everything the query matched. (Issue #1269)

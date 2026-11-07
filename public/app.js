@@ -4650,7 +4650,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
-  const whole = showDeleted || !!group;
+  const whole = !!group;
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
@@ -4663,8 +4663,8 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
   };
   const paint = (result, domains) => {
     tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-    const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
-    setFilterTotal(db, showDeleted ? items.filter((e) => !e.deleted).length : result.total, result.all);
+    const items = result.items;
+    setFilterTotal(db, showDeleted ? (result.liveTotal ?? result.total) : result.total, result.all);
     const drawn = group ? {
       ...db,
       grouping: {
@@ -4704,6 +4704,7 @@ function gridFields(db) {
 }
 
 function graftChips(db, res) {
+  for (const item of res?.items ?? []) if (item.deletedAt) item.deleted = true;
   if (!res?.chips) return res;
   const rels = db.fields.filter((f) => f.type === 'relation' || lookupTargetOf(db, f)?.type === 'relation').map((f) => f.name);
   for (const item of res.items ?? []) {
