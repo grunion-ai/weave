@@ -101,3 +101,49 @@ test('viewRecent notes a saved view the reader asked for, never the table\'s def
   const plain = { ...table, views: [...table.views, { id: 'v2', name: 'Closing' }] };
   assert.equal(H.viewRecent(plain, 'v2').layout, 'table', 'a saved view with no layout is a table');
 });
+
+const wsPayload = () => ({
+  workspace: { name: 'ws', description: 'Everything we run' },
+  spaces: [
+    { id: 's1', name: 'Sales', icon: 'lucide:briefcase', tables: payload().tables },
+    { id: 's2', name: 'Ops', icon: null, tables: [{ id: 't3', name: 'Deal', icon: null, rowCount: 5, views: [] }] },
+    { id: 's3', name: 'Empty', icon: null, tables: [] },
+  ],
+  runs: [{ workflowId: 'w1', outcome: 'success' }],
+});
+
+test('workspaceSections tiles every space with its summed count and keeps recents from any space', () => {
+  const out = H.workspaceSections(wsPayload(), [
+    view('v1', 't1'),
+    row('r1', 't1'),
+    row('r2', 't3', { db: 'Ops/Deal' }),
+    row('r9', 'gone', { db: 'Gone/Task' }),
+  ]);
+  assert.deepEqual(out.spaces, [
+    { id: 's1', name: 'Sales', icon: 'lucide:briefcase', rowCount: 48 },
+    { id: 's2', name: 'Ops', icon: null, rowCount: 5 },
+    { id: 's3', name: 'Empty', icon: null, rowCount: 0 },
+  ]);
+  assert.deepEqual(out.tables.map((t) => [t.id, t.space]), [['t1', 'Sales'], ['t2', 'Sales'], ['t3', 'Ops']]);
+  assert.deepEqual(out.views.map((v) => v.id), ['v1']);
+  assert.deepEqual(out.rows.map((r) => [r.id, r.table]), [['r1', 'Deal'], ['r2', 'Deal']]);
+  assert.deepEqual(out.runs, wsPayload().runs);
+  assert.deepEqual(out.overview, { description: 'Everything we run' });
+});
+
+test('workspaceSections matches an older recent by its own space, never another space\'s same-named table', () => {
+  const out = H.workspaceSections(wsPayload(), [{ kind: 'entity', id: 'old', name: 'Old', db: 'Ops/Deal', publicId: 1, url: '/e/old' }]);
+  assert.deepEqual(out.rows.map((r) => r.id), ['old']);
+  const none = H.workspaceSections(wsPayload(), [{ kind: 'entity', id: 'x', name: 'X', db: 'Empty/Deal', publicId: 1, url: '/e/x' }]);
+  assert.equal(none.rows, undefined);
+});
+
+test('workspaceSections leaves every empty section out', () => {
+  assert.deepEqual(H.workspaceSections({ workspace: { name: 'ws', description: '' }, spaces: [], runs: [] }, []), {});
+  assert.deepEqual(H.workspaceSections(null, null), {});
+});
+
+test('runSubject with no space reads the origin alone', () => {
+  assert.equal(H.runSubject({ originSpace: 'Ops', changedTables: [{ table: 'Deal', count: 1 }] }), 'Ops · Deal 1');
+  assert.equal(H.runSubject({ originSpace: null, changedTables: [] }), 'nothing changed');
+});

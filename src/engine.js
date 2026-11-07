@@ -8608,24 +8608,41 @@ export class Weave {
   spaceHome(ref) {
     return this.#framed(() => {
       const sp = this.getSpace(ref);
-      const counts = this.#liveRowCounts();
       return {
         space: { id: sp.id, name: sp.name, icon: sp.icon || null, description: sp.description ?? '' },
-        tables: this.listTables(sp.id).map((db) => ({
-          id: db.id,
-          name: db.name,
-          icon: db.icon || null,
-          rowCount: counts.get(db.id) ?? 0,
-          views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'table' })),
-        })),
-        runs: this.#spaceRuns(sp.id),
+        tables: this.#homeTables(sp.id, this.#liveRowCounts()),
+        runs: this.#homeRuns((id) => id === sp.id),
       };
     });
   }
 
-  #spaceRuns(spaceId) {
+  workspaceHome() {
+    return this.#framed(() => {
+      const ws = this.getWorkspace();
+      const counts = this.#liveRowCounts();
+      const spaces = this.listSpaces().filter((sp) => !sp.system);
+      const ids = new Set(spaces.map((sp) => sp.id));
+      return {
+        workspace: { name: ws.title, description: ws.description },
+        spaces: spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon || null, tables: this.#homeTables(sp.id, counts) })),
+        runs: this.#homeRuns((id) => ids.has(id)),
+      };
+    });
+  }
+
+  #homeTables(spaceId, counts) {
+    return this.listTables(spaceId).map((db) => ({
+      id: db.id,
+      name: db.name,
+      icon: db.icon || null,
+      rowCount: counts.get(db.id) ?? 0,
+      views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'table' })),
+    }));
+  }
+
+  #homeRuns(inHome) {
     const hidden = this.#hiddenSpaces();
-    const here = (e) => !e.deletedAt && this.state.tables[e.dbId]?.spaceId === spaceId && !this.#rowHidden(e, hidden);
+    const here = (e) => !e.deletedAt && inHome(this.state.tables[e.dbId]?.spaceId) && !this.#rowHidden(e, hidden);
     const fired = [];
     const writes = new Map();
     for (const e of Object.values(this.state.entities)) {
@@ -8677,7 +8694,7 @@ export class Weave {
         if (fields?.Health === 'Failed') failedStep = { step: null, error: fields['Health Reason'] ?? null };
       }
       newest.add(run.workflow);
-      if (!run.changed.size && !(failedStep && run.originId === spaceId)) continue;
+      if (!run.changed.size && !(failedStep && inHome(run.originId))) continue;
       const changedTables = new Map();
       for (const e of run.changed) {
         const table = this.state.tables[e.dbId].name;
