@@ -92,8 +92,7 @@ function sendUpload(path, body, onProgress = () => {}) {
     xhr.upload.onload = () => { onProgress(1); wait(UPLOAD_ANSWER_MS); };
     xhr.onerror = () => fail({ kind: 'offline' });
     xhr.onload = () => {
-      let data = {};
-      try { data = JSON.parse(xhr.responseText || '{}') ?? {}; } catch {}
+      const data = xhr.response && typeof xhr.response === 'object' ? xhr.response : {};
       noteSchemaVersion(xhr.getResponseHeader('X-Weave-Schema-Version'), false);
       if (xhr.status >= 200 && xhr.status < 300) {
         noteRevisions('POST', path, data);
@@ -104,6 +103,7 @@ function sendUpload(path, body, onProgress = () => {}) {
       fail({ status: xhr.status, code: data.code, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
     };
     xhr.open('POST', WS_PREFIX + '/api' + path);
+    xhr.responseType = 'json';
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('X-Weave-Zone', LOCAL_ZONE);
     wait(UPLOAD_STALL_MS);
