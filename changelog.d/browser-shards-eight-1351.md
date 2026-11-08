@@ -1,0 +1,1 @@
+- **Main runs eight browser shards at once** (Issue #1351): four shards had grown to 15 to 19 minutes each and were killed at the test manager's 20-minute job timeout on six of seven retried main runs in the week to 2026-11-08. The full suite now plans eight browser shards and runs all ten shards in parallel. Gate: `test/ci-test.test.mjs`.

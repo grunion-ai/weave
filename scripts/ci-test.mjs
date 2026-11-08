@@ -8,7 +8,7 @@ import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export function plan(files, groups, weight, unitCount = 2, browserCount = 4) {
+export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
   if (!files.length) throw new Error('Empty CI selection');
   if (JSON.stringify([...files].sort()) !== JSON.stringify([...groups.unit, ...groups.browser].sort())) throw new Error('Lane coverage mismatch');
   return Object.entries(groups).flatMap(([lane, selected]) => {
