@@ -3427,6 +3427,10 @@ function relationChipEl(f, s, { onRemove = null } = {}) {
     onRemove,
   });
 }
+function chipOpensRecord(caret) {
+  if (!dockCoversScreen.matches || caret.closest('.wv-prose')) return null;
+  return caret.closest('.k-rel')?.querySelector(':scope > a.mention[href]') ?? null;
+}
 function toggleMentionCaret(caret) {
   const open = caret.closest('.k-rel')?.classList.toggle('open');
   caret.setAttribute('aria-expanded', String(!!open));
@@ -12739,7 +12743,9 @@ document.addEventListener('click', (ev) => {
   if (!caret) return;
   ev.preventDefault();
   ev.stopPropagation();
-  toggleMentionCaret(caret);
+  const open = chipOpensRecord(caret);
+  if (open) open.click();
+  else toggleMentionCaret(caret);
 });
 
 document.addEventListener('keydown', (e) => {
