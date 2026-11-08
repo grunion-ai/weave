@@ -713,8 +713,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
     'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
-  assert.match(body, /grid\.classList\.toggle\('side-open', refsOut\.length > 0 \|\| refsIn\.length > 0\)/,
-    'the column opens when it has references, never on comments (Feature #323) or an Activity switch (Feature #315)');
+  assert.match(body, /grid\.classList\.toggle\('side-open', \(showsRefPanel\(db, 'References'\) && refsOut\.length > 0\) \|\| \(showsRefPanel\(db, 'Referenced by'\) && refsIn\.length > 0\)\)/,
+    'the column opens when a shown panel has references (Issue #1479), never on comments (Feature #323) or an Activity switch (Feature #315)');
   assert.ok(!/localStorage/.test(body.slice(body.indexOf('activityBtn'), body.indexOf('activityBtn') + 600)) && !body.includes('wv-entity-side'), 'the Activity icon keeps no per-browser memory, and the side column has no second switch');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
@@ -722,8 +722,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
   assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
-  assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/,
-    'the same eye popover as the table, redrawing the entity and without the table-only Rows section');
+  assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/,
+    'the same eye popover as the table, redrawing the entity, without the table-only Rows section and with the reference panel switches');
   assert.match(body, /!hidden\.has\(f\.name\)/, 'hidden fields are hidden here too — one hidden set per table');
   const eyeFn = fnBody('fieldVisibilityPopover');
   assert.match(eyeFn, /if \(redraw\) await redraw\(\);/, 'the popover redraws whatever view opened it');
@@ -1379,7 +1379,7 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
 test('one builder draws the Fields menu for the table and the record, in checkbox rows (Issues #910, #915)', () => {
   assert.doesNotMatch(APP, /function tableFieldsPopover\(/, 'the second builder is gone');
   assert.match(fnBody('tableChrome'), /fieldVisibilityPopover\(eye, ref\.db, ref\.trashCount\)/, 'the table opens it');
-  assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false \}\)/, 'the record opens it');
+  assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/, 'the record opens it, with its reference panel switches (Issue #1479)');
   const eye = fnBody('fieldVisibilityPopover');
   assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
   assert.match(eye, /el\('label', \{ class: 'chip-pop-row eye-row', dataset \},\s*el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'every row is a label holding the shared checkbox');

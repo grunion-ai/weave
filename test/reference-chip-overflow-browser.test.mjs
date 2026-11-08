@@ -9,6 +9,7 @@ const s = await launch('reference chip overflow', (weave) => {
   weave.createSpace({ name: 'Dev' });
   weave.createTable({ space: 'Dev', name: 'Task' });
   const issues = weave.createTable({ space: 'Dev', name: 'Issue' });
+  weave.updateTable(issues, { referencePanels: ['References'] });
   target = weave.createEntity('Task', { name: LONG });
   short = weave.createEntity('Task', { name: 'Short one' });
   issue = weave.createEntity('Issue', { name: 'Overflowing chip', doc: 'see [[Task#1]] and [[Task#2]]' });

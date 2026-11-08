@@ -9,6 +9,7 @@ const s = await launch('side panel keeps the document wide', (weave) => {
   weave.createSpace({ name: 'Net' });
   const tasks = weave.createTable({ space: 'Net', name: 'Task' });
   weave.addField(tasks, { name: 'Owner', type: 'text' });
+  weave.updateTable(tasks, { referencePanels: ['References'] });
   const plan = weave.createEntity(tasks, { name: 'Plan the review' });
   task = weave.createEntity(tasks, { name: 'Review the task report', values: { Owner: 'Kyle' } });
   weave.setDoc(task.id, [

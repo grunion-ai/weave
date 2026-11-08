@@ -210,3 +210,16 @@ test('reference panels join the side column and wear k k-rel chips', async () =>
   assert.ok(block.includes('relationChipEl({ targetDbIds: true }, r)'), 'chips are the shared relation chip — the far row’s Chip, wearing its home table badge');
   assert.ok(!block.includes('left.append'), 'the entity body stays quiet');
 });
+
+test('a table keeps which reference panels its records show, off by default (Issue #1479)', () => {
+  const { w } = seed();
+  const panels = () => w.describeSchema().flatMap((s) => s.tables).find((t) => t.name === 'Task').referencePanels;
+  assert.equal(panels(), undefined, 'a table nobody touched shows neither panel');
+  w.updateTable('Task', { referencePanels: ['References'] });
+  assert.deepEqual(panels(), ['References']);
+  w.updateTable('Task', { referencePanels: ['Referenced by', 'References', 'References'] });
+  assert.deepEqual(panels(), ['References', 'Referenced by'], 'stored once each, in panel order');
+  assert.throws(() => w.updateTable('Task', { referencePanels: ['Backlinks'] }), /not a reference panel/);
+  w.updateTable('Task', { referencePanels: [] });
+  assert.equal(panels(), undefined, 'switching both off clears it');
+});

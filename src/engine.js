@@ -87,6 +87,7 @@ export function parseCSV(text) {
 
 const VALUES_BLOCK = '@values';
 const FILES_BLOCK = '@files';
+const REFERENCE_PANELS = ['References', 'Referenced by'];
 const isFixedBlock = (key) => key === VALUES_BLOCK || key === FILES_BLOCK;
 const BLOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const isBodyBlock = (f) => f.type === 'document' || f.type === 'attachments'
@@ -1972,6 +1973,14 @@ export class Weave {
       if (typeof patch.hideRollups !== 'boolean') throw new WeaveError('hideRollups is true or false', 'invalid');
       db.hideRollups = patch.hideRollups;
     }
+    if (patch.referencePanels != null) {
+      if (!Array.isArray(patch.referencePanels)) throw new WeaveError(`referencePanels is a list of ${REFERENCE_PANELS.join(', ')}`, 'invalid');
+      for (const n of patch.referencePanels) {
+        if (!REFERENCE_PANELS.includes(n)) throw new WeaveError(`'${n}' is not a reference panel (${REFERENCE_PANELS.join(', ')})`, 'invalid');
+      }
+      const on = REFERENCE_PANELS.filter((n) => patch.referencePanels.includes(n));
+      if (on.length) db.referencePanels = on; else delete db.referencePanels;
+    }
     if (patch.bodyOrder != null) {
       if (!Array.isArray(patch.bodyOrder)) throw new WeaveError('bodyOrder is a list of block keys', 'invalid');
       const keys = patch.bodyOrder.map((ref2) => {
@@ -2076,7 +2085,7 @@ export class Weave {
     }
     const db = {
       ...structuredClone({ description: src.description, icon: src.icon, noun: src.noun,
-        systemFields: src.systemFields, hideRollups: src.hideRollups }),
+        systemFields: src.systemFields, hideRollups: src.hideRollups, referencePanels: src.referencePanels }),
       tableViews: (src.tableViews ?? []).map((v) => {
         const copy = { ...structuredClone(v), id: uuid(), fields: v.fields.map(mapId) };
         if (copy.widths) copy.widths = Object.fromEntries(Object.entries(copy.widths).map(([k, px]) => [mapId(k), px]));
@@ -2984,6 +2993,7 @@ export class Weave {
           tPatch.systemFields = sys;
         }
         if ('hideRollups' in tDoc && (tDoc.hideRollups !== false) !== (db.hideRollups !== false)) tPatch.hideRollups = !!tDoc.hideRollups;
+        if ('referencePanels' in tDoc && JSON.stringify(tDoc.referencePanels ?? []) !== JSON.stringify(db.referencePanels ?? [])) tPatch.referencePanels = tDoc.referencePanels ?? [];
         if (Object.keys(tPatch).length) act('update-table', qualified, () => this.updateTable(db.id, tPatch));
         let nameTypeChange = null;
         const createdHere = new Set();
@@ -3438,6 +3448,7 @@ export class Weave {
     }
     if (withoutRetired(tDoc.systemFields).length) patch.systemFields = withoutRetired(tDoc.systemFields);
     if (tDoc.hideRollups != null) patch.hideRollups = !!tDoc.hideRollups;
+    if (tDoc.referencePanels?.length) patch.referencePanels = tDoc.referencePanels;
     const wanted = [];
     for (const fDoc of tDoc.fields ?? []) {
       const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -10142,6 +10153,7 @@ export class Weave {
         ...structuredClone(this.#defaultViewConfig(db)),
         views: (db.tableViews ?? []).map((v) => this.#viewOut(db, v)),
         ...(typeof db.hideRollups === 'boolean' ? { hideRollups: db.hideRollups } : {}),
+        ...(db.referencePanels?.length ? { referencePanels: [...db.referencePanels] } : {}),
         bodyBlocks: this.bodyBlocks(db),
         term: this.termOf(db),
         ...(this.termOf(db).set ? { noun: this.termOf(db).singular } : {}),
