@@ -18,6 +18,7 @@ if (s) {
     const line = [...tr.children].filter((c) => c !== lead && c.getBoundingClientRect().width > 0);
     const select = document.querySelector('#main .wv-grid tbody tr.entity-row .k.k-select');
     return {
+      id: box(tr.querySelector('.pid-cell .open-link:not(.pid-probe)')),
       state: box(tr.querySelector('.phone-lead')),
       name: box(tr.querySelector('.list-name')),
       line: line.map((c) => ({ ...box(c), text: c.textContent.trim() })),
@@ -26,14 +27,25 @@ if (s) {
     };
   }, name);
 
-  test('the phone card list starts its field chip line at the state chip or the name, not at an inset of its own (Issue #1387)', { todo: 'Issue #1387' }, async (t) => {
+  test('the phone card title line reads #id, then the state chip, then the name (Issue #1441)', async (t) => {
+    await eachPhone(t, matrix, async (page) => {
+      await openTable(page, base, tasks);
+      const c = await card(page, 'Write API quickstart');
+      if (!c) return CARDS;
+      const at = { id: Math.round(c.id.left), state: Math.round(c.state.left), name: Math.round(c.name.left) };
+      assert.ok(at.id < at.state && at.state < at.name, `the title line runs left to right ${Object.entries(at).sort((a, b) => a[1] - b[1]).map(([k, x]) => `${k} ${x}`).join(', ')}`);
+    });
+  });
+
+  test('the phone card list starts its field chip line under the state chip, a 44 px tap band below the title line (Issue #1387)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openTable(page, base, tasks);
       const c = await card(page, 'Write API quickstart');
       if (!c) return CARDS;
       const start = Math.round(c.line[0].left);
-      const lined = [c.state.left, c.name.left].some((x) => Math.abs(start - Math.round(x)) <= 2);
-      assert.ok(lined, `the chip line starts at ${start} px; the state chip starts at ${Math.round(c.state.left)} px and the name at ${Math.round(c.name.left)} px`);
+      assert.ok(Math.abs(start - Math.round(c.state.left)) <= 1, `the chip line starts at ${start} px; the state chip starts at ${Math.round(c.state.left)} px`);
+      const gap = Math.round(c.line[0].top - Math.max(c.state.bottom, c.name.bottom));
+      assert.ok(gap <= 24, `the chip line sits ${gap} px below the title line`);
     });
   });
 
