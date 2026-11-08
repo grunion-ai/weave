@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.121 (2026-11-08)
+
+- A backup to `s3://` or `weave://` no longer reads the sealed archive into memory before it uploads: S3 destinations go up as a multipart upload through the existing SigV4 signer, `weave://` streams its PUT body, and the archive is sealed into the file the tar writer is already writing rather than into a second temp copy. Peak RSS for a 320 MB archive drops from 741 MB to 305 MB and stops tracking archive size. `WEAVE_BACKUP_PART_BYTES` moves the 8 MiB part size. (Issue #1410)
+- A relation chip's `×` unlinks behind a toast carrying **Undo**, and so does the related grid's unlink button. The phone record page leaves the `×` out of the chip's tap row, where the field's link picker takes a row out instead (Issue #1404).
+
 ## v0.4.120 (2026-11-07)
 
 - A checkbox field on a record page answers a tap anywhere in a 46 px box on a touch screen (Issue #1166). The input itself was 16 px, against the 44 px minimum that Apple's Human Interface Guidelines and Material both ask for, and a finger could miss it. The box a reader sees is still 16 px, on the same left edge as the values in the rows around it.
