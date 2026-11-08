@@ -1590,6 +1590,8 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-centered { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); min-width: 320px; }
 
 .dlg-sec { margin: 0 0 10px; }
+.dlg-sec > textarea.field-desc { field-sizing: content; min-height: calc(2lh + 2 * (var(--tblr-border-width) + .5625rem)); resize: none; }
+.tray-body .modal-note { margin-bottom: 10px; }
 .dlg-lbl { font-size: var(--fs-meta); text-transform: uppercase; letter-spacing: .07em; color: var(--tblr-secondary); font-weight: 600; margin: 0 0 4px; }
 .dlg-narrow { width: 90px; }
 

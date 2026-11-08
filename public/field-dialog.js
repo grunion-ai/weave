@@ -686,7 +686,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
   const describable = !(isEdit && existing.type === 'view');
   const descInput = el('textarea', {
     name: 'description', class: 'form-control field-desc', rows: '2',
-    placeholder: 'What this field holds and how it is written — shown under the label and to agents in the schema',
+    placeholder: 'What it holds and how to write it. Shows under the label and to agents.',
   });
   descInput.value = fieldDescription(existing) || '';
   const gridWrap = el('div', { class: 'full' });
