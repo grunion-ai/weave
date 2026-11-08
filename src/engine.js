@@ -594,6 +594,19 @@ const { dressNumber } = globalThis.weaveNumberCore;
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
+const COSTUME_KEYS = { number: NUMBER_COSTUME_KEYS, formula: FORMULA_COSTUME_KEYS, rollup: ROLLUP_COSTUME_KEYS, date: DATE_COSTUME_KEYS, daterange: DATE_COSTUME_KEYS, attachments: ATTACHMENT_LOOK_KEYS };
+export function pickCostume(from, keys, into = {}) {
+  for (const k of keys) if (from[k] != null) into[k] = from[k];
+  return into;
+}
+export function putCostume(config, keys, costume, touched = () => true) {
+  for (const k of keys) {
+    if (!touched(k)) continue;
+    if (costume[k] == null) delete config[k];
+    else config[k] = costume[k];
+  }
+  return config;
+}
 function rollupCostume(config) {
   if (!ROLLUP_COSTUME_KEYS.some((k) => config[k] != null)) return {};
   return normalizeSelfContainedConfig('number', { ...config, separator: undefined });
@@ -2848,11 +2861,11 @@ export class Weave {
       if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
       if (f.type !== 'view' && f.description != null) config.description = f.description;
-      for (const k of FORMULA_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
+      pickCostume(f, FORMULA_COSTUME_KEYS, config);
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
-      if (f.type === 'attachments') for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) config[k] = f[k];
+      if (f.type === 'attachments') pickCostume(f, ATTACHMENT_LOOK_KEYS, config);
       if (f.type === 'avatar' && f.shape != null) config.shape = f.shape;
       if (f.term != null) config.term = f.term;
       if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
@@ -6140,12 +6153,7 @@ export class Weave {
         const switched = field.type === 'formula' && 'grain' in patch.config && (patch.config.grain == null) !== (field.config.grain == null);
         const merged = switched ? patch.config : { ...field.config, ...patch.config };
         const costume = field.type === 'formula' ? formulaCostume(merged) : normalizeSelfContainedConfig('number', merged);
-        for (const k of field.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
-          if (k in patch.config || k in costume || k in field.config) {
-            if (costume[k] == null) delete field.config[k];
-            else field.config[k] = costume[k];
-          }
-        }
+        putCostume(field.config, COSTUME_KEYS[field.type], costume, (k) => k in patch.config || k in costume || k in field.config);
       }
       if (nextRecipe) {
         healthBefore = this.#formulaHealth(db, field);
@@ -6156,7 +6164,7 @@ export class Weave {
         const merged = { ...field.config, ...patch.config };
         for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
         const costume = rollupCostume(merged);
-        for (const k of ROLLUP_COSTUME_KEYS) { if (costume[k] == null) delete field.config[k]; else field.config[k] = costume[k]; }
+        putCostume(field.config, ROLLUP_COSTUME_KEYS, costume);
       }
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'text' && 'literal' in patch.config) {
@@ -6170,7 +6178,7 @@ export class Weave {
       if (field.type === 'attachments' && ['multiple', ...ATTACHMENT_LOOK_KEYS].some((k) => k in patch.config)) {
         const next = normalizeSelfContainedConfig('attachments', { ...field.config, ...patch.config });
         field.config.multiple = next.multiple;
-        for (const k of ATTACHMENT_LOOK_KEYS) { if (next[k] == null) delete field.config[k]; else field.config[k] = next[k]; }
+        putCostume(field.config, ATTACHMENT_LOOK_KEYS, next);
       }
       if (field.type === 'avatar' && 'shape' in patch.config) field.config.shape = normalizeSelfContainedConfig('avatar', { shape: patch.config.shape }).shape;
       if (field.type === 'document' && 'kind' in patch.config) {
@@ -6179,12 +6187,7 @@ export class Weave {
       }
       if (field.type === 'date' || field.type === 'daterange') {
         const costume = normalizeSelfContainedConfig(field.type, { ...field.config, ...patch.config });
-        for (const k of DATE_COSTUME_KEYS) {
-          if (k in patch.config || k in costume) {
-            if (costume[k] == null) delete field.config[k];
-            else field.config[k] = costume[k];
-          }
-        }
+        putCostume(field.config, DATE_COSTUME_KEYS, costume, (k) => k in patch.config || k in costume);
       }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
@@ -10190,19 +10193,17 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'rollup') {
-            for (const k of ROLLUP_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, ROLLUP_COSTUME_KEYS, out);
             const nd = this.#numberDisplay(db, f);
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }
           if (f.type === 'number' || f.type === 'formula') {
-            for (const k of f.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
-              if (f.config[k] != null) out[k] = f.config[k];
-            }
+            pickCostume(f.config, COSTUME_KEYS[f.type], out);
             if (f.config.display) out.color = f.config.color ?? 'ink';
           }
           if (f.type === 'attachments') {
             out.multiple = f.config.multiple !== false;
-            for (const k of ATTACHMENT_LOOK_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, ATTACHMENT_LOOK_KEYS, out);
           }
           if (f.type === 'avatar') out.shape = f.config.shape ?? 'round';
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
@@ -10224,7 +10225,7 @@ export class Weave {
           }
           if (f.type === 'key') Object.assign(out, this.credentialConfig(f));
           if (f.type === 'date' || f.type === 'daterange') {
-            for (const k of DATE_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, DATE_COSTUME_KEYS, out);
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
