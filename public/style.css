@@ -2359,7 +2359,6 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field].phone-count-only > .wv-cb { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] .k { line-height: 22px; font-size: var(--fs-grid); }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb > :is(input.inline-edit, .text-dressed, .num-dressed, .url-dressed, .doc-preview) { field-sizing: content; max-width: 100%; height: 22px; --wv-edit-pad: 0 8px; padding: var(--wv-edit-pad); border: 0; border-radius: 4px; font-size: var(--fs-grid); font-weight: 400; line-height: 22px; color: var(--tblr-secondary); background: var(--wv-pill-hover); }
-  #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb > .k-computed.hue-slate { padding: 1px 8px; border-radius: 4px; color: var(--text); background: var(--fill); }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] .doc-preview-line ~ .doc-preview-line { display: none; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb > .date-cell { display: inline-flex; max-width: 100%; }
   #main > .table-wrap .wv-grid tbody tr.entity-row > td[data-field] > .wv-cb > .date-cell > .date-pick-btn { display: none; }

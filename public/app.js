@@ -7267,7 +7267,10 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       for (const input of row.querySelectorAll(':scope > td[data-field] > .wv-cb input.inline-edit')) {
         if (input.value) (input.closest('.date-cell') ?? input).replaceWith(el('span', { class: 'text-dressed', title: input.value }, input.value));
       }
-      for (const k of row.querySelectorAll(':scope > td[data-field] > .wv-cb > .k-computed:not(:has(*))')) k.classList.add('hue-slate');
+      for (const k of row.querySelectorAll(':scope > td[data-field] > .wv-cb > .k-computed:not(:has(*))')) {
+        k.classList.replace('k-computed', 'k-select');
+        k.classList.add('hue-slate');
+      }
     }
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
