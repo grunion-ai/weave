@@ -5943,7 +5943,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   if (list) {
     state.inlineAdd = null;
     const groupKeys = renderBoard(main, db, items, list);
-    main.wvDraw = { db, items, trashCount, pager: null, groupKeys };
+    main.wvDraw = { db, items, trashCount, pager: null, groupKeys, list };
     syncPhoneBar();
     paintGridWait();
     paneSync(db);
@@ -6729,7 +6729,7 @@ function dropDrawnColumn(dbId, name) {
   const db = drawn.db.columns
     ? { ...drawn.db, columns: drawn.db.columns.filter((n) => n !== name) }
     : { ...drawn.db, hiddenFields: [...(drawn.db.hiddenFields ?? []), name] };
-  keepScroll(() => drawDatabase(db, drawn.items, drawn.trashCount, drawn.pager)).catch((err) => toast(err.message, true));
+  keepScroll(() => drawDatabase(db, drawn.items, drawn.trashCount, drawn.pager, drawn.list)).catch((err) => toast(err.message, true));
   return true;
 }
 function drawnMatches(db) {

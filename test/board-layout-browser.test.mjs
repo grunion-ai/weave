@@ -457,6 +457,28 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('hiding a field from the View pane keeps the board a board, in both themes (Issue #1213)', async () => {
+    for (const theme of ['light', 'dark']) {
+      for (const field of ['Photo', 'Best Price']) {
+        seed({ picture: 'medium' });
+        const page = await open({ theme });
+        try {
+          await openPane(page, 'fields');
+          await page.locator(`#view-pane .table-field-row[data-field="${field}"] input`).click();
+          await eventually(() => view().fields?.includes(field), false);
+          await page.waitForFunction(() => !document.querySelector('.grid-loader:not([hidden])'));
+          await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          assert.equal(await page.locator('#main .wv-board').count(), 1, `${field} hidden: the board is still drawn`);
+          assert.equal(await page.locator('#main table.wv-grid').count(), 0, `${field} hidden: no table took its place`);
+          assert.equal(await page.locator('#main .wv-board .tile').count(), 5);
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.waitForSelector('.wv-board .tile');
+          assert.equal(await page.locator('#main table.wv-grid').count(), 0, `${field} hidden: still a board after reload`);
+          assert.deepEqual(page.errors, []);
+        } finally { await page.close(); }
+      }
+    }
+  });
   test('Hide empty groups drops the column with no cards and saves on the view (Feature #345)', async () => {
     seed();
     const page = await open();
