@@ -7290,7 +7290,41 @@ export class Weave {
     return e;
   }
 
+  #checkValues(e, db, valuesByName) {
+    for (const [key, raw] of Object.entries(valuesByName)) {
+      const field = this.findField(db, key);
+      if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
+      if (COMPUTED_TYPES.includes(field.type)) {
+        throw new WeaveError(`Field '${field.name}' is computed (${field.type}) and cannot be written`, 'invalid');
+      }
+      if (field.type === 'relation') {
+        const ids = this.#normalizeRelationInput(field, raw);
+        if (!field.config.many && ids.length > 1) throw new WeaveError(`Field '${field.name}' holds a single entity`, 'invalid');
+        continue;
+      }
+      if (field.type === 'workflow') {
+        const empty = raw == null || raw === '';
+        const states = field.config.states;
+        if (!empty && !states.some((s) => s.id === raw || s.name === raw || s.name.toLowerCase() === String(raw).toLowerCase())) {
+          throw new WeaveError(`'${raw}' is not a state of '${field.name}'`, 'invalid');
+        }
+        continue;
+      }
+      if (field.type === 'document') continue;
+      const val = this.#validateValue(field, raw);
+      if (!isFileField(field)) continue;
+      for (const id of val) {
+        const meta = e.files.find((x) => x.id === id);
+        if (!meta) throw new WeaveError(`'${id}' is not a file on this entity — upload it here first`, 'invalid');
+        if (field.type === 'avatar' && !AVATAR_IMAGE_TYPES.includes(String(meta.mime ?? '').toLowerCase())) {
+          throw new WeaveError(`'${meta.name}' is not an image; an avatar takes a PNG, JPEG, GIF or WebP`, 'invalid');
+        }
+      }
+    }
+  }
+
   #applyValues(e, db, valuesByName, { depth = 0, isCreate = false } = {}) {
+    this.#checkValues(e, db, valuesByName);
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
       if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
