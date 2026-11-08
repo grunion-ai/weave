@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
-import { ws } from './lib/fixtures.mjs';
+import { ws, withServer } from './lib/fixtures.mjs';
 
 const read = (w, e) => w.readEntity(e.id).fields;
 
@@ -107,16 +106,13 @@ test('the REST create route leaves an unset choice empty', async () => {
   const { w, t } = ws();
   w.addField(t, { name: 'Status', type: 'workflow' });
   w.addField(t, { name: 'Kind', type: 'select', config: { options: ['Bug'] } });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/${t.id}/entities`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/${t.id}/entities`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ values: { Name: 'x' } }),
     });
     assert.equal(res.status, 201);
     const row = await res.json();
     assert.equal(row.fields.Status, null);
     assert.equal(row.fields.Kind, null);
-  } finally {
-    server.close();
-  }
+  });
 });

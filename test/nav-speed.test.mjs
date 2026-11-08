@@ -8,7 +8,7 @@ import { withServer } from './lib/fixtures.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('statics carry Last-Modified and answer If-Modified-Since with 304', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const first = await get('/app.js');
     assert.equal(first.status, 200);
     const lastMod = first.headers.get('last-modified');
@@ -25,7 +25,7 @@ test('statics carry Last-Modified and answer If-Modified-Since with 304', async 
 });
 
 test('an unknown page path gets the branded 404 page', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/no/such/page');
     assert.equal(res.status, 404);
     assert.match(res.headers.get('content-type'), /text\/html/);
@@ -36,7 +36,7 @@ test('an unknown page path gets the branded 404 page', async () => {
 });
 
 test('an unknown workspace gets the 404 page for navigation, JSON for API', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const page = await get('/w/no-such-workspace/');
     assert.equal(page.status, 404);
     assert.match(page.headers.get('content-type'), /text\/html/);
@@ -49,7 +49,7 @@ test('an unknown workspace gets the 404 page for navigation, JSON for API', asyn
 });
 
 test('unknown API routes still answer JSON, not the 404 page', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/api/no-such-route');
     assert.equal(res.status, 404);
     assert.match(res.headers.get('content-type'), /application\/json/);
@@ -57,7 +57,7 @@ test('unknown API routes still answer JSON, not the 404 page', async () => {
 });
 
 test('an entity permalink with an unknown id gets the 404 page, not JSON', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     for (const path of ['/e/bad', '/e/bad/doc.html', '/w/nope/e/bad']) {
       const res = await get(path);
       assert.equal(res.status, 404, path);
@@ -68,7 +68,7 @@ test('an entity permalink with an unknown id gets the 404 page, not JSON', async
 });
 
 test('an unknown entity stays JSON for API paths and non-GET methods', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const api = await get('/api/entities/bad');
     assert.equal(api.status, 404);
     assert.match(api.headers.get('content-type'), /application\/json/);

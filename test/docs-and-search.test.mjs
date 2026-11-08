@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
-import { build } from './lib/fixtures.mjs';
+import { build, withServer } from './lib/fixtures.mjs';
 
 test('every table gets a default Description document field', () => {
   const { w, tasks } = build();
@@ -136,9 +135,7 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
   const { w, tasks } = build();
   w.addField(tasks, { name: 'Spec', type: 'document' });
   const e = w.createEntity(tasks, { name: 'Widget task', doc: 'main body', docs: { Spec: '# The spec' } });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const md = await (await fetch(`${base}/e/${e.id}/doc/Spec.md`)).text();
     assert.match(md, /The spec/);
     const html = await (await fetch(`${base}/e/${e.id}/doc/Spec.html`)).text();
@@ -165,9 +162,7 @@ test('HTTP: per-field doc endpoints and universal search', async () => {
     assert.ok(search.some((h) => h.kind === 'entity' && h.url === w.permalink('entity', e.id)));
     const tables = await (await fetch(`${base}/api/search?q=task`)).json();
     assert.ok(tables.some((h) => h.kind === 'table' && h.url === w.permalink('table', w.getTable(tasks).id)));
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('HTTP: a document that is an HTML document is served verbatim', async () => {
@@ -175,9 +170,7 @@ test('HTTP: a document that is an HTML document is served verbatim', async () =>
   w.addField(tasks, { name: 'Slides', type: 'document' });
   const deck = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<style>\nbody{background:#181310}\n\n.x{color:red}\n</style>\n</head>\n<body>\n<div id="canvas">hi</div>\n\n<script>\nconst fs=()=>document.documentElement.requestFullscreen();\n</script>\n</body>\n</html>\n';
   const e = w.createEntity(tasks, { name: 'Deck', doc: '# plain markdown', docs: { Slides: deck } });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/e/${e.id}/doc/Slides.html`);
     assert.match(res.headers.get('content-type'), /text\/html/);
     assert.equal(await res.text(), deck, 'byte-for-byte the stored document');
@@ -185,7 +178,5 @@ test('HTTP: a document that is an HTML document is served verbatim', async () =>
     assert.match(md, /<h1>plain markdown<\/h1>/);
     assert.match(md, /<!doctype html>/i);
     assert.equal(await (await fetch(`${base}/e/${e.id}/doc/Slides.md`)).text(), deck);
-  } finally {
-    server.close();
-  }
+  });
 });

@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
@@ -78,18 +78,15 @@ test('the CLI adds a state column with no --config', () => {
 
 test('the REST route and the MCP tool seed the same four', async () => {
   const { w, t } = ws();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/${t.id}/fields`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/${t.id}/fields`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Status', type: 'workflow' }),
     });
     assert.equal(res.status, 201);
     assert.deepEqual((await res.json()).config.states.map((s) => s.name), NAMES);
-  } finally {
-    server.close();
-  }
+  });
   const viaMcp = dispatchTool(w, 'weave_add_field', { db: t.id, name: 'Stage', type: 'workflow' });
   assert.deepEqual(viaMcp.config.states.map((s) => s.name), NAMES);
 });

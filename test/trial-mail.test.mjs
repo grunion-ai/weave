@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { createWorkspaceHub, startServer } = await import('../src/server.js');
@@ -186,15 +187,12 @@ test('a server with billing and a mailer sweeps trials on start and on its own t
   const box = mailbox();
   const fake = clerk();
   const billing = createBilling({ secretKey: 'sk_test_x', plan: 'seat', since: Date.parse('2026-06-01T00:00:00Z'), issuer: ISSUER, trialDays: 14, fetch: fake.fetch });
-  const { server } = await startServer(w, { port: 0, origin: ORIGIN, billing, mail: box.send });
-  try {
+  await withServer(w, { origin: ORIGIN, billing, mail: box.send }, async () => {
     for (let i = 0; i < 50 && !box.sent.length; i += 1) await new Promise((r) => setTimeout(r, 10));
     assert.equal(box.sent.length, 1, 'the sweep runs as the server comes up');
     assert.equal(box.sent[0].subject, 'Free trial of the acme workspace: 3 days left');
     assert.equal(typeof w.state.meta.trialMail.ending, 'string');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('a server with no billing or no mailer arms no trial sweep', async () => {
@@ -202,12 +200,9 @@ test('a server with no billing or no mailer arms no trial sweep', async () => {
   w.state.meta.trialFrom = new Date(Date.now() - 11 * DAY).toISOString();
   w.save();
   const box = mailbox();
-  const { server } = await startServer(w, { port: 0, origin: ORIGIN, billing: null, mail: box.send });
-  try {
+  await withServer(w, { origin: ORIGIN, billing: null, mail: box.send }, async () => {
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(box.sent.length, 0);
     assert.equal(w.state.meta.trialMail, undefined);
-  } finally {
-    server.close();
-  }
+  });
 });

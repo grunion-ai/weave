@@ -4,8 +4,8 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const asAccount = (w, name) => { const a = w.listAccounts().find((x) => x.name === name); w.actor = a ? `account:${a.id}` : name; };
 
@@ -124,9 +124,7 @@ test('the HTTP surface has a reveal verb, and still has no GET', async () => {
   const { w } = fresh('kyle', { solo: true });
   const { token } = w.createAccount({ name: 'kyle', role: 'architect' });
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     await fetch(`${base}/api/keys`, {
       method: 'POST', headers,
       body: JSON.stringify({ name: 'stripe', value: 'sk_live_hush' }),
@@ -139,9 +137,7 @@ test('the HTTP surface has a reveal verb, and still has no GET', async () => {
 
     const gone = await fetch(`${base}/api/keys/nope/reveal`, { method: 'POST', headers });
     assert.equal(gone.status, 404);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('a formula cannot launder a secret out through a text column', () => {
@@ -164,17 +160,13 @@ test('a reveal the engine refuses answers 403 over HTTP, not 400', async () => {
   const { w } = fresh('kyle');
   const { token } = w.createAccount({ name: 'sajit', role: 'admin' });
   w.setKey('stripe', 'sk_live_hush');
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const denied = await fetch(`${base}/api/keys/stripe/reveal`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
     });
     assert.equal(denied.status, 403);
     assert.equal((await denied.json()).code, 'forbidden');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('renaming an account keeps the credentials it owns and the ones shared with it (Issue #884)', () => {

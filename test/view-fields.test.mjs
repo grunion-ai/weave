@@ -4,8 +4,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, VIEW_SHAPES, DESCRIPTION_SIZES } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function build() {
   const w = new Weave();
@@ -274,9 +274,7 @@ test('renderView takes a candidate config, checked as a save would be, and saves
 
 test('GET /api/entities/:ref/view serves the chip or card, under ?config= when the dialog previews', async () => {
   const { w, t } = build();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const card = await (await fetch(`${base}/api/entities/${t.id}/view?shape=card`)).json();
     assert.equal(card.shape, 'card');
     assert.equal(card.link, true);
@@ -289,7 +287,5 @@ test('GET /api/entities/:ref/view serves the chip or card, under ?config= when t
     assert.deepEqual(v.fields, [{ label: 'Owner', value: 'Ada' }]);
     const bad = await fetch(`${base}/api/entities/${t.id}/view?shape=card&config=${encodeURIComponent('{"description":"huge"}')}`);
     assert.equal(bad.status, 400);
-  } finally {
-    server.close();
-  }
+  });
 });

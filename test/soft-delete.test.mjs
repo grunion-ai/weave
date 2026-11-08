@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function buildWorkspace() {
   const w = new Weave();
@@ -118,15 +119,12 @@ test('REST and MCP query carry the trash count opt-in', async () => {
   assert.ok(TOOLS.find((t) => t.name === 'weave_query').inputSchema.properties.trashCount,
     'MCP query must advertise trashCount');
   assert.equal(dispatchTool(w, 'weave_query', { db: 'Task', trashCount: true }).trashCount, 1);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Task/query`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Task/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashCount: true, limit: 1 }),
     });
     assert.equal((await res.json()).trashCount, 1);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('hard delete purges the row and unlinks it for good', () => {
@@ -263,9 +261,8 @@ test('REST and MCP carry liveTotal through from the engine (Issue #1269)', async
   const { w, tasks, a } = buildWorkspace();
   w.deleteEntity(a.id);
   assert.equal(dispatchTool(w, 'weave_query', { db: 'Task', includeDeleted: true, limit: 1 }).liveTotal, 1, 'MCP answers it');
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Task/query`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Task/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ includeDeleted: true, limit: 1 }),
     });
@@ -273,7 +270,5 @@ test('REST and MCP carry liveTotal through from the engine (Issue #1269)', async
     assert.equal(res.status, 200);
     assert.equal(body.total, 2, 'the route counts both rows');
     assert.equal(body.liveTotal, 1, 'and carries the live count of the match');
-  } finally {
-    server.close();
-  }
+  });
 });

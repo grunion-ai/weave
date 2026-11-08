@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function crowded(name = 'Issue', rows = 30) {
   const w = new Weave();
@@ -51,9 +51,7 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
   uno.state.meta.name = 'uno';
   const { w: other } = crowded('Issue');
   other.state.meta.name = 'issues';
-  const { server } = await startServer(uno, { port: 0, workspaces: { issues: other } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(uno, { workspaces: { issues: other } }, async ({ base }) => {
     const scoped = await (await fetch(`${base}/api/search?q=issue&limit=4`)).json();
     assert.ok(scoped.some((h) => h.kind === 'table'), 'scoped: the table is returned');
     assert.ok(scoped.some((h) => h.kind === 'view'), 'scoped: the view is returned');
@@ -63,9 +61,7 @@ test('GET /api/search keeps hierarchy past the limit, scoped and across workspac
     assert.equal(all.some((h) => h.workspace), false, 'all=1 is ignored and no hit names a workspace (Issue #1308)');
     assert.deepEqual(all, scoped, 'all=1 answers exactly what the workspace answers');
     assert.equal(all.some((h) => String(h.url).startsWith('/w/issues/')), false, 'no row from the other workspace is returned');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('a registry row never shadows its own space or table hit (Issue #382)', () => {

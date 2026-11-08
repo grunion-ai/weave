@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { renderMarkdown } from '../src/markdown.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function seed() {
   const w = new Weave();
@@ -73,17 +73,13 @@ test('referencesTo: deleted referrers drop out; the entity never references itse
 test('GET /api/entities/:ref/references serves the backlinks', async () => {
   const { w, target } = seed();
   w.createEntity('Issue', { name: 'caller', doc: 'blocked by [[Task#1]]' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/entities/${target.id}/references`);
     assert.equal(res.status, 200);
     const refs = await res.json();
     assert.equal(refs.length, 1);
     assert.equal(refs[0].name, 'caller');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('mention chip with preview fields collapses behind a caret and stays a link', () => {
@@ -169,17 +165,13 @@ test('referencesFrom sorts by db then publicId, across tables', () => {
 test('GET /api/entities/:ref/references-from serves the outbound refs', async () => {
   const { w, target } = seed();
   const issue = w.createEntity('Issue', { name: 'caller', doc: 'blocked by [[Task#1]]' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/entities/${issue.id}/references-from`);
     assert.equal(res.status, 200);
     const refs = await res.json();
     assert.equal(refs.length, 1);
     assert.equal(refs[0].id, target.id);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('reference panels join the side column and wear k k-rel chips', async () => {

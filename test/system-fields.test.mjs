@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function fresh(actor) {
   const w = new Weave(actor ? { actor } : {});
@@ -56,9 +56,7 @@ test('readEntity exposes the four system values', () => {
 
 test('the server names its caller from X-Weave-Actor', async () => {
   const w = fresh();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/tables/Task/entities`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Weave-Actor': 'agent-7' },
@@ -72,9 +70,7 @@ test('the server names its caller from X-Weave-Actor', async () => {
       body: JSON.stringify({ name: 'Anonymous' }),
     });
     assert.equal((await res2.json()).createdBy, 'web');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('Activity is no system column: refused on write, stripped from old tables, still on the entity read (Feature #315)', () => {

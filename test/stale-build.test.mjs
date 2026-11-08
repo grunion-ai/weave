@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { describeBuild, buildInfo, startServer } from '../src/server.js';
 import { Weave } from '../src/engine.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const sha = (c) => c.repeat(40);
 
@@ -41,16 +42,13 @@ test('describeBuild: nothing to say without a head', () => {
 });
 
 test('/api/health carries the disk head beside the boot head', async () => {
-  const { server, port } = await startServer(new Weave(), { port: 0, build: buildInfo });
-  try {
-    const h = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+  await withServer(new Weave(), { build: buildInfo }, async ({ base }) => {
+    const h = await (await fetch(`${base}/api/health`)).json();
     assert.match(h.sha ?? '', /^[0-9a-f]{7}$/, 'the running commit rides the payload');
     assert.match(h.diskSha ?? '', /^[0-9a-f]{7}$/, 'and the commit on disk beside it');
     assert.equal(typeof h.stale, 'boolean', 'stale is a verdict, not a maybe');
     assert.equal(h.stale, h.diskSha !== h.sha, 'and it is exactly the disagreement');
-  } finally {
-    server.close();
-  }
+  });
 });
 test('serving commit is captured from supervised commit directories without Git',async()=>{
  const {servingCommit}=await import('../src/server.js');assert.equal(servingCommit(null,`/data/releases/c${sha('a')}`),sha('a'));assert.equal(servingCommit(sha('b'),`/data/releases/c${sha('a')}`),sha('b'));assert.equal(servingCommit(null,'/data/releases/v0.4.99'),null);assert.equal(servingCommit(null,`/data/releases/c${sha('a')}/other`),null);

@@ -5,6 +5,7 @@ import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { renderMarkdown } from '../src/markdown.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 test('engine refuses to adopt non-workspace JSON files', async () => {
   const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import('node:fs');
@@ -21,14 +22,11 @@ test('engine refuses to adopt non-workspace JSON files', async () => {
     const w = new Weave({ path: join(dir, 'main.json') });
     w.state.meta.name = 'main';
     w.createSpace({ name: 'S' });
-    const { server } = await startServer(w, { port: 0 });
-    try {
-      const list = await (await fetch(`http://127.0.0.1:${server.address().port}/api/workspaces`)).json();
+    await withServer(w, async ({ base }) => {
+      const list = await (await fetch(`${base}/api/workspaces`)).json();
       assert.deepEqual(list.map((x) => x.name), ['main']);
       assert.equal(readFileSync(pkg, 'utf8'), original, 'scan must not touch non-workspace JSON');
-    } finally {
-      server.close();
-    }
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -68,9 +66,7 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
 
   const weave = seedWeaver(new Weave());
 
-  const { server } = await startServer(uno, { port: 0, workspaces: { weave } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(uno, { workspaces: { weave } }, async ({ base }) => {
     const list = await (await fetch(`${base}/api/workspaces`)).json();
     assert.deepEqual(list.map((w) => w.name).sort(), ['uno', 'weave']);
     assert.ok(list.find((w) => w.name === 'uno').default);
@@ -114,9 +110,7 @@ test('multi-workspace hub: scoped routing, listing, cross-workspace search', asy
 
     const mmd = await fetch(`${base}/w/weave/e/${guideId}/doc.mmd`);
     assert.equal(mmd.headers.get('content-type'), 'text/vnd.mermaid; charset=utf-8');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('workspace delete: trash move, guards, and the fresh-workspace description', async () => {
