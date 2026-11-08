@@ -114,7 +114,7 @@ test('weave quality check reports drift against a mirror; without --data, or wit
   const scanned = scanSuites(ROOT);
   assert.deepEqual(drift.json(), {
     suites: scanned.length, createdSuites: scanned.length, createdCases: scanned.reduce((n, s) => n + s.cases.length, 0),
-    removedSuites: 0, removedCases: 0, renamedSuites: 0,
+    removedSuites: 0, removedCases: 0, renamedSuites: 0, statusChanges: 0, missingFiles: [],
   });
   const bare = run(['quality', 'check'], { db: null });
   assert.equal(bare.code, 1);
