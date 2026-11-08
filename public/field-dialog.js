@@ -785,8 +785,8 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
               sel.input.addEventListener('change', () => { r.targets[i] = sel.input.value; syncTargets(); });
               const row = el('div', { class: 'target-set-row' }, sel);
               if (r.targets.length > 1) {
-                row.append(el('button', {
-                  type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove this target',
+                row.append(ghostBtn({
+                  type: 'button', title: 'Remove this target',
                   onclick: () => { r.targets.splice(i, 1); syncTargets(); drawTargets(); drawCfg(); },
                 }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
               }
