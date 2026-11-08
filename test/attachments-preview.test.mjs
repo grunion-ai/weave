@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT, frameStorageScript } from '../src/engine.js';
+import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT, FRAME_LINK_BASE, frameStorageScript } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 await import('../public/date-grain.js');
@@ -132,10 +132,29 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
     assert.equal(shown.status, 200);
     assert.equal(shown.headers.get('content-type'), 'text/html; charset=utf-8');
     assert.equal(shown.headers.get('content-security-policy'), `${HTML_VIEW_POLICY}; frame-ancestors 'self'`, 'the view policy, plus the frame rule every HTML answer carries');
-    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), viewHtml(HTML, frameStorageScript({}) + FRAME_HEIGHT_SCRIPT), 'the page, with the storage and height scripts after its doctype');
+    assert.deepEqual(Buffer.from(await shown.arrayBuffer()), viewHtml(HTML, FRAME_LINK_BASE + frameStorageScript({}) + FRAME_HEIGHT_SCRIPT), 'the page, with the link base and the storage and height scripts after its doctype');
     assert.deepEqual(Buffer.from(await (await fetch(`${base}/api/files/${file.id}`)).arrayBuffer()), HTML, 'the stored bytes are unchanged');
     const png = w.attachFile(e.id, { name: 'a.png', mime: 'image/png', bytes: PNG });
     assert.equal((await fetch(`${base}/api/files/${png.id}?view`)).headers.get('content-security-policy'), "sandbox; default-src 'none'");
+  } finally { server.close(); }
+});
+
+test('GET /api/files/:id?view opens the page\'s links in a new tab through an injected <base target="_blank">, unless the page sets its own <base> (Issue #1475)', async () => {
+  const w = fresh();
+  const e = w.createEntity('Issue', { name: 'Page' });
+  const plain = w.attachFile(e.id, { name: 'plain.html', mime: 'text/html', bytes: Buffer.from('<!doctype html><a href="https://elsewhere.test/">away</a>') });
+  const own = w.attachFile(e.id, { name: 'own.html', mime: 'text/html', bytes: Buffer.from('<!doctype html><html><head><BASE href="https://elsewhere.test/"></head><a href="x">x</a></html>') });
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const shown = await (await fetch(`${base}/api/files/${plain.id}?view`)).text();
+    assert.ok(shown.startsWith('<!doctype html><base target="_blank"><script>'), 'the base comes first after the doctype, so it wins over any later one');
+    assert.equal(shown.match(/<base\b/gi).length, 1, 'one base');
+    assert.match(shown, /addEventListener\('click'/, 'with the script that keeps in-page anchors in place');
+    assert.ok(shown.endsWith(FRAME_HEIGHT_SCRIPT + '<a href="https://elsewhere.test/">away</a>'), 'the page itself is untouched');
+    const kept = await (await fetch(`${base}/api/files/${own.id}?view`)).text();
+    assert.doesNotMatch(kept, /target="_blank"/, 'a page with its own base keeps its own link behaviour');
+    assert.equal(kept.match(/<base\b/gi).length, 1, 'only the page\'s own base');
   } finally { server.close(); }
 });
 
