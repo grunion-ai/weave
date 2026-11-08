@@ -11,7 +11,7 @@ export const digest = value => createHash('sha256').update(JSON.stringify(value)
 export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
 export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
 
-export function plan(files, groups, weight, unitCount = 2, browserCount = 4) {
+export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
   if (!files.length) throw new Error('Empty CI selection');
   if (JSON.stringify([...files].sort()) !== JSON.stringify([...groups.unit, ...groups.browser].sort())) throw new Error('Lane coverage mismatch');
   return Object.entries(groups).flatMap(([lane, selected]) => {

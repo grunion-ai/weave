@@ -75,8 +75,20 @@ const prefersHtml = (accept) => {
   return (q['text/html'] ?? 0) > 0 && (q['text/html'] ?? 0) > (q['application/json'] ?? 0);
 };
 
-const START_LINK = /^\/api\/start\/open\/[^/?#\\]+(?:\?[^#\\]*)?$/;
-const wallPageHtml =(authHref, provider = null) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in${provider ? ` with ${escapeHtml(provider)}` : ''}</a>, send a Bearer token, or open a share link you were given.</p>`;
+const START_LINK = /^\/api\/start\/open\/([^/?#\\]+)(?:\?[^#\\]*)?$/;
+const INVITE_LINK_FIELDS = new Set(['invite', 'handoff', 'next']);
+const inviteLink = (link) => {
+  const m = /^(?:\/w\/[^/?#\\]+)?\/api\/auth\/oidc\/start\?([^#\\]*)$/.exec(link ?? '');
+  if (!m) return false;
+  const q = new URLSearchParams(m[1]);
+  return q.has('invite') && [...q.keys()].every((k) => INVITE_LINK_FIELDS.has(k));
+};
+const WORKSPACE_LINK = /^\/w\/[^/?#\\]+\/(?!api\/)/;
+const hostPath = (raw) => {
+  const p = sameOriginPath(raw, 'http://host.invalid', null);
+  return p === raw && !/^\/(?:api|mcp)(?:[/?#]|$)/.test(p) ? p : null;
+};
+const wallPageHtml =(authHref) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in required</title><style>body{font:15px/1.5 -apple-system,sans-serif;max-width:480px;margin:4rem auto;padding:0 16px;color:#1a1d21}a{color:#2563eb}</style><h1>This workspace requires authentication</h1><p><a href="${authHref}">Sign in</a>, send a Bearer token, or open a share link you were given.</p>`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
@@ -174,6 +186,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const issuer = new URL(oidc.issuer);
     return issuer.host === host ? { publishableKey: clerkKey, script: `${issuer.origin}/npm/@clerk/clerk-js@6/dist/clerk.browser.js` } : null;
   })();
+  const isProviderReturn = (raw) => {
+    if (!clerkPane) return false;
+    try {
+      const u = new URL(raw);
+      return u.origin === new URL(oidc.issuer).origin && raw.startsWith(`${u.origin}/`) && u.pathname.startsWith('/oauth/');
+    } catch { return false; }
+  };
   const challenges = new Map();
   const handoffs = new Map();
   const uploads = new Map();
@@ -187,6 +206,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   };
   const scheme = origin ? new URL(origin).protocol : 'http:';
   const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
+  const hostSuffix = `.${baseDomain}${origin && new URL(origin).port ? `:${new URL(origin).port}` : ''}`;
   const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
   const starts = new Map();
   const formRates = new Map();
@@ -211,7 +231,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const code = newChallenge();
     prune(handoffs);
     handoffs.set(await digest(code), { engine, accountId, next, host, expiresAt: Date.now() + HANDOFF_TTL_MS });
-    return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}/api/auth/handoff?code=${code}`, 'Cache-Control': 'no-store' }, body: '' };
+    return { status: 302, headers: { Location: `${scheme}//${host}${hostSuffix}/api/auth/handoff?code=${code}`, 'Cache-Control': 'no-store' }, body: '' };
   };
   const limited = (kind, ip, { peek = false } = {}) => {
     const now = Date.now();
@@ -316,7 +336,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (!holder) {
         const moved = hub.aliasOf(hostSlug);
         const q = rx.searchParams?.toString();
-        if (moved) return { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}.${baseDomain}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        if (moved) return { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}${hostSuffix}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
         return notFound({ error: 'Not found', code: 'not-found' });
       }
       weave = holder;
@@ -334,14 +354,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (baseDomain && oidc && hostWs && wsPrefix && weave !== hostWs && ['GET', 'HEAD'].includes(rx.method)
       && !/^\/(?:api|mcp|\.well-known)(?:\/|$)/.test(path) && !/\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path)) {
       const q = rx.searchParams?.toString();
-      return { status: 301, headers: { Location: `${scheme}//${String(weave.state.meta.name).toLowerCase()}.${baseDomain}${encodeURI(path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+      return { status: 301, headers: { Location: `${scheme}//${String(weave.state.meta.name).toLowerCase()}${hostSuffix}${encodeURI(path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
     }
     weave.maybeRefresh();
     versionOf = weave;
     if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
       if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
         const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
-        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
     }
     if (!wsPrefix && ['GET', 'HEAD'].includes(rx.method) && /^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
@@ -350,7 +370,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const servesHere = holdsLink(weave, kind, id) || (weave.registryHost && holdsLink(weave.registryHost, kind, id));
       const holder = servesHere ? null : linkHolder(hub, kind, id);
       if (holder && hostOrigin) {
-        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}.${baseDomain}${path}`, 'Cache-Control': 'no-store' }, body: '' };
+        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' };
       }
       if (holder) {
         const key = hub.list().find((x) => x.id === holder.state.meta.id)?.name ?? holder.state.meta.name;
@@ -415,7 +435,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       if (signedOut && m && !UUID_RE.test(m[2])) return null;
       const ws = weave.state.meta;
       const site = ws.title ?? ws.name;
-      const canonical = baseDomain && ws.name ? `${scheme}//${String(ws.name).toLowerCase()}.${baseDomain}` : null;
+      const canonical = baseDomain && ws.name ? `${scheme}//${String(ws.name).toLowerCase()}${hostSuffix}` : null;
       const base = canonical ?? origin ?? `http://${rx.header('host')}`;
       const home = canonical ? '' : `/w/${ws.name || hub.defaultName}`;
       let image = `${base}/brand/weave-mark-512.png`;
@@ -488,7 +508,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
     const carried = weavePrefill.clip(rx.searchParams).query;
     const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path + (carried ? `?${carried}` : ''))}`;
-    const wallPage = () => out(401, wallPageHtml(authHref, oidc?.name), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    const wallPage = () => out(401, wallPageHtml(authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
     const statusPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/status' || path === '/status/');
     const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs');
@@ -504,6 +524,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const cookies = parseCookies(rx.header('cookie'));
     if (cookies[LEGACY_COOKIE]) jar.push(clearCookie(LEGACY_COOKIE, rx));
     const startRoot = baseDomain ? apexOrigin : '';
+    const startReturn = (back) => sameOriginPath(back, originFor(rx), null) === back && (WORKSPACE_LINK.test(back) || START_LINK.test(back) || inviteLink(back));
     const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
     const findWorkspaces = (logins) => {
       const all = hub.entries();
@@ -553,7 +574,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return { response: out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' }) };
         }
         if (waiting) {
-          const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}.${baseDomain}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
+          const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}${hostSuffix}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
           return { response: out(402, { error: `${waiting} is still waiting on a plan. Subscribe on its billing page before starting another workspace.`, code: 'plan-required', waiting, billing: at }) };
         }
       }
@@ -590,7 +611,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
     if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
       const railed = (await heldStart()) ? null : String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
-      return { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}.${baseDomain}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' };
+      return { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}${hostSuffix}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' };
     }
     const resolved = new Map();
     const ownSession = (w) => {
@@ -1018,32 +1039,54 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path === '/auth') {
-        if (baseDomain && oidc && !hostOrigin && !wsPrefix) return { status: 302, headers: { Location: rx.searchParams?.get('mode') === 'signup' ? '/start?mode=signup' : '/start', 'Cache-Control': 'no-store' }, body: '' };
+        const startDoorAt = (next) => {
+          const q = new URLSearchParams();
+          if (next) q.set('next', next);
+          if (rx.searchParams?.get('mode') === 'signup') q.set('mode', 'signup');
+          return { status: 302, headers: { Location: `${hostOrigin ? apexOrigin : ''}/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        };
+        const hasDoor = oidc && (baseDomain || clerkPane);
+        if (hasDoor && !hostOrigin && !wsPrefix) {
+          const asked = rx.searchParams?.get('next');
+          return startDoorAt(startReturn(asked) ? asked : null);
+        }
         if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
           const q = rx.searchParams?.toString() ?? '';
           if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
             return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
           }
           const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
-          if (baseDomain && wsPrefix && !hostOrigin) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`)}`, 'Cache-Control': 'no-store' }, body: '' };
+          if (clerkPane && hostOrigin) {
+            const deep = hostPath(rx.searchParams?.get('next'));
+            if (isDocsWorkspace(weave)) return startDoorAt(`/w/${encodeURIComponent(hostSlug)}${deep ?? '/'}`);
+            return startDoorAt(`/api/start/open/${encodeURIComponent(hostSlug)}${deep && deep !== '/' ? `?path=${encodeURIComponent(deep)}` : ''}`);
+          }
+          if (hasDoor && wsPrefix && !hostOrigin) return startDoorAt(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`);
           const next = n ? `?next=${encodeURIComponent(n)}` : '';
           return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
         }
-        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null, analyticsKey: posthog?.key ?? null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null, analyticsKey: posthog?.key ?? null, signInPath: clerkPane ? `${wsPrefix}/auth` : null, signUpHref: oidc && openSignup.on ? `${startRoot}/start?mode=signup` : null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
 
       if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
-        const asked = ['pick', 'setup', 'error', 'mode', 'next'].some((k) => rx.searchParams?.has(k));
+        if (hostOrigin && oidc) {
+          const q = rx.searchParams?.toString();
+          return { status: 302, headers: { Location: `${apexOrigin}/start${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        }
+        const asked = ['pick', 'setup', 'error', 'mode', 'next', 'redirect_url'].some((k) => rx.searchParams?.has(k));
         const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
         const found = logins.length ? findWorkspaces(logins) : null;
         const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
         if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
         const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
         const back = rx.searchParams?.get('next');
-        const workspaceReturn = back == null || (sameOriginPath(back, originFor(rx), null) === back && (/^\/w\/[^/?#]+\//.test(back) || START_LINK.test(back)));
-        if (page && !workspaceReturn) {
+        const workspaceReturn = back == null || startReturn(back);
+        const sentBack = rx.searchParams?.get('redirect_url');
+        const providerReturn = sentBack == null || isProviderReturn(sentBack);
+        if (page && !(workspaceReturn && providerReturn)) {
           const q = new URLSearchParams(rx.searchParams);
-          q.delete('next');
+          if (!workspaceReturn) q.delete('next');
+          if (!providerReturn) q.delete('redirect_url');
           return { status: 302, headers: { Location: `/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
         }
         if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
@@ -1183,11 +1226,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 const minted = weave.createSession(account.id, { ua: rx.header('user-agent') });
                 return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
               }
+              if (invite && clerkPane && !hostOrigin && !rx.searchParams?.has('pick') && !rx.searchParams?.has('fresh')) {
+                const kept = new URLSearchParams([...rx.searchParams].filter(([k]) => INVITE_LINK_FIELDS.has(k)));
+                return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(`${wsPrefix}/api/auth/oidc/start?${kept}`)}`, 'Cache-Control': 'no-store' }, body: '' };
+              }
               let trip;
               try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
               const binder = newChallenge();
               const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
-              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start }, trip.state);
+              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start, door: !!rx.searchParams?.has('door') }, trip.state);
               const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
               return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
             }
@@ -1219,7 +1266,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
               }
               if (c.start) {
-                const back = /^\/start(?:[?#]|$)/.test(c.next) || START_LINK.test(c.next) ? c.next : '/start';
+                const link = START_LINK.exec(c.next);
+                let slug = link?.[1] ?? '';
+                try { slug = decodeURIComponent(slug); } catch {}
+                const opens = link && hub.bySlug(slug.toLowerCase())?.accountForIdentity(who);
+                const back = link ? (opens ? c.next : `/start?next=${encodeURIComponent(c.next)}`) : /^\/start(?:[?#]|$)/.test(c.next) || inviteLink(c.next) ? c.next : '/start';
                 return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               }
               let account = null;
@@ -1236,6 +1287,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 }
               } else if ((account = c.holder.accountForIdentity(who))) engine = c.holder;
               if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && (account = e.accountForIdentity(who)));
+              if (!engine && c.door) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(c.next)}`, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
@@ -1271,7 +1323,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const host = String(target.state.meta.name).toLowerCase();
             const hit = sessionOn(target);
             if (hit) return handOff(hit.engine, hit.id, '/', host);
-            return { status: 302, headers: { Location: `${scheme}//${host}.${baseDomain}/`, 'Cache-Control': 'no-store' }, body: '' };
+            return { status: 302, headers: { Location: `${scheme}//${host}${hostSuffix}/`, 'Cache-Control': 'no-store' }, body: '' };
           }
           if (route === 'POST /api/auth/logout') {
             const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
@@ -1341,7 +1393,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 if (!(error instanceof BillingUnavailable)) throw error;
               }
             }
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, docs: hub.entries().filter(([, w]) => isDocsWorkspace(w)).map(([name]) => name), ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
           }
           if (route === 'GET /api/start/slug') {
             if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
@@ -1359,12 +1411,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             if (!account) return deny(403, 'This sign-in opens no account on that workspace');
             const engine = w;
             const host = String(w.state.meta.name).toLowerCase();
+            const deep = hostPath(rx.searchParams?.get('path'));
             const table = String(rx.searchParams?.get('table') ?? '');
             const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
               : rx.searchParams?.get('to') === 'resume' ? '#/resume'
               : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
             const rail = railCookie(isDocsWorkspace(w) ? found.names : [host, ...found.names.filter((name) => name !== host)]);
-            if (baseDomain) return withCookies(await handOff(engine, account.id, `/${land}`, host), [rail]);
+            if (baseDomain) return withCookies(await handOff(engine, account.id, deep ?? `/${land}`, host), [rail]);
             const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
             const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
             return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, rail], 'Cache-Control': 'no-store' }, body: '' };
@@ -1426,7 +1479,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             w.markOnboarded(owner.id);
             const name = w.state.meta.name;
             const host = String(name).toLowerCase();
-            const mcp = baseDomain ? `${scheme}//${host}.${baseDomain}/mcp` : `${originFor(rx)}/w/${encodeURIComponent(name)}/mcp`;
+            const mcp = baseDomain ? `${scheme}//${host}${hostSuffix}/mcp` : `${originFor(rx)}/w/${encodeURIComponent(name)}/mcp`;
             return out(201, { name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}`, table, mcp, built, templateError });
           }
           return notFound({ error: 'Not found', code: 'not-found' });
@@ -1530,7 +1583,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             .sort((a, b) => rank(a) - rank(b) || 0)
             .map((x) => ({
               ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
-              ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}.${baseDomain}/` } : {}),
+              ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
             })));
         }
         if (route === 'POST /api/workspaces' && body?.from != null) {

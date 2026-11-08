@@ -1,0 +1,1 @@
+- The phone workspace About pane no longer draws the whole-workspace relation map, which rendered 2,042 px wide in a 339 px card. Each space's About pane keeps its own map (Issue #1421).

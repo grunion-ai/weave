@@ -166,8 +166,10 @@ test('a signed-out browser opening a start link signs in on /start and goes on t
       const res = await s.apex('GET', `/start?setup=skip&next=${bad}`);
       assert.deepEqual([res.status, res.headers.location], [302, '/start?setup=skip'], `next=${bad} is dropped`);
     }
-    const back = await s.signIn({ sub: 'user_kyle' }, { next: '/api/start/open/harbor?to=billing' });
-    assert.deepEqual([back.res.status, back.res.headers.location], [302, '/api/start/open/harbor?to=billing'], 'the start sign-in goes on to the link');
+    const back = await s.signIn({ sub: 'user_kyle' }, { next: '/api/start/open/net?to=billing' });
+    assert.deepEqual([back.res.status, back.res.headers.location], [302, '/api/start/open/net?to=billing'], 'the start sign-in goes on to the link');
+    const outsider = await s.signIn({ sub: 'user_kyle' }, { next: '/api/start/open/harbor?to=billing' });
+    assert.deepEqual([outsider.res.status, outsider.res.headers.location], [302, '/start?next=%2Fapi%2Fstart%2Fopen%2Fharbor%3Fto%3Dbilling'], 'a login that opens no account there returns to the start page');
     for (const next of ['//evil.example/api/start/open/harbor', '/api/start/slug', '/w/harbor/../../api/start']) {
       const res = (await s.signIn({ sub: 'user_kyle' }, { next })).res;
       assert.equal(res.headers.location, '/start', `${next} is not followed after sign-in`);

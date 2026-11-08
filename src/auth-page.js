@@ -166,7 +166,7 @@ ${copyable(add, 'Copy the Claude Code command')}    <p class="sub">Then run <cod
 </body></html>`;
 }
 
-export function renderAuthPage({ mount = '', workspace = 'weave', provider = null, analyticsKey = null } = {}) {
+export function renderAuthPage({ mount = '', workspace = 'weave', provider = null, analyticsKey = null, signInPath = null, signUpHref = null } = {}) {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -180,10 +180,10 @@ export function renderAuthPage({ mount = '', workspace = 'weave', provider = nul
     ${MARK}
     <section id="sec-signin" hidden>
       <h1>Sign in to ${esc(workspace)}</h1>
-${provider ? `      <p class="sub">Your account here is linked to your ${esc(provider)} sign-in.</p>
-      <a id="oidc" class="provider" href="${esc(mount)}/api/auth/oidc/start">Sign in with ${esc(provider)}</a>
-      <p class="sub" style="margin-top:14px">No account yet? Ask an operator for a link that adds you.</p>
-` : `      <p class="sub">No sign-in provider is configured for this server. An operator sets WEAVE_OIDC_ISSUER and WEAVE_OIDC_CLIENT_ID to add one. Agents and the CLI use a <code>wv_</code> token.</p>
+${provider ? `      <a id="oidc" class="provider" href="${esc(signInPath ?? `${mount}/api/auth/oidc/start`)}">Sign in</a>
+${signUpHref ? `      <p class="sub" style="margin-top:14px">New to weave? <a id="signup" href="${esc(signUpHref)}">Create an account</a></p>
+` : `      <p class="sub" style="margin-top:14px">No account yet? Ask a workspace architect for a link that adds you.</p>
+`}` : `      <p class="sub">No sign-in provider is configured for this server. An operator sets WEAVE_OIDC_ISSUER and WEAVE_OIDC_CLIENT_ID to add one. Agents and the CLI use a <code>wv_</code> token.</p>
 `}    </section>
     <section id="sec-me" hidden>
       <div class="who"><h1 id="who-name"></h1><span id="who-role" class="role"></span></div>

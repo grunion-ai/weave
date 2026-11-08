@@ -81,7 +81,7 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
-  assert.match(workflow, /max-parallel: 6/);
+  assert.match(workflow, /max-parallel: 10/);
   assert.match(workflow, /install --with-deps chromium webkit/);
 });
 
@@ -477,4 +477,14 @@ test('budgets.yml runs the trend lane on main pushes only, outside the tests wor
   assert.match(yml, /permissions:\n      contents: read\n      actions: read\n/);
   const sheriff = readFileSync('.github/workflows/sheriff.yml', 'utf8');
   assert.match(sheriff, /workflows: \[tests\]/, 'the sheriff judges the tests workflow alone, so a budget red never reaches it');
+});
+
+test('the main plan spreads the browser lane over eight shards and runs every shard at once, so none meets the 20-minute job timeout (Issue #1351)', () => {
+  const real = testFiles('.');
+  const manifest = plan(real, lanes(real, '.'), () => 1);
+  const browser = manifest.filter(s => s.lane === 'browser');
+  assert.equal(browser.length, 8);
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const parallel = Number(workflow.match(/max-parallel: (\d+)/)[1]);
+  assert.ok(parallel >= manifest.length, `max-parallel ${parallel} runs every one of ${manifest.length} shards at once`);
 });

@@ -218,11 +218,7 @@ function showWorkspaceLauncher(main, name) {
           label: `Spaces in ${name}`,
           items: (sections.spaces ?? []).map((sp) => ({ href: `#/space/${sp.id}`, name: sp.name, icon: sp.icon || 'lucide:folder', rowCount: sp.rowCount })),
         },
-        extras: () => Promise.all([
-          workspaceSystemCard(),
-          savedPagesCard(),
-          relationMapCard('Relations').catch(() => null),
-        ]),
+        extras: () => Promise.all([workspaceSystemCard(), savedPagesCard()]),
       }, sections);
     },
   });
