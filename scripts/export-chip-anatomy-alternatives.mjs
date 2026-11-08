@@ -2,7 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { chipCss } from './export-chip-card-anatomy.mjs';
+import { chipCss } from './chip-css.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'chip-anatomy-alternatives.html');
