@@ -51,6 +51,15 @@ the dev soak.
    never rolled back automatically. It is written good at once, and a later
    trip logs an `ALERT` and sets `watch.alert` for a person to act on; old code
    never runs on a schema a newer release migrated.
+7. Before it downloads a release the supervisor reads the free space on the
+   releases volume. Under `WEAVE_RELEASE_FREE_MB` (default 128) it fetches
+   nothing, records `lastSwap.ok: false` with the free space in the reason, and
+   tries again on the next check; `/api/health` shows `supervisor.disk` with
+   `freeMB` and `totalMB`. Grow the Railway volume when that number runs low.
+8. `railway.json` sets `build.watchPatterns` to `/Dockerfile`, `/railway.json`
+   and `/src/supervisor.js`. A push to main that touches none of them builds
+   nothing on Railway, so the one-volume container restarts only for an image
+   or supervisor change; workers move through the supervisor swap.
 
 ## Verification
 

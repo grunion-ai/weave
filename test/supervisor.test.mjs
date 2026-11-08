@@ -1086,3 +1086,35 @@ test('a rate-limited REST call is retried and its error names the reset', async 
     await sup.close();
   }
 });
+
+test('a volume under the free-space floor refuses the download before a byte is fetched, retries next check, and health names the free space (Issue #880)', async () => {
+  const dataPath = dataDir('disk-floor');
+  const heads = { main: MAIN_A };
+  const gh = fakeMain({ heads });
+  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, minFreeBytes: Number.MAX_SAFE_INTEGER });
+  try {
+    const before = (await health(base)).supervisor.disk;
+    assert.ok(before.freeMB > 0 && before.totalMB >= before.freeMB, `health names the volume's free and total space (${JSON.stringify(before)})`);
+    const r = await sup.check();
+    assert.equal(r.action, 'failed');
+    assert.equal(r.retry, true, 'a full disk is not a verdict on the release');
+    assert.match(r.reason, /free on the releases volume, under the \d+ MB floor/);
+    assert.ok(!gh.calls.some((u) => u.includes('/tar.gz/')), 'no tarball was fetched');
+    assert.deepEqual(releasesOf(dataPath), ['state.json'], 'nothing unpacked');
+    assert.deepEqual((await health(base)).supervisor.failed, [], 'the commit is not marked failed');
+    assert.equal(events.at(-1).type, 'failed');
+    assert.equal((await sup.check()).action, 'failed', 'the next check tries again rather than skipping');
+  } finally {
+    await sup.close();
+  }
+});
+
+test('the default free-space floor lets a swap through on a roomy disk', async () => {
+  const dataPath = dataDir('disk-roomy');
+  const { sup } = await supervise(dataPath, fakeMain({ heads: { main: MAIN_A } }), { env: TRACK });
+  try {
+    assert.equal((await sup.check()).action, 'swapped');
+  } finally {
+    await sup.close();
+  }
+});

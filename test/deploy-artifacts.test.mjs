@@ -68,6 +68,11 @@ test('railway.json is valid config-as-code: /api/health, restart on failure, one
   assert.match(cfg.deploy.startCommand, /node bin\/weave\.js serve/);
 });
 
+test('railway.json rebuilds the container only for a change the image itself carries, never for every push to main (Issue #548)', () => {
+  const cfg = JSON.parse(RAILWAY);
+  assert.deepEqual(cfg.build.watchPatterns, ['/Dockerfile', '/railway.json', '/src/supervisor.js'], 'workers reach production through the supervisor swap; only the image, its manifest and the supervisor redeploy the one-volume container');
+});
+
 test('fly.toml runs one machine with a /data mount, the internal port from PORT, and a health check', () => {
   assert.match(FLY, /^\[\[?mounts\]?\]\n\s+source = "weave_data"\n\s+destination = "\/data"/m);
   assert.match(FLY, /^\[http_service\]\n(?:.*\n)*?\s+internal_port = 4400/m);
