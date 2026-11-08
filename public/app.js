@@ -2345,7 +2345,7 @@ function replaceIntegrationKey(item, onSaved) {
     const value = String(fd.get('value') ?? '');
     input.value = '';
     const fresh = await api('PUT', `/integrations/${item.id}/credential`, { value });
-    await onSaved(fresh, 'Credential');
+    await onSaved({ ...fresh, affected: [fresh.id] }, 'Credential');
     if (fresh.connected) toast(`${item.name} connected${fresh.fields?.['Connected As'] ? ` as ${fresh.fields['Connected As']}` : ''}`);
     else toast(fresh.reason, true);
   }, 'Test and save');
