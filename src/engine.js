@@ -165,6 +165,8 @@ const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 export const FILE_STORAGE_CAP = 5 * 1024 * 1024;
 export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
 export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
+export const FRAME_LINK_BASE = "<base target=\"_blank\"><script>addEventListener('click', (e) => { const a = e.target.closest?.('a[href], area[href]'); if (!a || a.hasAttribute('target') || typeof a.href !== 'string') return; if (a.protocol === 'javascript:' || a.href.split('#')[0] === location.href.split('#')[0]) a.target = '_self'; }, true);</script>";
+export const frameLinkBase = (bytes) => (/<base[\s/>]/i.test(bytes.toString('latin1')) ? '' : FRAME_LINK_BASE);
 const scriptJson = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 export const frameStorageScript = (items = {}) => `<script>(() => {
   const live = parent !== window;
