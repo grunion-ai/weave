@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { Weave } from '../src/engine.js';
+import { launch } from './lib/browser.mjs';
 
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
-const { Weave } = await import('../src/engine.js');
-const { launch } = await import('./lib/browser.mjs');
 
 const SECRET = 'pasted-integration-value-browser-mnop';
 
