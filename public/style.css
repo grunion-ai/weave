@@ -1090,7 +1090,8 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .doc-anchor.permalink-copy { opacity: .7; }
 .doc-anchor { cursor: pointer; font-size: var(--fs-meta); border: 0; background: none; padding: 0; color: inherit; line-height: 1; }
 @media (hover: hover) { .doc-anchor:hover { opacity: 1; } }
-.entity-split { display: flex; align-items: flex-start; gap: 24px; }
+.entity-split { display: flex; align-items: flex-start; gap: 24px; container: entity-split / inline-size; }
+@container entity-split (max-width: 820px) { .entity-grid.side-open { grid-template-columns: minmax(0, 1fr); } }
 .entity-split > .entity-grid { flex: 1 1 0; min-width: 0; }
 .wv-activity { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-body); }
 .wv-act-head { display: flex; align-items: center; gap: 2px; padding: 12px 10px 6px 16px; }
