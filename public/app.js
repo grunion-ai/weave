@@ -1420,6 +1420,22 @@ document.addEventListener('dblclick', (e) => {
   renameNavTable(db, row);
 });
 
+function navDrag(handle, source, { items, home, save }) {
+  if (!state.canManageForms) return;
+  RO().guard(handle);
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button, input')) return;
+    RO().sortable(e, {
+      source, items, lock: true, scroller: $('#nav'), zone: home,
+      onDrop: ({ point, settled }) => {
+        const r = home().getBoundingClientRect();
+        const inside = point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom;
+        const next = inside ? save().then(loadSchema) : Promise.resolve(settled).then(renderNav);
+        next.catch((err) => { toast(err.message, true); renderNav(); });
+      },
+    });
+  });
+}
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
@@ -1455,7 +1471,15 @@ function renderNav() {
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
     kindContext(spaceRow, 'space', space);
-    nav.append(spaceRow);
+    const tables = el('div', { class: 'nav-tables' });
+    const group = el('div', { class: 'nav-group', dataset: { space: space.spaceId } }, spaceRow, tables);
+    const groups = () => [...nav.querySelectorAll(':scope > .nav-group:not(.wv-reorder-lift)')];
+    const slot = () => {
+      const users = groups().map((g) => g.dataset.space);
+      return state.schema.map((sp) => (sp.system ? sp.spaceId : users.shift())).indexOf(space.spaceId);
+    };
+    navDrag(spaceRow, group, { items: groups, home: () => nav, save: () => api('PATCH', `/spaces/${space.spaceId}`, { position: slot() }) });
+    nav.append(group);
     if (isFolded) continue;
     for (const db of space.tables) {
       if (db.system === 'workflows') continue;
@@ -1465,12 +1489,15 @@ function renderNav() {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
+        draggable: 'false',
       }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
+        const rows = () => [...tables.querySelectorAll(':scope > .nav-db:not(.wv-reorder-lift)')];
+        navDrag(row, row, { items: rows, home: () => group, save: () => api('PATCH', `/tables/${db.id}`, { position: rows().indexOf(row) }) });
       }
-      nav.append(row);
+      tables.append(row);
     }
   }
   const foot = el('div', { class: 'nav-foot' },
