@@ -2,7 +2,8 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "dockerfilePath": "Dockerfile",
+    "watchPatterns": ["/Dockerfile", "/railway.json", "/src/supervisor.js"]
   },
   "deploy": {
     "startCommand": "node bin/weave.js serve",

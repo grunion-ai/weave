@@ -1,7 +1,7 @@
 import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { timingSafeEqual } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statfsSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGunzip } from 'node:zlib';
@@ -16,6 +16,7 @@ export const REPO_CODELOAD = 'https://codeload.github.com/grunion-ai/weave';
 const IMAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const INTERVAL = 10 * 60 * 1000;
 const WATCH = 10 * 60 * 1000;
+const MB = 1024 * 1024;
 const OK_MARK = '.weave-release-ok';
 const COMMIT = /^[0-9a-f]{40}$/;
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -120,6 +121,7 @@ export async function startSupervisor({
   onWorkerDied = () => process.exit(1),
   watchMs = Number(env.WEAVE_WATCH_MS ?? WATCH), watchPollMs = 10_000,
   watchErrorRate = Number(env.WEAVE_WATCH_5XX_RATE ?? 0.25), watchMinRequests = 20, retryMs = 1000,
+  minFreeBytes = Number(env.WEAVE_RELEASE_FREE_MB ?? 128) * MB,
 } = {}) {
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
   const track = trackFromEnv(env);
@@ -147,6 +149,12 @@ export async function startSupervisor({
   let hook = () => {};
   const emit = (e) => { onEvent(e); hook(e); };
   const prune = (serving) => pruneReleases(releasesDir, { serving, failed: state.failed, log });
+  const disk = () => {
+    try {
+      const fs = statfsSync(existsSync(releasesDir) ? releasesDir : dirname(resolve(dataPath)));
+      return { freeMB: Math.floor((fs.bavail * fs.bsize) / MB), totalMB: Math.floor((fs.blocks * fs.bsize) / MB) };
+    } catch { return null; }
+  };
 
   function spawnWorker(rel, { defer }) {
     const child = spawn(process.execPath, [join(rel.dir, 'bin', 'weave.js'), 'serve', '--port', '0', '--host', host, '--data', dataPath], {
@@ -200,6 +208,7 @@ export async function startSupervisor({
       lastSwap: state.lastSwap,
       watch: state.watch ?? null,
       failed: Object.keys(state.failed),
+      disk: disk(),
     };
   }
 
@@ -281,6 +290,8 @@ export async function startSupervisor({
   }
 
   async function unpackCommit(name, sha) {
+    const free = disk()?.freeMB;
+    if (free != null && free * MB < minFreeBytes) throw new Error(`${name} not downloaded: ${free} MB free on the releases volume, under the ${Math.round(minFreeBytes / MB)} MB floor`);
     const r = await fetch(`${REPO_CODELOAD}/tar.gz/${sha}`, { headers: UA, signal: AbortSignal.timeout(120_000) });
     if (!r.ok) throw new Error(`the ${name} tarball answered HTTP ${r.status}`);
     const part = join(releasesDir, `${name}.part`);
