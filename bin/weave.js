@@ -10,6 +10,7 @@ const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().us
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
+import { cliFailure } from '../src/errors.js';
 import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
@@ -1031,6 +1032,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`weave: error: ${err.message}`);
-  process.exit(1);
+  const { line, exit } = cliFailure(err);
+  console.error(line);
+  process.exit(exit);
 });

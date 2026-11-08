@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { mcpToolError, contractFor } from './errors.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
@@ -1065,14 +1066,14 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
         try {
           return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
         } catch (err) {
-          return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
+          return reply(mcpToolError(err));
         }
       }
       default:
         return fail(-32601, `Method not found: ${method}`);
     }
   } catch (err) {
-    return fail(-32603, err.message);
+    return fail(contractFor(err).mcp, err.message);
   }
 }
 
