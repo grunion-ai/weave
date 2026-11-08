@@ -37,7 +37,7 @@ if (s) {
     });
   });
 
-  test('a formula that returns text sits on the phone card chip line as a chip like every other value (Issue #1388)', { todo: 'Issue #1388' }, async (t) => {
+  test('a formula that returns text sits on the phone card chip line as a chip like every other value (Issue #1388)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openTable(page, base, tasks);
       const c = await card(page, 'Draft launch post');
