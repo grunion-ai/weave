@@ -10041,7 +10041,7 @@ function placeCodeRaw(st) {
 }
 
 function attachRefChips(host) {
-  const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0 };
+  const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0, expanded: new WeakSet(), wrapOfSlot: new WeakMap() };
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshRefChips(st), REF_CHIP_DEBOUNCE);
@@ -10108,6 +10108,8 @@ async function refreshRefChips(st) {
     w.append(mid);
   }
 
+  const focusedCaret = document.activeElement?.closest?.('.doc-ref-slot .mention-caret');
+  const focusedWrap = focusedCaret && st.wrapOfSlot.get(focusedCaret.closest('.doc-ref-slot'));
   st.layer.replaceChildren();
   const drawn = [];
   for (const { w, ref, label } of wraps()) {
@@ -10122,6 +10124,16 @@ async function refreshRefChips(st) {
       const k = slot.querySelector('.k-label');
       if (k) k.textContent = label;
     }
+    if (st.expanded.has(w)) {
+      slot.querySelector('.k-rel')?.classList.add('open');
+      slot.querySelector('.mention-caret')?.setAttribute('aria-expanded', 'true');
+    }
+    slot.addEventListener('click', (ev) => {
+      if (!ev.target.closest('.mention-caret')) return;
+      if (!st.expanded.delete(w)) st.expanded.add(w);
+      refreshRefChips(st);
+    });
+    st.wrapOfSlot.set(slot, w);
     st.layer.append(slot);
     drawn.push({ w, slot });
   }
@@ -10137,7 +10149,11 @@ async function refreshRefChips(st) {
   for (const d of drawn) {
     const r = d.w.getBoundingClientRect();
     d.slot.style.cssText = `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px;`;
+    const lab = d.slot.querySelector('.k-rel:not(.open) .k-label');
+    if (lab) lab.style.maxWidth = '';
     d.slot.classList.toggle('long', d.slot.scrollWidth > r.width + 1);
+    if (lab && d.slot.classList.contains('long')) lab.style.maxWidth = `${Math.max(0, lab.offsetWidth - (d.slot.scrollWidth - r.width))}px`;
+    if (d.w === focusedWrap) d.slot.querySelector('.mention-caret')?.focus({ preventScroll: true });
   }
 }
 

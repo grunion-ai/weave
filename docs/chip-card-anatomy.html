@@ -100,6 +100,8 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
 .wv-prose .k-rel .k { font-size: inherit; }
 .wv-prose .k-rel.open > .mention-fields { display: inline; }
+.wv-prose .k-rel.open > .mention-fields > * + * { margin-left: 8px; }
+.wv-prose .k-rel.open > .mention-fields + .k-home { margin-left: 6px; }
 .k-rel.has-av > a.mention { padding-left: 3px; }
 .k-rel.has-av > .mention-entity::before { content: none; }
 .wv-card-head > .wv-card-av { --wv-av-size: 32px; font-size: var(--fs-body); }
