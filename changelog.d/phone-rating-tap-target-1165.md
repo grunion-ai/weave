@@ -1,1 +1,0 @@
-- Each icon of a rating field on a record page now sits in a 46 px slot on a touch screen, so a finger can reach it (Issue #1165). Ten icons of a rating with max 10 used to be 14 px each, against the 44 px that Apple's Human Interface Guidelines and Material both ask for. The icons wrap onto a second line in a field row too narrow for all of them, and the glyph is drawn at 20 px.
