@@ -31,56 +31,109 @@ export function scanSuites(rootDir) {
   }).filter((s) => s.cases.length);
 }
 
-export function syncQualityMirror(w, scanned, { dryRun = false } = {}) {
-  const suiteTable = w.getTable('Quality/Suite');
-  const caseTable = w.getTable('Quality/Case');
-  const fileField = Object.values(suiteTable.fields).find((f) => f.name === 'File');
-  const summary = { suites: scanned.length, createdSuites: 0, createdCases: 0, removedSuites: 0, removedCases: 0, renamedSuites: 0 };
+export function caseResults(shards) {
+  const newest = new Map();
+  for (const shard of shards) {
+    const held = newest.get(shard.id);
+    if (!held || (shard.attempt ?? 1) > (held.attempt ?? 1)) newest.set(shard.id, shard);
+  }
+  const files = new Map();
+  const entry = (file) => files.get(file) ?? files.set(file, { ok: false, runs: new Map() }).get(file);
+  for (const shard of newest.values()) {
+    for (const s of shard.summaries ?? []) if (s.success) entry(s.file).ok = true;
+    for (const c of shard.cases ?? []) {
+      const runs = entry(c.file).runs;
+      runs.set(c.name, [...(runs.get(c.name) ?? []), c.pass]);
+    }
+  }
+  return new Map([...files].map(([file, { ok, runs }]) => [file, {
+    ok,
+    cases: new Map([...runs].map(([name, passes]) => [name, passes.every(Boolean) ? 'Passing' : passes.some(Boolean) ? 'Flaky' : 'Failing'])),
+  }]));
+}
 
+function statusFor(results, file, name) {
+  const r = results?.get(file);
+  if (!r) return null;
+  return r.cases.get(name) ?? (r.ok ? 'Passing' : null);
+}
+
+export function planQualityMirror(rows, scanned, results = null) {
+  const summary = { suites: scanned.length, createdSuites: 0, createdCases: 0, removedSuites: 0, removedCases: 0, renamedSuites: 0, statusChanges: 0, missingFiles: [] };
+  const ops = [];
   const byFile = new Map();
   const doomed = [];
-  for (const r of w.listEntities(suiteTable.id)) {
-    const file = r.values[fileField.id];
-    const seen = byFile.get(file);
-    if (!seen) byFile.set(file, r);
-    else if (r.publicId < seen.publicId) { byFile.set(file, r); doomed.push(seen); }
-    else doomed.push(r);
+  for (const r of [...rows].sort((a, b) => a.publicId - b.publicId)) {
+    if (byFile.has(r.file)) doomed.push(r);
+    else byFile.set(r.file, r);
   }
-
   for (const s of scanned) {
-    let row = byFile.get(s.file);
+    const row = byFile.get(s.file);
     if (!row) {
       summary.createdSuites += 1;
-      if (dryRun) { summary.createdCases += s.cases.length; continue; }
-      row = w.createEntity(suiteTable, { name: s.name, values: { File: s.file } });
-    } else if (w.entityName(row) !== s.name) {
+      summary.createdCases += s.cases.length;
+      ops.push({ op: 'createSuite', name: s.name, file: s.file, cases: s.cases.map((name) => ({ name, status: statusFor(results, s.file, name) })) });
+      continue;
+    }
+    if (row.name !== s.name) {
       summary.renamedSuites += 1;
-      if (!dryRun) w.updateEntity(row.id, { Name: s.name });
+      ops.push({ op: 'rename', id: row.id, name: s.name });
+    }
+    const have = new Map(row.cases.map((c) => [c.name, c]));
+    for (const name of new Set(s.cases)) {
+      const status = statusFor(results, s.file, name);
+      const held = have.get(name);
+      if (!held) {
+        summary.createdCases += 1;
+        ops.push({ op: 'createCase', suite: row.id, name, status });
+      } else if (status && held.status !== status) {
+        summary.statusChanges += 1;
+        ops.push({ op: 'status', id: held.id, status });
+      }
     }
     const want = new Set(s.cases);
-    const have = new Map(w.readEntity(row.id).fields.Cases.map((c) => [c.name, c.id]));
-    for (const name of want) {
-      if (!have.has(name)) {
-        summary.createdCases += 1;
-        if (!dryRun) w.createEntity(caseTable, { name, values: { Suite: row.id } });
-      }
-    }
-    for (const [name, id] of have) {
-      if (!want.has(name)) {
-        summary.removedCases += 1;
-        if (!dryRun) w.deleteEntity(id, { hard: true });
-      }
+    for (const c of row.cases) {
+      if (want.has(c.name)) continue;
+      summary.removedCases += 1;
+      ops.push({ op: 'deleteCase', id: c.id });
     }
   }
   const scannedFiles = new Set(scanned.map((s) => s.file));
-  for (const [file, row] of byFile) if (!scannedFiles.has(file)) doomed.push(row);
+  for (const [file, row] of byFile) {
+    if (scannedFiles.has(file)) continue;
+    summary.missingFiles.push(file);
+    doomed.push(row);
+  }
   for (const row of doomed) {
-    const rowCases = w.readEntity(row.id).fields.Cases;
     summary.removedSuites += 1;
-    summary.removedCases += rowCases.length;
-    if (dryRun) continue;
-    for (const c of rowCases) w.deleteEntity(c.id, { hard: true });
-    w.deleteEntity(row.id, { hard: true });
+    summary.removedCases += row.cases.length;
+    for (const c of row.cases) ops.push({ op: 'deleteCase', id: c.id });
+    ops.push({ op: 'deleteSuite', id: row.id });
+  }
+  return { ops, summary };
+}
+
+export function syncQualityMirror(w, scanned, { dryRun = false, results = null } = {}) {
+  const suiteTable = w.getTable('Quality/Suite');
+  const caseTable = w.getTable('Quality/Case');
+  const fileField = Object.values(suiteTable.fields).find((f) => f.name === 'File');
+  const rows = w.listEntities(suiteTable.id).map((r) => ({
+    id: r.id,
+    publicId: r.publicId,
+    name: w.entityName(r),
+    file: r.values[fileField.id],
+    cases: w.readEntity(r.id).fields.Cases.map((c) => ({ id: c.id, name: c.name, status: w.readEntity(c.id).fields.Status })),
+  }));
+  const { ops, summary } = planQualityMirror(rows, scanned, results);
+  if (dryRun) return summary;
+  for (const o of ops) {
+    if (o.op === 'createSuite') {
+      const row = w.createEntity(suiteTable, { name: o.name, values: { File: o.file } });
+      for (const c of o.cases) w.createEntity(caseTable, { name: c.name, values: { Suite: row.id, ...(c.status ? { Status: c.status } : {}) } });
+    } else if (o.op === 'createCase') w.createEntity(caseTable, { name: o.name, values: { Suite: o.suite, ...(o.status ? { Status: o.status } : {}) } });
+    else if (o.op === 'rename') w.updateEntity(o.id, { Name: o.name });
+    else if (o.op === 'status') w.updateEntity(o.id, { Status: o.status });
+    else w.deleteEntity(o.id, { hard: true });
   }
   return summary;
 }

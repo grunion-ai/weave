@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
-import { scanSuites, syncQualityMirror } from '../src/quality-mirror.js';
+import { scanSuites, syncQualityMirror, caseResults, planQualityMirror } from '../src/quality-mirror.js';
+import { tempDir } from './lib/temp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -83,4 +86,92 @@ test('syncQualityMirror reconciles an existing drifted mirror without duplicatin
     { createdSuites: 0, createdCases: 0, removedSuites: 0, removedCases: 0 },
     'a second sync is a no-op — the reconcile is idempotent',
   );
+});
+
+function shardFromRun(source, runs = 1) {
+  const dir = tempDir('weave-quality-run-');
+  try {
+    const file = join(dir, 'example.test.mjs');
+    const report = join(dir, 'events.jsonl');
+    const state = join(dir, 'state');
+    writeFileSync(report, '');
+    writeFileSync(file, source.replaceAll('STATE', JSON.stringify(state)));
+    const { NODE_TEST_CONTEXT, ...env } = process.env;
+    for (let i = 0; i < runs; i++) {
+      spawnSync(process.execPath, ['--test', `--test-reporter=${resolve(ROOT, 'scripts/ci-test-reporter.mjs')}`, file], { cwd: dir, env: { ...env, WEAVE_CI_REPORT: report }, encoding: 'utf8' });
+    }
+    const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    return { id: 'unit-1', attempt: 1, files: ['example.test.mjs'], summaries: events.filter((e) => e.type === 'summary').map((e) => e.data), cases: events.filter((e) => e.type === 'case').map((e) => e.data) };
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('the CI reporter records a pass or fail per case, and a case that fails then passes on the retry reads Flaky (Issue #1245)', () => {
+  const shard = shardFromRun(`import test from 'node:test';
+import { existsSync, writeFileSync } from 'node:fs';
+test('holds', () => {});
+test('breaks', () => { throw new Error('red'); });
+test('wobbles', () => { if (!existsSync(STATE)) { writeFileSync(STATE, '1'); throw new Error('first try'); } });
+for (const n of [1]) test(\`made \${n}\`, () => {});
+`, 2);
+  assert.ok(shard.cases.every((c) => c.file === 'example.test.mjs' && typeof c.pass === 'boolean'), JSON.stringify(shard.cases));
+  const results = caseResults([shard]);
+  const file = results.get('example.test.mjs');
+  assert.equal(file.ok, false, 'a file with a case red on every attempt is red');
+  assert.equal(file.cases.get('holds'), 'Passing');
+  assert.equal(file.cases.get('breaks'), 'Failing');
+  assert.equal(file.cases.get('wobbles'), 'Flaky');
+  assert.equal(file.cases.get('made 1'), 'Passing');
+});
+
+test('caseResults keeps the newest attempt of a shard, so a re-run job replaces its first result (Issue #1245)', () => {
+  const at = (attempt, pass) => ({ id: 'unit-1', attempt, summaries: [{ file: 'test/a.test.mjs', success: pass }], cases: [{ file: 'test/a.test.mjs', name: 'one', pass }] });
+  assert.equal(caseResults([at(2, true), at(1, false)]).get('test/a.test.mjs').cases.get('one'), 'Passing');
+  assert.equal(caseResults([at(1, true), at(2, false)]).get('test/a.test.mjs').cases.get('one'), 'Failing');
+});
+
+const ROWS = () => [
+  { id: 's1', publicId: 1, name: 'A', file: 'test/a.test.mjs', cases: [{ id: 'c1', name: 'one', status: 'Passing' }, { id: 'c2', name: 'two', status: 'Passing' }, { id: 'c9', name: 'gone', status: 'Passing' }] },
+  { id: 's2', publicId: 2, name: 'Deleted', file: 'test/deleted.test.mjs', cases: [{ id: 'c3', name: 'x', status: 'Passing' }] },
+];
+const SCAN = [
+  { name: 'A', file: 'test/a.test.mjs', cases: ['one', 'two', '${theme}: three'] },
+  { name: 'B', file: 'test/b.test.mjs', cases: ['new'] },
+];
+
+test('the plan writes a red case Failing, creates new cases with their run result, and removes a suite whose file is gone (Issue #1244, Issue #1245)', () => {
+  const results = new Map([
+    ['test/a.test.mjs', { ok: false, cases: new Map([['one', 'Passing'], ['two', 'Failing']]) }],
+    ['test/b.test.mjs', { ok: true, cases: new Map([['new', 'Passing']]) }],
+  ]);
+  const { ops, summary } = planQualityMirror(ROWS(), SCAN, results);
+  assert.deepEqual(ops.filter((o) => o.op === 'status'), [{ op: 'status', id: 'c2', status: 'Failing' }]);
+  assert.deepEqual(ops.find((o) => o.op === 'createCase'), { op: 'createCase', suite: 's1', name: '${theme}: three', status: null }, 'a template name no run reports keeps the default while its file is red');
+  assert.deepEqual(ops.find((o) => o.op === 'createSuite'), { op: 'createSuite', name: 'B', file: 'test/b.test.mjs', cases: [{ name: 'new', status: 'Passing' }] });
+  assert.deepEqual(ops.filter((o) => o.op === 'deleteCase').map((o) => o.id).sort(), ['c3', 'c9']);
+  assert.deepEqual(ops.filter((o) => o.op === 'deleteSuite').map((o) => o.id), ['s2']);
+  assert.deepEqual(summary.missingFiles, ['test/deleted.test.mjs'], 'the drift names the suite that points at a deleted file');
+  assert.equal(summary.statusChanges, 1);
+});
+
+test('a green file marks a case no run names Passing, and with no results the plan never touches Status (Issue #1245)', () => {
+  const green = new Map([['test/a.test.mjs', { ok: true, cases: new Map([['one', 'Passing'], ['two', 'Passing']]) }]]);
+  assert.equal(planQualityMirror(ROWS(), SCAN, green).ops.find((o) => o.op === 'createCase').status, 'Passing');
+  const blind = planQualityMirror(ROWS(), SCAN, null);
+  assert.equal(blind.ops.filter((o) => o.op === 'status').length, 0);
+  assert.equal(blind.ops.find((o) => o.op === 'createCase').status, null);
+});
+
+test('syncQualityMirror writes the run result onto Case Status and a second sync writes nothing (Issue #1245)', () => {
+  const w = seedWeaver(new Weave());
+  const scanned = scanSuites(ROOT);
+  const target = scanned.find((s) => s.file === 'test/quality-mirror.test.mjs');
+  const named = target.cases[0];
+  const results = new Map([[target.file, { ok: false, cases: new Map([[named, 'Failing']]) }]]);
+  const first = syncQualityMirror(w, scanned, { results });
+  assert.equal(first.statusChanges, 1);
+  const suite = w.listEntities(w.getTable('Quality/Suite').id).find((r) => w.entityName(r) === target.name);
+  const row = w.readEntity(suite.id).fields.Cases.find((c) => c.name === named);
+  assert.equal(w.readEntity(row.id).fields.Status, 'Failing');
+  const again = syncQualityMirror(w, scanned, { results });
+  assert.deepEqual([again.createdSuites, again.createdCases, again.removedSuites, again.removedCases, again.renamedSuites, again.statusChanges], [0, 0, 0, 0, 0, 0]);
 });
