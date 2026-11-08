@@ -62,9 +62,10 @@ if (s) {
         await box.fill(SECRET);
         await page.click('#modal button[type=submit]');
         await page.waitForFunction(() => !document.querySelector('#modal-back'));
-        await page.locator('.integration-key', { hasText: SECRET.slice(-4) }).waitFor();
+        await page.locator('.cred-cell .integration-key', { hasText: SECRET.slice(-4) }).first().waitFor();
         assert.deepEqual(sent.at(-1), `Token ${SECRET}`, 'the server tested the pasted key against the Host');
-        assert.equal((await page.locator('.integration-key').first().innerText()).trim(), `••••${SECRET.slice(-4)}`);
+        assert.equal((await page.locator('.cred-cell .integration-key').first().innerText()).trim(), `••••${SECRET.slice(-4)}`);
+        for (const chip of await page.locator('.integration-key').allInnerTexts()) assert.equal(chip.trim(), `••••${SECRET.slice(-4)}`, 'the grid chip shows the same dots and hint');
         assert.deepEqual(await page.locator('.cred-cell button').evaluateAll((bs) => bs.map((b) => b.textContent.trim())), ['Replace']);
         const html = await page.content();
         assert.equal(html.includes(SECRET), false, 'the key is nowhere in the page');
