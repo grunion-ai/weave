@@ -2698,12 +2698,21 @@ function phoneLeadEl(f, item) {
   } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
   return el('span', { class: 'phone-lead', dataset: { field: f.name, ftype: f.type } }, viewSegmentEl(seg));
 }
+function foldValueCounters(td) {
+  let folded = 0;
+  for (const more of td.querySelectorAll('.ms-box > .k-more:not([hidden])')) {
+    folded += Number(more.textContent.slice(1)) || 0;
+    more.hidden = true;
+  }
+  return folded;
+}
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
-    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
-    for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
-    if (!phone) continue;
+  const rows = [...grid.querySelectorAll('tbody tr.entity-row')].map((tr) => [tr, [...tr.querySelectorAll(':scope > td[data-field]')]]);
+  for (const [, cells] of rows) for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
+  fitChips(grid);
+  if (!phone) return;
+  for (const [tr, cells] of rows) {
     const drawn = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
     if (!drawn.length) continue;
     const cut = drawn.filter((td) => [...td.querySelectorAll('.k-label')].some(overflowsX));
@@ -2714,6 +2723,7 @@ function fitPhoneChipLines(grid) {
       cut[0].dataset.more = `+${cut.length}`;
       continue;
     }
+    const values = shown.map(foldValueCounters);
     const box = tr.getBoundingClientRect();
     const trStyle = getComputedStyle(tr);
     const edge = box.right - (parseFloat(trStyle.paddingRight) || 0);
@@ -2721,16 +2731,15 @@ function fitPhoneChipLines(grid) {
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return r.bottom <= floor + 0.5 && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
+      return r.bottom <= floor + 0.5 && ((n === shown.length && !cut.length && !values.some(Boolean)) || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
-    const hidden = cut.length + shown.length - n;
+    const hidden = cut.length + shown.length - n + values.slice(0, n).reduce((a, b) => a + b, 0);
     if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
   }
 }
 function markClippedCells(grid) {
   fitPhoneChipLines(grid);
-  fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
@@ -7254,6 +7263,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
     const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
     if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    if (dockCoversScreen.matches && main.id === 'main') {
+      for (const input of row.querySelectorAll(':scope > td[data-field] > .wv-cb input.inline-edit')) {
+        if (input.value) (input.closest('.date-cell') ?? input).replaceWith(el('span', { class: 'text-dressed', title: input.value }, input.value));
+      }
+      for (const k of row.querySelectorAll(':scope > td[data-field] > .wv-cb > .k-computed:not(:has(*))')) k.classList.add('hue-slate');
+    }
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
