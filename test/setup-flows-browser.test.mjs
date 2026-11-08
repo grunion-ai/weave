@@ -590,6 +590,27 @@ if (openHub) {
     await p.context().close();
   });
 
+  for (const door of ['mcp', 'docs']) {
+    test(`a browser at the workspace /${door} page can sign in or create an account, and sign-up lands on a new workspace (Issue #1338)`, async () => {
+      const p = await page();
+      const slug = `door-${door}-1338`;
+      person(openHub, { email: `${slug}@example.com` });
+      await p.goto(`${openHub.base}/w/Net/${door}`);
+      const signIn = p.getByRole('link', { name: 'Sign in', exact: true });
+      const signUp = p.getByRole('link', { name: 'Create an account', exact: true });
+      assert.equal(new URL(await signIn.getAttribute('href'), p.url()).pathname, '/w/Net/auth');
+      assert.equal(new URL(await signUp.getAttribute('href'), p.url()).pathname, '/start');
+      await signUp.click();
+      await step(p, 'account');
+      await go(p, 'signin');
+      await nameIt(p, `Door ${door}`, slug);
+      await step(p, 'work');
+      await go(p, 'skip');
+      await p.waitForURL(new RegExp(`/w/${slug}/$`), { timeout: 15000 });
+      await p.context().close();
+    });
+  }
+
   test('closed sign-up: a stranger gets an invite-only page, not a 403', async () => {
     const p = await page();
     person(closedHub);

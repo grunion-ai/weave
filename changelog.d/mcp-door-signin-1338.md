@@ -1,0 +1,1 @@
+- The workspace MCP door page and the Connect an agent guide link Sign in, and Create an account when open sign-up is on, so a browser that lands there without an account has a way in (Issue #1338).

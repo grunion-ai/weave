@@ -677,7 +677,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
       if (oidc && !bearer && ['GET', 'HEAD'].includes(rx.method) && prefersHtml(rx.header('accept'))) {
         const workspace = weave.state.meta.name;
-        return out(401, renderMcpDoorPage({ workspace, url: `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`, server: workspaceSlug(workspace) || 'weave', docsHref: `${wsPrefix}/docs` }),
+        return out(401, renderMcpDoorPage({ workspace, url: `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`, server: workspaceSlug(workspace) || 'weave', docsHref: `${wsPrefix}/docs`, signInHref: `${wsPrefix}/auth`, signUpHref: openSignup.on ? `${startRoot}/start?mode=signup` : null }),
           { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'WWW-Authenticate': mcpChallenge });
       }
       if (oidc && !bearer) return deny(401, `Sign in with ${oidc.name} to use this MCP server`);
@@ -1104,7 +1104,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           '/privacy': ['Privacy policy', PRIVACY],
           '/terms': ['Terms of Service', TERMS],
           '/support': ['Support', SUPPORT],
-          '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`)}\n\n## Tools\n\n${toolTable()}\n`],
+          '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
         }[path];
         const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
         return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
