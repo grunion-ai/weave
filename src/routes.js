@@ -1,5 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
+import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
+export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
@@ -31,12 +33,6 @@ export const ifMatchRevision = (header) => {
 };
 export const ownsEntity = (ws, id) => Object.hasOwn(ws.state.entities, id);
 
-export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
-export function statusFor(err) {
-  if (!(err instanceof WeaveError)) return storageFull(err) ? 507 : 500;
-  return { 'not-found': 404, conflict: 409, stale: 412, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
-}
-
 const STARTED_AT = new Date().toISOString();
 
 export const clientAddress = ({ forwarded, remote, trustProxy }) => {
@@ -44,13 +40,6 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
   return hop || remote || 'unknown';
 };
 
-export function errorBody(err, code = 'internal') {
-  if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
-  const id = crypto.randomUUID().slice(0, 8);
-  if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
-  if (storageFull(err)) return { error: 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.', code: 'storage-full', id };
-  return { error: `Internal error (request ${id})`, code: 'internal', id };
-}
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
@@ -1840,7 +1829,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/audit') {
           return out(200, weave.listAudit({
             limit: boundedLimit(rx.searchParams.get('limit'), 100),
-            offset: Number(rx.searchParams.get('offset') ?? 0),
+            offset: nonNegativeInteger('offset', rx.searchParams.get('offset')),
           }));
         }
         if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
@@ -2088,7 +2077,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
           if (rx.method === 'GET') {
             const limit = boundedLimit(rx.searchParams.get('limit'), QUERY_PAGE);
-            const offset = Number(rx.searchParams.get('offset') ?? 0);
+            const offset = nonNegativeInteger('offset', rx.searchParams.get('offset'));
             return out(200, weave.query(m[1], { limit, offset, viewerZone, workspace: member.state.meta.id }));
           }
         }
@@ -2265,7 +2254,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             kinds: rx.searchParams.getAll('kind'),
             since: rx.searchParams.get('since'),
             limit: boundedLimit(rx.searchParams.get('limit')),
-            offset: Number(rx.searchParams.get('offset') ?? 0),
+            offset: nonNegativeInteger('offset', rx.searchParams.get('offset')),
           }));
         }
         if ((m = path.match(/^\/api\/activity\/(.+)$/)) && rx.method === 'GET') {

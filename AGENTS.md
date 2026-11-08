@@ -222,6 +222,30 @@ them for the whole record or table, or read it back with `weave_get_entity` or
 `weave_schema`. Tool text is one-line JSON. REST and the CLI still return the
 full object (Issue #596).
 
+**Errors carry one code on every door.** A refused call names the same `code`
+and message whichever door it came through (Feature #179). HTTP answers
+`{error, code}` with the status for that code. An MCP tool error keeps its
+`Error: <message>` text and adds `structuredContent: {error, code, rpc}`. The
+CLI prints `weave: error [<code>]: <message>` and exits with the code's number.
+
+| code | HTTP | MCP `rpc` | CLI exit |
+| --- | --- | --- | --- |
+| `invalid`, `slug_invalid`, `slug_reserved` | 400 | -32602 | 40 |
+| `ambiguous` | 400 | -32602 | 41 |
+| `forbidden` | 403 | -32003 | 46 |
+| `not-found` | 404 | -32001 | 44 |
+| `conflict`, `slug_taken` | 409 | -32002 | 45 |
+| `stale` | 412 | -32004 | 47 |
+| `too-large` | 413 | -32005 | 48 |
+| `unsupported-type` | 415 | -32006 | 49 |
+| `rate-limited` | 429 | -32007 | 50 |
+| `storage-full` | 507 | -32008 | 51 |
+| `internal` | 500 | -32603 | 70 |
+| any other | 400 | -32000 | 1 |
+
+`src/errors.js` holds the table; `test/error-contract.test.mjs` holds the three
+doors to it.
+
 **Figures.** `weave_stats` summarises every column of a table in one read:
 sum, avg, median, min, max, p25/p75, stdev and a histogram for numbers; a
 ranked distribution for chips; earliest, latest and span for dates; the space
