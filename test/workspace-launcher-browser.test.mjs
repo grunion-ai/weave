@@ -124,7 +124,7 @@ if (s) {
       await page.close();
     });
 
-    test(`${engine}: About this workspace holds the description, the system tables and the relation map`, async () => {
+    test(`${engine}: About this workspace holds the description and the system tables, and leaves the relation map to each space`, async () => {
       const page = await open(b, profile);
       await painted(page, '.launcher-about');
       assert.match(await page.locator('.launcher-about').innerText(), /About this workspace/);
@@ -134,6 +134,7 @@ if (s) {
       const body = await page.locator('.launcher-detail').innerText();
       assert.match(body, /Everything the studio runs\./);
       assert.match(body, /Activity/);
+      assert.equal(await page.locator('.launcher-detail .home-map').count(), 0);
       await page.click('.launcher-detail .system-tables .list-row[data-href="#/activity"]');
       await page.waitForFunction(() => location.hash === '#/activity');
       await page.close();
