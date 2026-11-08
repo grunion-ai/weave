@@ -140,12 +140,12 @@ if (s) {
     await page.close();
   });
 
-  test('browser: a member workspace served by the hub still pins Workflows, Users, Activity and Trash (Issue #872)', async () => {
+  test('browser: a member workspace served by the hub still pins Workflows, Users, Integrations, Activity and Trash (Issue #872)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Integrations', `#/table/${member.getTable('System/Integrations').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 

@@ -58,7 +58,7 @@ test('a new row starts On, Setup incomplete, in its own workspace, with its Host
   assert.equal(r.fields.On, true);
   assert.equal(r.fields.State, 'Setup incomplete');
   assert.equal(r.fields.Host, 'adriany.fibery.io');
-  assert.equal(r.fields.Workspace, w.readEntity(w.listEntities('System/Workspaces')[0].id).name);
+  assert.equal(r.fields.Workspace?.name, w.state.meta.name, 'the row belongs to the workspace it was made in');
   assert.equal(r.fields['Key Hint'] ?? null, null);
 });
 
@@ -253,7 +253,7 @@ test('key changes land in Activity and the audit log without the key', async () 
   const e = fibery(w, t);
   const net = intercept(fiberyUser());
   try { await w.setIntegrationCredential(e.id, SECRET); } finally { net.restore(); }
-  const feed = w.getActivity(e.id);
+  const feed = w.activityFeed({ entityId: e.id, limit: 200 });
   assert.ok(JSON.stringify(feed).includes('Connected'), 'the State change is on the row record');
   const audit = w.listAudit({ limit: 50 });
   const set = audit.items?.find?.((a) => a.action === 'key-set') ?? audit.find?.((a) => a.action === 'key-set');

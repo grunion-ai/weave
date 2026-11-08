@@ -35,7 +35,7 @@ test('the stored key never comes back from an engine read, query, search, export
   leaks('exportJSON', JSON.stringify(w.exportJSON()));
   leaks('exportCSV', w.exportCSV(t.id));
   leaks('activityFeed', JSON.stringify(w.activityFeed({ limit: 500 })));
-  leaks('getActivity', JSON.stringify(w.getActivity(row.id)));
+  leaks('row activity', JSON.stringify(w.activityFeed({ entityId: row.id, limit: 500 })));
   leaks('listAudit', JSON.stringify(w.listAudit({ limit: 500 })));
   leaks('describeSchema', JSON.stringify(w.describeSchema()));
   leaks('engine state', JSON.stringify(w.state));
@@ -72,7 +72,7 @@ test('no HTTP response carries the key: rows, queries, export, CSV, activity, au
       ['GET', '/api/export'],
       ['GET', '/api/schema'],
       ['GET', '/api/activity'],
-      ['GET', `/api/activity/${row.id}`],
+      ['GET', `/api/activity?entity=${row.id}`],
       ['GET', '/api/audit'],
       ['GET', '/api/keys'],
       ['GET', '/api/search?q=Fibery'],
