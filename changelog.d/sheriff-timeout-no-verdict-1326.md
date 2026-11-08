@@ -1,0 +1,1 @@
+- **A main red held only by timed-out shards convicts no commit** (Issue #1326): when the test manager kills a shard before any file reports, the sheriff files an Issue and alerts instead of bisecting on the gate conclusion and reverting whatever commit sits in the range. Gate: `test/sheriff.test.mjs`.
