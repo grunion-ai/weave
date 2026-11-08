@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { tempDir } from './lib/temp.mjs';
 
 function setup(path) {
   const w = new Weave({ path });
@@ -15,7 +15,7 @@ function setup(path) {
 }
 
 test('a rejected multi-field update leaves memory and disk unchanged (Issue #1454)', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-atomic-'));
+  const dir = tempDir('weave-atomic-');
   try {
     const path = join(dir, 'ws.db');
     const { w, deal, row } = setup(path);
