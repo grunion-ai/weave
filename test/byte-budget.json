@@ -17,12 +17,16 @@
       "br": 2293
     },
     "/app.js": {
-      "gzip": 173580,
+      "gzip": 165613,
       "br": 132450
     },
     "/billing.js": {
       "gzip": 2099,
       "br": 1784
+    },
+    "/board-view.js": {
+      "gzip": 6584,
+      "br": 6202
     },
     "/board-core.js": {
       "gzip": 2077,
