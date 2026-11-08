@@ -110,7 +110,7 @@ if (openHub) {
     assert.equal(await details.locator('.map-lines path').count(), 1, 'one line for the one relation');
     assert.equal(await details.locator('.details-like').textContent(), 'Like HubSpot CRM', 'and it says what the template is like');
     assert.equal(await details.locator('.tables, .details-count, small').count(), 0, 'no field lists and no counts');
-    assert.doesNotMatch(await details.textContent(), /Website|Stage|sample rows/, 'no field names or stats');
+    assert.doesNotMatch(await details.textContent(), /Website|Stage|sample records/, 'no field names or stats');
     assert.match(await p.locator('main [data-go="next"]').textContent(), /Sales and clients/, 'the primary button names the pick');
     assert.ok(await p.locator('main [data-go="next"]').isVisible(), 'Continue stays in view under a long gallery');
     assert.equal(await stageArt(p), art, 'the right pane never changes');

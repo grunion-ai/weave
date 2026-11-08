@@ -28,8 +28,8 @@ if (s) {
     ['workspace', '', '#main .view-header', /Entire workspace: /],
     ['space', `#/space/${space.id}`, '#main .view-header', /Entire space: Dev/],
     ['table', `#/table/${task.id}`, '#main .view-header', /Entire table: Task/],
-    ['record', `#/entity/${one.id}`, '#main .view-header', /This row: One/],
-    ['docked record', `#/table/${task.id}?e=${one.id}`, '#dock .view-header', /This row: One/],
+    ['record', `#/entity/${one.id}`, '#main .view-header', /This record: One/],
+    ['docked record', `#/table/${task.id}?e=${one.id}`, '#dock .view-header', /This record: One/],
     ['share page', `#/view/${view.id}`, '#main .share-page-head', /This share page: Focus/],
   ];
 
@@ -63,7 +63,7 @@ if (s) {
   }
 
   test('no table or record menu offers a Share… row (Issue #765)', async () => {
-    for (const [hash, title] of [[`#/table/${task.id}`, 'Table actions'], [`#/entity/${one.id}`, 'Row actions']]) {
+    for (const [hash, title] of [[`#/table/${task.id}`, 'Table actions'], [`#/entity/${one.id}`, 'Record actions']]) {
       const page = await open(hash);
       try {
         await page.locator(`#main .dots-btn[title="${title}"]`).click();
@@ -111,7 +111,7 @@ if (s) {
       await painted(page, '#share-pane .share-add');
       assert.match(await page.locator('#share-pane').innerText(), /Entire table: Task/);
       await page.locator('#dock .view-header .table-share-btn').click();
-      await page.waitForFunction(() => /This row: One/.test(document.querySelector('#share-pane')?.innerText ?? ''));
+      await page.waitForFunction(() => /This record: One/.test(document.querySelector('#share-pane')?.innerText ?? ''));
       assert.equal(await page.locator('#main .view-header .table-share-btn').getAttribute('aria-expanded'), 'false');
       assert.equal(await page.locator('#dock .view-header .table-share-btn').getAttribute('aria-expanded'), 'true');
     } finally { await page.close(); }

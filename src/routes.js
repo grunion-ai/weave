@@ -139,7 +139,7 @@ function prefillDraft(weave, ref, params) {
           hit = null;
         }
         if (hit) out.rows.push({ id: hit.id, name: weave.entityName(hit) });
-        else errors.push(`No row named '${r}' in the related table`);
+        else errors.push(`No record named '${r}' in the related table`);
         names.push(hit ? weave.entityName(hit) : r);
       }
       out.value = list ? names : names[0];
@@ -472,7 +472,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const tables = weave.listTables(sp.id);
           title = `${sp.name} · space`;
           trail = [site, sp.name];
-          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'row')}`;
+          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'record')}`;
           url = `/s/${sp.id}`;
           route = `${wsPrefix}/#/space/${sp.id}`;
         } else {
@@ -481,7 +481,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const space = weave.state.spaces[db.spaceId]?.name;
           title = `${space} / ${db.name} · table`;
           trail = [site, space, db.name];
-          detail = count(live([db]), 'row');
+          detail = count(live([db]), 'record');
           url = `/t/${db.id}`;
           route = `${wsPrefix}/#/table/${db.id}`;
         }
@@ -1920,7 +1920,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { forms, anonymousAllowed: anonymousForms, requireAuth: !!weave.state.meta.requireAuth }, { 'Cache-Control': 'no-store' });
           }
           if (route === 'POST /api/forms') {
-            if (body?.kind !== undefined) throw new WeaveError('The form builder creates row forms', 'invalid');
+            if (body?.kind !== undefined) throw new WeaveError('The form builder creates record forms', 'invalid');
             const form = createForm(weave, body);
             return out(201, getFormDefinition(weave, form.id));
           }

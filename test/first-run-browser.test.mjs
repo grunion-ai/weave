@@ -28,8 +28,8 @@ if (empty) {
       assert.equal((await page.locator('.wv-start .wv-start-new').textContent()).trim(), '+ New table');
       assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
       const lead = await page.locator('.wv-start-lead').textContent();
-      assert.match(lead, /\brows\b/);
-      assert.doesNotMatch(lead, /\brecords?\b/, 'row, never record (Issue #605)');
+      assert.match(lead, /\brecords\b/);
+      assert.doesNotMatch(lead, /\brows?\b/, 'record, never row');
       await page.waitForSelector('details.wv-schema');
       assert.equal(await page.locator('details.wv-schema').evaluate((d) => d.open), false);
       assert.equal(await page.locator('.wv-grid').count(), 0, 'no grid on the first screen');

@@ -23,12 +23,12 @@ weave's reflect v0.4.109 (2026-10-25). Check airtable.com for current terms.*
 | Linked record | Relation | Bidirectional and real — the inverse field is created and maintained for you. |
 | Lookup | Lookup | Pull a field across a relation. |
 | Rollup | Rollup | Aggregate across a relation. |
-| Formula | Formula | Computed from other fields in the row. |
+| Formula | Formula | Computed from other fields in the record. |
 | Long text / rich text | Document field | Full markdown, and **any number per entity** — not one notes field. |
 | Attachments | File attachments | Stored in a `files/` directory beside the workspace. |
 | Automations | Automations | Trigger on created / field changed / state changed → set field, append doc, add comment, POST a webhook. |
 | Interfaces | — | Not built. |
-| Forms | Forms | Public links at `/f/<id>` add one row to one table; prefill links set fields. |
+| Forms | Forms | Public links at `/f/<id>` add one record to one table; prefill links set fields. |
 | Sync / integrations | Webhooks + REST + CSV | Outbound webhooks and a full REST API; no prebuilt connector catalog. |
 | Collaborators & permissions | Accounts with three roles | Observer, editor or architect per workspace; nothing narrower. See below. |
 
@@ -45,7 +45,7 @@ AI-generated field types.
 
 - **You own the file.** A workspace is one SQLite file on your disk. Open it
   with `sqlite3`, back it up with `cp`, put it next to the project it describes.
-  No export button to be held hostage by, and no row caps other than your disk.
+  No export button to be held hostage by, and no record caps other than your disk.
 - **No per-seat bill.** It is a repository. Clone it.
 - **Documents are first class.** Every entity carries as many markdown documents
   as you want, each addressable as a URL: `/e/Task#12/doc.md`, `.html`, `.pdf`.
@@ -80,7 +80,7 @@ There is no one-click importer. The practical path:
 2. Create the space and tables in weave — via the UI, the CLI (`table create`,
    `field add`, `relation add`), or by handing an agent the MCP server and the
    CSV headers.
-3. `node bin/weave.js import` or the `weave_import_csv` MCP tool loads the rows.
+3. `node bin/weave.js import` or the `weave_import_csv` MCP tool loads the records.
 4. Recreate linked records as relations, then lookups, rollups, and formulas on
    top.
 

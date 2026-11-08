@@ -101,7 +101,7 @@ if (s) {
       await section(page, 'Display').waitFor();
       const v = await unscrolledInView(page, 'Display');
       assert.ok(v.bottom <= v.limit, `Display ends at ${v.bottom}px of ${v.limit}`);
-      assert.match(await page.textContent('.tray-form .fx-toggle .fx-hint'), /untick to freeze each row’s result into plain text/);
+      assert.match(await page.textContent('.tray-form .fx-toggle .fx-hint'), /untick to freeze each record’s result into plain text/);
     } finally { await page.close(); }
   });
 
@@ -110,7 +110,7 @@ if (s) {
     try {
       await page.click('.wv-grid .add-field-btn');
       await page.waitForSelector('#tray');
-      assert.match(await page.textContent('#tray .fx-toggle .fx-hint'), /compute this field from the row’s other fields/);
+      assert.match(await page.textContent('#tray .fx-toggle .fx-hint'), /compute this field from the record’s other fields/);
       await page.locator('#tray .fx-toggle input').check();
       await page.waitForSelector('#tray .fx-expr');
       assert.equal(await page.locator('#tray details.fx-ref').evaluate((d) => d.open), true, 'nothing written yet: the reference is open');

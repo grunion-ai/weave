@@ -577,7 +577,7 @@
     const t = arg(table);
     const cfg = shq(JSON.stringify({ expression: expr }));
     const cli = [
-      { note: 'check until ok:true (previews on a real row)', cmd: 'weave formula check ' + t + ' ' + shq(expr) + (edit ? ' --exclude-field ' + arg(name) : '') },
+      { note: 'check until ok:true (previews on a real record)', cmd: 'weave formula check ' + t + ' ' + shq(expr) + (edit ? ' --exclude-field ' + arg(name) : '') },
       { note: 'save — an invalid expression is rejected with the same error',
         cmd: edit ? 'weave field update ' + t + ' ' + arg(name) + ' --config ' + cfg : 'weave field add ' + t + ' ' + arg(name) + ' formula --config ' + cfg },
       { note: 'verify the cell', cmd: 'weave get ' + t + '#1' },

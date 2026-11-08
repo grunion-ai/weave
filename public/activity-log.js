@@ -73,7 +73,7 @@ async function showActivity(param) {
       title: entityId && subject ? `Activity — ${subject.scope === 'field' ? subject.db : subject.entityName}` : 'Activity',
     }),
     el('div', { class: 'wv-note' },
-      'A system table: weave writes these rows, so they cannot be added, edited or deleted. ',
+      'A system table: weave writes these records, so they cannot be added, edited or deleted. ',
       el('b', {}, `${feed.total}`), ' events.',
       feed.items.length < feed.total ? ` Showing the newest ${feed.items.length}.` : '',
       feed.dropped ? ` ${droppedText(feed.dropped)}.` : ''),

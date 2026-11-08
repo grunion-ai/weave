@@ -42,7 +42,7 @@ collaboration. If your workload is analytical rather than operational, Grist is
 the strongest fit on this list.
 
 **Teable** targets Postgres-native scale with an Airtable-shaped UI — the option
-when you expect a lot of rows and want a real database underneath.
+when you expect a lot of records and want a real database underneath.
 
 **weave** is the small one. It optimizes for three things the others do not
 center: **agents as first-class users** (an MCP server exposing schema design,
@@ -66,7 +66,7 @@ workspace as capably as a human can.
 
 Read [what weave is not](https://github.com/grunion-ai/weave#what-weave-is-not) before you commit.
 Teams that rule weave out usually do it over access control: three roles per
-workspace, nothing per table or per row, and authentication off until an
+workspace, nothing per table or per record, and authentication off until an
 operator turns it on.
 
 ## See also

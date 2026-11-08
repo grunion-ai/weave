@@ -174,7 +174,7 @@
   function firstMessage({ workspace, template = null, other = '' } = {}) {
     const what = String(other).trim().replace(/[.!?\s]+$/, '');
     if (what) return `Use weave to set up my ${workspace} workspace for this: ${what}. Propose the tables and fields first, and build them once I agree.`;
-    if (template) return `Use weave to open my ${workspace} workspace and walk me through the ${template} tables weave set up. Then help me add my first real row.`;
+    if (template) return `Use weave to open my ${workspace} workspace and walk me through the ${template} tables weave set up. Then help me add my first real record.`;
     return `Use weave to open my ${workspace} workspace. Ask me what I want to track, propose tables for it, and build them once I agree.`;
   }
 
