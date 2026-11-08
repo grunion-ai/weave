@@ -455,6 +455,103 @@ if (openHub) {
     await p.context().close();
   });
 
+  const actions = (p) => p.locator('main .card a.provider').allTextContents();
+  const landed = (p, slug) => p.waitForURL(new RegExp(`/w/${slug}/(?:[?#].*)?$`), { timeout: 15000 });
+
+  test('no access: a stranger who signs in at a workspace door is offered their own workspace and lands on it (Issue #1331)', async () => {
+    const p = await page();
+    person(openHub, { email: 'stranger1331@example.com' });
+    await p.goto(`${openHub.base}/w/Net/`);
+    await p.waitForSelector('main h1:text-is("No access to Net")');
+    assert.deepEqual(await actions(p), ['Start your own workspace', 'Find your workspaces', 'Use a different account', 'Back to sign in'], 'open sign-up offers a way out of the loop');
+    await p.getByRole('link', { name: 'Start your own workspace' }).click();
+    await nameIt(p, 'Stranger Place', 'stranger-place');
+    await step(p, 'work');
+    await go(p, 'skip');
+    await landed(p, 'stranger-place');
+    await p.context().close();
+  });
+
+  test('workspace sign-in names no vendor or operator, and its Create an account link signs a new person up onto their own workspace (Issue #1335)', async () => {
+    const p = await page();
+    person(openHub, { email: 'newcomer1335@example.com' });
+    await p.goto(`${openHub.base}/w/Net/auth?signed-out=1`);
+    assert.equal((await p.locator('#oidc').textContent()).trim(), 'Sign in');
+    assert.doesNotMatch(await p.locator('body').textContent(), /operator|Clerk/);
+    await p.click('#signup');
+    await step(p, 'account');
+    await go(p, 'signin');
+    await nameIt(p, 'Newcomer Co', 'newcomer-co');
+    await step(p, 'work');
+    await go(p, 'skip');
+    await landed(p, 'newcomer-co');
+    await p.context().close();
+  });
+
+  test('no access with closed sign-up still offers Find your workspaces, which signs in and lists what the login opens (Issue #1331)', async () => {
+    const p = await page();
+    person(closedHub, { email: 'closed1331@example.com' });
+    await p.goto(`${closedHub.base}/w/Net/`);
+    await p.waitForSelector('main h1:text-is("No access to Net")');
+    assert.deepEqual(await actions(p), ['Find your workspaces', 'Use a different account', 'Back to sign in']);
+    await p.getByRole('link', { name: 'Find your workspaces' }).click();
+    await step(p, 'account');
+    await go(p, 'signin');
+    await step(p, 'closed');
+    await p.context().close();
+  });
+
+  test('access removed: the page offers Find your workspaces, which opens the person\'s other workspace (Issue #1336)', async () => {
+    const p = await page();
+    const who = person(openHub, { email: 'removed1336@example.com' });
+    await signIn(p, openHub, 'bypass');
+    await landed(p, 'removed1336');
+    openHub.idp.signInBrowserAs(who);
+    await p.goto(`${openHub.base}/start?setup=new`);
+    await nameIt(p, 'Kept Place', 'kept-place');
+    await step(p, 'work');
+    await go(p, 'skip');
+    await landed(p, 'kept-place');
+    const w = openHub.opened('removed1336');
+    w.setRequireAuth(true);
+    w.deleteAccount(w.listAccounts().find((a) => a.identities?.some((x) => x.subject === who.sub)).id);
+    w.store.close();
+    await p.goto(`${openHub.base}/w/removed1336/`);
+    await p.waitForSelector('main h1:text-is("Your access to removed1336 was removed")');
+    assert.deepEqual(await actions(p), ['Find your workspaces', 'Sign in with a different account']);
+    await p.getByRole('link', { name: 'Find your workspaces' }).click();
+    await step(p, 'list');
+    assert.deepEqual(await p.locator('.rows .ws-title').allTextContents(), ['Kept Place']);
+    await p.click('.rows a.ws-row');
+    await landed(p, 'kept-place');
+    await p.context().close();
+  });
+
+  for (const held of [true, false]) {
+    test(`invite to a workspace the login already opens leads with Open workspace and lands on it, ${held ? 'with' : 'without'} a held login (Issue #1337)`, async () => {
+      const p = await page();
+      const email = `member1337${held ? 'h' : 'f'}@example.com`;
+      const slug = email.split('@')[0];
+      const who = person(openHub, { email });
+      await signIn(p, openHub, 'bypass');
+      await landed(p, slug);
+      const w = openHub.opened(slug);
+      const invite = w.inviteMember({ email: `other-${email}`, role: 'editor', issuer: openHub.idp.issuer });
+      w.store.close();
+      const q = held ? p : await page();
+      openHub.idp.signInBrowserAs(who);
+      await q.goto(`${openHub.base}/w/${slug}/api/auth/oidc/start?invite=${invite.code}`);
+      if (held) await q.getByRole('link', { name: new RegExp(email) }).click();
+      await q.waitForSelector('main h1');
+      assert.match(await q.locator('main h1').textContent(), /already opens/);
+      assert.equal((await actions(q))[0], 'Open workspace', 'a member is offered the workspace first');
+      await q.getByRole('link', { name: 'Open workspace' }).click();
+      await landed(q, slug);
+      await p.context().close();
+      if (!held) await q.context().close();
+    });
+  }
+
   test('closed sign-up: a stranger gets an invite-only page, not a 403', async () => {
     const p = await page();
     person(closedHub);

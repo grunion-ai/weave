@@ -736,8 +736,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (path.startsWith('/api/')) return out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
         return out(403, renderRefusalPage({
           title: `Your access to ${ws} was removed`,
-          lines: [`A workspace architect removed your account from ${ws}, so this browser's session there has ended.`, 'Ask an architect for a new invite link, or sign in with a different account.'],
-          actions: [{ href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
+          lines: [`A workspace architect removed your account from ${ws}, so this browser's session there has ended.`, 'Ask an architect for a new invite link, open one of your other workspaces, or sign in with a different account.'],
+          actions: [{ href: `${startRoot}/start?pick=1`, label: 'Find your workspaces' }, { href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
         }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
       return path.startsWith('/api/')
@@ -1217,6 +1217,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 let account;
                 try { account = weave.redeemIdentityInvite(invite, me); await remirror(weave); } catch (err) {
                   noteFailure(ip);
+                  if (err.code === 'conflict' && weave.accountForIdentity(me)) return refusal(409, `This login already opens ${weave.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or accept the invite with the login it was meant for.', [{ label: 'Open workspace', href: `${startRoot}/api/start/open/${encodeURIComponent(weave.state.meta.name)}` }, another, signInAgain()]);
                   if (err.code === 'conflict') return refusal(409, 'This login already opens another account', 'The invite was not used. Accept it with the login it was meant for.', [another, signInAgain()]);
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
@@ -1282,6 +1283,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                   await remirror(c.holder);
                 } catch (err) {
                   noteFailure(ip);
+                  if (err.code === 'conflict' && c.holder.accountForIdentity(who)) return refusal(409, `This login already opens ${c.holder.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or sign in as the person it was meant for to use it.', [{ label: 'Open workspace', href: `${mount}/api/auth/oidc/start?${c.handoff ? `handoff=${encodeURIComponent(c.handoff)}&` : ''}next=${encodeURIComponent(c.next)}` }, { label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
                   if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign in as the person it was meant for to use it.`, [{ label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
                   return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
                 }
@@ -1291,8 +1293,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               if (!engine) {
                 noteFailure(ip);
                 const ws = c.holder.state.meta.name;
-                const own = billing ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
-                const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or sign in with a different account.'], [...own, await differentAccount(), signInAgain()]);
+                const own = billing || openSignup.on ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
+                const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces, or sign in with a different account.'], [...own, { label: 'Find your workspaces', href: `${startRoot}/start?pick=1` }, await differentAccount(), signInAgain()]);
                 return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
               }
               const kept = startCookies(await holdLogin(who));

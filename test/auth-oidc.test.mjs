@@ -698,7 +698,7 @@ test('routes: an expired invite, or one for a subject that already opens another
     const { res } = await s.signIn({ sub: 'user_eye' }, { invite: inv.code });
     assert.equal(res.status, 409);
     assert.equal(res.headers.get('set-cookie'), null);
-    assert.match(await res.text(), /already opens another account/);
+    assert.match(await res.text(), /This login already opens personal-workspace/, 'a member is told the login already opens this workspace (Issue #1337)');
     assert.equal(s.w.identityInvite(inv.code).account, 'kyle', 'the invite is still there for the right person');
     assert.equal(s.w.listAccounts().find((a) => a.name === 'kyle').identities, undefined);
   } finally { s.stop(); }
