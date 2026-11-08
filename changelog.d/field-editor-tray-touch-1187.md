@@ -1,0 +1,1 @@
+- On a phone the field editor tray keeps a 44 px tap target on every control: the option and state rows' colour dot, name box and category picker, the "+ Add" button, the tray's Close button, its text and select fields, and the Cancel and Save buttons in its footer. The colour dot still draws at 18 px inside its new target, and the touch gate now walks the tray (Issue #1187).

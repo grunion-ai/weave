@@ -54,6 +54,15 @@ const SWEEP = (roots) => {
     return `${n.tagName.toLowerCase()}${cls ? `.${cls}` : ''} "${name}"`;
   };
   const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
+  const parked = (n, r) => {
+    for (let p = n.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (!/auto|scroll/.test(cs.overflowY) && !/auto|scroll/.test(cs.overflowX)) continue;
+      const b = p.getBoundingClientRect();
+      if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left - 1 || r.right > b.right + 1) return true;
+    }
+    return false;
+  };
   const overlay = (n, hit) => {
     for (let p = hit; p && p !== document.documentElement; p = p.parentElement) {
       if (/fixed|sticky/.test(getComputedStyle(p).position)) return !p.contains(n);
@@ -78,6 +87,7 @@ const SWEEP = (roots) => {
     const r = n.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) continue;
+    if (parked(n, r)) continue;
     const hit = document.elementFromPoint(cx, cy);
     if (!owns(n, hit)) {
       if (!hit || !inRoot(hit) || overlay(n, hit)) continue;
@@ -162,6 +172,40 @@ if (s) {
         });
       }
     }
+  }
+
+  const PARKED_FIXTURE = () => {
+    const small = (label, top) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'parked-fixture-btn';
+      b.setAttribute('aria-label', label);
+      b.style.cssText = `position:absolute;left:0;top:${top}px;width:20px;height:20px;`;
+      return b;
+    };
+    const scroller = document.createElement('div');
+    scroller.id = 'parked-fixture';
+    scroller.style.cssText = 'position:fixed;left:0;top:0;width:120px;height:60px;overflow-y:auto;background:#fff;z-index:9999;';
+    const tall = document.createElement('div');
+    tall.style.cssText = 'position:relative;height:400px;';
+    tall.append(small('a button in view', 10), small('a button straddling the fold', 50), small('a button parked below the fold', 300));
+    scroller.append(tall);
+    document.body.append(scroller);
+  };
+
+  for (const [engine, b, profile] of engines) {
+    test(`a control a scroller has clipped is not a missed tap target, and the one in view still is (${engine}, Issue #1187)`, async () => {
+      const page = await open(b, profile, 'light', { ...surfaceOf(STATES.find((st) => st.name === 'row page')), roots: ['#parked-fixture'] });
+      try {
+        await page.evaluate(PARKED_FIXTURE);
+        const seen = await page.evaluate(SWEEP, ['#parked-fixture']);
+        const labels = seen.map((c) => c.label);
+        assert.deepEqual(labels, ['button.parked-fixture-btn "a button in view"'],
+          `the sweep reads the button the scroller shows whole and walks past the clipped and parked ones, got ${JSON.stringify(labels)}`);
+        const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
+        assert.equal(small.length, 1, 'the 20px button the scroller shows whole is still reported as under the minimum');
+      } finally { await page.close(); }
+    });
   }
 
   const FOLD_BOXES = () => [...document.querySelectorAll('.wv-board :is(.board-lane-head, .board-group-head) .list-fold')].map((n) => {
