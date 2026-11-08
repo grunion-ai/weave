@@ -12,7 +12,6 @@ import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/se
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
 import { cliCommand, cliArgs, cliRest } from '../src/commands.js';
-import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { vocabularyView } from '../src/vocabulary.js';
@@ -643,14 +642,6 @@ async function main() {
     }
     case 'space': {
       const [sub, name] = args;
-      if (sub === 'create') return out(guided(w, 'space', w.createSpace({ name, description: flags.description ?? '', icon: flags.icon ?? '', template: ['true', 'on', 'yes', '1', true].includes(flags.template) })));
-      if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon', 'position', 'access']);
-        if (flags.template != null) patch.template = ['true', 'on', 'yes', '1', true].includes(flags.template);
-        return out(w.updateSpace(name, patch));
-      }
-      if (sub === 'delete') { w.deleteSpace(name, { hard: Boolean(flags.hard) }); return out({ space: name, deleted: true }); }
-      if (sub === 'restore') return out(w.restoreSpace(name));
       if (sub === 'list' || !sub) return out(w.listSpaces());
       if (sub === 'members') {
         const [, , account] = args;
@@ -676,8 +667,7 @@ async function main() {
     }
     case 'table':
     case 'db': {
-      const [sub, space, name] = args;
-      if (sub === 'create') return out(guided(w, 'table', w.createTable({ space, name, description: flags.description ?? '', icon: flags.icon ?? '' })));
+      const [sub, space] = args;
       if (sub === 'view') {
         const patch = {};
         for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
@@ -698,18 +688,6 @@ async function main() {
         if (flags.delete) patch.delete = true;
         return out(w.tableView(space, Object.keys(patch).length ? patch : null));
       }
-      if (sub === 'update') {
-        const patch = pickFlags(['name', 'description', 'icon', 'noun', 'position']);
-        if (flags.hidden != null) patch.hiddenFields = splitList(flags.hidden);
-        if (flags.system != null) patch.systemFields = splitList(flags.system);
-        if (flags.order != null) patch.fieldOrder = splitList(flags.order);
-        if (flags['rollup-row'] != null) patch.hideRollups = !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']);
-        return out(w.updateTable(space, patch));
-      }
-      if (sub === 'move') return out(w.moveTable(space, name, pickFlags(['position'])));
-      if (sub === 'duplicate') return out(w.duplicateTable(space));
-      if (sub === 'restore') return out(w.restoreTable(space));
-      if (sub === 'delete') { w.deleteTable(space, { hard: Boolean(flags.hard) }); return out({ table: space, deleted: true }); }
       if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
       throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
     }

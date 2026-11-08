@@ -5,7 +5,6 @@ import { matchRoute, httpArgs } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
-import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
@@ -2022,18 +2021,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         const registered = matchRoute(rx.method, path);
         if (registered) return out(registered.cmd.http.status ?? 200, registered.cmd.run(weave, httpArgs(registered, body, rx.searchParams)));
-        if (route === 'POST /api/spaces') return out(201, guided(weave, 'space', weave.createSpace(body)));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
-          if (rx.method === 'PATCH') return out(200, weave.updateSpace(m[1], body));
-          if (rx.method === 'DELETE') {
-            const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-            weave.deleteSpace(m[1], { hard });
-            return out(200, { ok: true });
-          }
-        }
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreSpace(m[1]));
         }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members$/)) && rx.method === 'GET') return out(200, weave.spaceMembers(m[1]));
@@ -2047,18 +2036,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
           return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId, position: db.position })));
         }
-        if (route === 'POST /api/tables') return out(201, guided(weave, 'table', weave.createTable(body)));
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
           if (rx.method === 'GET') {
             const db = weave.getTable(m[1]);
             const schema = weave.describeSchema().flatMap((s) => s.tables).find((d) => d.id === db.id);
             return out(200, schema ?? { id: db.id, name: db.name, spaceId: db.spaceId, deletedAt: db.deletedAt ?? null });
-          }
-          if (rx.method === 'PATCH') return out(200, weave.updateTable(m[1], body));
-          if (rx.method === 'DELETE') {
-            const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-            weave.deleteTable(m[1], { hard });
-            return out(200, { ok: true });
           }
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/views$/)) && rx.method === 'GET') {
@@ -2069,16 +2051,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'GET') return out(200, weave.tableView(ref));
           if (rx.method === 'PATCH') return out(200, weave.tableView(ref, body ?? {}));
           if (rx.method === 'DELETE') return out(200, weave.tableView(ref, { delete: true }));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/move$/)) && rx.method === 'POST') {
-          if (typeof body.space !== 'string' || !body.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid');
-          return out(200, weave.moveTable(m[1], body.space, { position: body.position ?? null }));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/duplicate$/)) && rx.method === 'POST') {
-          return out(201, weave.duplicateTable(m[1]));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreTable(m[1]));
         }
 
 

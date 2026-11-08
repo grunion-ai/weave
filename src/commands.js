@@ -1,9 +1,21 @@
+import { WeaveError } from './store.js';
 import { guided } from './field-hints.js';
 import { ONTOLOGY } from './engine.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
 const nullable = (v, as = (x) => x) => (v === 'null' ? null : as(v));
+
+const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+function spaceUpdate(w, a) {
+  if (a.member != null) w.setSpaceMember(a.space, a.member, { role: a.role ?? null });
+  if (a.removeMember != null) w.removeSpaceMember(a.space, a.removeMember);
+  const { space, member, removeMember, role, ...rest } = a;
+  const patch = defined(rest);
+  const sp = Object.keys(patch).length ? w.updateSpace(space, patch) : w.getSpace(space);
+  return { ...sp, members: w.spaceMembers(sp.id) };
+}
 
 function fieldUpdate(w, a) {
   const seq = w.state.meta.activitySeq ?? 0;
@@ -27,7 +39,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_ontology',
       description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
-      properties: { depth: { type: 'string', enum: ['outline', 'glossary'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } },
+      inputSchema: { type: 'object', properties: { depth: { type: 'string', enum: ['outline', 'glossary'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } } },
     },
     cli: { command: 'ontology', flags: ['depth', 'concept', 'since'] },
     http: { method: 'GET', path: '/api/ontology', query: ['depth', 'concept', 'since'] },
@@ -40,8 +52,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_add_field',
       description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry record only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a record. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
-      required: ['db', 'name', 'type'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'name', 'type'] },
     },
     cli: {
       command: 'field', sub: 'add', positional: ['db', 'name', 'type'],
@@ -61,8 +72,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_update_field',
       description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links records by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
-      properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
-      required: ['db', 'field'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'field'] },
     },
     cli: {
       command: 'field', sub: 'update', positional: ['db', 'field'],
@@ -84,8 +94,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_rollback_field',
       description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry. A type change rolls back with its values: records unchanged since are restored, a record edited since keeps its edit (converted back) and a record made since is converted; only the newest type change of a field keeps its values. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}, plus {restored, left, converted} for a type change.',
-      properties: { db: { type: 'string' }, field: { type: 'string' }, activity: { type: 'string', description: 'The entry id, <tableId>:f<n>' } },
-      required: ['activity'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, activity: { type: 'string', description: 'The entry id, <tableId>:f<n>' } }, required: ['activity'] },
     },
     cli: { command: 'field', sub: 'rollback', positional: ['db', 'field'], flags: ['activity'] },
     http: { method: 'POST', path: '/api/tables/:db/fields/:field/rollback' },
@@ -98,8 +107,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_delete_field',
       description: 'Move a field to the trash: the column leaves the table and its values leave the records, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
-      properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } },
-      required: ['db', 'field'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db', 'field'] },
     },
     cli: { command: 'field', sub: 'delete', positional: ['db', 'field'], flags: ['hard'] },
     http: { method: 'DELETE', path: '/api/tables/:db/fields/:field', query: ['hard'] },
@@ -112,8 +120,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_restore_field',
       description: 'Restore a field out of the trash by name or id: the column, its values, its place in the field order and in every view, and for a relation its inverse and every link come back. Refused while a live field holds the name or the table is in the trash.',
-      properties: { db: { type: 'string' }, field: { type: 'string' } },
-      required: ['db', 'field'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
     },
     cli: { command: 'field', sub: 'restore', positional: ['db', 'field'] },
     http: { method: 'POST', path: '/api/tables/:db/fields/:field/restore' },
@@ -126,8 +133,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_check_formula',
       description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has records, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific record. scan: true evaluates over up to 200 records and adds scan: {records, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on record 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
-      properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' }, scan: { type: 'boolean' } },
-      required: ['db', 'expression'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' }, scan: { type: 'boolean' } }, required: ['db', 'expression'] },
     },
     cli: { command: 'formula', sub: 'check', positional: ['db', 'expression'], flags: ['entity', 'exclude-field', 'scan'] },
     http: { method: 'POST', path: '/api/tables/:db/formula-check' },
@@ -140,8 +146,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_add_relation',
       description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at records of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
-      required: ['db', 'name'],
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } }, required: ['db', 'name'] },
     },
     cli: {
       command: 'relation', sub: 'add', positional: ['db', 'name', 'targetDb'],
@@ -149,6 +154,161 @@ export const COMMANDS = [
     },
     http: { method: 'POST', path: '/api/tables/:db/relations', status: 201 },
     run: (w, a) => w.addRelation(a.db, { name: a.name, targetDb: a.targetDb, targetDbs: a.targetDbs, cardinality: a.cardinality ?? 'many-to-one', inverseName: a.inverseName }),
+  },
+  {
+    name: 'space.create',
+    engine: ['createSpace'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_create_space',
+      description: 'Create a space (top-level grouping of tables).',
+      inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } }, required: ['name'] },
+    },
+    cli: { command: 'space', sub: 'create', positional: ['name'], flags: ['description', 'icon', 'template'] },
+    http: { method: 'POST', path: '/api/spaces', status: 201 },
+    run: (w, a) => guided(w, 'space', w.createSpace({ name: a.name, description: a.description ?? '', icon: a.icon ?? '', template: truthy(a.template) })),
+  },
+  {
+    name: 'space.update',
+    engine: ['updateSpace', 'spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_update_space',
+      description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused. access: private shows the space to its members and the workspace architects only; member (with an optional role that overrides the workspace role) and removeMember manage who belongs, which takes an architect of the workspace or of the space.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' },
+          access: { type: 'string', enum: ['open', 'private'], description: 'open: every account reads it at its workspace role. private: only its members and the workspace architects see it' },
+          member: { type: 'string', description: 'An account to add as a member, or whose space role to change' },
+          role: { type: 'string', description: 'The member\'s role in this space (observer, editor or architect); it overrides the workspace role. Omit to keep the workspace role' },
+          removeMember: { type: 'string', description: 'An account to remove from the space' },
+        },
+        required: ['space'],
+      },
+    },
+    cli: { command: 'space', sub: 'update', positional: ['space'], flags: ['name', 'description', 'icon', 'position', 'access', 'template'], args: (a) => ({ ...a, ...(a.template != null ? { template: truthy(a.template) } : {}), ...(a.position != null ? { position: Number(a.position) } : {}) }) },
+    http: { method: 'PATCH', path: '/api/spaces/:space' },
+    run: spaceUpdate,
+  },
+  {
+    name: 'space.delete',
+    engine: ['deleteSpace'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_delete_space',
+      description: 'Move a space to the trash (recoverable — its tables and records go dark with it). Pass hard: true to purge it and every table in it for good.',
+      inputSchema: { type: 'object', properties: { space: { type: 'string' }, hard: { type: 'boolean' } }, required: ['space'] },
+    },
+    cli: { command: 'space', sub: 'delete', positional: ['space'], flags: ['hard'] },
+    http: { method: 'DELETE', path: '/api/spaces/:space', query: ['hard'] },
+    run: (w, a) => { w.deleteSpace(a.space, { hard: truthy(a.hard) }); return { ok: true, space: a.space, deleted: true, hard: truthy(a.hard) }; },
+  },
+  {
+    name: 'space.restore',
+    engine: ['restoreSpace'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_restore_space',
+      description: 'Restore a trashed space; its tables and records come back with it.',
+      inputSchema: { type: 'object', properties: { space: { type: 'string' } }, required: ['space'] },
+    },
+    cli: { command: 'space', sub: 'restore', positional: ['space'] },
+    http: { method: 'POST', path: '/api/spaces/:space/restore' },
+    run: (w, a) => w.restoreSpace(a.space),
+  },
+  {
+    name: 'table.create',
+    engine: ['createTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_create_table',
+      description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
+      inputSchema: {
+        type: 'object',
+        properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
+        required: ['space', 'name'],
+      },
+    },
+    cli: { command: 'table', sub: 'create', positional: ['space', 'name'], flags: ['description', 'icon'] },
+    http: { method: 'POST', path: '/api/tables', status: 201 },
+    run: (w, a) => guided(w, 'table', w.createTable({ space: a.space, name: a.name, description: a.description ?? '', icon: a.icon ?? '' })),
+  },
+  {
+    name: 'table.update',
+    engine: ['updateTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_update_table',
+      description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one record is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          db: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
+          icon: { type: 'string' }, noun: { type: 'string' },
+          systemFields: { type: 'array', items: { type: 'string' } },
+          fieldOrder: { type: 'array', items: { type: 'string' } },
+          hideRollups: { type: 'boolean' },
+          position: { type: 'number', description: 'Its place inside its space: 0 is the first table' },
+        },
+        required: ['db'],
+      },
+    },
+    cli: { command: 'table', sub: 'update', positional: ['db'], flags: ['name', 'description', 'icon', 'noun', 'position'], args: (a, flags) => ({ ...a, ...(a.position != null ? { position: Number(a.position) } : {}), hiddenFields: list(flags.hidden), systemFields: list(flags.system), fieldOrder: list(flags.order), ...(flags['rollup-row'] != null ? { hideRollups: !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']) } : {}) }) },
+    http: { method: 'PATCH', path: '/api/tables/:db' },
+    run: (w, a) => { const { db, ...patch } = a; return w.updateTable(db, defined(patch)); },
+  },
+  {
+    name: 'table.move',
+    engine: ['moveTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_move_table',
+      description: 'Move a table into another space. Only its home changes — every record, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' }, position: { type: 'number' } }, required: ['db', 'space'] },
+    },
+    cli: { command: 'table', sub: 'move', positional: ['db', 'space'], flags: ['position'], args: (a) => ({ ...a, ...(a.position != null ? { position: Number(a.position) } : {}) }) },
+    http: { method: 'POST', path: '/api/tables/:db/move' },
+    run: (w, a) => { if (typeof a.space !== 'string' || !a.space.trim()) throw new WeaveError('space is required: the destination space', 'invalid'); return w.moveTable(a.db, a.space, { position: a.position ?? null }); },
+  },
+  {
+    name: 'table.duplicate',
+    engine: ['duplicateTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_duplicate_table',
+      description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Records are not copied — the copy starts empty.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
+    },
+    cli: { command: 'table', sub: 'duplicate', positional: ['db'] },
+    http: { method: 'POST', path: '/api/tables/:db/duplicate', status: 201 },
+    run: (w, a) => w.duplicateTable(a.db),
+  },
+  {
+    name: 'table.delete',
+    engine: ['deleteTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_delete_table',
+      description: 'Move a table to the trash (recoverable — its records go dark with it). Pass hard: true to purge table and records for good.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db'] },
+    },
+    cli: { command: 'table', sub: 'delete', positional: ['db'], flags: ['hard'] },
+    http: { method: 'DELETE', path: '/api/tables/:db', query: ['hard'] },
+    run: (w, a) => { w.deleteTable(a.db, { hard: truthy(a.hard) }); return { ok: true, table: a.db, deleted: true, hard: truthy(a.hard) }; },
+  },
+  {
+    name: 'table.restore',
+    engine: ['restoreTable'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_restore_table',
+      description: 'Restore a table out of the trash: the table, its records and their relations come back exactly as they were.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
+    },
+    cli: { command: 'table', sub: 'restore', positional: ['db'] },
+    http: { method: 'POST', path: '/api/tables/:db/restore' },
+    run: (w, a) => w.restoreTable(a.db),
   },
 ];
 
@@ -160,11 +320,13 @@ export const BY_CLI = new Map(COMMANDS.filter((c) => c.cli).map((c) => [`${c.cli
 export function toolDefinition(name) {
   const c = BY_TOOL.get(name);
   if (!c) throw new Error(`No registry command for the tool ${name}`);
-  const { properties, required, description } = c.tool;
-  return { name, description, inputSchema: { type: 'object', properties, ...(required?.length ? { required } : {}) } };
+  return c.tool;
 }
 
-export function cliCommand(command, sub) {
+const CLI_ALIASES = { db: 'table' };
+
+export function cliCommand(given, sub) {
+  const command = CLI_ALIASES[given] ?? given;
   const named = sub == null ? null : BY_CLI.get(`${command} ${sub}`);
   if (named) return named;
   const bare = BY_CLI.get(command);
