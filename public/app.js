@@ -3502,6 +3502,12 @@ function relationChipEl(f, s, { onRemove = null } = {}) {
     onRemove,
   });
 }
+function externalRefChipEl(r) {
+  const label = r.name || `#${r.id.slice(0, 8)}`;
+  return el('span', { class: 'k k-rel k-external', title: `${label} in the ${r.workspace} workspace` },
+    el('a', { class: 'mention', href: r.url, target: '_blank', rel: 'noopener' }, el('span', { class: 'k-label' }, label)),
+    el('span', { class: 'k-home' }, r.workspace));
+}
 function chipOpensRecord(caret) {
   if (!dockCoversScreen.matches || caret.closest('.wv-prose')) return null;
   return caret.closest('.k-rel')?.querySelector(':scope > a.mention[href]') ?? null;
@@ -11046,7 +11052,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
     const body = el('div', { class: 'card-body ref-backlinks' },
-      ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)));
+      ...refs.map((r) => (r.external ? externalRefChipEl(r) : relationChipEl({ targetDbIds: true }, r))));
     const fold = (closed) => {
       body.classList.toggle('hidden', closed);
       caret.classList.toggle('closed', closed);

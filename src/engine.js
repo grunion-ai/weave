@@ -9736,9 +9736,18 @@ export class Weave {
     }
     const uuidPat = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
     for (const m of text.matchAll(new RegExp(`\\[\\[\\s*(${uuidPat.source})\\s*(?:\\|[^\\]]*)?\\]\\]`, 'gi'))) add(m[1].toLowerCase());
-    for (const m of text.matchAll(new RegExp(`/e/(${uuidPat.source})(?=[/#?"')\\s]|$)`, 'gi'))) add(m[1].toLowerCase());
+    const far = new Map();
+    const link = new RegExp(`(?:\\[([^\\]\\n]*)\\]\\()?((?:https?://([^/\\s"'()<>]+))?(?:/w/([a-z0-9-]+))?/e/(${uuidPat.source}))(?=[/#?"')\\s]|$)`, 'gi');
+    for (const m of text.matchAll(link)) {
+      const id = m[5].toLowerCase();
+      if (own(this.state.entities, id)) { add(id); continue; }
+      const workspace = (m[4] ?? /^([a-z0-9-]+)\.weave\./i.exec(m[3] ?? '')?.[1])?.toLowerCase();
+      if (!workspace || workspace === this.state.meta.name || far.has(`${workspace}/${id}`)) continue;
+      far.set(`${workspace}/${id}`, { id, external: true, workspace, name: m[1]?.trim() || null, url: m[2] });
+    }
     return [...ids].map((id) => this.#summary(id))
-      .sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId);
+      .sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId)
+      .concat([...far.values()]);
   }
 
   storageStats() {
