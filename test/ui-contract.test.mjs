@@ -1307,8 +1307,8 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
     'a hide leaves the drawn grid before its write goes out (Issue #328)');
   assert.match(eye, /else if \(!painted \|\| !drawnMatches\(liveTable\(\)\)\) await keepScroll/,
     'a hide reads the rows back only when the table disagrees with what was painted (Issue #328)');
-  assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager\)/,
-    'the hide repaints the rows the grid already holds, with no read');
+  assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager, drawn\.list\)/,
+    'the hide repaints the rows the view already holds, a board as a board, with no read (Issue #1213)');
   assert.match(eye, /if \(open\?\.eyeOf === db\.id\) open\.relearnEye\(\)/,
     "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
   assert.match(eye, /if \(stillShown\(\)\) \{\s*if \(redraw\) await redraw\(\);/, 'and redraws its page only while that page is on screen');
