@@ -1,0 +1,1 @@
+- Opening a file you have already viewed no longer re-reads and re-hashes it: file links are cached for a year under the file id, and a revalidation answers 304 without loading the file (Issue #1430).
