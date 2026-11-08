@@ -28,6 +28,7 @@ export const isIntegrationKey = (name) => String(name ?? '').startsWith(INTEGRAT
 export const HINT_MIN_LENGTH = 16;
 export const SECRET_MAX_LENGTH = 4096;
 export const CHECK_TIMEOUT_MS = 10000;
+export const INTEGRATION_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 export function refuseIntegrationKey(name) {
   if (isIntegrationKey(name)) {
