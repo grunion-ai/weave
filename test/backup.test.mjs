@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, FIELD_TYPES } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import {
   packTar, readTar, streamTar, tarWriter, classify, heldOpen, encryptFile, decryptFile, isEncrypted, resolvePassphrase,
-  backup, restore, signV4, s3, scheduleNightly, nextFireAt, ARCHIVE_PREFIX, RETAIN,
+  backup, restore, signV4, s3, scheduleNightly, nextFireAt, sealer, ARCHIVE_PREFIX, RETAIN, PART_BYTES,
 } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
 
@@ -282,7 +282,7 @@ test('the signer reproduces the S3 reference list example (query string)', () =>
 });
 
 function fakeBucket(keys = []) {
-  const state = { keys: new Set(keys), requests: [], bodies: new Map() };
+  const state = { keys: new Set(keys), requests: [], bodies: new Map(), parts: new Map(), aborted: [] };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const chunks = [];
@@ -292,6 +292,31 @@ function fakeBucket(keys = []) {
     const [, bucket, ...rest] = url.pathname.split('/');
     const key = rest.join('/');
     if (!req.headers.authorization?.startsWith('AWS4-HMAC-SHA256 ')) { res.writeHead(403); return res.end('<Error><Code>AccessDenied</Code></Error>'); }
+    const uploadId = url.searchParams.get('uploadId');
+    if (req.method === 'POST' && url.searchParams.has('uploads')) {
+      const id = `upload-${state.parts.size + 1}/+=`;
+      state.parts.set(id, new Map());
+      res.writeHead(200, { 'content-type': 'application/xml' });
+      return res.end(`<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><Bucket>${bucket}</Bucket><Key>${key}</Key><UploadId>${id}</UploadId></InitiateMultipartUploadResult>`);
+    }
+    if (uploadId && !state.parts.has(uploadId)) { res.writeHead(404); return res.end('<Error><Code>NoSuchUpload</Code></Error>'); }
+    if (req.method === 'PUT' && uploadId) {
+      state.parts.get(uploadId).set(Number(url.searchParams.get('partNumber')), body);
+      res.writeHead(200, { ETag: `"part-${url.searchParams.get('partNumber')}"` });
+      return res.end();
+    }
+    if (req.method === 'POST' && uploadId) {
+      const listed = [...body.toString('utf8').matchAll(/<PartNumber>(\d+)<\/PartNumber><ETag>([^<]*)<\/ETag>/g)].map(([, n, tag]) => [Number(n), tag]);
+      const held = state.parts.get(uploadId);
+      if (listed.length !== held.size) { res.writeHead(400); return res.end('<Error><Code>InvalidPart</Code></Error>'); }
+      for (const [n, tag] of listed) if (tag.replace(/"/g, '') !== `part-${n}`) { res.writeHead(400); return res.end('<Error><Code>InvalidPart</Code></Error>'); }
+      state.keys.add(key);
+      state.bodies.set(key, Buffer.concat(listed.map(([n]) => held.get(n))));
+      state.parts.delete(uploadId);
+      res.writeHead(200, { 'content-type': 'application/xml' });
+      return res.end(`<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Key>${key}</Key></CompleteMultipartUploadResult>`);
+    }
+    if (req.method === 'DELETE' && uploadId) { state.parts.delete(uploadId); state.aborted.push(uploadId); res.writeHead(204); return res.end(); }
     if (req.method === 'PUT') { state.keys.add(key); state.bodies.set(key, body); res.writeHead(200); return res.end(); }
     if (req.method === 'DELETE') { state.keys.delete(key); res.writeHead(204); return res.end(); }
     if (req.method === 'GET' && url.searchParams.get('list-type') === '2') {
@@ -330,6 +355,104 @@ test('upload puts the archive under the prefix and prunes past the newest thirty
     assert.ok(state.keys.has('nightly/unrelated.txt'));
     assert.ok(state.requests.every((q) => q.auth.startsWith('AWS4-HMAC-SHA256 Credential=k/20260912/auto/s3/aws4_request')));
   } finally { server.close(); }
+});
+
+test('an archive past one part goes up as a multipart upload, a part at a time, and the bucket reassembles it byte for byte', async () => {
+  const { server, state, endpoint } = await fakeBucket();
+  try {
+    const dir = tmp('parted');
+    const archive = join(dir, 'big.tar.enc');
+    const bytes = randomBytes(300 * 1024);
+    writeFileSync(archive, bytes);
+    const client = s3.client({ env: bucketEnv(endpoint) });
+    await client.upload('b', 'p/big.tar.enc', archive, { partBytes: 64 * 1024 });
+    const sent = state.requests.filter((q) => q.method === 'PUT' && q.query.partNumber);
+    assert.equal(sent.length, 5, 'five parts for 300 KiB at 64 KiB a part');
+    assert.ok(sent.every((q) => q.bytes <= 64 * 1024), `no request carried more than one part: ${sent.map((q) => q.bytes)}`);
+    assert.equal(Math.max(...state.requests.map((q) => q.bytes)), 64 * 1024, 'the whole archive never went up in one body');
+    assert.deepEqual(sent.map((q) => Number(q.query.partNumber)), [1, 2, 3, 4, 5]);
+    assert.ok(state.bodies.get('p/big.tar.enc').equals(bytes), 'the reassembled object is the archive, byte for byte');
+    assert.ok(state.requests.every((q) => q.auth.startsWith('AWS4-HMAC-SHA256 Credential=k/')), 'every part is signed');
+    assert.equal(state.parts.size, 0, 'no upload was left open');
+  } finally { server.close(); }
+});
+
+test('an archive inside one part still goes up as a single PUT, and a failed part aborts the upload', async () => {
+  const { server, state, endpoint } = await fakeBucket();
+  try {
+    const dir = tmp('onepart');
+    const archive = join(dir, 'small.tar');
+    writeFileSync(archive, Buffer.from('small'));
+    const client = s3.client({ env: bucketEnv(endpoint) });
+    await client.upload('b', 'small.tar', archive, { partBytes: 64 * 1024 });
+    assert.equal(state.requests.filter((q) => q.method === 'POST').length, 0, 'no multipart upload was started');
+    assert.ok(state.bodies.get('small.tar').equals(Buffer.from('small')));
+
+    writeFileSync(archive, randomBytes(4096));
+    let seen = 0;
+    const flaky = async (url, init) => {
+      if (/partNumber=2/.test(url) && (seen += 1)) return new Response('<Error><Code>SlowDown</Code></Error>', { status: 503 });
+      return fetch(url, init);
+    };
+    await assert.rejects(s3.client({ env: bucketEnv(endpoint), fetchImpl: flaky }).upload('b', 'flaky.tar', archive, { partBytes: 1024 }), /503/);
+    assert.equal(state.aborted.length, 1, 'the upload it could not finish was aborted');
+    assert.equal(state.parts.size, 0, 'no parts were left billing');
+    assert.ok(!state.keys.has('flaky.tar'), 'and no half object landed');
+  } finally { server.close(); }
+});
+
+test('a backup to a bucket never holds more than one part in memory, and the stored archive restores', async () => {
+  const { server, state, endpoint } = await fakeBucket();
+  try {
+    const part = 5 * 1024 * 1024;
+    const src = seedDataDir();
+    src.alpha.attachFile(Object.keys(src.alpha.state.entities)[0], { name: 'big.bin', mime: 'application/octet-stream', bytes: randomBytes(part + 1024) });
+    const r = await backup({ dataDir: src.dir, out: tmp('parts'), dest: 's3://b/nightly', env: { ...bucketEnv(endpoint), WEAVE_BACKUP_PASSPHRASE: PASS, WEAVE_BACKUP_PART_BYTES: String(part) } });
+    closeAll(src.alpha, src.beta);
+    assert.ok(r.bytes > part, `the seeded archive is past one part: ${r.bytes}`);
+    assert.equal(state.requests.filter((q) => q.method === 'PUT' && q.query.partNumber).length, 2, 'two parts');
+    assert.ok(state.requests.every((q) => q.bytes <= part), `no body past a part: ${Math.max(...state.requests.map((q) => q.bytes))}`);
+    assert.ok(state.bodies.get(`nightly/${r.archive}`).equals(readFileSync(r.path)), 'the bucket holds the archive byte for byte');
+    const fresh = tmp('partsback');
+    const rr = await restore({ source: `s3://b/nightly/${r.archive}`, dataDir: fresh, env: { ...bucketEnv(endpoint), WEAVE_BACKUP_PASSPHRASE: PASS } });
+    assert.ok(rr.landed.includes('alpha.db'));
+    assert.equal(rr.verified, rr.landed.length, 'every entry the manifest lists was verified');
+    for (const id of readdirSync(join(src.dir, 'files'))) {
+      assert.ok(readFileSync(join(fresh, 'files', id)).equals(readFileSync(join(src.dir, 'files', id))), `${id} restored byte for byte`);
+    }
+  } finally { server.close(); }
+});
+
+test('the sealed archive the backup writes is the same bytes the two-pass encryptFile wrote, and nothing is staged twice', async () => {
+  const dir = tmp('sealed');
+  const plain = join(dir, 'plain.tar');
+  const payload = randomBytes(1024 * 1024 + 777);
+  const entries = [{ name: 'blob', data: payload }, { name: 'manifest.json', data: Buffer.from('{}') }];
+  const flat = tarWriter(plain, { mtime: 0 });
+  for (const e of entries) flat.add(e);
+  flat.close();
+  const salt = Buffer.alloc(16, 7), iv = Buffer.alloc(12, 9);
+  const twoPass = join(dir, 'two-pass.enc');
+  encryptFile(plain, twoPass, PASS, { salt, iv });
+  const streamed = join(dir, 'streamed.enc');
+  const t = tarWriter(streamed, { mtime: 0, seal: sealer(PASS, { salt, iv }) });
+  for (const e of entries) t.add(e);
+  t.close();
+  assert.deepEqual(readTar(plain).map((e) => e.name), ['blob', 'manifest.json'], 'the plain tar reads back');
+  assert.ok(readFileSync(streamed).equals(readFileSync(twoPass)), 'sealing into the stream writes the same bytes as sealing a finished tar');
+  const back = join(dir, 'back.tar');
+  decryptFile(streamed, back, PASS);
+  assert.ok(readFileSync(back).equals(readFileSync(plain)), 'and it reads back as the tar it sealed');
+  assert.ok(isEncrypted(streamed));
+
+  const src = seedDataDir();
+  const out = tmp('nostage');
+  const r = await backup({ dataDir: src.dir, out, env: { WEAVE_BACKUP_PASSPHRASE: PASS } });
+  closeAll(src.alpha, src.beta);
+  assert.deepEqual(readdirSync(out), [r.archive], 'the archive is the only file the backup leaves behind');
+  assert.ok(isEncrypted(r.path));
+  const rr = await restore({ source: r.path, dataDir: tmp('nostageback'), env: { WEAVE_BACKUP_PASSPHRASE: PASS } });
+  assert.ok(rr.landed.includes('alpha.db'));
 });
 
 test('restore takes an s3:// source through the same signer', async () => {
@@ -434,7 +557,7 @@ test('the Handbook guide and AGENTS.md name the verbs, the variables, the nightl
   assert.equal(g.audience, 'Human');
   assert.ok(g.doc.startsWith('# Backup and restore\n'));
   for (const topic of ['weave backup', 'weave restore', 'WEAVE_BACKUP_DEST', 'WEAVE_BACKUP_PASSPHRASE', 'WEAVE_BACKUP_ENDPOINT',
-    'WEAVE_BACKUP_KEY_ID', 'WEAVE_BACKUP_SECRET', 'AWS_ACCESS_KEY_ID', 'r2.cloudflarestorage.com', 'backblazeb2.com', '04:00 UTC',
+    'WEAVE_BACKUP_KEY_ID', 'WEAVE_BACKUP_SECRET', 'WEAVE_BACKUP_PART_BYTES', 'AWS_ACCESS_KEY_ID', 'r2.cloudflarestorage.com', 'backblazeb2.com', '04:00 UTC',
     'keystore.key', 'thirty', 'Litestream', 'Railway', 'manifest.json', 'orphan', 'phase 3', '## How you know it worked']) {
     assert.ok(g.doc.includes(topic), `the guide never mentions ${topic}`);
   }
@@ -449,6 +572,14 @@ test('the Handbook guide and AGENTS.md name the verbs, the variables, the nightl
 });
 
 test('RETAIN is thirty, per the spec', () => assert.equal(RETAIN, 30));
+
+test('a part is 8 MiB by default and WEAVE_BACKUP_PART_BYTES moves it, never under the 5 MiB S3 floor', () => {
+  assert.equal(PART_BYTES, 8 * 1024 * 1024);
+  assert.equal(s3.partBytes({}), PART_BYTES);
+  assert.equal(s3.partBytes({ WEAVE_BACKUP_PART_BYTES: String(16 * 1024 * 1024) }), 16 * 1024 * 1024);
+  assert.equal(s3.partBytes({ WEAVE_BACKUP_PART_BYTES: '1024' }), 5 * 1024 * 1024, 'a value under the floor is raised to it');
+  assert.equal(s3.partBytes({ WEAVE_BACKUP_PART_BYTES: 'lots' }), PART_BYTES);
+});
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5f3a8d40000000049454e44ae426082', 'hex');
 const SPEC_BYTES = Buffer.from(Array.from({ length: 3000 }, (_, i) => (i * 7 + 3) % 256));

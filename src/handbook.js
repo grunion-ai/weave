@@ -2346,6 +2346,8 @@ A row can reference a blob that is not in \`files/\` any more — Issue #250 fou
 
 Credentials: \`WEAVE_BACKUP_KEY_ID\` and \`WEAVE_BACKUP_SECRET\`, or the standard \`AWS_ACCESS_KEY_ID\` and \`AWS_SECRET_ACCESS_KEY\`. Every request is signed with AWS Signature Version 4; R2, B2, MinIO and S3 all accept it. Signing uses the region: R2 takes \`auto\` (the default once an endpoint is set), B2 wants its real one (\`us-west-004\`, say) in \`WEAVE_BACKUP_REGION\`.
 
+An archive larger than 8 MiB goes up as a multipart upload, one part at a time, so a backup holds one part in memory however large the archive is. \`WEAVE_BACKUP_PART_BYTES\` moves the part size; S3 requires 5 MiB for every part but the last, so a smaller setting is raised to that. A part that fails aborts the upload, which leaves no half object and no parts behind.
+
 ## Examples
 
 Cloudflare R2:
