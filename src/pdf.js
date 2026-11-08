@@ -14,7 +14,7 @@ const FONTS = {
   F4: { base: 'Courier', widths: null },
 };
 
-const TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'vendor', 'fonts', 'DejaVuSans.ttf');
+const TTF_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'vendor', 'fonts', 'DejaVuSans.ttf');
 const MISSING_GLYPH_CP = 0x25a1;
 
 function parseTtf(buf) {

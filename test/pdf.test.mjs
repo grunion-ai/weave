@@ -166,7 +166,7 @@ test('a missing unicode font degrades the PDF, never the process (G2)', async ()
   const { join } = await import('node:path');
   const dir = tempDir('weave-pdf-nofont-');
   try {
-    cpSync(new URL('../src', import.meta.url).pathname, join(dir, 'src'), { recursive: true });
+    cpSync(new URL('../src', import.meta.url).pathname, join(dir, 'src'), { recursive: true, filter: (from) => !from.includes('/vendor/fonts') });
     const mod = await import(join(dir, 'src', 'pdf.js'));
     assert.equal(mod.unicodeFont(), null, 'font resolution fails closed');
     const pdf = mod.markdownToPdf('# Привет\n\nКириллица without a font.', { title: 'т' });
@@ -175,4 +175,11 @@ test('a missing unicode font degrades the PDF, never the process (G2)', async ()
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the PDF font lives beside the writer, outside the static web root (Issue #659)', () => {
+  const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  assert.ok(fs.existsSync(path.join(root, 'src/vendor/fonts/DejaVuSans.ttf')), 'src/pdf.js reads its font from src/vendor/fonts');
+  assert.ok(fs.existsSync(path.join(root, 'src/vendor/fonts/DejaVuSans-LICENSE.txt')), 'the licence travels with it');
+  assert.ok(!fs.existsSync(path.join(root, 'public/vendor/fonts')), 'public/ no longer serves the 757 KB font no page loads');
 });

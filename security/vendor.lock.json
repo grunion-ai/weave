@@ -951,11 +951,11 @@
       "note": "not an npm package",
       "files": [
         {
-          "path": "public/vendor/fonts/DejaVuSans-LICENSE.txt",
+          "path": "src/vendor/fonts/DejaVuSans-LICENSE.txt",
           "sha256": "cd9028e2f7cfe1367f7fa0add87eccdea185e23852b5a88b1a4c9904f6c94220"
         },
         {
-          "path": "public/vendor/fonts/DejaVuSans.ttf",
+          "path": "src/vendor/fonts/DejaVuSans.ttf",
           "sha256": "7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954"
         }
       ]
