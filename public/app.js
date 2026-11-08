@@ -510,8 +510,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
     hold.held.push(n);
   }
   holds.push(hold);
-  addEventListener('keydown', function trap(e) {
-    if (!back.isConnected) return removeEventListener('keydown', trap);
+  whileConnected(back, 'keydown', (e) => {
     if (e.defaultPrevented || holds.at(-1) !== hold) return;
     const at = document.activeElement ?? document.body;
     if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
@@ -558,10 +557,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
   back.append(box);
   holdPage(back, box);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
-  });
+  const unhook = whileConnected(back, 'keydown', (e) => { if (e.key === 'Escape') { close(); unhook(); } });
   const first = form.querySelector('input,select,textarea') ?? (onSubmit ? null : done);
   if (first) first.focus();
 }
@@ -605,8 +601,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     close();
   };
   back.addEventListener('keydown', esc);
-  addEventListener('keydown', function stray(e) {
-    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+  whileConnected(back, 'keydown', (e) => {
     if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
   }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
@@ -1765,10 +1760,7 @@ function expandDocument(grid, url, title) {
   grid.classList.add('hidden');
   grid.after(wrap);
   const onKey = (e) => { if (e.key === 'Escape') collapse(); };
-  addEventListener('keydown', function esc(e) {
-    if (!wrap.isConnected) return removeEventListener('keydown', esc);
-    onKey(e);
-  });
+  whileConnected(wrap, 'keydown', onKey);
   frame.addEventListener('load', () => {
     try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
@@ -1799,10 +1791,7 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
     else if (e.key === 'ArrowLeft' && prev) prev();
     else if (e.key === 'ArrowRight' && next) next();
   };
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    onKey(e);
-  });
+  whileConnected(back, 'keydown', onKey);
   frame?.addEventListener('load', () => {
     try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
@@ -1878,6 +1867,12 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
+function whileConnected(node, type, handler, capture = false) {
+  const hook = (e) => { if (!node.isConnected) return off(); handler(e); };
+  const off = () => removeEventListener(type, hook, capture);
+  addEventListener(type, hook, capture);
+  return off;
+}
 function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
   const away = (e) => {
     if (!open()) return off();
@@ -7007,8 +7002,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ]).flat()));
   };
 
-  addEventListener('keydown', function esc(e) {
-    if (!wrap.isConnected) return removeEventListener('keydown', esc);
+  whileConnected(wrap, 'keydown', (e) => {
     if (e.key !== 'Escape' || !chosen().size) return;
     if (document.querySelector(DOCK_ESC_OWNERS)) return;
     clearChosen();
@@ -8154,10 +8148,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!source || (fill.r1 === source.r1 && fill.c1 === source.c1)) return;
     runRange('Filled', fill, RG().block({ rect: source, fields: rangeCols(), valueAt }));
   };
-  addEventListener('mouseup', function up() {
-    if (!wrap.isConnected) return removeEventListener('mouseup', up);
-    if (dragFrom || fillRect) endDrag();
-  });
+  whileConnected(wrap, 'mouseup', () => { if (dragFrom || fillRect) endDrag(); });
   wrap.addEventListener('click', (e) => {
     const opened = opening;
     opening = null;
@@ -11380,10 +11371,7 @@ function onboard(defaultName) {
     }
   }
 
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); }
-  });
+  whileConnected(back, 'keydown', (e) => { if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); } });
   show(0);
 }
 
@@ -13201,9 +13189,8 @@ function openBugPanel(from) {
     inside: (t) => panel.contains(t) || from.contains(t) || bugCore.canSubmit(picked, note.value),
     close: closeBugPanel,
   });
-  addEventListener('keydown', function esc(ev) {
-    if (!panel.isConnected) return removeEventListener('keydown', esc);
-    if (ev.key === 'Escape') { closeBugPanel(); from.focus(); removeEventListener('keydown', esc); }
+  const unhook = whileConnected(panel, 'keydown', (ev) => {
+    if (ev.key === 'Escape') { closeBugPanel(); from.focus(); unhook(); }
     if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && panel.contains(ev.target)) {
       ev.preventDefault();
       form.requestSubmit();
