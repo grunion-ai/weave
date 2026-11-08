@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { scanSuites, planQualityMirror } from '../src/quality-mirror.js';
@@ -41,4 +42,13 @@ test('the sync refuses a workspace that is not the weave tracker (Issue #1244)',
   await withServer(w, async ({ base }) => {
     await assert.rejects(readMirror(http(base, null)), /not weave/);
   });
+});
+
+test('the quality workflow syncs the tracker after every main tests run, red or green, from that run\'s shard results (Issue #1244, Issue #1245)', () => {
+  const workflow = readFileSync(join(ROOT, '.github/workflows/quality.yml'), 'utf8');
+  assert.match(workflow, /workflow_run:[^\n]*\n    workflows: \[tests\]\n    types: \[completed\]\n    branches: \[main\]/);
+  assert.match(workflow, /conclusion == 'success' \|\| github\.event\.workflow_run\.conclusion == 'failure'/, 'a red run is the one the Quality space most needs to show');
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/, 'the scan reads the tree that run tested');
+  assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/);
+  assert.match(workflow, /node scripts\/quality-sync\.mjs --from https:\/\/weave\.grunion\.ai\/w\/weave --token-env WEAVE_TRACKER_TOKEN --results ci-results/);
 });
