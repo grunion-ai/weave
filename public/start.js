@@ -74,9 +74,10 @@
       template_failed: 'The {template} template did not build, so your workspace starts empty. Your AI app can build the tables in the next step.',
       build_failed: 'Setup did not finish. Try again, or skip setup to start an empty workspace.',
       network: 'Setup did not finish because weave did not answer. Try again.',
+      start_failed: 'weave did not answer, so this page could not load. Try again in a moment.',
       no_access: 'The account you signed in with has no access to {workspace}. A workspace architect can send you an invite link that adds you.',
     },
-    copied: 'Copied', back: 'Back', next: 'Continue', skip: 'Skip setup', signOut: 'Sign out', addLogin: 'Use another account', accept: SLUG.start.accept,
+    copied: 'Copied', retry: 'Try again', support: 'Contact support', back: 'Back', next: 'Continue', skip: 'Skip setup', signOut: 'Sign out', addLogin: 'Use another account', accept: SLUG.start.accept,
   };
 
   const make = (tag, attrs = {}, ...kids) => {
@@ -186,6 +187,7 @@
       if (saved) sessionStorage.setItem('weave:setup', JSON.stringify(saved));
       else sessionStorage.removeItem('weave:setup');
     } catch {}
+    document.querySelector('a.brand')?.setAttribute('href', saved ? '/start?setup=resume' : '/start');
     if (saved && location.search !== '?setup=resume') history.replaceState(null, '', '/start?setup=resume');
     else if (['list', 'closed'].includes(s.step)) history.replaceState(null, '', PICK);
   }
@@ -810,7 +812,15 @@
 
   async function boot() {
     const q = Object.fromEntries(new URLSearchParams(location.search));
-    try { me = await getJson('/api/start'); } catch (err) { main.textContent = err.message; return; }
+    try { me = await getJson('/api/start'); } catch {
+      main.dataset.step = 'error';
+      main.replaceChildren(
+        make('div', { class: 'alert', role: 'alert', 'data-code': 'start_failed' },
+          make('span', { class: 'grow' }, COPY.errors.start_failed),
+          make('button', { type: 'button', class: 'btn-link', 'data-go': 'retry', onclick: () => location.reload() }, COPY.retry)),
+        make('p', { class: 'muted' }, make('a', { href: '/support' }, COPY.support)));
+      return;
+    }
     entry = q;
     carried = returnOf(q.next) ? location.hash : '';
     const sendingBack = !!(q.redirect_url && me.clerk);
