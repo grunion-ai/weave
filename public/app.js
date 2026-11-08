@@ -7057,7 +7057,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ...sysTail.map((n) => sysCell(n, item)),
       ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
     const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
-    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb > .open-link').after(phoneLeadEl(lead, item));
     if (dockCoversScreen.matches && main.id === 'main') {
       for (const input of row.querySelectorAll(':scope > td[data-field] > .wv-cb input.inline-edit')) {
         if (input.value) (input.closest('.date-cell') ?? input).replaceWith(el('span', { class: 'text-dressed', title: input.value }, input.value));

@@ -1,0 +1,1 @@
+- A phone card's title line now reads #id, state chip, name, in that order. The field chip line starts under the state chip instead of at an inset of its own, and sits 24px below a one-line title instead of 26px, the closest it can get while the state chip keeps its 44 by 44 tap area. (Issue #1441, Issue #1387)
