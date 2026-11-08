@@ -138,12 +138,12 @@ function uploadTileEl(key, job) {
     return el('span', { class: 'attach-item is-failed', title: `${name}: ${job.failure.tile}`, dataset: { uploadJob: job.id } },
       el('span', { class: 'attach-fail-name' }, name),
       el('span', { class: 'attach-fail-why' }, ...withErrorId(job.failure.tile, job.failure.id)),
-      job.failure.retry ? el('button', {
-        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${name}`,
+      job.failure.retry ? ghostBtn({
+        type: 'button', title: `Retry ${name}`,
         onclick: (e) => { stop(e); runJobs(key, [job]); },
       }, 'Retry') : null,
-      el('button', {
-        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
+      ghostBtn({
+        type: 'button', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
         onclick: (e) => {
           stop(e);
           const st = uploadState(key);
@@ -1858,8 +1858,8 @@ function renderMermaidIn(container) {
   for (const pre of nodes) {
     if (!pre.dataset.mmd) pre.dataset.mmd = pre.textContent;
     const holder = el('span', { class: 'mmd-tools' },
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Open as a whiteboard',
+      ghostBtn({
+        title: 'Open as a whiteboard',
         onclick: () => openWhiteboard(pre.dataset.mmd, 'Whiteboard'),
       }, iconEl('⛶')));
     if (!pre.previousElementSibling?.classList?.contains('mmd-tools')) pre.before(holder);
@@ -1872,6 +1872,9 @@ function whileConnected(node, type, handler, capture = false) {
   const off = () => removeEventListener(type, hook, capture);
   addEventListener(type, hook, capture);
   return off;
+}
+function ghostBtn({ class: cls = '', ...attrs } = {}, ...kids) {
+  return el('button', { class: cls ? `btn btn-sm btn-ghost-secondary tiny ${cls}` : 'btn btn-sm btn-ghost-secondary tiny', ...attrs }, ...kids);
 }
 function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
   const away = (e) => {
@@ -3469,8 +3472,8 @@ function avatarPicker(face, { cls, title, upload, onClear = null }) {
     type: 'button', class: 'av-pick', title, 'aria-label': title,
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); input.click(); },
   }, chipElFrom(chipView.avatarHtml(face, { cls })));
-  const clear = onClear && face?.file ? el('button', {
-    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
+  const clear = onClear && face?.file ? ghostBtn({
+    type: 'button', class: 'av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onClear(); },
   }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null;
   return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0], () => input.click()));
@@ -4024,8 +4027,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         class: 'k k-more', title: `${hidden} more — open the cell to see them`,
       }, `+${hidden}`), ' ');
     }
-    box.append(el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny',
+    box.append(ghostBtn({
+      
       onclick: () => linkSearch(f, {
         linked: all,
         commit: async (add, drop) => {
@@ -4111,8 +4114,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       if (ids.length === 1) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
       return chip;
     }
-    const remove = (file) => el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
+    const remove = (file) => ghostBtn({
+      title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
@@ -4135,8 +4138,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       input.value = '';
       if (picked.length) upload(picked);
     });
-    chips.append(input, el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
+    chips.append(input, ghostBtn({
+      title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
     uploadHost(box, upKey, { slot: chips, before: input });
@@ -5718,8 +5721,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   if (searching && !(pager ? pager.total : items.length)) {
     main.append(el('div', { class: 'table-search-empty wv-note' },
       `No ${db.term.plural} match “${searching}”. `,
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny table-search-clear', type: 'button',
+      ghostBtn({
+        class: 'table-search-clear', type: 'button',
         onclick: () => setTableSearch(db, '', { focus: true }),
       }, 'Clear search')));
   }
@@ -10352,8 +10355,8 @@ function appearsAsPanel(db, entity, refresh) {
   const chipF = shownView('chip');
   const cardF = shownView('card');
   if (!chipF && !cardF) return null;
-  const gear = (f) => el('button', {
-    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`,
+  const gear = (f) => ghostBtn({
+    type: 'button', class: 'wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`,
     onclick: () => openFieldDialog(db, f, refresh),
   }, iconEl('lucide:sliders-horizontal', 'wv-icon'));
   const slot = (f, node) => el('div', { class: `wv-appears-slot wv-appears-${f.role}` },
@@ -11249,8 +11252,8 @@ async function relatedGrid(entity, f, onSaved) {
     await onSaved();
   };
 
-  const unlinkButton = (item) => el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
+  const unlinkButton = (item) => ghostBtn({
+        class: 'unlink-btn', title: `Unlink from ${f.name}`,
         onclick: async (e) => {
           e.stopPropagation();
           try {
