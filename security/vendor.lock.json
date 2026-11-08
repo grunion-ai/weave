@@ -203,18 +203,6 @@
       ]
     },
     {
-      "name": "cytoscape",
-      "npm": "cytoscape",
-      "version": "3.33.1",
-      "versionSource": "\"3.33.1\" version string in cytoscape.min.js",
-      "files": [
-        {
-          "path": "public/vendor/cytoscape.min.js",
-          "sha256": "f55947f3daa3bae53209d4b885c195c157f595c225e508a6b382598d9452d6e2"
-        }
-      ]
-    },
-    {
       "name": "lucide",
       "npm": "lucide",
       "version": null,

@@ -108,10 +108,6 @@
       "gzip": 3261,
       "br": 2863
     },
-    "/graph-parse.js": {
-      "gzip": 979,
-      "br": 901
-    },
     "/grid-keymap.js": {
       "gzip": 1846,
       "br": 1634
@@ -259,6 +255,10 @@
     "/view-pane-core.js": {
       "gzip": 3098,
       "br": 2811
+    },
+    "/whiteboard.js": {
+      "gzip": 1244,
+      "br": 1034
     }
   },
   "raised": {
