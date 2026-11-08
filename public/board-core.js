@@ -7,7 +7,7 @@
   const CARD_PX = { small: 132, medium: 188, large: 256 };
   const COLUMN_PX = { small: 184, medium: 232, large: 288 };
   const PHONE_COLUMNS = { small: 3, medium: 2, large: 2 };
-  const PICTURE_MIME = /^image\/(png|jpeg|gif|webp)$/;
+  const PICTURE_MIME = /^image\/(png|jpeg|gif|webp|avif)$/;
 
   const isPicture = (file) => PICTURE_MIME.test(String(file?.mime ?? '').split(';')[0].trim().toLowerCase());
 

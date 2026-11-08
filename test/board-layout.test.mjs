@@ -156,6 +156,7 @@ test('coverOf picks the first shown cover field and skips hidden fields, missing
   w.updateTable(list.id, { hiddenFields: ['Photo'] });
   assert.equal(cover(), back.id, 'a hidden field is not shown, so the next cover field heads the record');
   assert.equal(Board.coverOf(tableOf(w, 'Shopping List'), { raw: {}, files: [] }), null);
+  assert.equal(Board.isPicture({ mime: 'image/avif' }), true, 'an AVIF photo is a picture (Issue #1212)');
 });
 
 test('the picture defaults to the cover field size, and sizes map to card and column widths', () => {

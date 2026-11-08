@@ -124,6 +124,7 @@ export function sniffImage(bytes) {
   if (at('ffd8ff')) return 'image/jpeg';
   if (at('474946383761') || at('474946383961')) return 'image/gif';
   if (at('52494646') && at('57454250', 8)) return 'image/webp';
+  if (at('66747970', 4) && (at('61766966', 8) || at('61766973', 8))) return 'image/avif';
   return null;
 }
 
