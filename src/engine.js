@@ -27,7 +27,7 @@ import { aggregate as aggregateValues, describeNumbers, histogram, distribution,
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
 import { TRIAL_STAGES } from './mail.js';
-import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, CHECK_TIMEOUT_MS } from './integrations.js';
+import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, authHeader, INTEGRATION_METHODS, CHECK_TIMEOUT_MS } from './integrations.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -5593,6 +5593,46 @@ export class Weave {
     } catch (err) {
       return { ok: false, reason: unreachable(host, err) };
     }
+  }
+
+  async integrationFetch(ref, url, { method = 'GET', headers = {}, body = undefined } = {}) {
+    const row = this.#integrationRow(ref);
+    const target = this.#integrationTarget(row);
+    if (!target.on) throw new WeaveError(`Integration '${target.name}' is Off: switch it On to use its key`, 'forbidden');
+    const entry = this.#reg.#integrationEntry(row.id);
+    if (!entry || !target.host || !target.provider) throw new WeaveError(`Integration '${target.name}' has no key yet: paste one with Replace`, 'invalid');
+    let u;
+    try { u = new URL(String(url)); } catch { throw new WeaveError(`'${url}' is not a URL`, 'invalid'); }
+    if (u.protocol !== 'https:' || u.hostname !== target.host || u.port || u.username || u.password) {
+      throw new WeaveError(`Integration '${target.name}' only reaches https://${target.host}: refused ${u.protocol}//${u.host}`, 'forbidden');
+    }
+    const verb = String(method).toUpperCase();
+    if (!INTEGRATION_METHODS.includes(verb)) throw new WeaveError(`Method '${method}' is not one of ${INTEGRATION_METHODS.join(', ')}`, 'invalid');
+    const sent = new Headers(headers);
+    if (sent.has('authorization') || sent.has('proxy-authorization') || sent.has('cookie')) {
+      throw new WeaveError('weave sets the Authorization header from the integration key: a caller may not set Authorization, Proxy-Authorization or Cookie', 'invalid');
+    }
+    const refusal = await webhookRefusal(u);
+    if (refusal) throw new WeaveError(`Integration '${target.name}': ${target.host} ${refusal}`, 'forbidden');
+    const secret = this.#reg.#open(entry, integrationKeyName(row.id));
+    sent.set('Authorization', authHeader(target.provider, secret));
+    let res = null;
+    let failure = null;
+    try {
+      res = await fetch(u, { method: verb, headers: sent, body, redirect: 'manual', signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
+    } catch (err) {
+      failure = unreachable(target.host, err);
+    }
+    this.#onReg((reg) => {
+      const live = own(reg.state.entities, row.id);
+      const f = reg.#sysField(reg.#sysTable('integrations'), 'Last Used');
+      if (live && f) reg.#stamp(live, () => { live.values[f.id] = nowISO(); });
+      reg.#audit('key-used', { integration: target.name, host: target.host, method: verb, path: u.pathname, status: res?.status ?? null, ...(failure ? { error: failure } : {}) });
+      reg.save();
+    });
+    if (failure) throw new WeaveError(`Integration '${target.name}': ${failure}`, 'invalid');
+    const text = redact(await res.text(), secret);
+    return { status: res.status, ok: res.ok, headers: Object.fromEntries([...res.headers].filter(([k]) => k.toLowerCase() !== 'set-cookie')), body: text };
   }
 
   async setIntegrationCredential(ref, value) {
