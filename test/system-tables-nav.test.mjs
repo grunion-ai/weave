@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { APP, HTML, fnBodyOf, rulesFor } from './lib/source.mjs';
+import { APP, HTML, fnBodyOf, rulesFor, read } from './lib/source.mjs';
 
 function build() {
   const w = new Weave();
@@ -132,7 +132,7 @@ test('a system table\'s page title reads, it does not rename', () => {
 });
 
 test('#/trash with no table is the workspace trash', () => {
-  assert.match(APP, /if \(hash === '#\/trash'\) return showTrash\(null\)/);
-  const body = fnBodyOf('showTrash');
+  assert.match(APP, /if \(hash === '#\/trash'\) return openTrash\(null\)/);
+  const body = fnBodyOf('showTrash', read('public/settings-view.js'));
   assert.match(body, /api\('GET', db \? `\/tables\/\$\{db\.id\}\/trash` : '\/trash'\)/);
 });

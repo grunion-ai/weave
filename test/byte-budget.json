@@ -188,6 +188,10 @@
       "gzip": 1018,
       "br": 888
     },
+    "/settings-view.js": {
+      "gzip": 3068,
+      "br": 2665
+    },
     "/setup-core.js": {
       "gzip": 1723,
       "br": 1533
