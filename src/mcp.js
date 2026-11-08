@@ -59,14 +59,7 @@ function pick(args, keys) {
 }
 
 export const TOOLS = [
-  {
-    name: 'weave_ontology',
-    description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
-    inputSchema: {
-      type: 'object',
-      properties: { depth: { type: 'string', enum: ['outline'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } },
-    },
-  },
+  toolDefinition('weave_ontology'),
   {
     name: 'weave_schema',
     description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
@@ -724,8 +717,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   const command = BY_TOOL.get(name);
   if (command) return command.run(weave, args);
   switch (name) {
-    case 'weave_ontology':
-      return weave.ontology({ depth: args.depth ?? 'outline', concept: args.concept ?? null, since: args.since ?? null });
     case 'weave_schema':
       return weave.describeSchema();
     case 'weave_query':

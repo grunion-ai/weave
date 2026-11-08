@@ -1,5 +1,7 @@
 # weave ontology
 
+The same model is served as data: `weave_ontology {depth: "glossary"}`, `weave ontology --depth glossary` and `GET /api/ontology?depth=glossary` answer the `ONTOLOGY` record in `src/engine.js`, and `test/ontology.test.mjs` holds this page to it.
+
 ## The one core kind
 
 **An entity is one addressable thing.** It has an id, a public id, a set of

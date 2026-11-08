@@ -25,7 +25,6 @@ const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, 
 const HAND_WRITTEN = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
-  ['schema.ontology', ['ontology', 'spaceVersions'], 'weave_ontology', 'ontology', ['GET /api/ontology']],
   ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
   ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],

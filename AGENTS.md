@@ -538,6 +538,10 @@ Notes that save round trips:
   `name = short form`. `{concept: "Issue"}` reads one table in full, every field's
   description included. `weave_schema` is the full JSON, about twenty times larger,
   and still the document `weave_apply_schema` takes.
+  `{depth: "glossary"}` answers weave's own model instead: the entity, its
+  levels (workspace, space, table, record), what each is made of and the other
+  names people use for them (`weave ontology --depth glossary`,
+  `GET /api/ontology?depth=glossary`).
 - **Documents are addressable.** Over HTTP, `/e/Task#12/doc.md`, `.html`, and
   `.pdf` return the rendered document directly; no tool call needed to read one.
 - **Entities can hold several documents.** `weave_get_doc` / `weave_set_doc`
