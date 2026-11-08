@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.120 (2026-11-07)
+
+- A checkbox field on a record page answers a tap anywhere in a 46 px box on a touch screen (Issue #1166). The input itself was 16 px, against the 44 px minimum that Apple's Human Interface Guidelines and Material both ask for, and a finger could miss it. The box a reader sees is still 16 px, on the same left edge as the values in the rows around it.
+- On a phone, the `›` control on a relation chip in a cell or a field row opens the linked row (Issue #1401). It used to expand the chip in place, which grew the field row to about 290 px of mostly empty box and scrolled the row's name out of sight behind its field values. On a desktop, and in a document on any screen, the control still shows and hides the fields.
+- Each icon of a rating field on a record page now sits in a 46 px slot on a touch screen, so a finger can reach it (Issue #1165). Ten icons of a rating with max 10 used to be 14 px each, against the 44 px that Apple's Human Interface Guidelines and Material both ask for. The icons wrap onto a second line in a field row too narrow for all of them, and the glyph is drawn at 20 px.
+- A failed upload now says why it failed and what to do next (Issue #1413). A `502` or `503` from the hosting edge, which usually means weave is restarting after a deploy, is retried on its own after about 2, 5 and 10 seconds while the tile reads **Server restarting**; only when the last try fails does the tile turn red with **Still restarting**. A `504` reads the row again and, if the file is not there, says the upload took too long (**Timed out**). A full disk now answers `507` with code `storage-full` on every write, attach routes and record saves alike, and the browser says the server is out of storage with no Retry button. Any other server error shows the request id the server logged, in a monospace face, so a report can be matched to the log. Saves and reads outside uploads use the same causes.
+
 ## v0.4.119 (2026-11-07)
 
 - Every MCP tool now carries `idempotentHint` beside its other annotations, so a client knows which calls it may safely retry. Reads, updates, sets, deletes and restores are marked idempotent; creates, appends, row imports, comments, undo, token and share mints, form submits and `weave_call` are not (Issue #1319).
