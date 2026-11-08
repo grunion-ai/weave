@@ -1,0 +1,2 @@
+- The field dialog's Description box grows to fit its placeholder and what you type, so a phone no longer slices the placeholder's last line, and the placeholder is shorter (Issue #1397).
+- A field dialog note such as "lookup field, the type is fixed" keeps the same gap above the next label as every field does (Issue #1398).
