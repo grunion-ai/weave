@@ -2314,6 +2314,45 @@ function credentialReveal(name, keystore) {
     shown);
 }
 
+const INTEGRATION_KEPT = ['Key Hint', 'State', 'Connected As', 'Health Reason', 'Last Checked', 'Last Used'];
+
+function integrationKeptCell(f, item) {
+  const text = fieldValueCell(item.fields?.[f.name]);
+  const title = `${f.name}: kept by weave`;
+  if (f.type === 'workflow') return el('span', { class: stateChipClass(f, text || null) + (text ? '' : ' is-empty'), title }, ...stateNodes(f, text || null));
+  return el('span', { class: 'computed k k-computed integration-kept' + (text ? '' : ' is-empty'), title }, text || '—');
+}
+
+function integrationKeyCell(item, onSaved, { compact = false } = {}) {
+  const hint = String(item.fields?.['Key Hint'] ?? '');
+  const stored = !!hint;
+  const chip = el('span', {
+    class: 'k k-key hue-slate integration-key' + (stored ? '' : ' is-empty'),
+    title: stored ? 'Never shown again' : 'No key yet',
+  }, iconEl(CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), chipLabel(stored ? `••••${hint === 'set' ? '' : hint.replace(/^…/, '')}` : '—'));
+  if (compact) return chip;
+  return el('span', { class: 'cred-cell' }, chip, el('span', { class: 'cred-actions' },
+    el('button', { class: 'btn btn-sm integration-key-replace', type: 'button', onclick: () => replaceIntegrationKey(item, onSaved) }, stored ? 'Replace' : 'Add key')));
+}
+
+function replaceIntegrationKey(item, onSaved) {
+  const host = item.fields?.Host || 'its Host';
+  const input = el('input', { name: 'value', type: 'password', class: 'form-control integration-key-input', autocomplete: 'off', spellcheck: 'false', required: '', placeholder: 'Paste the API key' });
+  modal(`${item.fields?.['Key Hint'] ? 'Replace' : 'Add'} the ${item.name} key`, [
+    input,
+    el('div', { class: 'form-hint' }, `Tested against ${host}, then never shown again.`),
+  ], async (fd) => {
+    const value = String(fd.get('value') ?? '');
+    input.value = '';
+    const fresh = await api('PUT', `/integrations/${item.id}/credential`, { value });
+    const row = { ...fresh, affected: [fresh.id] };
+    await onSaved(row, 'Credential');
+    await document.querySelector('#main .table-wrap')?.wvPatchRows?.(row);
+    if (fresh.connected) toast(`${item.name} connected${fresh.fields?.['Connected As'] ? ` as ${fresh.fields['Connected As']}` : ''}`);
+    else toast(fresh.reason, true);
+  }, 'Test and save');
+}
+
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
 const READONLY_FIELD_TYPES = ['lookup', 'rollup', 'formula', 'document', 'view'];
 const isNumCell = (f, item) => f.type === 'number' || ((f.type === 'formula' || f.type === 'rollup') && typeof item?.raw?.[f.name] === 'number');
@@ -3912,6 +3951,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     });
     return box;
   }
+  if (f.type === 'key' && db?.system === 'integrations') return integrationKeyCell(item, onSaved, { compact });
+  if (db?.system === 'integrations' && INTEGRATION_KEPT.includes(f.name)) return integrationKeptCell(f, item);
   if (f.type === 'key') {
     const kind = f.kind ?? 'apikey';
     const store = f.keystore ?? 'local';
@@ -7916,7 +7957,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const f = db.fields.find((x) => x.name === td.dataset.field);
       if (!f) continue;
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
-      if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
+      const shown = (r) => JSON.stringify([r.fields?.[f.name] ?? null, db.system === 'integrations' && f.type === 'key' ? r.fields?.['Key Hint'] ?? null : null]);
+      if (was && shown(was) === shown(item)) continue;
       td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
