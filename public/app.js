@@ -11168,7 +11168,7 @@ function quickCreate(db) {
       .catch((err) => toast(err.message, true));
     return;
   }
-  modal(`New ${db.term.singular}`, [
+  tray(`New ${rowNoun(db)}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });

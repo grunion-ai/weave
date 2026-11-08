@@ -154,4 +154,26 @@ if (s) {
     assert.ok((Array.isArray(linked) ? linked : [linked]).includes(at.eid), 'the new task is linked to Alpha');
     await page.close();
   });
+  test('Shift+Enter on a board opens the create tray named for the row, never a centered modal, in both themes (Issue #777)', async () => {
+    weave.tableView(`${tasks.id}/Board`, { layout: 'board', fields: ['Name', 'Note'] });
+    const board = weave.tableView(tasks).views.find((v) => v.name === 'Board');
+    for (const theme of ['light', 'dark']) {
+      const page = await browser.newPage({ viewport: FIT, colorScheme: theme });
+      try {
+        await page.goto(`${base}/#/table/${tasks.id}/view/${board.id}`, { waitUntil: 'networkidle' });
+        await page.waitForSelector('#main .wv-board .tile');
+        await setTheme(page, theme);
+        await page.keyboard.press('Shift+Enter');
+        await page.waitForSelector('#tray-back #tray input[name="name"]');
+        assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, not a modal');
+        assert.equal(await page.locator('#tray-title').textContent(), 'New task', 'the tray names the row by its table');
+        const name = `from the board ${theme}`;
+        await page.fill('#tray input[name="name"]', name);
+        await page.click('#tray button[type="submit"]');
+        await page.waitForSelector('#tray-back', { state: 'detached' });
+        const made = weave.listEntities(tasks.id).find((e) => weave.entityName(e) === name);
+        assert.ok(made, 'the tray created the row');
+      } finally { await page.close(); }
+    }
+  });
 }
