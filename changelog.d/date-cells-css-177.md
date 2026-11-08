@@ -1,0 +1,1 @@
+- **Calendar cells share one base rule** (Feature #177): the day cell and the month or year cell in the date picker restated the same border, radius, colour, font, hover and selected rules. They now share `.date-day, .date-pick-cell` rules and differ only in height (28 px and 34 px). Nothing changes on screen. Gate: `test/date-cells-css.test.mjs`.
