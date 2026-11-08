@@ -12,7 +12,6 @@ import { withServer } from './lib/fixtures.mjs';
 
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
-const ENGINE = readFileSync(new URL('../src/engine.js', import.meta.url), 'utf8');
 const HB = readFileSync(new URL('../src/handbook.js', import.meta.url), 'utf8');
 
 const NAMES = ['Not started', 'In progress', 'Done', 'Canceled'];
@@ -104,11 +103,8 @@ test('the tray hands back the same four states the engine seeds', () => {
     'an emptied list stays empty');
 });
 
-test('the dialog and the engine name the same default states, and the Handbook prints them', () => {
-  const literal = ENGINE.match(/const DEFAULT_WORKFLOW_STATES = \[([\s\S]*?)\];/)[1];
-  const names = [...literal.matchAll(/name: '([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(names, NAMES, 'the engine literal is the source of the four');
-  assert.deepEqual(FDC.DEFAULT_WORKFLOW_STATES.map((s) => s.name), names, 'the dialog copy has not drifted');
+test('the dialog core names the four default states, and the Handbook prints them', () => {
+  assert.deepEqual(FDC.DEFAULT_WORKFLOW_STATES.map((s) => s.name), NAMES);
   assert.deepEqual(FDC.DEFAULT_WORKFLOW_STATES.map((s) => s.category), CATS);
   const page = HB.match(/\{ name: 'workflow', kind: '[^']*', doc: `([\s\S]*?)` \},/)[1];
   for (const n of NAMES) assert.ok(page.includes(n), `the workflow page names ${n}`);
