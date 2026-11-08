@@ -94,7 +94,11 @@ minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 The `tests` workflow runs the full inventory on every main push. Its `plan` job
 downloads the `ci-results` artifacts of the most recent successful main run and
 weights each test file by the `duration_ms` the reporter recorded for it, so the
-four browser shards balance on measured runtime; a file with no recorded
+eight browser shards balance on measured runtime and all ten shards start at
+once (`max-parallel: 10`). Four browser shards ran 15 to 19 minutes each by
+2026-11-08 and six of seven retried main runs that week were a shard killed at
+the test manager's 20-minute job timeout; eight bring each to about nine
+(Issue #1351); a file with no recorded
 duration keeps the byte-size weight, and a run with no usable history (expired
 artifacts, a first run, a download failure) plans entirely by byte size. Byte
 size is anti-correlated with runtime for the worst offenders, because the

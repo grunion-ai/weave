@@ -80,7 +80,7 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /name: CI gate\n    if: always\(\)\n    needs: \[plan, test\]/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
-  assert.match(workflow, /max-parallel: 6/);
+  assert.match(workflow, /max-parallel: 10/);
   assert.match(workflow, /install --with-deps chromium webkit/);
 });
 
@@ -439,4 +439,14 @@ test('onboarding journeys are mandatory even for unrelated changes and cannot si
     assert.throws(() => touchedBrowser([], browserFiles.filter(f => f !== file), read), /Missing required journey suite/);
   }
   assert.equal(ONBOARDING.length, 4);
+});
+
+test('the main plan spreads the browser lane over eight shards and runs every shard at once, so none meets the 20-minute job timeout (Issue #1351)', () => {
+  const real = testFiles('.');
+  const manifest = plan(real, lanes(real, '.'), () => 1);
+  const browser = manifest.filter(s => s.lane === 'browser');
+  assert.equal(browser.length, 8);
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const parallel = Number(workflow.match(/max-parallel: (\d+)/)[1]);
+  assert.ok(parallel >= manifest.length, `max-parallel ${parallel} runs every one of ${manifest.length} shards at once`);
 });
