@@ -58,7 +58,7 @@ if (s) {
     await page.addInitScript(([t, id, d]) => { localStorage.setItem('weave-theme', t); localStorage.setItem(`weave-grid-density:${id}`, d); }, [theme, id, density]);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`#main .wv-grid[data-density="${density}"] tbody tr.entity-row`);
-    await page.waitForTimeout(200);
+    await page.evaluate(() => document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))));
     return page;
   };
 

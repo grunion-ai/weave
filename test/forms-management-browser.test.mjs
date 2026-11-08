@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 import { listForms, createForm, getForm } from '../src/forms.js';
 
 const app = await launch('Native form management', w => {
@@ -63,7 +63,7 @@ if (app) for (const theme of ['light', 'dark']) for (const width of [390, 1280])
       await item.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.getByLabel('Form name', { exact: true }).fill(title + ' updated');
       await page.getByRole('button', { name: 'Save form', exact: true }).click();
-      assert.equal(listForms(weave).find(f => f.name === title + ' updated').id, form.id);
+      assert.equal(await eventually(() => listForms(weave).find(f => f.name === title + ' updated')?.id, form.id), form.id, 'the edit saved under the same form');
       await page.locator(`[data-form-id="${form.id}"]`).getByRole('button', { name: 'Pause', exact: true }).click();
       await page.locator(`[data-form-id="${form.id}"]`).getByRole('button', { name: 'Enable', exact: true }).waitFor();
       assert.equal(listForms(weave).find(f => f.id === form.id).enabled, false);
