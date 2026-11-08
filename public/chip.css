@@ -72,10 +72,17 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
 .wv-prose .k-rel .k { font-size: inherit; }
 .wv-prose .k-rel.open > .mention-fields { display: inline; }
+.wv-prose .k-rel.open > .mention-fields > * + * { margin-left: 8px; }
+.wv-prose .k-rel.open > .mention-fields + .k-home { margin-left: 6px; }
 .doc-ref-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; }
 .doc-ref-layer .doc-ref-slot { position: absolute; pointer-events: auto; white-space: nowrap;
   background: var(--tblr-bg-surface); line-height: 1; max-width: 100%; }
 .doc-ref-layer .doc-ref-slot.long { overflow: hidden; text-overflow: ellipsis; }
+.doc-ref-layer .doc-ref-slot.long .k-rel.open { display: flex; align-items: center; }
+.doc-ref-layer .doc-ref-slot.long .k-rel:not(.open) .k-label { display: inline-block; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.doc-ref-layer .doc-ref-slot.long .k-rel.open > a.mention { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+.doc-ref-layer .doc-ref-slot.long .k-rel.open > .mention-fields { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.doc-ref-layer .doc-ref-slot.long .k-rel.open > :is(.k, .k-home, .mention-caret, .x) { flex: none; }
 .doc-ref-layer .doc-ref-slot .k-rel { white-space: nowrap; }
 .doc-ref-raw:not(.open) { display: inline-block; font-size: 0; line-height: 0; color: transparent;
   overflow: hidden; white-space: nowrap; vertical-align: middle; }
