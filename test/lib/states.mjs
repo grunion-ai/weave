@@ -613,6 +613,7 @@ const TOUCH_STATES = [
   { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
+  { name: 'field editor tray', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '#tray-back', roots: ['#tray'], act: (p) => p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label') },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
