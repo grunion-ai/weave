@@ -50,5 +50,7 @@ test('the quality workflow syncs the tracker after every main tests run, red or 
   assert.match(workflow, /conclusion == 'success' \|\| github\.event\.workflow_run\.conclusion == 'failure'/, 'a red run is the one the Quality space most needs to show');
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/, 'the scan reads the tree that run tested');
   assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/);
+  assert.match(workflow, /if \[ "\$\(git rev-parse origin\/main\)" = "\$HEAD_SHA" \]/, 'a run main has moved past would roll the mirror back to an older tree');
+  assert.equal(workflow.match(/if: steps\.tip\.outputs\.current == 'true'/g).length, 3, 'node, the artifacts and the sync all wait on the tip check');
   assert.match(workflow, /node scripts\/quality-sync\.mjs --from https:\/\/weave\.grunion\.ai\/w\/weave --token-env WEAVE_TRACKER_TOKEN --results ci-results/);
 });
