@@ -223,3 +223,29 @@ test('the contract names the fields it reads', () => {
     { slides: 'Slides', model: 'Model', chrome: 'Chrome', style: 'Style', order: 'Order', space: 'Space', format: 'Format', layout: 'Layout', version: 'Version', key: 'Key', supersedes: 'Supersedes' },
   );
 });
+
+test('a share that selects a deck but not a slide leaves that slide out of deck.html and entity.html (Issue #1453)', async () => {
+  const { w, deck, slides } = fresh();
+  w.setDoc(slides[1].id, slideDoc('PRIVATE_SLIDE_MARKER'), 'Model');
+  const deckOnly = w.mintShare({ scope: { kind: 'entities', ids: [deck.id] } });
+  const withCover = w.mintShare({ scope: { kind: 'entities', ids: [deck.id, slides[0].id] } });
+  const whole = w.mintShare({ scope: { kind: 'space', id: w.getTable(deck.dbId).spaceId } });
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const read = async (g, page) => {
+    const res = await fetch(`${base}/s/${g.token}/e/${deck.id}/${page}`);
+    assert.equal(res.status, 200, `${page} answers`);
+    return res.text();
+  };
+  try {
+    for (const page of ['entity.html', 'deck.html']) {
+      assert.doesNotMatch(await read(deckOnly, page), /PRIVATE_SLIDE_MARKER/, `${page} keeps the unselected slide out`);
+    }
+    const cover = await read(withCover, 'deck.html');
+    assert.match(cover, /Hello/, 'a selected slide still renders');
+    assert.doesNotMatch(cover, /PRIVATE_SLIDE_MARKER/);
+    assert.match(await read(whole, 'deck.html'), /PRIVATE_SLIDE_MARKER/, 'a space share reaches every slide in it');
+  } finally {
+    server.close();
+  }
+});

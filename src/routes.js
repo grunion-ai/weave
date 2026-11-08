@@ -1,6 +1,6 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
-import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
+import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
@@ -951,7 +951,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
         const { renderDeck } = await deckModule();
-        const built = renderDeck(weave, m[1]);
+        const built = renderDeck(weave, m[1], share ? { admit: (id) => withinScope(weave, share, { entityId: id }) } : {});
         if (m[2] === 'json') {
           return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
         }
