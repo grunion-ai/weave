@@ -1,0 +1,1 @@
+- A relation chip's `×` unlinks behind a toast carrying **Undo**, and so does the related grid's unlink button. The phone record page leaves the `×` out of the chip's tap row, where the field's link picker takes a row out instead (Issue #1404).

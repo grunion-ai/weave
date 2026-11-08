@@ -3929,10 +3929,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const hidden = pile ? 0 : all.length - current.length;
     if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
     for (const s of current) {
-      const onRemove = compact ? null : async () => {
+      const onRemove = compact || dockCoversScreen.matches ? null : async () => {
         try {
-          await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-          await saved();
+          await unlinkWithUndo(id, f, s, saved);
         } catch (err) { toast(err.message, true); }
       };
       box.append(relationChipEl(f, s, { onRemove }), ' ');
@@ -11626,8 +11625,7 @@ async function relatedGrid(entity, f, onSaved) {
         onclick: async (e) => {
           e.stopPropagation();
           try {
-            await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: [item.id] });
-            await onSaved();
+            await unlinkWithUndo(entity.id, f, item, onSaved);
           } catch (err) { toast(err.message, true); }
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
@@ -12061,6 +12059,14 @@ async function gestureTop(g) {
     ours.push(u.entityId);
   }
   return ours;
+}
+
+async function unlinkWithUndo(entityId, f, target, after = () => {}) {
+  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] });
+  const gesture = { kind: 'update', ids: [entityId] };
+  lastGesture = gesture;
+  toast(`Unlinked ${target.name ?? 'the row'} from ${f.name}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+  await after();
 }
 
 async function undoGesture(g) {
