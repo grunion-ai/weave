@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, ACTIVITY_PAGE } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const OVER = 12;
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
@@ -39,9 +39,8 @@ test('GET /api/activity answers one page by default and every row for limit=-1 (
   const w = new Weave();
   busyWorkspace(w);
   const all = w.activityFeed({ limit: -1 });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const feed = await (await fetch(`${base}/api/activity`)).json();
     assert.equal(feed.items.length, ACTIVITY_PAGE, 'one page');
     assert.equal(feed.total, all.total, 'total counts every event');
@@ -49,7 +48,7 @@ test('GET /api/activity answers one page by default and every row for limit=-1 (
     assert.equal(rest.items.length, all.total - ACTIVITY_PAGE, 'offset pages past it');
     const whole = await (await fetch(`${base}/api/activity?limit=-1`)).json();
     assert.equal(whole.items.length, all.total, 'limit=-1 answers every row');
-  } finally { server.close(); }
+  });
 });
 
 test('weave_activity answers one page by default, every row for -1, and says so (Issue #940)', () => {

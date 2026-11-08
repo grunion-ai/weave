@@ -4,9 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
-import { workspace } from './lib/fixtures.mjs';
+import { workspace, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const val = (w, id, name) => w.getEntity(id).values[w.getField(w.getEntity(id).dbId, name).id];
@@ -140,9 +139,7 @@ test('snapshot values never leave: not in the feed, not in the export', async ()
   assert.ok(!JSON.stringify(w.activityFeed()).includes('only-in-the-snapshot-9f3'), 'the feed does not carry it');
   const reader = w.createAccount({ name: 'reader-bot', role: 'reader' }).token;
   const writer = w.createAccount({ name: 'writer-bot', role: 'writer' }).token;
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const entry = newest(w, t);
     const one = await (await fetch(`${base}/api/activity/${encodeURIComponent(entry.id)}`, { headers: { Authorization: `Bearer ${reader}` } })).text();
     assert.ok(!one.includes('only-in-the-snapshot-9f3'), 'a reader reads the entry, not the values');
@@ -152,7 +149,7 @@ test('snapshot values never leave: not in the feed, not in the export', async ()
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${writer}` }, body: JSON.stringify({ activity: entry.id }),
     });
     assert.equal(denied.status, 403, 'the schema rung, unchanged');
-  } finally { server.close(); }
+  });
 });
 
 test('a credential field keeps only secret names in its snapshot', () => {

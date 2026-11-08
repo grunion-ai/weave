@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { handleMcpMessage } from '../src/mcp.js';
 import { ERROR_CONTRACT, contractFor, errorBody } from '../src/errors.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -63,9 +63,7 @@ test('one failure answers the same message and code on CLI, MCP and HTTP (Featur
   assert.equal(cli(['space', 'create', 'Ops']).status, 0);
   assert.equal(cli(['table', 'create', 'Ops', 'Task']).status, 0);
   const w = seed(new Weave());
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     for (const c of CASES) {
       const want = ERROR_CONTRACT[c.code];
       const r = cli(c.cli);
@@ -91,5 +89,5 @@ test('one failure answers the same message and code on CLI, MCP and HTTP (Featur
       assert.equal(m[2], hb.error, `CLI and HTTP agree on the message for ${c.code}`);
       assert.equal(res.result.structuredContent.error, hb.error, `MCP and HTTP agree on the message for ${c.code}`);
     }
-  } finally { server.close(); }
+  });
 });

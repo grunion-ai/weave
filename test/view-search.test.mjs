@@ -7,8 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
-import { fresh } from './lib/fixtures.mjs';
+import { fresh, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const seeded = () => {
@@ -94,9 +93,8 @@ test('weave_table_view, the CLI and REST read and write it, and the REST query h
     assert.equal(JSON.parse(run('table', 'view', 'Task/Standard', '--search', '')).search, undefined);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const t = w.getTable('Task');
     const json = { 'Content-Type': 'application/json' };
     const set = await fetch(`${base}/api/tables/${t.id}/views/Standard`, { method: 'PATCH', headers: json, body: JSON.stringify({ search: 'cleanup' }) });
@@ -108,5 +106,5 @@ test('weave_table_view, the CLI and REST read and write it, and the REST query h
     assert.deepEqual(q.items.map((e) => e.name), ['Gamma cleanup']);
     const cleared = await fetch(`${base}/api/tables/${t.id}/views/Standard`, { method: 'PATCH', headers: json, body: JSON.stringify({ search: '' }) });
     assert.equal((await cleared.json()).search, undefined);
-  } finally { server.close(); }
+  });
 });

@@ -7,8 +7,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROWS = [
   ['Alpha launch', 'Open', ['Web'], true, 3],
@@ -85,12 +85,11 @@ test('the CLI query takes --view', () => {
 
 test('POST /tables/:id/query takes a view', async () => {
   const { w, t, v } = seed(new Weave());
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const post = (body) => fetch(`${base}/api/tables/${t.id}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     assert.deepEqual(names(await (await post({ view: 'Triage' })).json()), VIEW_ROWS);
     assert.deepEqual(names(await (await post({ view: v.id })).json()), VIEW_ROWS);
     assert.equal((await post({ view: 'Nope' })).status, 404);
-  } finally { server.close(); }
+  });
 });

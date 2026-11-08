@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, FIELD_TYPES, DEFINABLE_TYPES, TYPE_MIGRATIONS, RATING_MAX } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function ws(config = {}) {
   const w = new Weave();
@@ -56,13 +56,12 @@ test('max is any whole number from 1 up to the rendering guard, and the icon com
 test('a rating made with no max is out of five on every surface: engine, route, MCP, CLI (Feature #234)', async () => {
   const { w, t } = ws();
   assert.equal(w.getField(t, 'Fit').config.max, 5, 'engine');
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const res = await fetch(`${base}/api/tables/${t.id}/fields`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Route', type: 'rating' }) });
     assert.equal(res.status < 300, true, `POST fields answered ${res.status}`);
     assert.equal(w.getField(t, 'Route').config.max, 5, 'POST /api/tables/:id/fields');
-  } finally { server.close(); }
+  });
   dispatchTool(w, 'weave_add_field', { db: 'Vendor', name: 'Mcp', type: 'rating' });
   assert.equal(w.getField(t, 'Mcp').config.max, 5, 'weave_add_field');
   assert.match(TOOLS.find((x) => x.name === 'weave_add_field').description, /max 1-100, default 5/, 'the MCP tool names the range');

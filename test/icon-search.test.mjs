@@ -7,9 +7,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { VOCABULARY, ICONS, nearestIcons, searchIcons } from '../src/vocabulary.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const category = (name) => globalThis.fieldDialogCore.categoryOf(`lucide:${name}`);
@@ -108,9 +108,8 @@ test('the MCP tool schema declares section and query', () => {
 });
 
 test('REST: GET /api/vocabulary takes section and query', async () => {
-  const { server } = await startServer(new Weave(), { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}/api/vocabulary`;
-  try {
+  await withServer(async ({ port }) => {
+    const base = `http://127.0.0.1:${port}/api/vocabulary`;
     assert.deepEqual(await (await fetch(base)).json(), JSON.parse(JSON.stringify(VOCABULARY)), 'no parameter: unchanged');
     assert.deepEqual(await (await fetch(`${base}?section=icons`)).json(), JSON.parse(JSON.stringify(VOCABULARY.icons)));
     const hit = await (await fetch(`${base}?section=icons&query=build`)).json();
@@ -118,7 +117,7 @@ test('REST: GET /api/vocabulary takes section and query', async () => {
     const bad = await fetch(`${base}?section=nope`);
     assert.equal(bad.status, 400);
     assert.match((await bad.json()).error, /Unknown vocabulary section 'nope'/);
-  } finally { server.close(); }
+  });
 });
 
 test('CLI: weave vocabulary icons <query>', () => {

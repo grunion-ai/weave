@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, ACTIVITY_CAP } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const OVER = 7;
 
@@ -52,14 +52,13 @@ test('a legacy entity with no count reads 0, not a guess', () => {
 test('route, MCP and CLI carry the count (parity)', async () => {
   const w = new Weave();
   const { e } = busy(w);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const ent = await (await fetch(`${base}/api/entities/${e.id}`)).json();
     assert.equal(ent.activityDropped, OVER, 'GET /api/entities/:id');
     const feed = await (await fetch(`${base}/api/activity?entity=${e.id}`)).json();
     assert.equal(feed.dropped, OVER, 'GET /api/activity');
-  } finally { server.close(); }
+  });
   assert.equal(dispatchTool(w, 'weave_get_entity', { entity: e.id }).activityDropped, OVER);
   assert.equal(dispatchTool(w, 'weave_activity', { entity: e.id }).dropped, OVER);
 

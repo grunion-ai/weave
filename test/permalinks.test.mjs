@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { createServer } from '../src/server.js';
-import { fresh } from './lib/fixtures.mjs';
+import { fresh, withServer } from './lib/fixtures.mjs';
 import { dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 
@@ -492,10 +492,8 @@ test('a bare /e/, /t/ or /s/ link opens in whichever workspace holds it, so no l
   const space = acme.createSpace({ name: 'Ops' });
   const table = acme.createTable({ space: 'Ops', name: 'Task' });
   const row = acme.createEntity('Task', { Name: 'over there' });
-  const { server } = await startServer(main, { port: 0, workspaces: { acme } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const go = (path, method = 'GET') => fetch(base + path, { method, redirect: 'manual' });
-  try {
+  await withServer(main, { workspaces: { acme } }, async ({ base }) => {
+    const go = (path, method = 'GET') => fetch(base + path, { method, redirect: 'manual' });
     assert.equal(acme.permalink('entity', row.id), `/e/${row.id}`);
     for (const [path, to] of [
       [`/e/${row.id}`, `/w/acme/e/${row.id}`],
@@ -521,7 +519,5 @@ test('a bare /e/, /t/ or /s/ link opens in whichever workspace holds it, so no l
 
     const prefixed = await go(`/w/main/e/${row.id}`);
     assert.notEqual(prefixed.status, 302, 'an explicit /w/ prefix is never rerouted');
-  } finally {
-    server.close();
-  }
+  });
 });

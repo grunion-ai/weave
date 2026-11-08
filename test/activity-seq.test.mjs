@@ -6,9 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
-import { workspace } from './lib/fixtures.mjs';
+import { workspace, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
@@ -208,16 +207,15 @@ test('route, MCP and CLI carry seq (parity)', async () => {
   const { w, t } = workspace();
   const e = w.createEntity(t, { name: 'a' });
   w.addComment(e.id, { text: 'hi' });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const feed = await (await fetch(`${base}/api/activity?entity=${e.id}`)).json();
     assert.equal(typeof feed.items[0].seq, 'number', 'GET /api/activity');
     const one = await (await fetch(`${base}/api/activity/${encodeURIComponent(feed.items[0].id)}`)).json();
     assert.equal(one.seq, feed.items[0].seq, 'GET /api/activity/:id');
     const ent = await (await fetch(`${base}/api/entities/${e.id}`)).json();
     assert.equal(typeof ent.activity[0].seq, 'number', 'GET /api/entities/:id');
-  } finally { server.close(); }
+  });
   assert.equal(typeof dispatchTool(w, 'weave_activity', { entity: e.id }).items[0].seq, 'number');
   assert.equal(typeof dispatchTool(w, 'weave_get_entity', { entity: e.id }).activity[0].seq, 'number');
 

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { createContext, runInContext } from 'node:vm';
+import { withServer } from './lib/fixtures.mjs';
 
 const HTML = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -90,11 +90,10 @@ for (const fail of [false, true]) {
 }
 
 test('the served page stamps the template files with immutable versions (Issue #989)', async () => {
-  const { server } = await startServer(new Weave(), { port: 0 });
-  try {
-    const html = await (await fetch(`http://127.0.0.1:${server.address().port}/`)).text();
+  await withServer(async ({ base }) => {
+    const html = await (await fetch(`${base}/`)).text();
     const tpl = html.match(/<template id="vditor-assets">([\s\S]*?)<\/template>/)?.[1] ?? '';
     assert.match(tpl, /href="\/vendor\/vditor\/dist\/index\.css\?v=[0-9a-f]{12}"/);
     assert.match(tpl, /src="\/vendor\/vditor\/dist\/index\.min\.js\?v=[0-9a-f]{12}"/);
-  } finally { server.close(); }
+  });
 });

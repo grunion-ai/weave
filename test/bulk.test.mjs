@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function build() {
   const w = new Weave();
@@ -125,9 +125,7 @@ test('bulk refuses an unknown op, an empty selection, and moving to a system tab
 
 test('POST /api/bulk is the HTTP door', async () => {
   const { w, ids, apollo } = build();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/bulk`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, op: 'link', field: 'Project', targets: [apollo.id] }),
@@ -136,7 +134,7 @@ test('POST /api/bulk is the HTTP door', async () => {
     const body = await res.json();
     assert.deepEqual(body.done, ids);
     assert.equal(w.readEntity(apollo.id).fields.Tasks.length, 3);
-  } finally { server.close(); }
+  });
 });
 
 test('weave_bulk is the MCP door and takes every parameter the engine takes', () => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, ATTACHMENT_PREVIEWS, ATTACHMENT_SIZES, ATTACHMENT_FITS, HTML_VIEW_POLICY, fileHeaders, viewHtml, FRAME_HEIGHT_SCRIPT, FRAME_LINK_BASE, frameStorageScript } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 await import('../public/date-grain.js');
 await import('../public/field-dialog-core.js');
@@ -123,9 +123,7 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
   const w = fresh();
   const e = w.createEntity('Issue', { name: 'Page' });
   const file = w.attachFile(e.id, { name: 'page.html', mime: 'text/html', bytes: HTML });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const bare = await fetch(`${base}/api/files/${file.id}`);
     assert.equal(bare.headers.get('content-type'), 'application/octet-stream');
     const shown = await fetch(`${base}/api/files/${file.id}?view`);
@@ -136,7 +134,7 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
     assert.deepEqual(Buffer.from(await (await fetch(`${base}/api/files/${file.id}`)).arrayBuffer()), HTML, 'the stored bytes are unchanged');
     const png = w.attachFile(e.id, { name: 'a.png', mime: 'image/png', bytes: PNG });
     assert.equal((await fetch(`${base}/api/files/${png.id}?view`)).headers.get('content-security-policy'), "sandbox; default-src 'none'");
-  } finally { server.close(); }
+  });
 });
 
 test('GET /api/files/:id?view opens the page\'s links in a new tab through an injected <base target="_blank">, unless the page sets its own <base> (Issue #1475)', async () => {
@@ -144,9 +142,7 @@ test('GET /api/files/:id?view opens the page\'s links in a new tab through an in
   const e = w.createEntity('Issue', { name: 'Page' });
   const plain = w.attachFile(e.id, { name: 'plain.html', mime: 'text/html', bytes: Buffer.from('<!doctype html><a href="https://elsewhere.test/">away</a>') });
   const own = w.attachFile(e.id, { name: 'own.html', mime: 'text/html', bytes: Buffer.from('<!doctype html><html><head><BASE href="https://elsewhere.test/"></head><a href="x">x</a></html>') });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const shown = await (await fetch(`${base}/api/files/${plain.id}?view`)).text();
     assert.ok(shown.startsWith('<!doctype html><base target="_blank"><script>'), 'the base comes first after the doctype, so it wins over any later one');
     assert.equal(shown.match(/<base\b/gi).length, 1, 'one base');
@@ -155,7 +151,7 @@ test('GET /api/files/:id?view opens the page\'s links in a new tab through an in
     const kept = await (await fetch(`${base}/api/files/${own.id}?view`)).text();
     assert.doesNotMatch(kept, /target="_blank"/, 'a page with its own base keeps its own link behaviour');
     assert.equal(kept.match(/<base\b/gi).length, 1, 'only the page\'s own base');
-  } finally { server.close(); }
+  });
 });
 
 test('fileHeaders serves an AVIF upload inline as image/avif, so a board cover and an img can draw it (Issue #1212)', () => {

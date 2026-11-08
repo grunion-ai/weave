@@ -2,8 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { references } from '../src/formula.js';
-import { startServer } from '../src/server.js';
-import { seeded } from './lib/fixtures.mjs';
+import { seeded, withServer } from './lib/fixtures.mjs';
 
 test('references lists every field a formula reads, both branches included', () => {
   assert.deepEqual(references('Amount * 2'), ['Amount']);
@@ -141,10 +140,8 @@ test('the stack unwinds: a cycle read does not poison the next read', () => {
 
 test('REST refuses the cycling formula with 400 and the path', async () => {
   const weave = new Weave();
-  const { server } = await startServer(weave, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const api = (m, p, b) => fetch(base + p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b && JSON.stringify(b) });
-  try {
+  await withServer(weave, async ({ base }) => {
+    const api = (m, p, b) => fetch(base + p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b && JSON.stringify(b) });
     await api('POST', '/api/spaces', { name: 'Sales' });
     await api('POST', '/api/tables', { space: 'Sales', name: 'Deals' });
     await api('POST', '/api/tables/Deals/fields', { name: 'Amount', type: 'number' });
@@ -154,7 +151,5 @@ test('REST refuses the cycling formula with 400 and the path', async () => {
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.match(body.error, /cycle: Bonus → Total → Bonus/);
-  } finally {
-    server.close();
-  }
+  });
 });

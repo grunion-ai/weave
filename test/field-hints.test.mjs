@@ -7,8 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage } from '../src/mcp.js';
-import { unwrapData } from './lib/fixtures.mjs';
-import { startServer } from '../src/server.js';
+import { unwrapData, withServer } from './lib/fixtures.mjs';
 import { FIELD_PATHS, nextFor, fieldHints, containerHints } from '../src/field-hints.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';
 import { tempDir } from './lib/temp.mjs';
@@ -144,9 +143,8 @@ test('the hints are pure: the field passed in is not touched', () => {
 
 test('REST and the CLI answer with the same guidance (Issue #579)', async () => {
   const w = budget();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const res = await fetch(`${base}/api/tables/Transaction/fields`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Amount', type: 'number' }),
     });
@@ -154,7 +152,7 @@ test('REST and the CLI answer with the same guidance (Issue #579)', async () => 
     assert.equal(res.status, 201);
     assert.ok(has(body.next, /^format:/) && has(body.hints, /currency/), JSON.stringify(body));
     assert.equal(w.getField('Transaction', 'Amount').next, undefined, 'nothing is stored on the field');
-  } finally { server.close(); }
+  });
 
   const dir = tempDir('weave-hints-');
   try {

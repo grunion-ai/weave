@@ -5,8 +5,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inviteEmail, trialEmail, ROLES, art, longDate } from '../src/mail.js';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { LOCKUP_SIZES } from '../brand/build-logos.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ORIGIN = 'https://weave.example.com';
@@ -162,10 +162,8 @@ test('preview: Architect only, sample values, ?role and ?theme', async () => {
   const architect = w.createAccount({ name: 'kyle', role: 'architect' }).token;
   const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
   w.setRequireAuth(true);
-  const { server } = await startServer(w, { port: 0, origin: 'https://weave.example.com' });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const get = (path, token) => fetch(base + path, { headers: { Host: 'weave.example.com', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
-  try {
+  await withServer(w, { origin: 'https://weave.example.com' }, async ({ base }) => {
+    const get = (path, token) => fetch(base + path, { headers: { Host: 'weave.example.com', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
     assert.equal((await get('/api/mail/preview/invite')).status, 401);
     assert.equal((await get('/api/mail/preview/invite', editor)).status, 403);
     const res = await get('/api/mail/preview/invite', architect);
@@ -184,5 +182,5 @@ test('preview: Architect only, sample values, ?role and ?theme', async () => {
     const png = await get('/brand/email-lockup-light.png');
     assert.equal(png.status, 200);
     assert.equal(png.headers.get('content-type'), 'image/png');
-  } finally { server.close(); }
+  });
 });

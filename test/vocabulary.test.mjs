@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { VOCABULARY, FIELD_TYPE_VOCABULARY, OPTION_COLORS, ICONS } from '../src/vocabulary.js';
 import { FIELD_TYPES, Weave, STATE_CATEGORIES, CELL_COLORS } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
@@ -97,14 +97,13 @@ test('the registries name the columns that are schema writes', () => {
 });
 
 test('the vocabulary is served, so a remote agent has it too', async () => {
-  const { server } = await startServer(new Weave(), { port: 0 });
-  try {
-    const got = await (await fetch(`http://127.0.0.1:${server.address().port}/api/vocabulary`)).json();
+  await withServer(async ({ base }) => {
+    const got = await (await fetch(`${base}/api/vocabulary`)).json();
     assert.deepEqual(got.icons.names, ICONS);
     assert.equal(got.icons.form, 'lucide:<name>');
     assert.equal(got.fieldTypes.length, FIELD_TYPES.length);
     assert.equal(got.columnWidth.min, VOCABULARY.columnWidth.min);
-  } finally { server.close(); }
+  });
 });
 
 test('the formula functions are served with signature, group, doc and example', async () => {
@@ -117,9 +116,8 @@ test('the formula functions are served with signature, group, doc and example', 
     for (const k of ['sig', 'group', 'doc', 'example']) assert.ok(f[k], `${f.name} is missing ${k}`);
   }
   assert.deepEqual(VOCABULARY.formulaGroups, ['logic', 'text', 'number', 'date']);
-  const { server } = await startServer(new Weave(), { port: 0 });
-  try {
-    const got = await (await fetch(`http://127.0.0.1:${server.address().port}/api/vocabulary`)).json();
+  await withServer(async ({ base }) => {
+    const got = await (await fetch(`${base}/api/vocabulary`)).json();
     assert.deepEqual(got.formulaFunctions, VOCABULARY.formulaFunctions);
-  } finally { server.close(); }
+  });
 });

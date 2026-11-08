@@ -13,6 +13,7 @@ import { startServer } from '../src/server.js';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
 const EXPORT = join(ROOT, 'scripts', 'export-development.mjs');
@@ -185,9 +186,7 @@ test('the canonical tracker records the forwarding instance when an account file
   const root = new Weave();
   const { token } = root.createAccount({ name: 'dev-forwarder', role: 'editor' });
   const docs = seedWeaver(new Weave());
-  const { server } = await startServer(root, { port: 0, workspaces: { weave: docs } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(root, { workspaces: { weave: docs } }, async ({ base }) => {
     await withEnv({ WEAVE_TRACKER_CANONICAL: '1' }, async () => {
       const signed = await file(base, { ...REPORT, instance: 'https://dev.weave.example' }, { Authorization: `Bearer ${token}` });
       assert.equal(signed.status, 201);
@@ -195,7 +194,7 @@ test('the canonical tracker records the forwarding instance when an account file
       const anonymous = await file(base, { ...REPORT, instance: 'https://forged.example' });
       assert.doesNotMatch(docs.readEntity(anonymous.data.id).docs.Description, /forged\.example/, 'an anonymous page cannot claim an instance');
     });
-  } finally { server.close(); }
+  });
 });
 
 test('renderBugReport names the instance and a failed forward when the server supplies them', () => {
