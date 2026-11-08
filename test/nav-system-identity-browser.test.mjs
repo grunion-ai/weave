@@ -76,7 +76,7 @@ if (s) {
     await page.waitForSelector('#sidebar .nav-system a.nav-db');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('#sidebar .nav-system a.nav-db');
-    assert.equal((await systemRows(page)).length, 4, 'unfolded after the next reload');
+    assert.equal((await systemRows(page)).length, 5, 'unfolded after the next reload');
     await ctx.close();
   });
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-let wfId, usersId, member, other;
+let wfId, usersId, linksId, member, other;
 const s = await launch('system tables nav', (weave) => {
   weave.createSpace({ name: 'Work' });
   for (let i = 1; i <= 16; i += 1) {
@@ -15,6 +15,7 @@ const s = await launch('system tables nav', (weave) => {
   weave.deleteEntity(e.id);
   wfId = weave.getTable('System/Workflows').id;
   usersId = weave.getTable('System/Users').id;
+  linksId = weave.getTable('System/Integrations').id;
   member = new Weave();
   member.updateWorkspace({ name: 'member' });
   member.createSpace({ name: 'Notes' });
@@ -50,7 +51,7 @@ if (s) {
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Integrations', `#/table/${linksId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows') && !inList.includes('Users'), 'Workflows and Users are not listed twice');
     const below = await page.evaluate(() => {
@@ -130,7 +131,7 @@ if (s) {
     }
     const registry = await page.locator('#main .system-tables .list-row[data-registry]').evaluateAll((rows) => rows.map((r) => [r.dataset.registry, r.dataset.href]));
     const spacesId = registry.find(([kind]) => kind === 'spaces')?.[1];
-    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['fields', 'forms', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
+    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['fields', 'forms', 'integrations', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
       'the workspace page lists every registry table');
     assert.match(spacesId ?? '', /^#\/table\//);
     await page.click('#main .system-tables .list-row[data-registry="spaces"]');
