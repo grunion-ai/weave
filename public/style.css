@@ -1869,6 +1869,12 @@ input[type="checkbox"].form-check-input:checked { background: var(--tblr-primary
 input[type="checkbox"].form-check-input:checked::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 input[type="checkbox"].form-check-input:focus-visible { outline: 2px solid rgba(var(--tblr-primary-rgb), .35); outline-offset: 1px; }
 input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default; }
+@media (pointer: coarse) {
+  .fieldrow input[type="checkbox"].form-check-input { width: 46px; height: 46px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+  .fieldrow input[type="checkbox"].form-check-input::before { content: ""; position: absolute; left: 0; top: 15px; width: 16px; height: 16px; border: 1.5px solid var(--tblr-border-color); border-radius: 4px; background: var(--tblr-bg-surface); }
+  .fieldrow input[type="checkbox"].form-check-input:checked::before { border-color: var(--tblr-primary); background: var(--tblr-primary); }
+  .fieldrow input[type="checkbox"].form-check-input:checked::after { left: 4.5px; top: 16.5px; }
+}
 
 .wv-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; margin: 0; max-width: 100%; user-select: none; font: inherit; color: inherit; line-height: var(--wv-chip-line); }
 .wv-toggle-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
