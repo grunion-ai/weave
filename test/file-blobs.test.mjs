@@ -7,10 +7,10 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { writeFileDurable } from '../src/store.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
 
@@ -152,13 +152,10 @@ test('the CLI export → import round trip keeps the file (the reported repro)',
 test('GET /api/export carries the blobs; the MCP tool leaves them out', async () => {
   const w = new Weave({ path: join(tmp(), 'ws.db') });
   const { file } = seed(w);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const dump = await (await fetch(`http://127.0.0.1:${server.address().port}/api/export`)).json();
+  await withServer(w, async ({ base }) => {
+    const dump = await (await fetch(`${base}/api/export`)).json();
     assert.ok(dump.fileBlobs?.[file], 'the backup route dropped the bytes');
-  } finally {
-    server.close();
-  }
+  });
   assert.equal(dispatchTool(w, 'weave_export_json', {}).fileBlobs, undefined,
     'the MCP dump pushed base64 at its reader');
   assert.ok(dispatchTool(w, 'weave_export_json', { blobs: true }).fileBlobs?.[file],
@@ -218,16 +215,13 @@ test('POST /api/import and the CLI report the files without bytes', async () => 
   const { file } = seed(src);
   const dump = dispatchTool(src, 'weave_export_json', {});
   const dst = new Weave({ path: join(tmp(), 'dst.db') });
-  const { server } = await startServer(dst, { port: 0 });
-  try {
-    const res = await (await fetch(`http://127.0.0.1:${server.address().port}/api/import`, {
+  await withServer(dst, async ({ base }) => {
+    const res = await (await fetch(`${base}/api/import`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dump),
     })).json();
     assert.equal(res.ok, true);
     assert.equal(res.missing[0].file, file);
-  } finally {
-    server.close();
-  }
+  });
   const dumpPath = join(srcDir, 'reader.json');
   writeFileSync(dumpPath, JSON.stringify(dump));
   const out = JSON.parse(execFileSync('node', [CLI, 'import', '--file', dumpPath, '--data', join(tmp(), 'cli.db')], { encoding: 'utf8' }));

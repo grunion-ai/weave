@@ -8,9 +8,9 @@ import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { Store } from '../src/store.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -300,9 +300,7 @@ test('HTTP: list, read and restore a revision', async () => {
   const e = w.createEntity('Article', { name: 'A', doc: 'v1' });
   w.setDoc(e.id, 'v2');
   w.setDoc(e.id, 'spec 1', 'Spec');
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const api = async (method, path, body) => {
       const res = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
       return { status: res.status, body: await res.json() };
@@ -326,9 +324,7 @@ test('HTTP: list, read and restore a revision', async () => {
     assert.equal(relisted.body.revisions[0].restoredFrom, oldest, 'the restore is labelled in the list an agent reads (Issue #588)');
     const missing = await api('GET', `/api/entities/${e.id}/doc/revisions/999999`);
     assert.equal(missing.status, 404);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('MCP: weave_doc_revisions lists or reads; weave_doc_restore writes back', () => {

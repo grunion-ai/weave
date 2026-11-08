@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function fresh() {
   const dir = tempDir('weave-keys-');
@@ -56,9 +56,7 @@ test('the authenticated API sets and lists keys while a generic key GET never re
   const { w } = fresh();
   const { token } = w.createAccount({ name: 'key-owner', role: 'architect' });
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     assert.equal((await fetch(`${base}/api/keys`)).status, 401);
     const denied = await fetch(`${base}/api/keys`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -78,7 +76,5 @@ test('the authenticated API sets and lists keys while a generic key GET never re
     assert.equal((await fetch(`${base}/api/keys/stripe`, { headers })).status, 404, 'no read-back endpoint');
     assert.equal((await fetch(`${base}/api/keys/stripe`, { method: 'DELETE', headers })).status, 200);
     assert.equal(w.hasKey('stripe'), false);
-  } finally {
-    server.close();
-  }
+  });
 });

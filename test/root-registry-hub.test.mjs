@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -18,9 +19,7 @@ test('hub: each workspace owns its registry and registry edits stay local', asyn
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Dev' });
   uno.createTable({ space: 'Dev', name: 'Task' });
-  const { server } = await startServer(root, { port: 0, workspaces: { uno } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(root, { workspaces: { uno } }, async ({ base }) => {
     const unoSchema = await json(await fetch(`${base}/w/uno/api/schema`));
     assert.ok(unoSchema.some(s => s.system === 'workspace'));
     assert.ok(unoSchema.some(s => s.space === 'Dev'));
@@ -41,9 +40,7 @@ test('hub: each workspace owns its registry and registry edits stay local', asyn
     assert.equal((await fetch(`${base}/api/entities/${row.id}`)).status, 404);
     const report = await json(await fetch(`${base}/w/uno/api/registry`));
     assert.deepEqual(report.problems, []);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('hub: adopted and created workspaces keep local registries through their lifecycle', async () => {
@@ -57,9 +54,7 @@ test('hub: adopted and created workspaces keep local registries through their li
     legacy.createTable({ space: 'Ops', name: 'Run' });
     assert.ok(legacy.getTable('System/Tables'), 'a legacy workspace minted its own registry');
     legacy.store.close?.();
-    const { server } = await startServer(main, { port: 0 });
-    const base = `http://127.0.0.1:${server.address().port}`;
-    try {
+    await withServer(main, async ({ base }) => {
       const list = await json(await fetch(`${base}/api/workspaces`));
       const leg = list.find((w) => w.name === 'legacy');
       assert.ok(leg, 'scan adopted the sibling');
@@ -84,9 +79,7 @@ test('hub: adopted and created workspaces keep local registries through their li
       await fetch(`${base}/api/workspaces/${scratch.id}?hard=1`, { method: 'DELETE' });
       assert.deepEqual(names(), ['main']);
       assert.ok(readdirSync(join(dir, 'trash')).some((f) => f.startsWith('scratch-')));
-    } finally {
-      server.close();
-    }
+    });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

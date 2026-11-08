@@ -73,7 +73,7 @@ for (const fail of [false, true]) {
       const pending = new Promise((ok, no) => { resolve = ok; reject = no; });
       const calls = [];
       const context = createContext({
-        window: {}, host: { isConnected: true }, entity: { docs: {} }, f: { name: 'Body' }, id: 'row', editors: [],
+        window: {}, host: { isConnected: true }, entity: { docs: {} }, f: { name: 'Body' }, id: 'row', editors: [], pendingDocSaves: new Map(),
         loadVditor: () => pending, mountDocEditor: () => calls.push('editor'),
         mountSourceEditor: () => calls.push('source'), toast: () => calls.push('toast'),
       });

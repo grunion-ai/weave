@@ -9,6 +9,8 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
+import '../public/cell-graphics.js';
+import '../public/field-dialog-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -97,6 +99,11 @@ const AVATAR_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 export const LOCKED_NAME = 'Private';
+export const UPGRADE_FLOOR = 'v0.4.4';
+function refuseBeforeFloor(state) {
+  if (state.version === 2 && !state.databases && state.meta?.percentFractional) return;
+  throw new WeaveError(`This workspace was last saved by a weave older than ${UPGRADE_FLOOR}. Open it once with weave v0.4.123, which upgrades it, then open it here.`, 'invalid');
+}
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
 const PASTED_ENTITY = /^\s*(?:(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+)?(?:\/w\/[^/\s]+)?\/e\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]\S*)?\s*$/i;
@@ -124,6 +131,7 @@ export function sniffImage(bytes) {
   if (at('ffd8ff')) return 'image/jpeg';
   if (at('474946383761') || at('474946383961')) return 'image/gif';
   if (at('52494646') && at('57454250', 8)) return 'image/webp';
+  if (at('66747970', 4) && (at('61766966', 8) || at('61766973', 8))) return 'image/avif';
   return null;
 }
 
@@ -164,6 +172,8 @@ const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 export const FILE_STORAGE_CAP = 5 * 1024 * 1024;
 export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
 export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
+export const FRAME_LINK_BASE = "<base target=\"_blank\"><script>addEventListener('click', (e) => { const a = e.target.closest?.('a[href], area[href]'); if (!a || a.hasAttribute('target') || typeof a.href !== 'string') return; if (a.protocol === 'javascript:' || a.href.split('#')[0] === location.href.split('#')[0]) a.target = '_self'; }, true);</script>";
+export const frameLinkBase = (bytes) => (/<base[\s/>]/i.test(bytes.toString('latin1')) ? '' : FRAME_LINK_BASE);
 const scriptJson = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 export const frameStorageScript = (items = {}) => `<script>(() => {
   const live = parent !== window;
@@ -225,11 +235,8 @@ const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
 const DERIVED_CACHE_CAP = 32;
-export const SYSTEM_SORT_KEYS = {
-  'Created At': 'createdAt', 'Modified At': 'updatedAt',
-  'Created By': 'createdBy', 'Modified By': 'modifiedBy',
-  'Public Id': 'publicId',
-};
+export const { STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES } = globalThis.fieldDialogCore;
+export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fieldDialogCore.SYSTEM_SORT).map((s) => [s.name, s.key]));
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
@@ -339,7 +346,7 @@ const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separato
 const ROLLUP_COSTUME_KEYS = NUMBER_COSTUME_KEYS.filter((k) => k !== 'separator');
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
-export const CELL_COLORS = ['ink', 'icon', 'accent'];
+export const CELL_COLORS = globalThis.weaveCellGraphics.COLORS;
 function cellColorValue(color) {
   if (color == null) return 'ink';
   if (!CELL_COLORS.includes(color)) throw new WeaveError(`Invalid color '${color}' (${CELL_COLORS.join(', ')})`, 'invalid');
@@ -377,14 +384,7 @@ function docChange(field, before, after) {
   };
 }
 
-const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
-const DEFAULT_WORKFLOW_STATES = [
-  { name: 'Not started', category: 'not-started' },
-  { name: 'In progress', category: 'in-progress' },
-  { name: 'Done', category: 'done' },
-  { name: 'Canceled', category: 'canceled' },
-];
 
 const WORKFLOW_STATES = [
   { name: 'Setup incomplete', category: 'not-started', default: true },
@@ -594,6 +594,19 @@ const { dressNumber } = globalThis.weaveNumberCore;
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
+const COSTUME_KEYS = { number: NUMBER_COSTUME_KEYS, formula: FORMULA_COSTUME_KEYS, rollup: ROLLUP_COSTUME_KEYS, date: DATE_COSTUME_KEYS, daterange: DATE_COSTUME_KEYS, attachments: ATTACHMENT_LOOK_KEYS };
+export function pickCostume(from, keys, into = {}) {
+  for (const k of keys) if (from[k] != null) into[k] = from[k];
+  return into;
+}
+export function putCostume(config, keys, costume, touched = () => true) {
+  for (const k of keys) {
+    if (!touched(k)) continue;
+    if (costume[k] == null) delete config[k];
+    else config[k] = costume[k];
+  }
+  return config;
+}
 function rollupCostume(config) {
   if (!ROLLUP_COSTUME_KEYS.some((k) => config[k] != null)) return {};
   return normalizeSelfContainedConfig('number', { ...config, separator: undefined });
@@ -1228,7 +1241,7 @@ export class Weave {
     }
     this.state = loaded ?? {
       version: 2,
-      meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO() },
+      meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO(), percentFractional: true },
       spaces: {},
       tables: {},
       entities: {},
@@ -1243,57 +1256,20 @@ export class Weave {
 
   #migrate() {
     const s = this.state;
+    refuseBeforeFloor(s);
     if (!s.meta.id) { s.meta.id = uuid(); if (this.store.path) this.save(); }
-    if (s.databases && !s.tables) {
-      s.tables = s.databases;
-      delete s.databases;
-    }
     s.tables = s.tables ?? {};
     let changed = false;
     for (const db of Object.values(s.tables)) {
       if (this.#reconcileFieldOrder(db)) changed = true;
       if (!db.system) {
         if (this.#ensureDescriptionField(db)) changed = true;
-        if (this.#ensureTerm(db)) changed = true;
         if (this.#ensureViewFields(db)) changed = true;
       }
       if (this.#ensureTableViews(db)) changed = true;
       if (this.#ensureSystemColumnsInViews(db)) changed = true;
       if (this.#dropRetiredSystemField(db)) changed = true;
       if (this.#ensureStandardViewName(db)) changed = true;
-    }
-    for (const e of Object.values(s.entities ?? {})) {
-      if (e.docs) continue;
-      e.docs = {};
-      if (e.doc) {
-        const db = s.tables[e.dbId];
-        const docField = this.descriptionField(db);
-        if (docField) e.docs[docField.id] = e.doc;
-      }
-      delete e.doc;
-      this.#mark(e);
-      changed = true;
-    }
-    if (s.version !== 2) {
-      s.version = 2;
-      changed = true;
-    }
-    if (!s.meta.percentFractional) {
-      for (const db of Object.values(s.tables)) {
-        for (const f of Object.values(db.fields ?? {})) {
-          if (f.type !== 'number' || f.config?.format !== 'percent') continue;
-          for (const e of Object.values(s.entities ?? {})) {
-            if (e.dbId !== db.id) continue;
-            const v = e.values?.[f.id];
-            if (typeof v === 'number' && Number.isFinite(v)) {
-              e.values[f.id] = v / 100;
-              this.#mark(e);
-            }
-          }
-        }
-      }
-      s.meta.percentFractional = true;
-      changed = true;
     }
     if (s.meta.activitySeq == null) { s.meta.activitySeq = 0; changed = true; }
     {
@@ -1414,16 +1390,6 @@ export class Weave {
         try { this.updateField(target.id, field.id, { name }); } catch (err) { if (!(err instanceof WeaveError)) throw err; }
       }
     }
-  }
-
-  #ensureTerm(db) {
-    if (db.noun == null) return false;
-    const nameField = db.fields[db.nameFieldId];
-    if (nameField && !nameField.config.term && String(db.noun).trim()) {
-      try { nameField.config.term = Term.normalize({ singular: db.noun }); } catch {}
-    }
-    delete db.noun;
-    return true;
   }
 
   #ensureViewFields(db) {
@@ -1682,7 +1648,7 @@ export class Weave {
             }
           }
         }
-        this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
       });
       this.#detachedStorage = null;
       this.#dirty.clear();
@@ -1794,12 +1760,23 @@ export class Weave {
     return this.spaceMembers(sp.id);
   }
 
+  #nameHolders(kind, name, { spaceId, except } = {}) {
+    const key = String(name).toLowerCase();
+    const hits = Object.values(kind === 'Space' ? this.state.spaces : this.state.tables)
+      .filter((x) => x !== except && (spaceId === undefined || x.spaceId === spaceId) && x.name.toLowerCase() === key);
+    return { live: hits.find((x) => !x.deletedAt), held: hits.find((x) => x.deletedAt) };
+  }
+
+  #assertNameFree(kind, name, label, scope) {
+    const { live, held } = this.#nameHolders(kind, name, scope);
+    if (live) throw new WeaveError(`${kind} '${label}' already exists`, 'conflict');
+    if (held) throw new WeaveError(`${kind} '${label}' is in the trash — restore or purge it first`, 'conflict');
+  }
+
   createSpace({ name, description = '', icon = '', template = false }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     refuseReserved('space', name);
-    if (Object.values(this.state.spaces).some((s) => !s.deletedAt && s.name.toLowerCase() === String(name).toLowerCase())) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
-    const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
-    if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
+    this.#assertNameFree('Space', name, name);
     const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.#settlePositions();
@@ -1878,8 +1855,7 @@ export class Weave {
     this.#mayChange(s.id, 'architect');
     if (!s.deletedAt) return s;
     if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own System space is a tombstone', 'invalid');
-    const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
-    if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
+    if (this.#nameHolders('Space', s.name).live) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
     this.#restoreSysRow('spaces', s.id);
     this.#audit('space-restored', { name: s.name }, s.id);
@@ -1893,9 +1869,7 @@ export class Weave {
     if (!name) throw new WeaveError('Table name is required', 'invalid');
     refuseReserved('table', name);
     const qualified = `${sp.name}/${name}`;
-    if (Object.values(this.state.tables).some((d) => !d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase())) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
-    const held = Object.values(this.state.tables).find((d) => d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase());
-    if (held) throw new WeaveError(`Table '${qualified}' is in the trash — restore or purge it first`, 'conflict');
+    this.#assertNameFree('Table', name, qualified, { spaceId: sp.id });
     const nameField = { id: uuid(), name: 'Name', type: 'text', config: {} };
     const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
     const db = {
@@ -2040,10 +2014,7 @@ export class Weave {
       if (position == null) return db;
       return this.updateTable(db.id, { position });
     }
-    const clash = Object.values(this.state.tables).find((d) => d.id !== db.id
-      && d.spaceId === sp.id && d.name.toLowerCase() === db.name.toLowerCase());
-    if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
-    if (clash) throw new WeaveError(`Table '${sp.name}/${db.name}' already exists`, 'conflict');
+    this.#assertNameFree('Table', db.name, `${sp.name}/${db.name}`, { spaceId: sp.id, except: db });
     const from = this.state.spaces[db.spaceId]?.name;
     const left = db.spaceId;
     db.spaceId = sp.id;
@@ -2062,8 +2033,7 @@ export class Weave {
     if (src.system) throw new WeaveError(`Table '${src.name}' is part of the system registry`, 'invalid');
     if (src.deletedAt) throw new WeaveError(`Table '${src.name}' is in the trash — restore it first`, 'conflict');
     const sp = this.state.spaces[src.spaceId];
-    const taken = (n) => Object.values(this.state.tables)
-      .some((d) => d.spaceId === src.spaceId && d.name.toLowerCase() === n.toLowerCase());
+    const taken = (n) => { const { live, held } = this.#nameHolders('Table', n, { spaceId: src.spaceId }); return !!(live || held); };
     let name = `${src.name} Copy`;
     for (let i = 2; taken(name); i++) name = `${src.name} Copy ${i}`;
     const newId = uuid();
@@ -2213,8 +2183,7 @@ export class Weave {
     if (!db.deletedAt) return db;
     const sp = this.state.spaces[db.spaceId];
     if (sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is inside the trashed space '${sp.name}' — restore the space first`, 'invalid');
-    const clash = Object.values(this.state.tables).find((x) => !x.deletedAt && x.spaceId === db.spaceId && x.name.toLowerCase() === db.name.toLowerCase());
-    if (clash) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
+    if (this.#nameHolders('Table', db.name, { spaceId: db.spaceId }).live) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
     db.deletedAt = null;
     this.#restoreSysRow('tables', db.id);
     for (const v of db.tableViews ?? []) this.#restoreSysRow('views', v.id);
@@ -2895,11 +2864,11 @@ export class Weave {
       if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
       if (f.type !== 'view' && f.description != null) config.description = f.description;
-      for (const k of FORMULA_COSTUME_KEYS) if (f[k] != null) config[k] = f[k];
+      pickCostume(f, FORMULA_COSTUME_KEYS, config);
       for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
       if (f.kind != null) config.kind = f.kind;
       if (f.multiple != null) config.multiple = f.multiple;
-      if (f.type === 'attachments') for (const k of ATTACHMENT_LOOK_KEYS) if (f[k] != null) config[k] = f[k];
+      if (f.type === 'attachments') pickCostume(f, ATTACHMENT_LOOK_KEYS, config);
       if (f.type === 'avatar' && f.shape != null) config.shape = f.shape;
       if (f.term != null) config.term = f.term;
       if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
@@ -6187,12 +6156,7 @@ export class Weave {
         const switched = field.type === 'formula' && 'grain' in patch.config && (patch.config.grain == null) !== (field.config.grain == null);
         const merged = switched ? patch.config : { ...field.config, ...patch.config };
         const costume = field.type === 'formula' ? formulaCostume(merged) : normalizeSelfContainedConfig('number', merged);
-        for (const k of field.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
-          if (k in patch.config || k in costume || k in field.config) {
-            if (costume[k] == null) delete field.config[k];
-            else field.config[k] = costume[k];
-          }
-        }
+        putCostume(field.config, COSTUME_KEYS[field.type], costume, (k) => k in patch.config || k in costume || k in field.config);
       }
       if (nextRecipe) {
         healthBefore = this.#formulaHealth(db, field);
@@ -6203,7 +6167,7 @@ export class Weave {
         const merged = { ...field.config, ...patch.config };
         for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
         const costume = rollupCostume(merged);
-        for (const k of ROLLUP_COSTUME_KEYS) { if (costume[k] == null) delete field.config[k]; else field.config[k] = costume[k]; }
+        putCostume(field.config, ROLLUP_COSTUME_KEYS, costume);
       }
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
       if (field.type === 'text' && 'literal' in patch.config) {
@@ -6217,7 +6181,7 @@ export class Weave {
       if (field.type === 'attachments' && ['multiple', ...ATTACHMENT_LOOK_KEYS].some((k) => k in patch.config)) {
         const next = normalizeSelfContainedConfig('attachments', { ...field.config, ...patch.config });
         field.config.multiple = next.multiple;
-        for (const k of ATTACHMENT_LOOK_KEYS) { if (next[k] == null) delete field.config[k]; else field.config[k] = next[k]; }
+        putCostume(field.config, ATTACHMENT_LOOK_KEYS, next);
       }
       if (field.type === 'avatar' && 'shape' in patch.config) field.config.shape = normalizeSelfContainedConfig('avatar', { shape: patch.config.shape }).shape;
       if (field.type === 'document' && 'kind' in patch.config) {
@@ -6226,12 +6190,7 @@ export class Weave {
       }
       if (field.type === 'date' || field.type === 'daterange') {
         const costume = normalizeSelfContainedConfig(field.type, { ...field.config, ...patch.config });
-        for (const k of DATE_COSTUME_KEYS) {
-          if (k in patch.config || k in costume) {
-            if (costume[k] == null) delete field.config[k];
-            else field.config[k] = costume[k];
-          }
-        }
+        putCostume(field.config, DATE_COSTUME_KEYS, costume, (k) => k in patch.config || k in costume);
       }
       if (field.type === 'select' || field.type === 'multiselect') {
         if (patch.config.options) {
@@ -7289,7 +7248,41 @@ export class Weave {
     return e;
   }
 
+  #checkValues(e, db, valuesByName) {
+    for (const [key, raw] of Object.entries(valuesByName)) {
+      const field = this.findField(db, key);
+      if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
+      if (COMPUTED_TYPES.includes(field.type)) {
+        throw new WeaveError(`Field '${field.name}' is computed (${field.type}) and cannot be written`, 'invalid');
+      }
+      if (field.type === 'relation') {
+        const ids = this.#normalizeRelationInput(field, raw);
+        if (!field.config.many && ids.length > 1) throw new WeaveError(`Field '${field.name}' holds a single entity`, 'invalid');
+        continue;
+      }
+      if (field.type === 'workflow') {
+        const empty = raw == null || raw === '';
+        const states = field.config.states;
+        if (!empty && !states.some((s) => s.id === raw || s.name === raw || s.name.toLowerCase() === String(raw).toLowerCase())) {
+          throw new WeaveError(`'${raw}' is not a state of '${field.name}'`, 'invalid');
+        }
+        continue;
+      }
+      if (field.type === 'document') continue;
+      const val = this.#validateValue(field, raw);
+      if (!isFileField(field)) continue;
+      for (const id of val) {
+        const meta = e.files.find((x) => x.id === id);
+        if (!meta) throw new WeaveError(`'${id}' is not a file on this entity — upload it here first`, 'invalid');
+        if (field.type === 'avatar' && !AVATAR_IMAGE_TYPES.includes(String(meta.mime ?? '').toLowerCase())) {
+          throw new WeaveError(`'${meta.name}' is not an image; an avatar takes a PNG, JPEG, GIF or WebP`, 'invalid');
+        }
+      }
+    }
+  }
+
   #applyValues(e, db, valuesByName, { depth = 0, isCreate = false } = {}) {
+    this.#checkValues(e, db, valuesByName);
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
       if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
@@ -8189,11 +8182,15 @@ export class Weave {
     this.#forgetDerived();
   }
 
-  readEntity(id, { viewerZone = null } = {}) {
-    if (viewerZone == null) return this.#framed(() => this.#readEntityIn(id));
+  #inViewerZone(viewerZone, fn) {
+    if (viewerZone == null) return fn();
     const prev = this.viewerZone;
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#framed(() => this.#readEntityIn(id)); } finally { this.viewerZone = prev; }
+    try { return fn(); } finally { this.viewerZone = prev; }
+  }
+
+  readEntity(id, { viewerZone = null } = {}) {
+    return this.#inViewerZone(viewerZone, () => this.#framed(() => this.#readEntityIn(id)));
   }
   #readEntityIn(id, { pick = null, chips = null } = {}) {
     const e = this.getEntity(id);
@@ -8348,10 +8345,7 @@ export class Weave {
   }
 
   query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {
-    if (viewerZone == null) return this.#inQuery(dbRef, opts, workspace);
-    const prev = this.viewerZone;
-    this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#inQuery(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
+    return this.#inViewerZone(viewerZone, () => this.#inQuery(dbRef, opts, workspace));
   }
   #inQuery(dbRef, opts, workspace) {
     return this.#framed(() => this.#queryIn(dbRef, opts, workspace));
@@ -8622,42 +8616,30 @@ export class Weave {
   }
 
   setDoc(entityId, markdown, fieldRef = null) {
+    return this.#writeDoc(entityId, markdown, fieldRef, 'write', 'doc-updated', (before, text) => text);
+  }
+
+  appendDoc(entityId, markdown, fieldRef = null) {
+    return this.#writeDoc(entityId, markdown, fieldRef, 'append', 'doc-appended', (before, text) => (before ? before.replace(/\n*$/, '\n\n') : '') + text);
+  }
+
+  #writeDoc(entityId, markdown, fieldRef, verb, kind, compute) {
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
-    const after = this.#docText(markdown, 'write');
+    const text = this.#docText(markdown, verb);
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
     const before = e.docs[f.id] ?? '';
+    const after = compute(before, text);
     if (before === after) return e;
     const prior = { at: e.updatedAt, by: e.modifiedBy };
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     const r = this.#restoring;
-    this.#logActivity(e, 'doc-updated', r ? { ...docChange(f.name, before, after), restoredFrom: r.seq, restoredAt: r.at, restoredBy: r.actor ?? null }
+    this.#logActivity(e, kind, r ? { ...docChange(f.name, before, after), restoredFrom: r.seq, restoredAt: r.at, restoredBy: r.actor ?? null }
       : docChange(f.name, before, after));
-    this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
-    this.#recordDocRevision(e, f, before, after, { prior });
-    this.save();
-    return e;
-  }
-
-  appendDoc(entityId, markdown, fieldRef = null) {
-    this.#mayWriteRow(entityId);
-    const e = this.getEntity(entityId);
-    const addition = this.#docText(markdown, 'append');
-    const db = this.state.tables[e.dbId];
-    const f = this.#resolveDocField(db, fieldRef);
-    e.docs = e.docs ?? {};
-    const before = e.docs[f.id] ?? '';
-    const after = (before ? before.replace(/\n*$/, '\n\n') : '') + addition;
-    if (before === after) return e;
-    const prior = { at: e.updatedAt, by: e.modifiedBy };
-    e.docs[f.id] = after;
-    e.updatedAt = nowISO();
-    e.modifiedBy = this.actor;
-    this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
     this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
     this.#recordDocRevision(e, f, before, after, { prior });
     this.save();
@@ -9749,9 +9731,18 @@ export class Weave {
     }
     const uuidPat = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
     for (const m of text.matchAll(new RegExp(`\\[\\[\\s*(${uuidPat.source})\\s*(?:\\|[^\\]]*)?\\]\\]`, 'gi'))) add(m[1].toLowerCase());
-    for (const m of text.matchAll(new RegExp(`/e/(${uuidPat.source})(?=[/#?"')\\s]|$)`, 'gi'))) add(m[1].toLowerCase());
+    const far = new Map();
+    const link = new RegExp(`(?:\\[([^\\]\\n]*)\\]\\()?((?:https?://([^/\\s"'()<>]+))?(?:/w/([a-z0-9-]+))?/e/(${uuidPat.source}))(?=[/#?"')\\s]|$)`, 'gi');
+    for (const m of text.matchAll(link)) {
+      const id = m[5].toLowerCase();
+      if (own(this.state.entities, id)) { add(id); continue; }
+      const workspace = (m[4] ?? /^([a-z0-9-]+)\.weave\./i.exec(m[3] ?? '')?.[1])?.toLowerCase();
+      if (!workspace || workspace === this.state.meta.name || far.has(`${workspace}/${id}`)) continue;
+      far.set(`${workspace}/${id}`, { id, external: true, workspace, name: m[1]?.trim() || null, url: m[2] });
+    }
     return [...ids].map((id) => this.#summary(id))
-      .sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId);
+      .sort((a, b) => a.db.localeCompare(b.db) || a.publicId - b.publicId)
+      .concat([...far.values()]);
   }
 
   storageStats() {
@@ -10252,19 +10243,17 @@ export class Weave {
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
           if (f.type === 'rollup') {
-            for (const k of ROLLUP_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, ROLLUP_COSTUME_KEYS, out);
             const nd = this.#numberDisplay(db, f);
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }
           if (f.type === 'number' || f.type === 'formula') {
-            for (const k of f.type === 'formula' ? FORMULA_COSTUME_KEYS : NUMBER_COSTUME_KEYS) {
-              if (f.config[k] != null) out[k] = f.config[k];
-            }
+            pickCostume(f.config, COSTUME_KEYS[f.type], out);
             if (f.config.display) out.color = f.config.color ?? 'ink';
           }
           if (f.type === 'attachments') {
             out.multiple = f.config.multiple !== false;
-            for (const k of ATTACHMENT_LOOK_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, ATTACHMENT_LOOK_KEYS, out);
           }
           if (f.type === 'avatar') out.shape = f.config.shape ?? 'round';
           if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
@@ -10286,7 +10275,7 @@ export class Weave {
           }
           if (f.type === 'key') Object.assign(out, this.credentialConfig(f));
           if (f.type === 'date' || f.type === 'daterange') {
-            for (const k of DATE_COSTUME_KEYS) if (f.config[k] != null) out[k] = f.config[k];
+            pickCostume(f.config, DATE_COSTUME_KEYS, out);
           }
           if (f.type === 'formula') out.expression = f.config.expression;
           if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
@@ -10355,14 +10344,15 @@ export class Weave {
   }
 
   importJSON(state) {
-    if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
+    if (!state || typeof state !== 'object') throw new WeaveError('Unsupported workspace format', 'invalid');
+    refuseBeforeFloor(state);
     const ids = [...Object.keys(state.fileBlobs ?? {}), state.meta?.logo?.id];
     for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(...fileBlobIds(f ?? {}));
     for (const id of ids) {
       if (id !== undefined && !BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}' in the import`, 'invalid');
     }
     const prior = this.state.meta ?? {};
-    const tables = { ...state.tables, ...state.databases };
+    const tables = { ...state.tables };
     const maps = [state.spaces, tables, state.entities, state.automations, state.meta?.views, state.meta?.accounts,
       ...Object.values(tables).map((t) => t?.fields)];
     for (const m of maps) for (const k of Object.keys(m ?? {})) refuseReserved('row id', k);

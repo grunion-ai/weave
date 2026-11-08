@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function tmp() {
   return tempDir('weave-sqlite-');
@@ -113,17 +113,13 @@ test('server refreshes per request: external CLI-style write is visible over HTT
   const dbPath = join(dir, 'served.db');
   seed(new Weave({ path: dbPath }));
   const weave = new Weave({ path: dbPath });
-  const { server } = await startServer(weave, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(weave, async ({ base }) => {
     const cli = new Weave({ path: dbPath });
     cli.createEntity('Task', { name: 'Written externally' });
     const res = await fetch(`${base}/api/tables/Task/entities`);
     const { items } = await res.json();
     assert.ok(items.some((e) => e.name === 'Written externally'));
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('guards: foreign sqlite refused, garbage refused, non-workspace json still refused', () => {
@@ -206,18 +202,14 @@ test('hub discovers .db siblings and dedupes a migrated json/db pair', async () 
   nativeDb.save();
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'junk' }));
 
-  const { server } = await startServer(main, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(main, async ({ base }) => {
     const list = await (await fetch(`${base}/api/workspaces`)).json();
     const names = list.map((x) => x.name).sort();
     assert.deepEqual(names, ['main', 'nativedb', 'siblingjson']);
     const list2 = await (await fetch(`${base}/api/workspaces`)).json();
     assert.equal(list2.length, 3);
     assert.ok(existsSync(join(dir, 'siblingjson.db')));
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('workspace file gains WAL journal mode', () => {

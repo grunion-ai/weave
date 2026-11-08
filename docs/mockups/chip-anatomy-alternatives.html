@@ -28,6 +28,7 @@
 .k-rel .wv-chip-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-secondary); color: var(--tblr-secondary); flex: none; }
 .k-rel .k { padding: 0 6px; }
 .k-rel > .wv-chip-mark { margin: 0 1px 0 2px; cursor: pointer; flex: none; }
+.k-rel.k-external > a.mention { padding-left: 8px; padding-right: 6px; }
 .k-rel > .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .72; margin-right: 4px; }
 .k-rel > .x { border: 0; background: none; margin: 0 5px 0 0; padding: 0 1px; }
 .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
@@ -52,6 +53,8 @@
 .wv-prose .k-rel :is(.wv-chip-id, .k-home, .mention-f, .mention-f-label) { line-height: 1; }
 .wv-prose .k-rel .k { font-size: inherit; }
 .wv-prose .k-rel.open > .mention-fields { display: inline; }
+.wv-prose .k-rel.open > .mention-fields > * + * { margin-left: 8px; }
+.wv-prose .k-rel.open > .mention-fields + .k-home { margin-left: 6px; }
 .k-rel.has-av > a.mention { padding-left: 3px; }
 .k-rel.has-av > .mention-entity::before { content: none; }
 .wv-card-head > .wv-card-av { --wv-av-size: 32px; font-size: var(--fs-body); }

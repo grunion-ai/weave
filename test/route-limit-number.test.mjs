@@ -68,3 +68,22 @@ test('a missing limit, an empty one and a number page exactly as they did (Issue
     assert.equal((await (await fetch(`${base}/api/tables/${t.id}/entities?limit=2`)).json()).total, 3, 'and the total still counts every row');
   } finally { server.close(); }
 });
+
+test('a query-string offset that is not a number, or is negative, is a 400 naming offset (Issue #1374)', async () => {
+  const { w, t } = demo();
+  const { server, base } = await serve(w);
+  try {
+    for (const p of ['/api/audit?offset=nope', `/api/tables/${t.id}/entities?offset=nope`, `/api/tables/${t.id}/entities?offset=-1`]) {
+      const res = await fetch(`${base}${p}`);
+      assert.equal(res.status, 400, `${p} answers 400`);
+      const body = await res.json();
+      assert.match(body.error, /^offset must be a whole number of rows, not '(nope|-1)'$/, p);
+      assert.equal(body.code, 'invalid', p);
+    }
+    assert.equal(count(await (await fetch(`${base}/api/tables/${t.id}/entities`)).json()), 3, 'no offset keeps its default');
+    const paged = await (await fetch(`${base}/api/tables/${t.id}/entities?offset=1`)).json();
+    assert.equal(count(paged), 2, 'a number still skips');
+    assert.equal(paged.total, 3, 'and the total still counts every row');
+    assert.equal(count(await (await fetch(`${base}/api/audit?offset=1`)).json()), 1);
+  } finally { server.close(); }
+});

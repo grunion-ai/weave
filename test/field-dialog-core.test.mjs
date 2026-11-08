@@ -31,12 +31,6 @@ test('formula function list matches FUNCS keys in src/formula.js', () => {
   assert.deepEqual(core.FORMULA_FUNCTIONS.map((f) => f.name).sort(), [...keys].sort());
 });
 
-test('state categories match the engine', () => {
-  const literal = ENGINE.match(/const STATE_CATEGORIES = \[([\s\S]*?)\];/)[1];
-  const cats = [...literal.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]);
-  assert.deepEqual(core.STATE_CATEGORIES, cats);
-});
-
 test('aggregates match the engine', () => {
   const literal = ENGINE.match(/const AGGREGATES = \[([\s\S]*?)\];/)[1];
   const aggs = [...literal.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);

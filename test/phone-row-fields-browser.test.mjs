@@ -62,7 +62,7 @@ if (s) {
 
   for (const [engine, b, profile] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`on a phone a view nobody set leads with Status before the #id and chips its short fields, never the Description (${engine}, ${theme}, Feature #299)`, async () => {
+      test(`on a phone a view nobody set leads with Status after the #id and chips its short fields, never the Description (${engine}, ${theme}, Feature #299, Issue #1441)`, async () => {
         const page = await open(b, profile, theme);
         try {
           await reset(page);
@@ -73,7 +73,7 @@ if (s) {
           assert.equal(r.h, r.token, 'the row keeps its density height');
           assert.ok(r.lead, 'the lead mark shows');
           assert.equal(r.lead.text, 'Open');
-          assert.ok(r.lead.right <= r.pid.left + 0.5 && Math.abs(r.lead.top - r.pid.top) < 6, 'on line one, before the #id');
+          assert.ok(r.pid.right <= r.lead.left + 0.5 && Math.abs(r.lead.top - r.pid.top) < 6, 'on line one, after the #id');
           assert.deepEqual(r.chips.map((c) => c.field), ['Severity', 'Symptom'], 'Description stays off and Status is not repeated as a chip');
           assert.ok(r.chips.every((c) => c.top > r.pid.top + 10), 'the chips sit on line two');
         } finally { await page.close(); }

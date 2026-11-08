@@ -32,14 +32,14 @@ test.before(() => {
 });
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
-test('weave delete trashes a row by its #ref; a ref that names nothing exits 1', () => {
+test('weave delete trashes a row by its #ref; a ref that names nothing exits 44, the not-found exit (Feature #179)', () => {
   ok(['create', 'Task', 'Doomed']);
   const gone = ok(['delete', 'Task#2']).json();
   assert.equal(gone.name, 'Doomed');
   assert.ok(gone.deletedAt, 'a soft delete stamps the row');
   assert.match(ok(['trash', 'Task']).out, /Doomed/, 'the row waits in the trash');
   const miss = run(['delete', 'Task#99']);
-  assert.equal(miss.code, 1);
+  assert.equal(miss.code, 44);
   assert.match(miss.err, /Entity 'Task#99' not found/);
 });
 
@@ -65,14 +65,18 @@ test('weave audit lists the workspace audit trail newest first, capped by --limi
   assert.ok(trail[0].seq > trail[1].seq, 'newest first');
   assert.equal(trail[0].actor, 'census');
   const odd = run(['audit', '--limit', 'lots']);
-  assert.equal(odd.code, 1, 'a --limit that is not a number is refused (Issue #1091)');
+  assert.equal(odd.code, 40, 'a --limit that is not a number is refused (Issue #1091)');
   assert.match(odd.err, /--limit must be a number/, 'the message names the flag the caller got wrong');
   assert.ok(!/datatype mismatch/.test(odd.err), 'SQLite never answers for a bad flag (Issue #1091)');
   for (const verb of [['undo', '--list'], ['search', 'Alpha'], ['query', 'Task'], ['activity']]) {
     const bad = run([...verb, '--limit', 'lots']);
-    assert.equal(bad.code, 1, `weave ${verb.join(' ')} --limit lots is refused`);
+    assert.equal(bad.code, 40, `weave ${verb.join(' ')} --limit lots is refused`);
     assert.match(bad.err, /--limit must be a number/, `weave ${verb.join(' ')} names the flag`);
   }
+  const offset = run(['query', 'Task', '--offset', 'nope']);
+  assert.equal(offset.code, 40, 'a --offset that is not a whole number is refused (Issue #1374)');
+  assert.match(offset.err, /--offset must be a whole number of rows, not 'nope'/);
+  assert.equal(ok(['query', 'Task', '--offset', '1']).json().items.length, ok(['query', 'Task']).json().items.length - 1, 'a numeric --offset still skips');
   assert.equal(ok(['audit', '--limit', '1']).json().length, 1, 'a numeric --limit still caps');
   const whole = ok(['activity', '--limit', '-1']).json();
   assert.equal(whole.items.length, whole.total, '--limit -1 still means the whole log');
@@ -84,7 +88,7 @@ test('weave key sets, lists and refuses to reveal a key it does not hold', () =>
   assert.deepEqual(keys.find((k) => k.name === 'stripe'), { name: 'stripe', set: true, owner: null, shared: false });
   assert.ok(!ok(['key', 'list']).out.includes('census-secret'), 'a list never prints the secret');
   const miss = run(['key', 'reveal', 'ghost']);
-  assert.equal(miss.code, 1);
+  assert.equal(miss.code, 44);
   assert.match(miss.err, /Key 'ghost' not found/);
 });
 

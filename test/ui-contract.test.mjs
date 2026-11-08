@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody } from './lib/source.mjs';
+import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody, read } from './lib/source.mjs';
+const SETTINGS_VIEW = read('public/settings-view.js');
 
 
 test('#ws-rail carries a positive z-index so #main never paints over it', () => {
@@ -318,11 +319,11 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
 });
 
 test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
-  assert.match(fnBody('showSettings'), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, in Settings (Feature #295)');
-  assert.doesNotMatch(fnBody('showTrash'), /hard=1|holdToConfirm/, 'the Trash page restores and never purges');
-  const hard = [...APP.matchAll(/\?hard=1/g)];
+  assert.match(fnBody('showSettings', SETTINGS_VIEW), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, in Settings (Feature #295)');
+  assert.doesNotMatch(fnBody('showTrash', SETTINGS_VIEW), /hard=1|holdToConfirm/, 'the Trash page restores and never purges');
+  const hard = [...(APP + SETTINGS_VIEW).matchAll(/\?hard=1/g)];
   assert.equal(hard.length, 1, 'exactly one call site may purge');
-  assert.match(APP, /function showTrash/);
+  assert.match(SETTINGS_VIEW, /function showTrash/);
   assert.match(APP, /#\\?\/trash\\?\/\(\[\^\/\?\]\+\)/, 'trash needs a route');
 });
 
@@ -929,7 +930,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
     'a document is anchored, and still draggable by its whole head');
   assert.match(body, /node\.classList\.add\('attach-block'\)/, 'an attachment row is a block too');
 
-  assert.match(body, /const named = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
+  assert.match(body, /const given = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
+  assert.match(body, /given\.includes\(FILES_BLOCK\) \? given : given\.flatMap\(\(k\) => \(k === VALUES_BLOCK \? \[k, FILES_BLOCK\] : \[k\]\)\)/,
+    'an unplaced Files card sits directly under the fields (Feature #357)');
+  assert.match(body, /k === FILES_BLOCK \? \[k, DECK_BLOCK\] : \[k\]/, 'the deck or slide preview follows the Files card (Feature #357)');
+  assert.match(body, /blocks\.set\(DECK_BLOCK, section\)/, 'the deck section takes its place in the body order instead of the top of the page');
   const rb = fnBody('reorderBlocks');
   assert.match(rb, /\[\.\.\.body\.children\]\.map\(\(n\) => n\.dataset\.block\)/,
     'the move already happened, so the DOM is the new order');
@@ -1307,8 +1312,8 @@ test('the eyeball: hidden fields, system columns and deleted rows from one popov
     'a hide leaves the drawn grid before its write goes out (Issue #328)');
   assert.match(eye, /else if \(!painted \|\| !drawnMatches\(liveTable\(\)\)\) await keepScroll/,
     'a hide reads the rows back only when the table disagrees with what was painted (Issue #328)');
-  assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager\)/,
-    'the hide repaints the rows the grid already holds, with no read');
+  assert.match(fnBody('dropDrawnColumn'), /drawDatabase\(db, drawn\.items, drawn\.trashCount, drawn\.pager, drawn\.list\)/,
+    'the hide repaints the rows the view already holds, a board as a board, with no read (Issue #1213)');
   assert.match(eye, /if \(open\?\.eyeOf === db\.id\) open\.relearnEye\(\)/,
     "a late paint teaches only an eye on this table, never a ⋮ menu opened since");
   assert.match(eye, /if \(stillShown\(\)\) \{\s*if \(redraw\) await redraw\(\);/, 'and redraws its page only while that page is on screen');

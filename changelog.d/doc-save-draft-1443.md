@@ -1,0 +1,1 @@
+- A document save the server refuses keeps the draft. The section shows `!`, the toast says the draft is kept, the editor shows the draft again when you reopen the record, and the next edit, flush or page leave saves it. Saves of one document now reach the server in the order you typed them, so a slow older save can no longer overwrite newer text (Issue #1443).

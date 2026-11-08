@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { Weave, FILE_STORAGE_CAP, FRAME_HEIGHT_SCRIPT, frameStorageScript, viewHtml } from '../src/engine.js';
+import { Weave, FILE_STORAGE_CAP, FRAME_HEIGHT_SCRIPT, FRAME_LINK_BASE, frameStorageScript, viewHtml } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
 
@@ -68,7 +68,7 @@ test('GET /api/files/:id?view serves the saved storage with the page; PUT and GE
   try {
     const first = await fetch(`${base}/api/files/${file.id}?view`);
     assert.equal(first.headers.get('cache-control'), 'no-store', 'a stale snapshot is never served from a cache');
-    assert.deepEqual(Buffer.from(await first.arrayBuffer()), viewHtml(PAGE, frameStorageScript({}) + FRAME_HEIGHT_SCRIPT));
+    assert.deepEqual(Buffer.from(await first.arrayBuffer()), viewHtml(PAGE, FRAME_LINK_BASE + frameStorageScript({}) + FRAME_HEIGHT_SCRIPT));
     assert.equal((await put({ n: '3' })).status, 200);
     assert.deepEqual(await (await fetch(`${base}/api/files/${file.id}/storage`)).json().then((r) => r.items), { n: '3' });
     const page = await (await fetch(`${base}/api/files/${file.id}?view`)).text();

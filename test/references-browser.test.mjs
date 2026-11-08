@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let target, issue, loner;
+let target, issue, loner, mixed, aside;
 
 const s = await launch('reference panels', (weave) => {
   weave.createSpace({ name: 'Dev' });
@@ -11,6 +11,15 @@ const s = await launch('reference panels', (weave) => {
   target = weave.createEntity('Task', { name: 'Ship the editor' });
   issue = weave.createEntity('Issue', { name: 'Editor loses focus', doc: 'blocks [[Task#1]] until fixed' });
   loner = weave.createEntity('Issue', { name: 'Nobody mentions me' });
+  aside = weave.createEntity('Task', { name: 'Aside' });
+  mixed = weave.createEntity('Issue', {
+    name: 'Points across workspaces',
+    doc: [
+      `blocks [[Task#${aside.publicId}]]`,
+      '[#1075 PR CI picks browser tests by file name](https://weave.grunion.ai/w/weave/e/78d5e9de-1111-4222-8333-944455556666)',
+      'and https://net.weave.grunion.ai/e/0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d',
+    ].join('\n'),
+  });
 });
 if (s) {
   const { base, browser, weave } = s;
@@ -55,6 +64,23 @@ if (s) {
       'what this points at; no Comments card (Feature #323) and no Activity card');
     assert.deepEqual(page.refRequests.map((u) => u.split('/').pop()).sort(), ['references', 'references-from'],
       'both directions are fetched with the record');
+    await page.close();
+  });
+
+  test('permalinks into another workspace count in References and render as workspace-tagged links (Issue #1478)', async () => {
+    const page = await open(mixed.id);
+    await card(page, '.ref-outbound-card');
+    assert.deepEqual(await panelTitles(page), ['References · 3'], 'one local ref plus two cross-workspace links');
+    const far = await page.$$eval('.ref-outbound-card .k-external', (ns) => ns.map((n) => ({
+      home: n.querySelector('.k-home')?.textContent,
+      label: n.querySelector('.k-label')?.textContent,
+      href: n.querySelector('a')?.getAttribute('href'),
+      target: n.querySelector('a')?.getAttribute('target'),
+    })));
+    assert.deepEqual(far, [
+      { home: 'weave', label: '#1075 PR CI picks browser tests by file name', href: 'https://weave.grunion.ai/w/weave/e/78d5e9de-1111-4222-8333-944455556666', target: '_blank' },
+      { home: 'net', label: '#0a1b2c3d', href: 'https://net.weave.grunion.ai/e/0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d', target: '_blank' },
+    ], 'each far link is a plain link tagged with its workspace, labelled by its link text');
     await page.close();
   });
 

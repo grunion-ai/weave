@@ -254,11 +254,7 @@ test('re-applying keeps the one page rather than seeding twelve beside it', () =
   assert.equal(rows[0].id, first, 'the page was replaced instead of updated — inbound links would break');
 });
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { ROOT } from './lib/source.mjs';
-import { chipCss } from '../scripts/export-chip-card-anatomy.mjs';
+import { chipCss } from '../scripts/chip-css.mjs';
 const ANATOMY = GUIDES.find((g) => g.name === 'Chip and card anatomy');
 
 test('the anatomy guide exists, is for both audiences, and follows the view page', () => {
@@ -295,21 +291,6 @@ test('the figures are the real chip and the real card, with each hitbox drawn as
     assert.ok(/^<\w/.test(block) && /<\/(div|figure)>\s*$/.test(block), 'each figure is one unbroken raw-HTML block');
   }
   assert.doesNotMatch(doc, /<style|<script|src="http|href="http/, 'no stylesheet, script or external asset — the app draws it');
-});
-
-test('docs/chip-card-anatomy.html is the exported page, self-contained, and current', () => {
-  const file = join(ROOT, 'docs/chip-card-anatomy.html');
-  assert.ok(existsSync(file), 'the standalone export is checked in');
-  const html = readFileSync(file, 'utf8');
-  const fresh = execFileSync(process.execPath, [join(ROOT, 'scripts/export-chip-card-anatomy.mjs'), '--stdout'], { encoding: 'utf8' });
-  assert.equal(html, fresh, 'the checked-in export drifted from the guide — run scripts/export-chip-card-anatomy.mjs');
-  assert.doesNotMatch(html, /(src|href)=["'](https?:)?\/\//, 'no network requests: no external src or href');
-  assert.doesNotMatch(html, /<link[^>]+rel="stylesheet"/, 'no linked stylesheet — the chip CSS is inlined');
-  assert.match(html, /--wv-chip-font:\s*var\(--fs-grid\)/, 'the chip tokens ride along');
-  assert.match(html, /--fs-grid:\s*13px/, 'with the scale step they read, so the specimen is the real size');
-  assert.match(html, /data-bs-theme="dark"\]|prefers-color-scheme:\s*dark/, 'both themes');
-  assert.match(html, /class="k k-rel kind-entity has-id has-segs open"/, 'the chip figure is in the export');
-  assert.match(html, /class="wv-card"/, 'and the card figure');
 });
 
 test('a comma inside a functional pseudo-class is not a selector-list comma', () => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.js';
 import { Weave } from '../src/engine.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const AMBER = '#f59f00';
 
@@ -51,9 +51,7 @@ test('entity writes leave schemaVersion alone', () => {
 
 test('every API response stamps the schema version, and /api/workspace carries it in the body', async () => {
   const w = seeded();
-  const { server, port } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/tables/Sales%2FDeals/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
     });
@@ -67,7 +65,5 @@ test('every API response stamps the schema version, and /api/workspace carries i
     const after = await fetch(`${base}/api/schema`);
     assert.equal(after.headers.get('x-weave-schema-version'), w.schemaVersion(), 'the fresh schema names the version it is');
     assert.notEqual(after.headers.get('x-weave-schema-version'), stamped, 'and it is not the one the tab was holding');
-  } finally {
-    server.close();
-  }
+  });
 });

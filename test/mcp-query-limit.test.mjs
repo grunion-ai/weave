@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { Weave } from '../src/engine.js';
 import { dispatchTool, QUERY_PAGE } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROWS = QUERY_PAGE + 37;
 
@@ -69,8 +69,7 @@ test('weave_query sends relation summaries once, in chips, unless the caller ask
 
 test('POST /api/tables/<t>/query with no limit answers one page, and -1 the whole table', async () => {
   const w = stocked();
-  const { server, port } = await startServer(w, { port: 0 });
-  try {
+  await withServer(w, async ({ port }) => {
     const page = await post(port, '/api/tables/Sales%2FDeal/query', {});
     assert.equal(page.status, 200);
     assert.equal(page.json.total, ROWS, 'total counts every matching row');
@@ -90,7 +89,5 @@ test('POST /api/tables/<t>/query with no limit answers one page, and -1 the whol
     assert.equal(listed.json.nextOffset, QUERY_PAGE, 'and says where the next page starts');
     const listedWhole = await call(port, '/api/tables/Sales%2FDeal/entities?limit=-1', { method: 'GET' });
     assert.equal(listedWhole.json.items.length, ROWS, 'GET entities with limit=-1 still reads every row');
-  } finally {
-    server.close();
-  }
+  });
 });

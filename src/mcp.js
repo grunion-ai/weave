@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { mcpToolError, contractFor } from './errors.js';
+import { BY_TOOL, toolDefinition } from './commands.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
@@ -222,33 +224,9 @@ export const TOOLS = [
       required: ['space', 'name'],
     },
   },
-  {
-    name: 'weave_add_field',
-    description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry record only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a record. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
-      required: ['db', 'name', 'type'],
-    },
-  },
-  {
-    name: 'weave_check_formula',
-    description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has records, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific record. scan: true evaluates over up to 200 records and adds scan: {records, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on record 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, expression: { type: 'string' }, entity: { type: 'string' }, excludeField: { type: 'string' }, scan: { type: 'boolean' } },
-      required: ['db', 'expression'],
-    },
-  },
-  {
-    name: 'weave_add_relation',
-    description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at records of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, targetDb: { type: 'string' }, targetDbs: { type: 'array', items: { type: 'string' } }, cardinality: { type: 'string' }, inverseName: { type: 'string' } },
-      required: ['db', 'name'],
-    },
-  },
+  toolDefinition('weave_add_field'),
+  toolDefinition('weave_check_formula'),
+  toolDefinition('weave_add_relation'),
   {
     name: 'weave_create_automation',
     description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url, signWith?: the name of a keystore credential, never its value; weave then signs the delivery with an X-Weave-Signature header holding the HMAC-SHA256 of <X-Weave-Timestamp>.<body>, beside an X-Weave-Delivery uuid} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
@@ -372,34 +350,10 @@ export const TOOLS = [
     description: 'Restore a table out of the trash: the table, its records and their relations come back exactly as they were.',
     inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
   },
-  {
-    name: 'weave_update_field',
-    description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links records by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } },
-      required: ['db', 'field'],
-    },
-  },
-  {
-    name: 'weave_rollback_field',
-    description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry. A type change rolls back with its values: records unchanged since are restored, a record edited since keeps its edit (converted back) and a record made since is converted; only the newest type change of a field keeps its values. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}, plus {restored, left, converted} for a type change.',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, field: { type: 'string' }, activity: { type: 'string', description: 'The entry id, <tableId>:f<n>' } },
-      required: ['activity'],
-    },
-  },
-  {
-    name: 'weave_delete_field',
-    description: 'Move a field to the trash: the column leaves the table and its values leave the records, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db', 'field'] },
-  },
-  {
-    name: 'weave_restore_field',
-    description: 'Restore a field out of the trash by name or id: the column, its values, its place in the field order and in every view, and for a relation its inverse and every link come back. Refused while a live field holds the name or the table is in the trash.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' } }, required: ['db', 'field'] },
-  },
+  toolDefinition('weave_update_field'),
+  toolDefinition('weave_rollback_field'),
+  toolDefinition('weave_delete_field'),
+  toolDefinition('weave_restore_field'),
   {
     name: 'weave_apply_schema',
     description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
@@ -767,6 +721,8 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
+  const command = BY_TOOL.get(name);
+  if (command) return command.run(weave, args);
   switch (name) {
     case 'weave_ontology':
       return weave.ontology({ depth: args.depth ?? 'outline', concept: args.concept ?? null, since: args.since ?? null });
@@ -840,12 +796,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon', 'template'])));
     case 'weave_create_table':
       return guided(weave, 'table', weave.createTable(pick(args, ['space', 'name', 'description', 'icon'])));
-    case 'weave_add_field':
-      return guided(weave, 'field', weave.addField(args.db, { name: args.name, type: args.type, config: args.config ?? {} }), args.config);
-    case 'weave_check_formula':
-      return weave.checkFormula(args.db, args.expression, { entity: args.entity ?? null, excludeField: args.excludeField ?? null, scan: Boolean(args.scan) });
-    case 'weave_add_relation':
-      return weave.addRelation(args.db, { name: args.name, targetDb: args.targetDb, targetDbs: args.targetDbs, cardinality: args.cardinality ?? 'many-to-one', inverseName: args.inverseName });
     case 'weave_create_automation':
       return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions, enabled: args.enabled });
     case 'weave_export_csv':
@@ -897,18 +847,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return { table: args.db, deleted: true, hard: Boolean(args.hard) };
     case 'weave_restore_table':
       return weave.restoreTable(args.db);
-    case 'weave_update_field': {
-      const seq = weave.state.meta.activitySeq ?? 0;
-      const field = weave.updateField(args.db, args.field, pick(args, ['name', 'type', 'config']));
-      const formulas = weave.fieldChangeSince(args.db, field.id, seq)?.detail.formulas;
-      return { ...guided(weave, 'field', field, args.type == null ? args.config : {}), ...(formulas ? { formulas } : {}) };
-    }
-    case 'weave_rollback_field':
-      return weave.rollbackFieldConfig(args.activity, { table: args.db ?? null, field: args.field ?? null });
-    case 'weave_delete_field':
-      return weave.deleteField(args.db, args.field, { hard: Boolean(args.hard) });
-    case 'weave_restore_field':
-      return weave.restoreField(args.db, args.field);
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {
@@ -1065,14 +1003,14 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
         try {
           return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
         } catch (err) {
-          return reply({ content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true });
+          return reply(mcpToolError(err));
         }
       }
       default:
         return fail(-32601, `Method not found: ${method}`);
     }
   } catch (err) {
-    return fail(-32603, err.message);
+    return fail(contractFor(err).mcp, err.message);
   }
 }
 

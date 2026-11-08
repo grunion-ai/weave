@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const rule = { trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'seen' }] };
 const json = async (r) => r.json();
@@ -64,9 +65,7 @@ test('member routes use local workflow tables and reject foreign tokens and work
     w.setRequireAuth(true);
     return [w, { Authorization: `Bearer ${token}` }];
   }));
-  const { server } = await startServer(root, { port: 0, workspaces: { alpha: a, beta: b } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(root, { workspaces: { alpha: a, beta: b } }, async ({ base }) => {
     const wf = a.getTable('System/Workflows');
     const rootWf = root.getTable('System/Workflows');
     const betaWf = b.getTable('System/Workflows');
@@ -90,7 +89,5 @@ test('member routes use local workflow tables and reject foreign tokens and work
     assert.deepEqual(names(await json(await post(`${base}/w/beta/api/tables/${betaWf.id}/query`, {}, headers.get(b)))), ['beta rule']);
     const trash = await json(await fetch(`${base}/w/alpha/api/tables/${wf.id}/trash`, { headers: headers.get(a) }));
     assert.equal(trash.total, 0);
-  } finally {
-    server.close();
-  }
+  });
 });

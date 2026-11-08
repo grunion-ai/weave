@@ -10,7 +10,7 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const ICO = new Uint8Array(readFileSync(join(ROOT, 'public/brand/favicon.ico')));
 
 test('a browser that asks for /favicon.ico gets the weave mark (Issue #848)', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/favicon.ico');
     assert.equal(res.status, 200, 'a browser with no usable icon link falls back to the site root');
     assert.equal(res.headers.get('content-type'), 'image/x-icon');
@@ -19,7 +19,7 @@ test('a browser that asks for /favicon.ico gets the weave mark (Issue #848)', as
 });
 
 test('the brand icon is served as an icon, not as a download (Issue #848)', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/brand/favicon.ico');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'image/x-icon',

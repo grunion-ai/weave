@@ -4,8 +4,8 @@ import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
@@ -40,9 +40,7 @@ test('workspace logo: in-memory fallback works', () => {
 test('REST: logo upload, serving, listing flag, delete', async () => {
   const w = new Weave();
   w.state.meta.name = 'uno';
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     assert.equal((await fetch(`${base}/api/workspace/logo`)).status, 404);
 
     const put = await fetch(`${base}/api/workspace/logo`, {
@@ -62,9 +60,7 @@ test('REST: logo upload, serving, listing flag, delete', async () => {
 
     assert.equal((await fetch(`${base}/api/workspace/logo`, { method: 'DELETE' })).status, 200);
     assert.equal((await fetch(`${base}/api/workspace/logo`)).status, 404);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test("server alias: /w/weaver/ requests reach the renamed 'weave' workspace", async () => {
@@ -75,12 +71,8 @@ test("server alias: /w/weaver/ requests reach the renamed 'weave' workspace", as
   const docs = new Weave({ path: join(dir, 'weave.db') });
   docs.state.meta.name = 'weave';
   docs.save();
-  const { server } = await startServer(main, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(main, async ({ base }) => {
     const health = await (await fetch(`${base}/w/weaver/api/health`)).json();
     assert.equal(health.workspace, 'weave');
-  } finally {
-    server.close();
-  }
+  });
 });

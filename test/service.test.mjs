@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { serviceOptions, buildPlist, parseLaunchctlPrint, buildStatus, probeHealth } from '../src/service.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -160,16 +160,13 @@ test('probeHealth: connection refused reports unreachable', async () => {
 });
 
 test('health payload carries startedAt + uptime for staleness checks', async () => {
-  const { server } = await startServer(new Weave(), { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/health`);
+  await withServer(async ({ base }) => {
+    const res = await fetch(`${base}/api/health`);
     const health = await res.json();
     assert.equal(health.ok, true);
     assert.ok(!Number.isNaN(Date.parse(health.startedAt)));
     assert.equal(typeof health.uptime, 'number');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('CLI: help documents the service commands', () => {

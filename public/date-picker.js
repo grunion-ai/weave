@@ -238,9 +238,7 @@ function datePopover({ anchor, title = '', value, time, format, costume = null, 
   const smarts = range ? [smartFor('start'), smartFor('end')] : [smartFor('start')];
   pop.append(...(title ? [el('div', { class: 'picker-title' }, title)] : []), ...smarts, body);
   document.body.append(pop);
-  const r = anchor.getBoundingClientRect();
-  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
-  pop.style.top = (r.bottom + 6 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 6 : r.bottom + 6) + 'px';
+  placeNear(pop, anchor, { gap: 6 });
   dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => anchor.contains(t), close: () => pop.remove() });
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); anchor.focus(); } });
   smarts[0].querySelector('.date-smart').focus();

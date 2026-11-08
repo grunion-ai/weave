@@ -49,8 +49,8 @@ function paletteRow(hit, i, { needle, group, onPick, href, checked = null }) {
     group === 'docs' ? [' ', el('span', { class: 'cmdk-ctx' }, ...marked(P.excerpt(hit.snippet, needle), needle))] : null),
   state ? el('span', { class: `k k-state cat-${cat} hue-${chipCore.stateHue(state, cat)}` }, state.name) : null,
   el('span', { class: 'cmdk-where' }, P.whereText(hit)),
-  el('button', {
-    class: 'btn btn-sm btn-ghost-secondary tiny copy-btn', type: 'button', tabindex: '-1',
+  ghostBtn({
+    class: 'copy-btn', type: 'button', tabindex: '-1',
     title: 'Copy link', 'aria-label': 'Copy link',
     onclick: (e) => {
       e.stopPropagation();

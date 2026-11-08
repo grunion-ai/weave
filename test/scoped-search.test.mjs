@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function build() {
   const w = new Weave();
@@ -41,9 +41,7 @@ test('universalSearch with a table scope and no text lists the scoped rows, newe
 
 test('GET /api/search?tables= scopes the search to those tables', async () => {
   const { w, issues, releases, grid, rel } = build();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const scoped = await (await fetch(`${base}/api/search?q=quasar&tables=${issues.id}`)).json();
     assert.deepEqual(scoped.map((h) => h.id), [grid.id]);
     assert.ok(scoped.every((h) => h.kind === 'entity'));
@@ -55,7 +53,5 @@ test('GET /api/search?tables= scopes the search to those tables', async () => {
     assert.ok(wide.some((h) => h.id === rel.id) && wide.some((h) => h.id === grid.id), 'no scope keeps the workspace-wide search');
     const missing = await fetch(`${base}/api/search?q=x&tables=no-such-table`);
     assert.equal(missing.status, 404);
-  } finally {
-    server.close();
-  }
+  });
 });

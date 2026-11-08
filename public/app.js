@@ -138,12 +138,12 @@ function uploadTileEl(key, job) {
     return el('span', { class: 'attach-item is-failed', title: `${name}: ${job.failure.tile}`, dataset: { uploadJob: job.id } },
       el('span', { class: 'attach-fail-name' }, name),
       el('span', { class: 'attach-fail-why' }, ...withErrorId(job.failure.tile, job.failure.id)),
-      job.failure.retry ? el('button', {
-        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${name}`,
+      job.failure.retry ? ghostBtn({
+        type: 'button', title: `Retry ${name}`,
         onclick: (e) => { stop(e); runJobs(key, [job]); },
       }, 'Retry') : null,
-      el('button', {
-        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
+      ghostBtn({
+        type: 'button', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
         onclick: (e) => {
           stop(e);
           const st = uploadState(key);
@@ -510,8 +510,7 @@ function holdPage(back, box, label = box.querySelector('h2')) {
     hold.held.push(n);
   }
   holds.push(hold);
-  addEventListener('keydown', function trap(e) {
-    if (!back.isConnected) return removeEventListener('keydown', trap);
+  whileConnected(back, 'keydown', (e) => {
     if (e.defaultPrevented || holds.at(-1) !== hold) return;
     const at = document.activeElement ?? document.body;
     if (e.key !== 'Tab' || (at !== document.body && !back.contains(at))) return;
@@ -558,10 +557,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
   back.append(box);
   holdPage(back, box);
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape') { close(); removeEventListener('keydown', esc); }
-  });
+  const unhook = whileConnected(back, 'keydown', (e) => { if (e.key === 'Escape') { close(); unhook(); } });
   const first = form.querySelector('input,select,textarea') ?? (onSubmit ? null : done);
   if (first) first.focus();
 }
@@ -605,8 +601,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     close();
   };
   back.addEventListener('keydown', esc);
-  addEventListener('keydown', function stray(e) {
-    if (!back.isConnected) return removeEventListener('keydown', stray, true);
+  whileConnected(back, 'keydown', (e) => {
     if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
   }, true);
   const first = form.querySelector('input:not([type=hidden]),select,textarea');
@@ -1765,10 +1760,7 @@ function expandDocument(grid, url, title) {
   grid.classList.add('hidden');
   grid.after(wrap);
   const onKey = (e) => { if (e.key === 'Escape') collapse(); };
-  addEventListener('keydown', function esc(e) {
-    if (!wrap.isConnected) return removeEventListener('keydown', esc);
-    onKey(e);
-  });
+  whileConnected(wrap, 'keydown', onKey);
   frame.addEventListener('load', () => {
     try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
@@ -1799,10 +1791,7 @@ function fullscreenViewer(title, { url = null, mount = null, sandbox = null, pre
     else if (e.key === 'ArrowLeft' && prev) prev();
     else if (e.key === 'ArrowRight' && next) next();
   };
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    onKey(e);
-  });
+  whileConnected(back, 'keydown', onKey);
   frame?.addEventListener('load', () => {
     try { frame.contentWindow.addEventListener('keydown', onKey); } catch {}
   });
@@ -1869,8 +1858,8 @@ function renderMermaidIn(container) {
   for (const pre of nodes) {
     if (!pre.dataset.mmd) pre.dataset.mmd = pre.textContent;
     const holder = el('span', { class: 'mmd-tools' },
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Open as a whiteboard',
+      ghostBtn({
+        title: 'Open as a whiteboard',
         onclick: () => openWhiteboard(pre.dataset.mmd, 'Whiteboard'),
       }, iconEl('⛶')));
     if (!pre.previousElementSibling?.classList?.contains('mmd-tools')) pre.before(holder);
@@ -1878,6 +1867,15 @@ function renderMermaidIn(container) {
   mermaidLoading.then(() => window.mermaid?.run({ nodes }));
 }
 
+function whileConnected(node, type, handler, capture = false) {
+  const hook = (e) => { if (!node.isConnected) return off(); handler(e); };
+  const off = () => removeEventListener(type, hook, capture);
+  addEventListener(type, hook, capture);
+  return off;
+}
+function ghostBtn({ class: cls = '', ...attrs } = {}, ...kids) {
+  return el('button', { class: cls ? `btn btn-sm btn-ghost-secondary tiny ${cls}` : 'btn btn-sm btn-ghost-secondary tiny', ...attrs }, ...kids);
+}
 function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
   const away = (e) => {
     if (!open()) return off();
@@ -1897,13 +1895,17 @@ function swallowClick(ms = 600) {
   addEventListener('click', eat, true);
 }
 
+function placeNear(pop, anchor, { gap = 4 } = {}) {
+  const r = anchor.getBoundingClientRect();
+  const h = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + gap + h > innerHeight ? Math.max(8, r.top - h - gap) : r.bottom + gap) + 'px';
+}
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
   document.body.append(pop);
-  const r = trigger.getBoundingClientRect();
-  pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-  pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
+  placeNear(pop, trigger);
   dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
   const opts = [...pop.querySelectorAll('.chip-pop-row')].map((o) => (o.matches('label') ? o.querySelector('input') ?? o : o));
@@ -2215,9 +2217,7 @@ const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 118 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
-    const r = anchor.getBoundingClientRect();
-    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? Math.max(8, r.top - pop.offsetHeight - 4) : r.bottom + 4) + 'px';
+    placeNear(pop, anchor);
   } else {
     pop.classList.add('picker-centered');
   }
@@ -3248,7 +3248,7 @@ const MENU_ROWS = {
     }),
   }),
   workspace: (w, { after = null } = {}) => ({
-    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => deleteWorkspaceDialog(w, after) } : null,
+    delete: w.deletable ? { label: 'Delete workspace…', danger: true, run: () => openDeleteWorkspace(w, after) } : null,
   }),
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
@@ -3472,8 +3472,8 @@ function avatarPicker(face, { cls, title, upload, onClear = null }) {
     type: 'button', class: 'av-pick', title, 'aria-label': title,
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); input.click(); },
   }, chipElFrom(chipView.avatarHtml(face, { cls })));
-  const clear = onClear && face?.file ? el('button', {
-    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
+  const clear = onClear && face?.file ? ghostBtn({
+    type: 'button', class: 'av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onClear(); },
   }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null;
   return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0], () => input.click()));
@@ -3504,6 +3504,12 @@ function relationChipEl(f, s, { onRemove = null } = {}) {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
     onRemove,
   });
+}
+function externalRefChipEl(r) {
+  const label = r.name || `#${r.id.slice(0, 8)}`;
+  return el('span', { class: 'k k-rel k-external', title: `${label} in the ${r.workspace} workspace` },
+    el('a', { class: 'mention', href: r.url, target: '_blank', rel: 'noopener' }, el('span', { class: 'k-label' }, label)),
+    el('span', { class: 'k-home' }, r.workspace));
 }
 function chipOpensRecord(caret) {
   if (!dockCoversScreen.matches || caret.closest('.wv-prose')) return null;
@@ -4032,8 +4038,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
         class: 'k k-more', title: `${hidden} more — open the cell to see them`,
       }, `+${hidden}`), ' ');
     }
-    box.append(el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny',
+    box.append(ghostBtn({
+      
       onclick: () => linkSearch(f, {
         linked: all,
         commit: async (add, drop) => {
@@ -4119,8 +4125,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       if (ids.length === 1) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
       return chip;
     }
-    const remove = (file) => el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
+    const remove = (file) => ghostBtn({
+      title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
@@ -4143,8 +4149,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       input.value = '';
       if (picked.length) upload(picked);
     });
-    chips.append(input, el('button', {
-      class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
+    chips.append(input, ghostBtn({
+      title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
     uploadHost(box, upKey, { slot: chips, before: input });
@@ -4242,225 +4248,6 @@ function docChipCell(f, item, onOpen) {
   }, f.name, el('span', { class: 'doc-kind' }, kind ?? 'empty'));
 }
 
-
-async function showTrash(dbId) {
-  const db = dbId ? allTables().find((d) => d.id === dbId) : null;
-  if (dbId && !db) return showHome();
-  state.route = { page: 'trash', dbId };
-  renderNav();
-  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
-  if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
-  const main = $('#main');
-  main.replaceChildren();
-  main.append(viewHeader({
-    crumbs: [
-      { label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() },
-      ...(db ? [{ label: db.space, href: `#/space/${db.spaceId}` }, { label: db.name, href: `#/table/${db.id}` }] : []),
-    ],
-    permalink: `${location.origin}${WS_PREFIX}/#/trash${db ? `/${db.id}` : ''}`,
-    title: db ? `${db.name} — trash` : 'Trash',
-  }));
-
-  if (!items.length && !views.length) {
-    main.append(el('div', { class: 'card panel empty-note' }, 'Nothing in the trash.'));
-    return;
-  }
-  const rows = el('tbody');
-  for (const item of items) {
-    rows.append(el('tr', {},
-      el('td', { class: 'pid-cell' }, `#${item.publicId}`),
-      el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
-      ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
-      el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
-      el('td', { class: 'trash-acts' },
-        el('button', {
-          class: 'btn btn-sm', type: 'button',
-          onclick: async () => {
-            try {
-              await api('POST', `/entities/${item.id}/restore`);
-              toast('Restored');
-              await loadSchema();
-              showTrash(dbId);
-            } catch (err) { toast(err.message, true); }
-          },
-        }, 'Restore'))));
-  }
-  for (const v of views) {
-    const act = (run, done) => async () => {
-      try {
-        await run();
-        toast(done);
-        showTrash(dbId);
-      } catch (err) { toast(err.message, true); }
-    };
-    rows.append(el('tr', {},
-      el('td', { class: 'pid-cell' }),
-      el('td', {}, v.name),
-      el('td', { class: 'trash-table' }, 'Share page'),
-      el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
-      el('td', { class: 'trash-acts' },
-        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'))));
-  }
-  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
-    el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
-      el('thead', {}, el('tr', {},
-        el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
-        ...(db ? [] : [el('th', {}, 'Table')]),
-        el('th', {}, 'Deleted'), el('th', {}, ''))),
-      rows)));
-}
-
-function typedHold(name, prompt, row) {
-  const hold = menuRow(row, () => {});
-  hold.setAttribute('role', 'button');
-  hold.removeAttribute('tabindex');
-  hold.disabled = true;
-  const input = el('input', {
-    class: 'form-control form-control-sm purge-name', autocomplete: 'off', spellcheck: 'false',
-    placeholder: name, 'aria-label': `Type ${name} to confirm`,
-  });
-  input.addEventListener('input', () => { hold.disabled = input.value !== name; });
-  const box = el('div', { class: 'purge-confirm-box' },
-    el('span', { class: 'text-secondary' }, `${prompt} Type `, el('code', {}, name), ' to confirm.'), input, hold);
-  return { box, input };
-}
-
-function confirmToggle(after, build) {
-  return () => {
-    const was = !!after.nextElementSibling?.classList.contains('purge-confirm');
-    for (const shut of document.querySelectorAll('#main .purge-confirm')) shut.remove();
-    if (was) return;
-    const { node, input } = build();
-    node.classList.add('purge-confirm');
-    after.after(node);
-    input.focus();
-  };
-}
-
-function hrefAfterDelete(order, gone) {
-  const at = order.findIndex((x) => x.name === gone.name);
-  const open = (x) => x.name !== gone.name && x.name !== 'weave' && !x.held && !x.deletedAt;
-  const next = order.slice(at + 1).find(open) ?? order.slice(0, Math.max(at, 0)).reverse().find(open) ?? order.find((x) => x.name === 'weave');
-  return next ? wsHref(next) : '/';
-}
-
-function deleteWorkspaceDialog(w, after = null) {
-  const input = el('input', {
-    class: 'form-control', name: 'confirm', autocomplete: 'off', spellcheck: 'false',
-    placeholder: w.name, 'aria-label': `Type ${w.name} to confirm`,
-  });
-  let held = false;
-  modal('Delete workspace', [
-    el('p', {}, 'This permanently deletes ', el('strong', {}, w.name),
-      ` with its ${w.tables ?? 0} tables and ${w.entities ?? 0} entities. It cannot be undone.`),
-    el('label', { class: 'form-label' }, 'Type ', el('code', {}, w.name), ' to confirm, then hold Delete workspace'),
-    input,
-  ], async () => {
-    const armed = held;
-    held = false;
-    if (!armed || input.value !== w.name) throw Object.assign(new Error('Hold Delete workspace to confirm'), { shown: true });
-    const order = state.wsList ?? [];
-    await api('DELETE', `/workspaces/${w.id}`);
-    if (w.name === state.wsCurrent) { location.href = hrefAfterDelete(order, w); return; }
-    toast(`Workspace ${w.name} deleted`);
-    buildWsRail();
-    if (state.route?.page === 'settings') showSettings();
-    else after?.();
-  }, 'Delete workspace', 'btn-danger');
-  const submit = $('#modal button[type="submit"]');
-  const form = submit.form;
-  const go = holdToConfirm('Delete workspace', () => { held = true; form.requestSubmit(); },
-    { rowClass: 'btn btn-danger ws-delete-go', holdingLabel: 'Hold to delete…' });
-  go.classList.remove('text-danger');
-  go.disabled = true;
-  submit.replaceWith(go);
-  input.addEventListener('input', () => { go.disabled = input.value !== w.name; });
-}
-
-async function showSettings() {
-  state.route = { page: 'settings' };
-  renderNav();
-  const [trash, list, ws] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null)]);
-  const main = $('#main');
-  main.replaceChildren();
-  main.append(viewHeader({
-    crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
-    permalink: `${location.origin}${WS_PREFIX}/#/settings`,
-    title: 'Settings',
-  }));
-  if (typeof ws?.linkPreview === 'boolean') {
-    main.append(el('div', { class: 'card settings-link-preview' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
-      el('p', { class: 'settings-note' }, 'A record permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
-      paneSwitch({
-        label: 'Link preview before sign-in', on: ws.linkPreview,
-        onChange: async (on) => {
-          const now = await setLinkPreview(on);
-          if (now !== on) showSettings();
-        },
-      })));
-  }
-  const gone = [
-    ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
-      .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
-    ...(trash.views ?? []).map((v) => ({ name: v.name, where: 'Share page', deletedAt: v.deletedAt, path: `/views/${v.id}` })),
-  ];
-  const purge = el('div', { class: 'card settings-purge' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Delete forever')),
-    el('p', { class: 'settings-note' }, 'Records and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
-  if (!gone.length) purge.append(el('div', { class: 'empty-note' }, 'Nothing in the trash.'));
-  else {
-    const rows = el('tbody');
-    for (const g of gone) {
-      const tr = el('tr', { class: 'purge-row' },
-        el('td', {}, g.name),
-        el('td', { class: 'trash-table' }, g.where),
-        el('td', { class: 'trash-when' }, whenEl(g.deletedAt)),
-        el('td', { class: 'trash-acts' }));
-      if (trash.purge) {
-        tr.lastChild.append(el('button', {
-          class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
-          onclick: confirmToggle(tr, () => {
-            const { box, input } = typedHold(g.name, 'This cannot be undone.', {
-              label: 'Delete forever', hold: true, holdingLabel: 'Hold to purge…',
-              run: async () => {
-                try {
-                  await api('DELETE', `${g.path}?hard=1`);
-                  toast(`${g.name} deleted forever`);
-                  await loadSchema();
-                  showSettings();
-                } catch (err) { toast(err.message, true); }
-              },
-            });
-            return { node: el('tr', {}, el('td', { colspan: 4 }, box)), input };
-          }),
-        }, 'Delete forever…'));
-      }
-      rows.append(tr);
-    }
-    purge.append(el('div', { class: 'table-wrap' },
-      el('table', { class: 'table table-sm table-vcenter card-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'Name'), el('th', {}, 'Table'), el('th', {}, 'Deleted'), el('th', {}, ''))),
-        rows)));
-  }
-  main.append(purge);
-  const deletable = list.filter((w) => w.deletable);
-  if (!deletable.length) return;
-  main.append(el('div', { class: 'card settings-workspaces' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
-    el('p', { class: 'settings-note' }, 'Deleting a workspace is permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.'),
-    ...deletable.map((w) => {
-      const row = el('div', { class: 'list-row' },
-        el('span', { class: 'list-row-name' }, w.name),
-        el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
-        el('span', { class: 'spacer' }));
-      row.append(el('button', {
-        class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button',
-        onclick: () => deleteWorkspaceDialog(w),
-      }, 'Delete…'));
-      return row;
-    })));
-}
 
 const BLANK_READ_ONLY = 'The raw table is read-only. Open Views and choose + Add view, or Duplicate a view.';
 function blankView(db) {
@@ -5945,8 +5732,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   if (searching && !(pager ? pager.total : items.length)) {
     main.append(el('div', { class: 'table-search-empty wv-note' },
       `No ${db.term.plural} match “${searching}”. `,
-      el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny table-search-clear', type: 'button',
+      ghostBtn({
+        class: 'table-search-clear', type: 'button',
         onclick: () => setTableSearch(db, '', { focus: true }),
       }, 'Clear search')));
   }
@@ -5954,7 +5741,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   if (list) {
     state.inlineAdd = null;
     const groupKeys = renderBoard(main, db, items, list);
-    main.wvDraw = { db, items, trashCount, pager: null, groupKeys };
+    main.wvDraw = { db, items, trashCount, pager: null, groupKeys, list };
     syncPhoneBar();
     paintGridWait();
     paneSync(db);
@@ -6740,7 +6527,7 @@ function dropDrawnColumn(dbId, name) {
   const db = drawn.db.columns
     ? { ...drawn.db, columns: drawn.db.columns.filter((n) => n !== name) }
     : { ...drawn.db, hiddenFields: [...(drawn.db.hiddenFields ?? []), name] };
-  keepScroll(() => drawDatabase(db, drawn.items, drawn.trashCount, drawn.pager)).catch((err) => toast(err.message, true));
+  keepScroll(() => drawDatabase(db, drawn.items, drawn.trashCount, drawn.pager, drawn.list)).catch((err) => toast(err.message, true));
   return true;
 }
 function drawnMatches(db) {
@@ -7018,8 +6805,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ]).flat()));
   };
 
-  addEventListener('keydown', function esc(e) {
-    if (!wrap.isConnected) return removeEventListener('keydown', esc);
+  whileConnected(wrap, 'keydown', (e) => {
     if (e.key !== 'Escape' || !chosen().size) return;
     if (document.querySelector(DOCK_ESC_OWNERS)) return;
     clearChosen();
@@ -7068,7 +6854,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ...sysTail.map((n) => sysCell(n, item)),
       ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
     const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
-    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb > .open-link').after(phoneLeadEl(lead, item));
     if (dockCoversScreen.matches && main.id === 'main') {
       for (const input of row.querySelectorAll(':scope > td[data-field] > .wv-cb input.inline-edit')) {
         if (input.value) (input.closest('.date-cell') ?? input).replaceWith(el('span', { class: 'text-dressed', title: input.value }, input.value));
@@ -8165,10 +7951,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!source || (fill.r1 === source.r1 && fill.c1 === source.c1)) return;
     runRange('Filled', fill, RG().block({ rect: source, fields: rangeCols(), valueAt }));
   };
-  addEventListener('mouseup', function up() {
-    if (!wrap.isConnected) return removeEventListener('mouseup', up);
-    if (dragFrom || fillRect) endDrag();
-  });
+  whileConnected(wrap, 'mouseup', () => { if (dragFrom || fillRect) endDrag(); });
   wrap.addEventListener('click', (e) => {
     const opened = opening;
     opening = null;
@@ -8799,6 +8582,12 @@ function withDatePicker(run, undo = () => {}) {
 function openForms(db) {
   lazyScript('/forms-dialog.js').then(() => formsDialog(db), () => toast('Forms did not load. Check the connection and try again.', true));
 }
+function settingsView(run) {
+  return lazyScript('/settings-view.js').then(run, () => toast('Settings did not load. Check the connection and try again.', true));
+}
+const openTrash = (dbId) => settingsView(() => showTrash(dbId));
+const openSettings = () => settingsView(() => showSettings());
+const openDeleteWorkspace = (w, after) => settingsView(() => deleteWorkspaceDialog(w, after));
 function openFieldDialog(...args) {
   lazyScript('/field-dialog.js').then(() => fieldDialog(...args), () => toast('Field settings did not load. Check the connection and try again.', true));
 }
@@ -10050,7 +9839,7 @@ function placeCodeRaw(st) {
 }
 
 function attachRefChips(host) {
-  const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0 };
+  const st = { host, layer: el('div', { class: 'doc-ref-layer' }), timer: 0, expanded: new WeakSet(), wrapOfSlot: new WeakMap() };
   st.schedule = () => {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => refreshRefChips(st), REF_CHIP_DEBOUNCE);
@@ -10117,6 +9906,8 @@ async function refreshRefChips(st) {
     w.append(mid);
   }
 
+  const focusedCaret = document.activeElement?.closest?.('.doc-ref-slot .mention-caret');
+  const focusedWrap = focusedCaret && st.wrapOfSlot.get(focusedCaret.closest('.doc-ref-slot'));
   st.layer.replaceChildren();
   const drawn = [];
   for (const { w, ref, label } of wraps()) {
@@ -10131,6 +9922,16 @@ async function refreshRefChips(st) {
       const k = slot.querySelector('.k-label');
       if (k) k.textContent = label;
     }
+    if (st.expanded.has(w)) {
+      slot.querySelector('.k-rel')?.classList.add('open');
+      slot.querySelector('.mention-caret')?.setAttribute('aria-expanded', 'true');
+    }
+    slot.addEventListener('click', (ev) => {
+      if (!ev.target.closest('.mention-caret')) return;
+      if (!st.expanded.delete(w)) st.expanded.add(w);
+      refreshRefChips(st);
+    });
+    st.wrapOfSlot.set(slot, w);
     st.layer.append(slot);
     drawn.push({ w, slot });
   }
@@ -10146,7 +9947,11 @@ async function refreshRefChips(st) {
   for (const d of drawn) {
     const r = d.w.getBoundingClientRect();
     d.slot.style.cssText = `left:${r.left - base.left}px; top:${r.top - base.top}px; width:${r.width}px;`;
+    const lab = d.slot.querySelector('.k-rel:not(.open) .k-label');
+    if (lab) lab.style.maxWidth = '';
     d.slot.classList.toggle('long', d.slot.scrollWidth > r.width + 1);
+    if (lab && d.slot.classList.contains('long')) lab.style.maxWidth = `${Math.max(0, lab.offsetWidth - (d.slot.scrollWidth - r.width))}px`;
+    if (d.w === focusedWrap) d.slot.querySelector('.mention-caret')?.focus({ preventScroll: true });
   }
 }
 
@@ -10461,26 +10266,39 @@ function retheme() {
   }
 }
 
+const docSaveChains = new Map();
 function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
   const key = `${entityId}::${field}`;
   clearTimeout(pendingDocSaves.get(key)?.timer);
   if (statusEl) statusEl.textContent = '·';
-  const write = async () => {
-    pendingDocSaves.delete(key);
+  let inflight = null;
+  const put = async () => {
+    const prior = docSaveChains.get(key) ?? Promise.resolve();
+    const run = prior.then(() => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }));
+    docSaveChains.set(key, run.catch(() => {}));
     try {
-      await api('PUT', `/entities/${entityId}/doc`, { field, doc: value });
+      await run;
+      if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
       onSaved?.();
       if (!statusEl) return;
       statusEl.textContent = '✓';
+      statusEl.title = 'Saved automatically';
       setTimeout(() => { if (statusEl.textContent === '✓') statusEl.textContent = ''; }, 1500);
     } catch (err) {
-      if (statusEl) statusEl.textContent = '!';
-      toast(err.message, true);
+      if (statusEl) {
+        statusEl.textContent = '!';
+        statusEl.title = 'Not saved. Your draft is kept and saves on your next edit or when you leave.';
+      }
+      toast(`${err.message}. Your draft is kept and saves on your next edit or when you leave.`, true);
     }
   };
-  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write });
+  const write = () => {
+    clearTimeout(pendingDocSaves.get(key)?.timer);
+    inflight ??= put().finally(() => { inflight = null; });
+    return inflight;
+  };
+  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write, value });
 }
-
 async function flushDocSave(entityId, field) {
   const p = pendingDocSaves.get(`${entityId}::${field}`);
   if (!p) return;
@@ -10546,8 +10364,8 @@ function appearsAsPanel(db, entity, refresh) {
   const chipF = shownView('chip');
   const cardF = shownView('card');
   if (!chipF && !cardF) return null;
-  const gear = (f) => el('button', {
-    type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`,
+  const gear = (f) => ghostBtn({
+    type: 'button', class: 'wv-appears-cfg', title: `Configure the ${f.role} for every ${db.term?.singular ?? WeaveTerm.DEFAULT.singular}`,
     onclick: () => openFieldDialog(db, f, refresh),
   }, iconEl('lucide:sliders-horizontal', 'wv-icon'));
   const slot = (f, node) => el('div', { class: `wv-appears-slot wv-appears-${f.role}` },
@@ -10770,7 +10588,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       const mount = () => {
         if (!host.isConnected) return;
         const ed = mountDocEditor(host, {
-          value: entity.docs?.[f.name] ?? '',
+          value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
           placeholder: `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
@@ -10789,7 +10607,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
-      ta.value = entity.docs?.[f.name] ?? '';
+      ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
       sourceBox = ta;
       host.append(ta);
@@ -10833,6 +10651,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const VALUES_BLOCK = '@values';
   const FILES_BLOCK = '@files';
+  const DECK_BLOCK = '@deck';
   const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
   const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
   const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
@@ -10971,7 +10790,57 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     if (holds(f.name)) drawRelated(); else fills.push(drawRelated);
   }
 
-  const named = db.bodyBlocks ?? [VALUES_BLOCK];
+  const deckRole = deckRoleOf(db);
+  if (deckRole) {
+    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
+    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
+    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
+    const body = el('div', { class: 'doc-section-body' }, frame);
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
+      onclick: () => {
+        const open = body.classList.toggle('hidden');
+        caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
+        docSectionCollapse(id, label, open);
+      },
+    });
+    const newVersion = async (promote) => {
+      try {
+        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
+        toast(`Version ${made.fields?.Version ?? ''} created`);
+        location.hash = `#/entity/${made.id}`;
+      } catch (err) { toast(err.message, true); }
+    };
+    const deckBtn = (cls, title, icon, attrs) => el(attrs.href ? 'a' : 'button', {
+      ...(attrs.href ? {} : { type: 'button' }), class: `doc-anchor deck-btn ${cls}`, title, 'aria-label': title, ...attrs,
+    }, lucideEl(icon));
+    const deckButtons = [
+      deckBtn('deck-download', `Download ${label.toLowerCase()} .html`, 'download', { href: deckUrl, download: `${entity.name || label}.html` }),
+      deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
+      ...(deckRole === 'slide' ? [
+        deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
+        deckBtn('deck-promote', 'New version, promoted into its decks', 'copy-plus', { onclick: () => newVersion(true) }),
+      ] : []),
+    ];
+    const section = el('section', { class: 'doc-section deck-section' },
+      el('div', { class: 'doc-section-head' },
+        caret,
+        el('span', { class: 'doc-section-name' }, label),
+        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
+        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
+          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
+        }, iconEl('⧉')),
+        ...deckButtons),
+      body);
+    blocks.set(DECK_BLOCK, section);
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
+  }
+  const given = db.bodyBlocks ?? [VALUES_BLOCK];
+  const named = (given.includes(FILES_BLOCK) ? given : given.flatMap((k) => (k === VALUES_BLOCK ? [k, FILES_BLOCK] : [k])))
+    .flatMap((k) => (k === FILES_BLOCK ? [k, DECK_BLOCK] : [k]));
   let filesCard = null;
   let placed = false;
   const drawFiles = () => {
@@ -11046,7 +10915,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
     const body = el('div', { class: 'card-body ref-backlinks' },
-      ...refs.map((r) => relationChipEl({ targetDbIds: true }, r)));
+      ...refs.map((r) => (r.external ? externalRefChipEl(r) : relationChipEl({ targetDbIds: true }, r))));
     const fold = (closed) => {
       body.classList.toggle('hidden', closed);
       caret.classList.toggle('closed', closed);
@@ -11066,54 +10935,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         caret, el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
       body));
   };
-  const deckRole = deckRoleOf(db);
-  if (deckRole) {
-    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
-    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
-    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
-    const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = disclosure('doc-caret', true, {
-      title: 'Collapse section',
-      onclick: () => {
-        const open = body.classList.toggle('hidden');
-        caret.classList.toggle('closed', open);
-        setDisclosure(caret, !open);
-        docSectionCollapse(id, label, open);
-      },
-    });
-    const newVersion = async (promote) => {
-      try {
-        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
-        toast(`Version ${made.fields?.Version ?? ''} created`);
-        location.hash = `#/entity/${made.id}`;
-      } catch (err) { toast(err.message, true); }
-    };
-    const deckBtn = (cls, title, icon, attrs) => el(attrs.href ? 'a' : 'button', {
-      ...(attrs.href ? {} : { type: 'button' }), class: `doc-anchor deck-btn ${cls}`, title, 'aria-label': title, ...attrs,
-    }, lucideEl(icon));
-    const deckButtons = [
-      deckBtn('deck-download', `Download ${label.toLowerCase()} .html`, 'download', { href: deckUrl, download: `${entity.name || label}.html` }),
-      deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
-      ...(deckRole === 'slide' ? [
-        deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
-        deckBtn('deck-promote', 'New version, promoted into its decks', 'copy-plus', { onclick: () => newVersion(true) }),
-      ] : []),
-    ];
-    const section = el('section', { class: 'doc-section deck-section' },
-      el('div', { class: 'doc-section-head' },
-        caret,
-        el('span', { class: 'doc-section-name' }, label),
-        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
-        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
-        el('button', {
-          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
-          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
-        }, iconEl('⧉')),
-        ...deckButtons),
-      body);
-    left.prepend(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
-  }
   const drawRefs = () => {
     openSide();
     refCard('References', 'ref-outbound-card', refsOut);
@@ -11161,7 +10982,7 @@ function quickCreate(db) {
       .catch((err) => toast(err.message, true));
     return;
   }
-  modal(`New ${db.term.singular}`, [
+  tray(`New ${rowNoun(db)}`, [
     el('input', { name: 'name', placeholder: 'Name', class: 'form-control' }),
   ], async (fd) => {
     const e = await api('POST', `/tables/${db.id}/entities`, { name: fd.get('name') });
@@ -11373,10 +11194,7 @@ function onboard(defaultName) {
     }
   }
 
-  addEventListener('keydown', function esc(e) {
-    if (!back.isConnected) return removeEventListener('keydown', esc);
-    if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); }
-  });
+  whileConnected(back, 'keydown', (e) => { if (e.key === 'Escape' && !e.target.closest?.('#wv-toasts')) { e.preventDefault(); leave(); } });
   show(0);
 }
 
@@ -11443,8 +11261,8 @@ async function relatedGrid(entity, f, onSaved) {
     await onSaved();
   };
 
-  const unlinkButton = (item) => el('button', {
-        class: 'btn btn-sm btn-ghost-secondary tiny unlink-btn', title: `Unlink from ${f.name}`,
+  const unlinkButton = (item) => ghostBtn({
+        class: 'unlink-btn', title: `Unlink from ${f.name}`,
         onclick: async (e) => {
           e.stopPropagation();
           try {
@@ -12290,9 +12108,9 @@ function dispatchRoute() {
       dbM ? allTables().find((d) => d.id === dbM[1]) : null);
   }
   let m;
-  if (hash === '#/trash') return showTrash(null);
-  if (hash === '#/settings') return showSettings();
-  if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return showTrash(m[1]);
+  if (hash === '#/trash') return openTrash(null);
+  if (hash === '#/settings') return openSettings();
+  if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return openTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)\/new(?:\?(.*))?$/))) {
     const [, id, query] = m;
     return showDatabase(id, null).then(() => openPrefill(id, query ?? ''));
@@ -13194,9 +13012,8 @@ function openBugPanel(from) {
     inside: (t) => panel.contains(t) || from.contains(t) || bugCore.canSubmit(picked, note.value),
     close: closeBugPanel,
   });
-  addEventListener('keydown', function esc(ev) {
-    if (!panel.isConnected) return removeEventListener('keydown', esc);
-    if (ev.key === 'Escape') { closeBugPanel(); from.focus(); removeEventListener('keydown', esc); }
+  const unhook = whileConnected(panel, 'keydown', (ev) => {
+    if (ev.key === 'Escape') { closeBugPanel(); from.focus(); unhook(); }
     if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey) && panel.contains(ev.target)) {
       ev.preventDefault();
       form.requestSubmit();

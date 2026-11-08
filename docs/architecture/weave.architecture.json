@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "6032f67a066c522924cd9f617a911112a0d61a71"
+      "revision": "0ce13aaeb60495f58a1b551cda003119351d41e6"
     },
     "views": [
       {
@@ -390,6 +390,8 @@
       "title": "Shared modules",
       "items": [
         "src/vocabulary.js and src/field-hints.js: one field vocabulary, schema-write hints",
+        "src/errors.js: one error contract, each code's HTTP status, MCP code and CLI exit",
+        "src/commands.js: one command registry the CLI, MCP tools/list and HTTP routes dispatch from",
         "src/ids.js, src/mark.js, src/workspace-name.js: ids, mark, names",
         "src/applet.js, src/bugreport.js, src/legal.js, src/mail.js, src/mail-send.js: routes, legal pages, invite and trial mail",
         "src/trial-mail.js: the hourly sweep that mails a workspace's architects before its free trial ends",

@@ -1,0 +1,1 @@
+- A share link's `deck.html` renders only the slides the share reaches. A share that selects a deck but not its slides no longer shows the unselected slides' content; a space or table share that holds the slides still renders all of them (Issue #1453).

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 test('describeSchema carries space and table descriptions', () => {
   const w = new Weave();
@@ -43,9 +44,7 @@ test('GET/PATCH /api/workspace: name + description, hub re-keys on rename', asyn
 
 test('POST /api/markdown renders markdown to html', async () => {
   const w = new Weave();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/markdown`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,21 +53,15 @@ test('POST /api/markdown renders markdown to html', async () => {
     const { html } = await res.json();
     assert.match(html, /<h1[^>]*>Hi<\/h1>/);
     assert.match(html, /<strong>bold<\/strong>/);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('API responses carry no CORS allow-origin header (same-origin only)', async () => {
   const w = new Weave();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/health`);
     assert.equal(res.headers.get('access-control-allow-origin'), null);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('a table can name what its rows are', () => {
@@ -112,20 +105,6 @@ test('registry tables speak their kind: a row of Fields is a field', () => {
   assert.deepEqual(kinds.spaces, { singular: 'space', plural: 'spaces', set: false });
   assert.deepEqual(kinds.tables, { singular: 'table', plural: 'tables', set: false });
   assert.deepEqual(kinds.workflows, { singular: 'workflow', plural: 'workflows', set: false });
-});
-
-test('a legacy workspace noun moves onto the Name field on first open', () => {
-  const w = new Weave();
-  w.createSpace({ name: 'Ops' });
-  w.createTable({ space: 'Ops', name: 'Runs' });
-  const doc = w.exportJSON();
-  const legacy = Object.values(doc.tables).find((t) => t.name === 'Runs');
-  legacy.noun = 'run';
-  const fresh = new Weave();
-  fresh.importJSON(doc);
-  const db = fresh.getTable('Ops/Runs');
-  assert.equal(db.noun, undefined, 'the table key is gone');
-  assert.deepEqual(fresh.termOf(db), { singular: 'run', plural: 'runs', set: true });
 });
 
 test('relationMapMmd draws spaces, tables and relations', () => {

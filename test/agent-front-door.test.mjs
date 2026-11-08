@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { Weave } from '../src/engine.js';
 import { handleMcpMessage, startMcpServer, primer } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { renderBlocks, applyBlocks } from '../scripts/agent-docs.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -60,18 +60,15 @@ test('the stdio server sends the primer on initialize', async () => {
 });
 
 test('POST /api/mcp sends the primer on initialize', async () => {
-  const { server } = await startServer(new Weave(), { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/mcp`, {
+  await withServer(async ({ base }) => {
+    const res = await fetch(`${base}/api/mcp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 't' } } }),
     });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).result.instructions, PRIMER);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('AGENTS.md opens with Using weave, and the repo rules sit under Developing weave', () => {

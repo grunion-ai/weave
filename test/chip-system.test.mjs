@@ -5,6 +5,7 @@ import { readdirSync } from 'node:fs';
 import { ROOT, read, APP, HTML, CSS, rulesFor, fnBodyOf } from './lib/source.mjs';
 
 await import('../public/chip-core.js');
+await import('../public/field-dialog-core.js');
 const chips = globalThis.chipCore;
 
 const ENGINE = read('src/engine.js');
@@ -103,8 +104,7 @@ test('the avatar is a real element, but no longer a default on the chip', () => 
 });
 
 test("the fifth state category is gone — nothing seeded 'other'", () => {
-  const cats = ENGINE.match(/const STATE_CATEGORIES = \[([^\]]*)\]/)[1]
-    .split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  const cats = globalThis.fieldDialogCore.STATE_CATEGORIES;
   assert.deepEqual(cats, ['not-started', 'in-progress', 'done', 'canceled']);
   assert.equal(chips.CATEGORIES.length, 4);
   assert.deepEqual(chips.CATEGORIES.map((c) => c.id), cats,

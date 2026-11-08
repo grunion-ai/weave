@@ -10,6 +10,8 @@ const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().us
 import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
+import { cliFailure, nonNegativeInteger } from '../src/errors.js';
+import { cliCommand, cliArgs } from '../src/commands.js';
 import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
@@ -559,6 +561,9 @@ async function main() {
 
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
+  const registered = cliCommand(command, args[0]);
+  if (registered) return out(registered.run(w, cliArgs(registered, args.slice(1), flags, { json: parseJsonFlag })));
+
   switch (command) {
     case 'ontology':
       return out(w.ontology({ depth: flags.depth ?? 'outline', concept: flags.concept ?? null, since: flags.since ?? null }));
@@ -711,43 +716,16 @@ async function main() {
       throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
     }
     case 'field': {
-      const [sub, db, name, type] = args;
-      if (sub === 'add') {
-        const config = parseJsonFlag('config') ?? {};
-        if (flags.description != null) config.description = String(flags.description);
-        return out(guided(w, 'field', w.addField(db, { name, type, config }), config));
-      }
-      if (sub === 'update') {
-        const patch = {};
-        if (flags.name != null) patch.name = flags.name;
-        if (flags.type != null) patch.type = flags.type;
-        const config = parseJsonFlag('config') ?? {};
-        if (flags.width != null) config.width = flags.width === 'null' ? null : Number(flags.width);
-        if (flags.default != null) config.default = flags.default === 'null' ? null : flags.default;
-        if (flags.description != null) config.description = flags.description === 'null' ? null : String(flags.description);
-        if (Object.keys(config).length) patch.config = config;
-        const seq = w.state.meta.activitySeq ?? 0;
-        const field = w.updateField(db, name, patch);
-        const formulas = w.fieldChangeSince(db, field.id, seq)?.detail.formulas;
-        return out({ ...guided(w, 'field', field, patch.type == null ? patch.config : {}), ...(formulas ? { formulas } : {}) });
-      }
-      if (sub === 'rollback') return out(w.rollbackFieldConfig(flags.activity, { table: db ?? null, field: name ?? null }));
-      if (sub === 'delete') return out(w.deleteField(db, name, { hard: Boolean(flags.hard) }));
-      if (sub === 'restore') return out(w.restoreField(db, name));
+      const [sub, db] = args;
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
       throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete, restore`);
     }
     case 'formula': {
-      const [sub, db, expression] = args;
-      if (sub === 'check') return out(w.checkFormula(db, expression, { entity: flags.entity ?? null, excludeField: flags['exclude-field'] ?? null, scan: Boolean(flags.scan) }));
+      const [sub] = args;
       throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
     }
     case 'relation': {
-      const [sub, db, name, targetDb] = args;
-      if (sub === 'add') {
-        const targetDbs = flags['target-dbs'] ? String(flags['target-dbs']).split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-        return out(w.addRelation(db, { name, targetDb, targetDbs, cardinality: flags.cardinality ?? 'many-to-one', inverseName: flags.inverse }));
-      }
+      const [sub] = args;
       throw new WeaveError(`Unknown relation subcommand '${sub}'`);
     }
     case 'query': {
@@ -760,7 +738,7 @@ async function main() {
         shape: flags.shape ? String(flags.shape) : 'full',
         sort: flags.sort ? [String(flags.sort)] : [],
         limit: numberFlag('limit'),
-        offset: flags.offset ? Number(flags.offset) : 0,
+        offset: nonNegativeInteger('--offset', flags.offset === true ? 'true' : flags.offset),
         search: flags.search ? String(flags.search) : '',
         countAll: Boolean(flags['count-all']),
         view: flags.view ? String(flags.view) : null,
@@ -1031,6 +1009,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`weave: error: ${err.message}`);
-  process.exit(1);
+  const { line, exit } = cliFailure(err);
+  console.error(line);
+  process.exit(exit);
 });

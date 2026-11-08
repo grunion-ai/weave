@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const LINE = {
   head: /^graph LR$/,
@@ -40,9 +40,7 @@ test('GET /api/relation-map.mmd answers a Mermaid flowchart: one subgraph per sp
   w.createTable({ space: 'Ops', name: 'Task' });
   w.addRelation('Sales/Deal', { name: 'Account', targetDb: 'Sales/Account', cardinality: 'many-to-one', inverseName: 'Deals' });
   w.addRelation('Ops/Task', { name: 'Deal', targetDb: 'Sales/Deal', cardinality: 'many-to-many', inverseName: 'Tasks' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/relation-map.mmd`);
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type'), /^text\/plain/);
@@ -56,19 +54,14 @@ test('GET /api/relation-map.mmd answers a Mermaid flowchart: one subgraph per sp
     const wrong = await fetch(`${base}/api/relation-map.mmd`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(wrong.status, 404, 'the map is read-only');
     assert.match((await wrong.json()).error, /No route: POST \/api\/relation-map\.mmd/);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('an empty workspace maps to a bare flowchart header', async () => {
   const w = new Weave();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/relation-map.mmd`);
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/relation-map.mmd`);
     assert.equal(res.status, 200);
     assert.deepEqual(parseFlowchart(await res.text()), { spaces: {}, edges: [] });
-  } finally {
-    server.close();
-  }
+  });
 });

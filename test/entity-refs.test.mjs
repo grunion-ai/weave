@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, WeaveError } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function seed() {
   const w = new Weave();
@@ -21,9 +21,7 @@ test('engine getEntity accepts Table#pid and Space/Table#pid refs', () => {
 
 test('REST /api/entities/:ref and /e/:ref accept Table#pid refs', async () => {
   const w = seed();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const got = await fetch(`${base}/api/entities/Issue%231`);
     assert.equal(got.status, 200);
     assert.equal((await got.json()).name, 'Crash on save');
@@ -41,9 +39,7 @@ test('REST /api/entities/:ref and /e/:ref accept Table#pid refs', async () => {
     assert.equal(await doc.text(), 'details');
 
     assert.equal((await fetch(`${base}/api/entities/Issue%2399`)).status, 404);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('findEntity (relation targets) accepts qualified Table#pid refs', () => {
