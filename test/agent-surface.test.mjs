@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
+import { COMMANDS, BY_TOOL, cliCommand, matchRoute } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -19,7 +20,9 @@ const ROUTES = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
 const AGENTS = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
-const SURFACE = [
+const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? [`${c.http.method} ${c.http.path}`] : []]);
+
+const HAND_WRITTEN = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
   ['schema.ontology', ['ontology', 'spaceVersions'], 'weave_ontology', 'ontology', ['GET /api/ontology']],
@@ -41,13 +44,6 @@ const SURFACE = [
   ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete', ['DELETE /api/tables/:ref']],
   ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore', ['POST /api/tables/:ref/restore']],
   ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
-  ['field.add', ['addField', 'materializeField'], 'weave_add_field', 'field add', ['POST /api/tables/:ref/fields']],
-  ['field.update', ['updateField'], 'weave_update_field', 'field update', ['PATCH /api/tables/:ref/fields/:ref']],
-  ['field.delete', ['deleteField'], 'weave_delete_field', 'field delete', ['DELETE /api/tables/:ref/fields/:ref']],
-  ['field.restore', ['restoreField'], 'weave_restore_field', 'field restore', ['POST /api/tables/:ref/fields/:ref/restore']],
-  ['field.rollback', ['rollbackFieldConfig'], 'weave_rollback_field', 'field rollback', ['POST /api/tables/:ref/fields/:ref/rollback']],
-  ['relation.add', ['addRelation'], 'weave_add_relation', 'relation add', ['POST /api/tables/:ref/relations']],
-  ['formula.check', ['checkFormula'], 'weave_check_formula', 'formula check', ['POST /api/tables/:ref/formula-check']],
   ['entity.create', ['createEntity'], 'weave_create_entity', 'create', ['POST /api/tables/:ref/entities']],
   ['entity.read', ['readEntity', 'getEntity', 'query', 'listEntities'], 'weave_get_entity', 'get', ['GET /api/entities/:ref']],
   ['entity.query', ['query'], 'weave_query', 'query', ['POST /api/tables/:ref/query']],
@@ -93,6 +89,8 @@ const SURFACE = [
   ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry', ['GET /api/registry', 'POST /api/registry/rebuild']],
   ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map', ['GET /api/relation-map.mmd']],
 ];
+
+const SURFACE = [...HAND_WRITTEN, ...REGISTERED];
 
 const INTERNAL = {
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
@@ -174,13 +172,14 @@ test('every capability has an MCP tool that exists and dispatches', () => {
   for (const [capability, , tool] of SURFACE) {
     if (!tool) continue;
     assert.ok(toolNames.has(tool), `${capability} names a tool that is not in TOOLS: ${tool}`);
-    assert.match(MCP, new RegExp(`case '${tool}'`), `${tool} is listed but never dispatched`);
+    if (!BY_TOOL.has(tool)) assert.match(MCP, new RegExp(`case '${tool}'`), `${tool} is listed but never dispatched`);
   }
 });
 
 test('every capability has a CLI command that exists', () => {
   for (const [capability, , , cli] of SURFACE) {
     const [command, sub] = cli.split(' ');
+    if (cliCommand(command, sub)) continue;
     assert.match(CLI, new RegExp(`case '${command}'`), `${capability}: no CLI command '${command}'`);
     if (sub) {
       const start = CLI.indexOf(`case '${command}'`);
@@ -201,6 +200,8 @@ function routeSignatures(entry) {
 test('every capability has an HTTP route that exists', () => {
   for (const [capability, , , , http] of SURFACE) {
     for (const entry of http) {
+      const [method, path] = entry.split(' ');
+      if (matchRoute(method, path.replace(/:[a-z]+/gi, 'x'))) continue;
       const sigs = routeSignatures(entry);
       assert.ok(sigs.some((sig) => ROUTES.includes(sig)), `${capability}: routes.js has no ${entry} (looked for ${sigs.join(' or ')})`);
     }
@@ -297,13 +298,13 @@ test('every checkFormula option reaches every door', () => {
   const options = sig.split(',').map((p) => p.trim().split(/[=\s]/)[0]).filter(Boolean);
   assert.ok(options.includes('scan'), 'the engine takes scan');
   const tool = TOOLS.find((t) => t.name === 'weave_check_formula');
-  const cliBlock = CLI.slice(CLI.indexOf("case 'formula'"), CLI.indexOf("case 'formula'") + 1200);
-  const routeBlock = ROUTES.slice(ROUTES.indexOf('formula-check'), ROUTES.indexOf('formula-check') + 600);
+  const cmd = BY_TOOL.get('weave_check_formula');
+  assert.equal(cliCommand('formula', 'check'), cmd, 'weave formula check runs the registry entry');
+  assert.equal(matchRoute('POST', '/api/tables/x/formula-check').cmd, cmd, 'POST /api/tables/:ref/formula-check runs the registry entry');
   const kebab = (k) => k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
   for (const k of options) {
     assert.ok(tool.inputSchema.properties[k], `weave_check_formula schema lacks ${k}`);
-    assert.ok(cliBlock.includes(`'${kebab(k)}'`) || cliBlock.includes(`flags.${k}`), `weave formula check lacks --${kebab(k)}`);
-    assert.ok(routeBlock.includes(`body?.${k}`), `POST /api/tables/:ref/formula-check drops ${k}`);
+    assert.ok(cmd.cli.flags.includes(kebab(k)), `weave formula check lacks --${kebab(k)}`);
   }
   assert.match(AGENTS, /scan/, 'AGENTS.md must say what scan returns');
 });
