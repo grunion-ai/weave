@@ -10852,6 +10852,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const VALUES_BLOCK = '@values';
   const FILES_BLOCK = '@files';
+  const DECK_BLOCK = '@deck';
   const SHEET_FIELD_TYPES = new Set(['workflow', 'select', 'multiselect', 'relation']);
   const SHEET_HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .fieldrow-label';
   const relationCount = (v) => (Array.isArray(v) ? v.length : v == null ? 0 : 1);
@@ -10990,7 +10991,57 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     if (holds(f.name)) drawRelated(); else fills.push(drawRelated);
   }
 
-  const named = db.bodyBlocks ?? [VALUES_BLOCK];
+  const deckRole = deckRoleOf(db);
+  if (deckRole) {
+    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
+    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
+    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
+    const body = el('div', { class: 'doc-section-body' }, frame);
+    const caret = disclosure('doc-caret', true, {
+      title: 'Collapse section',
+      onclick: () => {
+        const open = body.classList.toggle('hidden');
+        caret.classList.toggle('closed', open);
+        setDisclosure(caret, !open);
+        docSectionCollapse(id, label, open);
+      },
+    });
+    const newVersion = async (promote) => {
+      try {
+        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
+        toast(`Version ${made.fields?.Version ?? ''} created`);
+        location.hash = `#/entity/${made.id}`;
+      } catch (err) { toast(err.message, true); }
+    };
+    const deckBtn = (cls, title, icon, attrs) => el(attrs.href ? 'a' : 'button', {
+      ...(attrs.href ? {} : { type: 'button' }), class: `doc-anchor deck-btn ${cls}`, title, 'aria-label': title, ...attrs,
+    }, lucideEl(icon));
+    const deckButtons = [
+      deckBtn('deck-download', `Download ${label.toLowerCase()} .html`, 'download', { href: deckUrl, download: `${entity.name || label}.html` }),
+      deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
+      ...(deckRole === 'slide' ? [
+        deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
+        deckBtn('deck-promote', 'New version, promoted into its decks', 'copy-plus', { onclick: () => newVersion(true) }),
+      ] : []),
+    ];
+    const section = el('section', { class: 'doc-section deck-section' },
+      el('div', { class: 'doc-section-head' },
+        caret,
+        el('span', { class: 'doc-section-name' }, label),
+        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
+        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
+        el('button', {
+          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
+          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
+        }, iconEl('⧉')),
+        ...deckButtons),
+      body);
+    blocks.set(DECK_BLOCK, section);
+    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
+  }
+  const given = db.bodyBlocks ?? [VALUES_BLOCK];
+  const named = (given.includes(FILES_BLOCK) ? given : given.flatMap((k) => (k === VALUES_BLOCK ? [k, FILES_BLOCK] : [k])))
+    .flatMap((k) => (k === FILES_BLOCK ? [k, DECK_BLOCK] : [k]));
   let filesCard = null;
   let placed = false;
   const drawFiles = () => {
@@ -11085,54 +11136,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         caret, el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
       body));
   };
-  const deckRole = deckRoleOf(db);
-  if (deckRole) {
-    const deckUrl = `${WS_PREFIX}/e/${id}/deck.html`;
-    const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
-    const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
-    const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = disclosure('doc-caret', true, {
-      title: 'Collapse section',
-      onclick: () => {
-        const open = body.classList.toggle('hidden');
-        caret.classList.toggle('closed', open);
-        setDisclosure(caret, !open);
-        docSectionCollapse(id, label, open);
-      },
-    });
-    const newVersion = async (promote) => {
-      try {
-        const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
-        toast(`Version ${made.fields?.Version ?? ''} created`);
-        location.hash = `#/entity/${made.id}`;
-      } catch (err) { toast(err.message, true); }
-    };
-    const deckBtn = (cls, title, icon, attrs) => el(attrs.href ? 'a' : 'button', {
-      ...(attrs.href ? {} : { type: 'button' }), class: `doc-anchor deck-btn ${cls}`, title, 'aria-label': title, ...attrs,
-    }, lucideEl(icon));
-    const deckButtons = [
-      deckBtn('deck-download', `Download ${label.toLowerCase()} .html`, 'download', { href: deckUrl, download: `${entity.name || label}.html` }),
-      deckBtn('deck-model', 'Open the composed model .json', 'braces', { href: `${WS_PREFIX}/e/${id}/deck.json`, target: '_blank', rel: 'noopener' }),
-      ...(deckRole === 'slide' ? [
-        deckBtn('deck-new-version', 'New version', 'file-plus', { onclick: () => newVersion(false) }),
-        deckBtn('deck-promote', 'New version, promoted into its decks', 'copy-plus', { onclick: () => newVersion(true) }),
-      ] : []),
-    ];
-    const section = el('section', { class: 'doc-section deck-section' },
-      el('div', { class: 'doc-section-head' },
-        caret,
-        el('span', { class: 'doc-section-name' }, label),
-        el('span', { class: 'doc-anchor', title: 'Refresh', onclick: () => { frame.src = frame.src; } }, iconEl('⟳')),
-        el('span', { class: 'doc-anchor', title: 'Expand', onclick: () => expandDocument(grid, deckUrl, label) }, iconEl('⛶')),
-        el('button', {
-          type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this deck', 'aria-label': 'Copy link to this deck',
-          onclick: () => copyText(`${location.origin}${deckUrl}`, 'Deck link copied'),
-        }, iconEl('⧉')),
-        ...deckButtons),
-      body);
-    left.prepend(section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
-  }
   const drawRefs = () => {
     openSide();
     refCard('References', 'ref-outbound-card', refsOut);
