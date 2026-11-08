@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP as APP_JS, HTML, CSS, fnBody as fnBodyIn, read } from './lib/source.mjs';
-const APP = [APP_JS, read('public/settings-view.js')].join('\n');
+const APP = [APP_JS, read('public/settings-view.js'), read('public/invite-dialog.js')].join('\n');
 const fnBody = (name, src = APP) => fnBodyIn(name, src);
 
 test('the retired menu markup is gone from app.js (Feature #296, Issue #762)', () => {

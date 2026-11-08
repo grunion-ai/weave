@@ -4,6 +4,8 @@ import { launch } from './lib/browser.mjs';
 import { read } from './lib/source.mjs';
 
 const FILE = '/settings-view.js';
+const INVITE = '/invite-dialog.js';
+const MOVED = [FILE, INVITE];
 let deals, big;
 const s = await launch('settings view lazy', (weave) => {
   weave.createSpace({ name: 'Sales' });
@@ -19,13 +21,18 @@ test('the Trash and Settings pages live in settings-view.js, and app.js keeps on
     assert.match(view, new RegExp(`function ${fn}\\(`), `${fn} is in settings-view.js`);
     assert.doesNotMatch(app, new RegExp(`function ${fn}\\(`), `app.js no longer carries ${fn}`);
   }
+  const invite = read(`public${INVITE}`);
+  for (const fn of ['inviteDialog', 'seatNote']) {
+    assert.match(invite, new RegExp(`function ${fn}\\(`), `${fn} is in invite-dialog.js`);
+    assert.doesNotMatch(app, new RegExp(`function ${fn}\\(`), `app.js no longer carries ${fn}`);
+  }
 });
 
 if (s) {
   const { base, browser } = s;
   const watch = (page) => {
     const fetched = [];
-    page.on('request', (r) => { if (new URL(r.url()).pathname === FILE) fetched.push(FILE); });
+    page.on('request', (r) => { const path = new URL(r.url()).pathname; if (MOVED.includes(path)) fetched.push(path); });
     return fetched;
   };
 
@@ -34,7 +41,7 @@ if (s) {
     ['table', () => `#/table/${deals.id}`, '.wv-grid tbody tr.entity-row'],
     ['row', () => `#/entity/${big.id}`, '.wv-entity, main h1, main'],
   ]) {
-    test(`a cold ${name} load fetches no ${FILE} (Issue #1041)`, async () => {
+    test(`a cold ${name} load fetches neither ${MOVED.join(' nor ')} (Issue #1041)`, async () => {
       const page = await browser.newPage();
       try {
         const fetched = watch(page);
