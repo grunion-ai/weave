@@ -2345,7 +2345,9 @@ function replaceIntegrationKey(item, onSaved) {
     const value = String(fd.get('value') ?? '');
     input.value = '';
     const fresh = await api('PUT', `/integrations/${item.id}/credential`, { value });
-    await onSaved({ ...fresh, affected: [fresh.id] }, 'Credential');
+    const row = { ...fresh, affected: [fresh.id] };
+    await onSaved(row, 'Credential');
+    await document.querySelector('#main .table-wrap')?.wvPatchRows?.(row);
     if (fresh.connected) toast(`${item.name} connected${fresh.fields?.['Connected As'] ? ` as ${fresh.fields['Connected As']}` : ''}`);
     else toast(fresh.reason, true);
   }, 'Test and save');
@@ -7937,7 +7939,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const f = db.fields.find((x) => x.name === td.dataset.field);
       if (!f) continue;
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
-      if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
+      const shown = (r) => JSON.stringify([r.fields?.[f.name] ?? null, db.system === 'integrations' && f.type === 'key' ? r.fields?.['Key Hint'] ?? null : null]);
+      if (was && shown(was) === shown(item)) continue;
       td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
