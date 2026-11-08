@@ -812,11 +812,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const schemaWrite = !read && (
         /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
         || path === '/api/import'
-        || /^\/api\/tables$/.test(path)
-        || (/^\/api\/tables\/[^/]+$/.test(path) && (m2 === 'PATCH' || m2 === 'DELETE'))
-        || /^\/api\/tables\/[^/]+\/(move|duplicate|restore)$/.test(path)
-        || /^\/api\/tables\/[^/]+\/fields/.test(path)
-        || /^\/api\/tables\/[^/]+\/relations$/.test(path)
+        || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
         || path === '/api/build'

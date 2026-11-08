@@ -1,0 +1,1 @@
+- **The schema gate reads the command registry** (Feature #179): the API refuses an editor token a table or field write because its registry entry says it writes the schema, in place of five path patterns typed beside the routes. The same writes are refused as before. Gate: `test/command-registry.test.mjs`.
