@@ -97,6 +97,11 @@ const AVATAR_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'
 const SEARCHED_VALUE_TYPES = new Set(['text', 'url', 'email']);
 const REGISTRY_HITS = new Set(['workspaces', 'spaces', 'tables', 'views']);
 export const LOCKED_NAME = 'Private';
+export const UPGRADE_FLOOR = 'v0.4.4';
+function refuseBeforeFloor(state) {
+  if (state.version === 2 && !state.databases && state.meta?.percentFractional) return;
+  throw new WeaveError(`This workspace was last saved by a weave older than ${UPGRADE_FLOOR}. Open it once with weave v0.4.123, which upgrades it, then open it here.`, 'invalid');
+}
 const RESERVED_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
 const PASTED_ENTITY = /^\s*(?:(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+)?(?:\/w\/[^/\s]+)?\/e\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]\S*)?\s*$/i;
@@ -1229,7 +1234,7 @@ export class Weave {
     }
     this.state = loaded ?? {
       version: 2,
-      meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO() },
+      meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO(), percentFractional: true },
       spaces: {},
       tables: {},
       entities: {},
@@ -1244,57 +1249,20 @@ export class Weave {
 
   #migrate() {
     const s = this.state;
+    refuseBeforeFloor(s);
     if (!s.meta.id) { s.meta.id = uuid(); if (this.store.path) this.save(); }
-    if (s.databases && !s.tables) {
-      s.tables = s.databases;
-      delete s.databases;
-    }
     s.tables = s.tables ?? {};
     let changed = false;
     for (const db of Object.values(s.tables)) {
       if (this.#reconcileFieldOrder(db)) changed = true;
       if (!db.system) {
         if (this.#ensureDescriptionField(db)) changed = true;
-        if (this.#ensureTerm(db)) changed = true;
         if (this.#ensureViewFields(db)) changed = true;
       }
       if (this.#ensureTableViews(db)) changed = true;
       if (this.#ensureSystemColumnsInViews(db)) changed = true;
       if (this.#dropRetiredSystemField(db)) changed = true;
       if (this.#ensureStandardViewName(db)) changed = true;
-    }
-    for (const e of Object.values(s.entities ?? {})) {
-      if (e.docs) continue;
-      e.docs = {};
-      if (e.doc) {
-        const db = s.tables[e.dbId];
-        const docField = this.descriptionField(db);
-        if (docField) e.docs[docField.id] = e.doc;
-      }
-      delete e.doc;
-      this.#mark(e);
-      changed = true;
-    }
-    if (s.version !== 2) {
-      s.version = 2;
-      changed = true;
-    }
-    if (!s.meta.percentFractional) {
-      for (const db of Object.values(s.tables)) {
-        for (const f of Object.values(db.fields ?? {})) {
-          if (f.type !== 'number' || f.config?.format !== 'percent') continue;
-          for (const e of Object.values(s.entities ?? {})) {
-            if (e.dbId !== db.id) continue;
-            const v = e.values?.[f.id];
-            if (typeof v === 'number' && Number.isFinite(v)) {
-              e.values[f.id] = v / 100;
-              this.#mark(e);
-            }
-          }
-        }
-      }
-      s.meta.percentFractional = true;
-      changed = true;
     }
     if (s.meta.activitySeq == null) { s.meta.activitySeq = 0; changed = true; }
     {
@@ -1415,16 +1383,6 @@ export class Weave {
         try { this.updateField(target.id, field.id, { name }); } catch (err) { if (!(err instanceof WeaveError)) throw err; }
       }
     }
-  }
-
-  #ensureTerm(db) {
-    if (db.noun == null) return false;
-    const nameField = db.fields[db.nameFieldId];
-    if (nameField && !nameField.config.term && String(db.noun).trim()) {
-      try { nameField.config.term = Term.normalize({ singular: db.noun }); } catch {}
-    }
-    delete db.noun;
-    return true;
   }
 
   #ensureViewFields(db) {
@@ -10307,14 +10265,15 @@ export class Weave {
   }
 
   importJSON(state) {
-    if (!state || ![1, 2].includes(state.version)) throw new WeaveError('Unsupported workspace format', 'invalid');
+    if (!state || typeof state !== 'object') throw new WeaveError('Unsupported workspace format', 'invalid');
+    refuseBeforeFloor(state);
     const ids = [...Object.keys(state.fileBlobs ?? {}), state.meta?.logo?.id];
     for (const e of Object.values(state.entities ?? {})) for (const f of e?.files ?? []) ids.push(...fileBlobIds(f ?? {}));
     for (const id of ids) {
       if (id !== undefined && !BLOB_ID.test(String(id))) throw new WeaveError(`Invalid file id '${id}' in the import`, 'invalid');
     }
     const prior = this.state.meta ?? {};
-    const tables = { ...state.tables, ...state.databases };
+    const tables = { ...state.tables };
     const maps = [state.spaces, tables, state.entities, state.automations, state.meta?.views, state.meta?.accounts,
       ...Object.values(tables).map((t) => t?.fields)];
     for (const m of maps) for (const k of Object.keys(m ?? {})) refuseReserved('row id', k);

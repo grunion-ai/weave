@@ -33,7 +33,7 @@ const WORKSPACE = {
   doors: { id: '00000000-0000-4000-8000-000000000004', hue: 'cyan' },
 };
 const pinnedWeave = (id) => () => {
-  const state = { version: 2, meta: { id, name: 'personal-workspace', createdAt: new Date().toISOString() }, spaces: {}, tables: {}, entities: {}, automations: {} };
+  const state = { version: 2, meta: { id, name: 'personal-workspace', createdAt: new Date().toISOString(), percentFractional: true }, spaces: {}, tables: {}, entities: {}, automations: {} };
   const store = new Store(null);
   store.load = () => state;
   return new Weave({ store });

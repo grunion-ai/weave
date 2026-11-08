@@ -114,20 +114,6 @@ test('registry tables speak their kind: a row of Fields is a field', () => {
   assert.deepEqual(kinds.workflows, { singular: 'workflow', plural: 'workflows', set: false });
 });
 
-test('a legacy workspace noun moves onto the Name field on first open', () => {
-  const w = new Weave();
-  w.createSpace({ name: 'Ops' });
-  w.createTable({ space: 'Ops', name: 'Runs' });
-  const doc = w.exportJSON();
-  const legacy = Object.values(doc.tables).find((t) => t.name === 'Runs');
-  legacy.noun = 'run';
-  const fresh = new Weave();
-  fresh.importJSON(doc);
-  const db = fresh.getTable('Ops/Runs');
-  assert.equal(db.noun, undefined, 'the table key is gone');
-  assert.deepEqual(fresh.termOf(db), { singular: 'run', plural: 'runs', set: true });
-});
-
 test('relationMapMmd draws spaces, tables and relations', () => {
   const w = new Weave();
   w.createSpace({ name: 'Dev' });
