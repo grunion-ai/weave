@@ -5,9 +5,9 @@ import { rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -85,9 +85,8 @@ test('shape row: REST, MCP and CLI all answer the lean row (Issue #1270)', async
   const m = dispatchTool(w, 'weave_query', { db: 'Case', fields: ['Name', 'Chip'], relations: 'chip', shape: 'row', limit: 1 });
   assert.equal('url' in m.items[0], false, 'the MCP weave_query drops the envelope');
 
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Case/query`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Case/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: ['Name', 'Chip'], relations: 'chip', shape: 'row', limit: 1 }),
     });
@@ -95,9 +94,7 @@ test('shape row: REST, MCP and CLI all answer the lean row (Issue #1270)', async
     assert.equal(res.status, 200);
     assert.equal('url' in body.items[0], false, 'the route passes shape through to the engine');
     assert.ok(body.items[0].fields.Name, 'the drawn field still arrives');
-  } finally {
-    server.close();
-  }
+  });
 
   const dir = tempDir('weave-query-shape-');
   try {

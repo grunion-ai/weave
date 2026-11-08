@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, sourcePath } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const read = (w, id) => w.readEntity(id);
 
@@ -169,9 +169,7 @@ test('MCP weave_create_automation takes an upsert-row action and its description
 
 test('POST /api/automations takes an upsert-row action and GET lists it', async () => {
   const { w, delivery, account } = demo();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/automations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db: delivery.id, ...rule }) });
     assert.equal(res.status, 201);
     const listed = await (await fetch(`${base}/api/automations`)).json();
@@ -180,7 +178,5 @@ test('POST /api/automations takes an upsert-row action and GET lists it', async 
     assert.equal(bad.status >= 400 && bad.status < 500, true);
     w.createEntity(delivery.id, { Name: 'd1', Ext: 'cus_1', Who: 'Acme' });
     assert.equal(accounts(w, account).length, 1);
-  } finally {
-    server.close();
-  }
+  });
 });

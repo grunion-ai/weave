@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function fresh() {
   const w = new Weave();
@@ -53,9 +53,7 @@ test('the share URL is readable without auth, and only shows its view', async ()
   const v = w.createView({ name: 'Focus', blocks: [{ table: 'Task', where: [['State', '=', 'Todo']] }] });
   const { token } = w.shareView(v.id);
   w.setRequireAuth(true);
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const page = await fetch(`${base}/view/${token}`);
     assert.equal(page.status, 200);
     const html = await page.text();
@@ -64,7 +62,5 @@ test('the share URL is readable without auth, and only shows its view', async ()
     assert.ok(!html.includes('Done one'), 'the where clause holds on the share page');
     assert.equal((await fetch(`${base}/view/wrong`)).status, 404);
     assert.equal((await fetch(`${base}/api/schema`)).status, 401, 'the share token opens nothing else');
-  } finally {
-    server.close();
-  }
+  });
 });

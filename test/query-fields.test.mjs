@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function buildWorkspace(w = new Weave()) {
   w.createSpace({ name: 'Quality' });
@@ -117,9 +117,8 @@ test('REST, MCP and CLI carry fields and relations', async () => {
   assert.deepEqual(Object.keys(m.items[0].fields), ['Suite']);
   assert.ok(m.chips[grid.id]);
 
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Case/query`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Case/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: ['Name', 'Suite'], relations: 'chip', limit: 1 }),
     });
@@ -127,9 +126,7 @@ test('REST, MCP and CLI carry fields and relations', async () => {
     assert.deepEqual(Object.keys(body.items[0].fields), ['Name', 'Suite']);
     assert.equal(body.items[0].fields.Suite.name, 'grid.test.mjs');
     assert.ok(body.chips[grid.id].chip, 'the chip rides once, in chips');
-  } finally {
-    server.close();
-  }
+  });
 
   const dir = tempDir('weave-query-fields-');
   try {

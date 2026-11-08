@@ -74,12 +74,15 @@ export function client(hub, opts = {}) {
   };
 }
 
-export async function withServer(fn) {
-  const { server, port } = await startServer(new Weave(), { port: 0 });
+export async function withServer(weave, options, fn) {
+  if (typeof weave === 'function') [weave, options, fn] = [new Weave(), {}, weave];
+  else if (typeof options === 'function') [options, fn] = [{}, options];
+  const { server, port } = await startServer(weave, { port: 0, ...options });
+  const base = `http://127.0.0.1:${port}`;
   try {
-    await fn((path, opts) => fetch(`http://127.0.0.1:${port}${path}`, opts));
+    return await fn({ server, port, base, fetch: (path, init) => fetch(base + path, init) });
   } finally {
-    server.close();
+    await new Promise((done) => { server.close(done); server.closeAllConnections(); });
   }
 }
 

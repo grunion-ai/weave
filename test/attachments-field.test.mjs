@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function fresh() {
   const w = new Weave();
@@ -48,9 +48,7 @@ test('attachments is definable and registry-visible', () => {
 test('the REST field-upload route attaches into the column', async () => {
   const w = fresh();
   const e = w.createEntity('Contract', { name: 'Acme' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/entities/${e.id}/fields/Signed%20PDFs/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,7 +57,5 @@ test('the REST field-upload route attaches into the column', async () => {
     assert.equal(res.status, 201);
     const read = await (await fetch(`${base}/api/entities/${e.id}`)).json();
     assert.match(String(read.fields['Signed PDFs']), /nda\.pdf/);
-  } finally {
-    server.close();
-  }
+  });
 });

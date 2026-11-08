@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function workspace() {
   const w = new Weave();
@@ -53,9 +53,8 @@ test('MCP: weave_delete_entity by Table#N answers the delete that landed', () =>
 
 test('REST: DELETE /api/entities/T#N soft and hard', async () => {
   const { w, a, b } = workspace();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const soft = await fetch(`${base}/api/entities/${encodeURIComponent('T#1')}`, { method: 'DELETE' });
     assert.equal(soft.status, 200);
     assert.equal((await soft.json()).id, a.id);
@@ -65,7 +64,5 @@ test('REST: DELETE /api/entities/T#N soft and hard', async () => {
     assert.equal(purged.id, b.id);
     assert.equal(purged.purged, true);
     assert.equal(w.query('T', { includeDeleted: true }).total, 1);
-  } finally {
-    server.close();
-  }
+  });
 });

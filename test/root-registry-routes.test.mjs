@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 const json = async (r) => r.json();
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -14,9 +14,7 @@ test('registry routes stay in the requested workspace and reject foreign registr
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Dev' });
   uno.createTable({ space: 'Dev', name: 'Task' });
-  const { server } = await startServer(root, { port: 0, workspaces: { uno } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(root, { workspaces: { uno } }, async ({ base }) => {
     const tablesT = uno.getTable('System/Tables');
     const spacesT = uno.getTable('System/Spaces');
     assert.equal((await post(`${base}/w/uno/api/tables/${root.getTable('System/Tables').id}/query`, {})).status, 404);
@@ -40,7 +38,5 @@ test('registry routes stay in the requested workspace and reject foreign registr
     const stats = await json(await fetch(`${base}/w/uno/api/tables/${uno.getTable('Dev/Job').id}/stats`));
     assert.equal(stats.rollups[0].name, 'Job · count');
     assert.equal(stats.rollups[0].value, 0);
-  } finally {
-    server.close();
-  }
+  });
 });

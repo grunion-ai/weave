@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../src/engine.js');
 const { startServer } = await import('../src/server.js');
@@ -114,9 +115,7 @@ test('the vocabulary and the field registry know the type', () => {
 test('the REST field-upload route sets the avatar', async () => {
   const w = fresh();
   const e = w.createEntity('Contact', { name: 'A' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/entities/${e.id}/fields/Face/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -125,7 +124,5 @@ test('the REST field-upload route sets the avatar', async () => {
     assert.equal(res.status, 201);
     const read = await (await fetch(`${base}/api/entities/${e.id}`)).json();
     assert.ok(read.avatar.file, 'the read names the photo');
-  } finally {
-    server.close();
-  }
+  });
 });

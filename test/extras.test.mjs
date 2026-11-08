@@ -5,8 +5,8 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, parseCSV } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 
 test('parseCSV handles quotes, commas, newlines', () => {
@@ -77,9 +77,7 @@ test('file and CSV endpoints over HTTP', async () => {
   const db = w.createTable({ space: 'S', name: 'Item' });
   w.addField(db, { name: 'Points', type: 'number' });
   const e = w.createEntity(db, { name: 'E' });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const up = await fetch(`${base}/api/entities/${e.id}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -97,9 +95,7 @@ test('file and CSV endpoints over HTTP', async () => {
       body: JSON.stringify({ csv: 'Name,Points\nImported,7\n' }),
     });
     assert.deepEqual((await imp.json()).created, 1);
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('webhook automation fires on state change', async () => {

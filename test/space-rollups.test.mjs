@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function build() {
   const w = new Weave();
@@ -242,13 +242,10 @@ test('REST, MCP and CLI carry the stats field narrowing (Issue #235)', async () 
   const m = dispatchTool(w, 'weave_stats', { table: 'Agent/Sessions', field: 'Cost' });
   assert.deepEqual([m.columns.map((c) => c.name), m.rollups.map((r) => r.name)], [['Cost'], ['Cost sum']]);
 
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const body = await (await fetch(`http://127.0.0.1:${server.address().port}/api/tables/${t.id}/stats?field=Cost`)).json();
+  await withServer(w, async ({ base }) => {
+    const body = await (await fetch(`${base}/api/tables/${t.id}/stats?field=Cost`)).json();
     assert.deepEqual([body.columns.map((c) => c.name), body.rollups.map((r) => r.name)], [['Cost'], ['Cost sum']]);
-  } finally {
-    server.close();
-  }
+  });
 
   const dir = tempDir('weave-stats-field-');
   try {

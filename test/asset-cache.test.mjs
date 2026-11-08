@@ -17,7 +17,7 @@ const localRefs = (html) => [...html.matchAll(/(?:\b(?:src|href)="|\bfrom ")(\/[
   .map((m) => ({ url: m[1], v: m[2]?.slice(3) ?? null }));
 
 test('the served shell versions every local asset it references', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'no-cache', 'the shell always revalidates');
@@ -32,7 +32,7 @@ test('the served shell versions every local asset it references', async () => {
 });
 
 test('an asset asked for at its current hash is immutable; any other ask revalidates', async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const { v } = localRefs(await (await get('/')).text()).find((r) => r.url === '/app.js');
     const hit = await get(`/app.js?v=${v}`);
     assert.equal(hit.status, 200);
@@ -45,7 +45,7 @@ test('an asset asked for at its current hash is immutable; any other ask revalid
 });
 
 test("the shell's validator follows the bytes it serves, not index.html's mtime", async () => {
-  await withServer(async (get) => {
+  await withServer(async ({ fetch: get }) => {
     const res = await get('/');
     const body = await res.text();
     const etag = res.headers.get('etag');
