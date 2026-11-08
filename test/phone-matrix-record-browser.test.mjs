@@ -162,7 +162,7 @@ if (s) {
     });
   });
 
-  test('phone relation chip controls sit 44 px apart and unlinking offers Undo (Issue #1404)', { todo: 'Issue #1404' }, async (t) => {
+  test('phone relation chip controls sit 44 px apart and unlinking offers Undo (Issue #1404)', async (t) => {
     await eachPhone(t, matrix, async (page, run, i) => {
       await openRecord(page, base, tasks, unlink[i]);
       if (!(await recordCoversScreen(page))) return WIDE;
