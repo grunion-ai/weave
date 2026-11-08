@@ -2150,8 +2150,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64, preview: previewInput(body.preview) }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files\/([^/]+)$/)) && rx.method === 'DELETE') {
-          weave.deleteFile(m[1], m[2]);
-          return out(200, { ok: true });
+          const result = weave.deleteFile(m[1], m[2]);
+          if (!result.deleted) return notFound({ error: `No file '${m[2]}' on this record`, code: 'not-found' });
+          return out(200, result);
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
@@ -2181,7 +2182,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/automations\/([^/]+)$/))) {
           if (rx.method === 'PATCH') return out(200, weave.updateAutomation(m[1], body));
-          if (rx.method === 'DELETE') { weave.deleteAutomation(m[1]); return out(200, { ok: true }); }
+          if (rx.method === 'DELETE') {
+            const result = weave.deleteAutomation(m[1]);
+            if (!result.deleted) return notFound({ error: `No automation '${m[1]}'`, code: 'not-found' });
+            return out(200, result);
+          }
         }
 
         if (route === 'GET /api/activity') {

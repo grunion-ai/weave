@@ -40,19 +40,19 @@ test('PATCH /api/automations/:id renames and pauses a rule; an unknown id is a 4
   }
 });
 
-test('DELETE /api/automations/:id removes the rule; a second DELETE answers 200 and changes nothing (Issue #1087)', async () => {
+test('DELETE /api/automations/:id removes the rule; a second DELETE is a 404 (Issue #1087)', async () => {
   const { w, rule, call, stop } = await serve();
   try {
     const ok = await call('DELETE', `/api/automations/${rule.id}`);
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.json, { ok: true });
+    assert.deepEqual(ok.json, { id: rule.id, deleted: true });
     assert.deepEqual(w.listAutomations('Task'), []);
     const made = w.createEntity('Task', { Name: 'After' });
     assert.deepEqual(w.readEntity(made.id).comments, [], 'a deleted rule does not fire');
 
     const again = await call('DELETE', `/api/automations/${rule.id}`);
-    assert.equal(again.status, 200, 'Issue #1087: a miss reads as success today');
-    assert.deepEqual(again.json, { ok: true });
+    assert.equal(again.status, 404, 'a DELETE that removes nothing is a miss, not a success');
+    assert.equal(again.json.code, 'not-found');
   } finally {
     stop();
   }

@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
+import { dispatchTool } from '../src/mcp.js';
 import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
 
@@ -31,7 +33,7 @@ test('DELETE /api/entities/:id/files/:file unlinks the blob and drops the file f
     assert.equal((await call('GET', `/api/files/${file.id}`)).status, 200);
     const ok = await call('DELETE', `/api/entities/${task.id}/files/${file.id}`);
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.json, { ok: true });
+    assert.deepEqual(ok.json, { id: file.id, entity: task.id, deleted: true });
     assert.equal(existsSync(blob), false, 'the blob is unlinked from disk');
     assert.deepEqual(w.readEntity(task.id).files, []);
     assert.equal((await call('GET', `/api/files/${file.id}`)).status, 404, 'the file no longer reads back');
@@ -40,7 +42,7 @@ test('DELETE /api/entities/:id/files/:file unlinks the blob and drops the file f
   }
 });
 
-test('DELETE of a file: an unknown entity is a 404, a malformed id a 400, and a second DELETE answers 200 (Issue #1087)', async () => {
+test('DELETE of a file: an unknown entity is a 404, a malformed id a 400, and a second DELETE a 404 (Issue #1087)', async () => {
   const { w, task, file, call, stop } = await serve();
   try {
     const ghost = await call('DELETE', `/api/entities/no-such-entity/files/${file.id}`);
@@ -53,8 +55,34 @@ test('DELETE of a file: an unknown entity is a 404, a malformed id a 400, and a 
 
     assert.equal((await call('DELETE', `/api/entities/${task.id}/files/${file.id}`)).status, 200);
     const again = await call('DELETE', `/api/entities/${task.id}/files/${file.id}`);
-    assert.equal(again.status, 200, 'Issue #1087: a miss reads as success today');
-    assert.deepEqual(again.json, { ok: true });
+    assert.equal(again.status, 404, 'a DELETE that removes nothing is a miss, not a success');
+    assert.equal(again.json.code, 'not-found');
+  } finally {
+    stop();
+  }
+});
+
+test('a well-formed file id that is not on the row is a 404, not a success (Issue #1087)', async () => {
+  const { w, task, call, stop } = await serve();
+  try {
+    const typo = await call('DELETE', `/api/entities/${task.id}/files/${randomUUID()}`);
+    assert.equal(typo.status, 404);
+    assert.equal(typo.json.code, 'not-found');
+    assert.equal(w.readEntity(task.id).files.length, 1, 'the real file is untouched');
+  } finally {
+    stop();
+  }
+});
+
+test('the MCP tool and the route agree on the fact of a miss, each in its own shape (Issue #1087)', async () => {
+  const { w, task, file, call, stop } = await serve();
+  try {
+    assert.deepEqual(dispatchTool(w, 'weave_files', { action: 'delete', entity: task.id, file: file.id }),
+      { id: file.id, entity: task.id, deleted: true });
+    assert.deepEqual(dispatchTool(w, 'weave_files', { action: 'delete', entity: task.id, file: file.id }),
+      { id: file.id, entity: task.id, deleted: false }, 'the MCP surface reports the miss in its body');
+    const again = await call('DELETE', `/api/entities/${task.id}/files/${file.id}`);
+    assert.equal(again.status, 404, 'the route reports the same miss as a status');
   } finally {
     stop();
   }
