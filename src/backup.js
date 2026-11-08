@@ -1,7 +1,8 @@
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync,
-  openSync, readSync, writeSync, closeSync, mkdtempSync, rmSync, copyFileSync,
+  openSync, readSync, writeSync, closeSync, mkdtempSync, rmSync, renameSync, createReadStream,
 } from 'node:fs';
+import { Readable } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,25 +54,29 @@ function header(name, size, mtime) {
   return h;
 }
 
-export function tarWriter(out, { mtime = Math.floor(Date.now() / 1000) } = {}) {
+export function tarWriter(out, { mtime = Math.floor(Date.now() / 1000), seal = null } = {}) {
   const fd = openSync(out, 'w');
+  if (seal) writeSync(fd, seal.head);
+  const put = seal
+    ? (b, off = 0, len = b.length - off) => { const c = seal.update(b.subarray(off, off + len)); if (c.length) writeSync(fd, c); }
+    : (b, off = 0, len = b.length - off) => writeSync(fd, b, off, len);
   return {
     add(e) {
       const size = e.data ? e.data.length : statSync(e.path).size;
-      writeSync(fd, header(e.name, size, e.mtime ?? mtime));
+      put(header(e.name, size, e.mtime ?? mtime));
       const hash = createHash('sha256');
-      if (e.data) { writeSync(fd, e.data); hash.update(e.data); } else {
+      if (e.data) { put(e.data); hash.update(e.data); } else {
         const src = openSync(e.path, 'r');
         try {
           const buf = Buffer.alloc(CHUNK);
-          for (let n; (n = readSync(src, buf, 0, CHUNK, null)) > 0;) { writeSync(fd, buf, 0, n); hash.update(buf.subarray(0, n)); }
+          for (let n; (n = readSync(src, buf, 0, CHUNK, null)) > 0;) { put(buf, 0, n); hash.update(buf.subarray(0, n)); }
         } finally { closeSync(src); }
       }
       const pad = (BLOCK - (size % BLOCK)) % BLOCK;
-      if (pad) writeSync(fd, Buffer.alloc(pad));
+      if (pad) put(Buffer.alloc(pad));
       return { name: e.name, bytes: size, sha256: hash.digest('hex') };
     },
-    close() { writeSync(fd, Buffer.alloc(2 * BLOCK)); closeSync(fd); },
+    close() { put(Buffer.alloc(2 * BLOCK)); if (seal) writeSync(fd, seal.final()); closeSync(fd); },
   };
 }
 
@@ -170,15 +175,22 @@ function pump(src, dst, transform, { start = 0, end = Infinity } = {}) {
   }
 }
 
-export function encryptFile(src, dst, passphrase) {
-  const salt = randomBytes(16), iv = randomBytes(12);
+export function sealer(passphrase, { salt = randomBytes(16), iv = randomBytes(12) } = {}) {
   const cipher = createCipheriv('aes-256-gcm', scryptSync(String(passphrase), salt, 32), iv);
+  return {
+    head: Buffer.concat([MAGIC, salt, iv]),
+    update: (chunk) => cipher.update(chunk),
+    final: () => Buffer.concat([cipher.final(), cipher.getAuthTag()]),
+  };
+}
+
+export function encryptFile(src, dst, passphrase, { salt, iv } = {}) {
+  const seal = sealer(passphrase, { salt, iv });
   const s = openSync(src, 'r'), d = openSync(dst, 'w');
   try {
-    writeSync(d, Buffer.concat([MAGIC, salt, iv]));
-    pump(s, d, (c) => cipher.update(c));
-    writeSync(d, cipher.final());
-    writeSync(d, cipher.getAuthTag());
+    writeSync(d, seal.head);
+    pump(s, d, (c) => seal.update(c));
+    writeSync(d, seal.final());
   } finally { closeSync(s); closeSync(d); }
 }
 
@@ -269,6 +281,7 @@ export function inspect(path) {
 }
 
 const stamp = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
+const fileStream = (path) => Readable.toWeb(createReadStream(path, { highWaterMark: CHUNK }));
 
 export async function backup({
   dataDir, out = process.cwd(), dest = null, env = process.env, passphraseEnv = null,
@@ -294,10 +307,10 @@ export async function backup({
   mkdirSync(dirname(outPath), { recursive: true });
 
   const scratch = mkdtempSync(join(tmpdir(), 'weave-backup-'));
+  const partial = `${outPath}.part`;
   const result = { archive, path: outPath, bytes: 0, encrypted: !!passphrase, workspaces: {}, files: 0, orphans: { count: 0, list: [] }, uploaded: null, pruned: [] };
   try {
-    const tarPath = join(scratch, 'archive.tar');
-    const t = tarWriter(tarPath);
+    const t = tarWriter(partial, { seal: passphrase ? sealer(passphrase) : null });
     const entries = [];
     const filesDir = join(dataDir, 'files');
     const present = new Set(c.dirs.includes('files')
@@ -330,19 +343,18 @@ export async function backup({
     };
     t.add({ name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 1)) });
     t.close();
-    if (passphrase) encryptFile(tarPath, outPath, passphrase);
-    else copyFileSync(tarPath, outPath);
+    renameSync(partial, outPath);
     result.bytes = statSync(outPath).size;
 
     if (toCloud) {
-      const sent = await cloud.client({ dest, env, fetchImpl }).put(archive, readFileSync(outPath));
+      const sent = await cloud.client({ dest, env, fetchImpl }).put(archive, fileStream(outPath));
       result.uploaded = `${dest.replace(/\/+$/, '')}/${archive}`;
       result.pruned = sent.pruned ?? [];
     } else if (dest) {
       const { bucket, prefix } = s3.parse(dest);
       const client = s3.client({ env, fetchImpl, now });
       const key = prefix ? `${prefix}/${archive}` : archive;
-      await client.put(bucket, key, readFileSync(outPath));
+      await client.upload(bucket, key, outPath);
       result.uploaded = key;
       const ours = (await client.list(bucket, prefix ? `${prefix}/${ARCHIVE_PREFIX}` : ARCHIVE_PREFIX)).sort();
       for (const k of ours.slice(0, Math.max(0, ours.length - RETAIN))) {
@@ -353,6 +365,7 @@ export async function backup({
     return result;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+    rmSync(partial, { force: true });
     if (!keep) { rmSync(outPath, { force: true }); result.path = null; }
   }
 }
@@ -474,8 +487,16 @@ export function signV4({ method, url, headers = {}, body = '', keyId, secret, re
 }
 
 const unxml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export const PART_BYTES = 8 * 1024 * 1024;
+const PART_FLOOR = 5 * 1024 * 1024;
 
 export const s3 = {
+  partBytes(env = process.env) {
+    const n = Number(env.WEAVE_BACKUP_PART_BYTES);
+    return Number.isFinite(n) && n > 0 ? Math.max(PART_FLOOR, Math.floor(n)) : PART_BYTES;
+  },
   parse(dest) {
     const m = String(dest ?? '').match(/^s3:\/\/([^/]+)\/?(.*)$/);
     if (!m) throw new WeaveError(`The destination must be s3://bucket[/prefix], got '${dest}'`, 'invalid');
@@ -509,8 +530,32 @@ export const s3 = {
       if (!res.ok) throw new WeaveError(`${method} ${key || bucket} → ${res.status} ${(await res.text()).replace(/\s+/g, ' ').slice(0, 200)}`.trim(), res.status === 404 ? 'not-found' : 'invalid');
       return res;
     };
+    const parted = async (bucket, key, path, partBytes) => {
+      const started = await (await call('POST', bucket, key, { query: '?uploads' })).text();
+      const uploadId = started.match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
+      if (!uploadId) throw new WeaveError(`POST ${key}?uploads answered no UploadId`, 'invalid');
+      const held = `uploadId=${uriEncode(unxml(uploadId))}`;
+      const parts = [];
+      try {
+        const fd = openSync(path, 'r');
+        try {
+          const buf = Buffer.alloc(partBytes);
+          for (let n, number = 1; (n = readSync(fd, buf, 0, partBytes, null)) > 0; number += 1) {
+            const res = await call('PUT', bucket, key, { query: `?partNumber=${number}&${held}`, body: buf.subarray(0, n) });
+            parts.push(`<Part><PartNumber>${number}</PartNumber><ETag>${xml(res.headers.get('etag') ?? '')}</ETag></Part>`);
+          }
+        } finally { closeSync(fd); }
+      } catch (err) {
+        await call('DELETE', bucket, key, { query: `?${held}` }).catch(() => {});
+        throw err;
+      }
+      return call('POST', bucket, key, { query: `?${held}`, body: `<CompleteMultipartUpload>${parts.join('')}</CompleteMultipartUpload>` });
+    };
     return {
       put: (bucket, key, body) => call('PUT', bucket, key, { body }),
+      upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => (statSync(path).size > partBytes
+        ? parted(bucket, key, path, partBytes)
+        : call('PUT', bucket, key, { body: readFileSync(path) })),
       get: async (bucket, key) => Buffer.from(await (await call('GET', bucket, key)).arrayBuffer()),
       delete: (bucket, key) => call('DELETE', bucket, key),
       list: async (bucket, prefix) => (await objects(bucket, prefix)).map((o) => o.key),
@@ -590,7 +635,7 @@ export const cloud = {
     const call = async (method, name = null, body = undefined) => {
       const url = `${d.origin}/api/backups${name ? `/${encodeURIComponent(name)}` : ''}`;
       const headers = { Authorization: `Bearer ${token}`, 'X-Weave-Account': encodeURIComponent(d.account), ...(body ? { 'Content-Type': 'application/octet-stream' } : {}) };
-      const res = await fetchImpl(url, { method, headers, body });
+      const res = await fetchImpl(url, { method, headers, body, ...(typeof body?.getReader === 'function' ? { duplex: 'half' } : {}) });
       if (!res.ok) {
         let reason = '';
         try { reason = (await res.json()).error ?? ''; } catch {}
