@@ -398,10 +398,31 @@ if (openHub) {
     await p.context().close();
   });
 
+  const built = (p) => p.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/start/workspaces', { timeout: 30000 });
+
+  test('a bypass sign-in whose build answers slowly still lands on the workspace, passing the draft mark on the way (Issue #1323)', async () => {
+    const p = await page();
+    person(openHub, { email: 'slowbuild@example.com' });
+    await p.route('**/api/start/workspaces', async (r) => {
+      await new Promise((done) => setTimeout(done, 3000));
+      await r.continue();
+    });
+    const marks = [];
+    p.on('framenavigated', (f) => { if (f === p.mainFrame()) marks.push(new URL(f.url()).search); });
+    const answer = built(p);
+    await signIn(p, openHub, 'bypass');
+    assert.equal((await answer).status(), 201, 'the bypass build succeeds');
+    await p.waitForURL(/\/w\/slowbuild\/$/, { timeout: 15000 });
+    assert.ok(marks.includes('?setup=resume'), 'the build step marks its draft while it waits, and that mark does not stop the landing');
+    await p.context().close();
+  });
+
   test('returning: someone with a workspace sees it listed, can start another, and Back returns to the list', async () => {
     const p = await page();
     const who = person(openHub, { email: 'twice@example.com' });
+    const answer = built(p);
     await signIn(p, openHub, 'bypass');
+    assert.equal((await answer).status(), 201, 'the bypass build answers before the landing is judged (Issue #1323)');
     await p.waitForURL(/\/w\/twice\/$/, { timeout: 15000 });
     openHub.idp.signInBrowserAs(who);
     await p.goto(`${openHub.base}/start?pick=1`);
