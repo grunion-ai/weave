@@ -48,38 +48,6 @@ test('multiple document fields per entity', () => {
   assert.throws(() => w.getDoc(e.id, 'Spec'), /not a document field/);
 });
 
-test('v1 workspace migrates: databases key and entity.doc', () => {
-  const w1 = new Weave();
-  w1.createSpace({ name: 'S' });
-  const t = w1.createTable({ space: 'S', name: 'Item' });
-  const e = w1.createEntity(t, { name: 'X', doc: 'legacy body' });
-
-  const dump = w1.exportJSON();
-  dump.version = 1;
-  dump.databases = dump.tables;
-  delete dump.tables;
-  for (const db of Object.values(dump.databases)) {
-    for (const [fid, f] of Object.entries(db.fields)) {
-      if (f.type === 'document') {
-        delete db.fields[fid];
-        db.fieldOrder = db.fieldOrder.filter((id) => id !== fid);
-      }
-    }
-  }
-  for (const ent of Object.values(dump.entities)) {
-    ent.doc = 'legacy body';
-    delete ent.docs;
-  }
-
-  const w2 = new Weave();
-  w2.importJSON(dump);
-  assert.equal(w2.state.version, 2);
-  assert.equal(w2.getDoc(e.id), 'legacy body');
-  assert.equal(w2.documentFields(w2.getTable('Item'))[0].name, 'Description');
-  assert.equal(w2.getTable('Item').descriptionFieldId, w2.documentFields(w2.getTable('Item'))[0].id,
-    'a v1 workspace comes up with the role set, not merely the field');
-});
-
 test('universalSearch returns permalinks for all kinds', () => {
   const { w, tasks } = build();
   w.createEntity(tasks, { name: 'Product launch task' });

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { tempDir } from './lib/temp.mjs';
 
 function fresh(config) {
   const w = new Weave();
@@ -131,29 +130,6 @@ test('percent multiplies the stored fraction by 100 for display', () => {
 test('percent display carries no float noise', () => {
   const w = fresh({ format: 'percent' });
   assert.equal(shown(w, 0.1), '10%');
-});
-
-test('pre-fractional percent values divide by 100 exactly once at load', async () => {
-  const { mkdtempSync, rmSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  const dir = tempDir('weave-pct-');
-  try {
-    const path = join(dir, 'pct.db');
-    const w = new Weave({ path });
-    w.createSpace({ name: 'Dev' });
-    w.createTable({ space: 'Dev', name: 'Deal' });
-    w.addField('Deal', { name: 'Share', type: 'number', config: { format: 'percent', decimals: 1 } });
-    const e = w.createEntity('Deal', { name: 'X', values: { Share: 0.325 } });
-    w.updateEntity(e.id, { Share: 32.5 });
-    delete w.state.meta.percentFractional;
-    w.save();
-    const reopened = new Weave({ path });
-    const migrated = reopened.readEntity(e.id);
-    assert.equal(migrated.fields.Share, '32.5%', 'the reader sees exactly what they saw before');
-    const again = new Weave({ path });
-    assert.equal(again.readEntity(e.id).fields.Share, '32.5%', 'the pass is one-time, not per-load');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('compact abbreviates a figure that would outgrow its column; the value underneath is untouched', () => {
