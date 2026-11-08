@@ -10,7 +10,7 @@ await import('../public/starter-core.js');
 
 const ROOT = join(import.meta.dirname, '..');
 const reg = globalThis.weaveIconRegistry;
-const THIRD_PARTY = new Set(['public/vendor/cytoscape.min.js', 'public/vendor/mermaid.min.js', 'public/vendor/tabler.min.css', 'public/vendor/vditor', 'public/vendor/fonts']);
+const THIRD_PARTY = new Set(['public/vendor/cytoscape.min.js', 'public/vendor/mermaid.min.js', 'public/vendor/tabler.min.css', 'public/vendor/vditor', 'src/vendor/fonts']);
 const TEXT = new Set(['.js', '.mjs', '.css', '.html', '.json', '.svg']);
 const RETIRED_MAP = /^\s*const RETIRED = \{"layers":"folder-kanban"\};$/;
 const ICON_USE = /lucide:layers\b|['"`]layers['"`]|\bmi-layers\b|\blayers-icon\b/;
