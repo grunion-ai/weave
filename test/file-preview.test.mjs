@@ -4,9 +4,9 @@ import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, WeaveError, PREVIEW_MAX_BYTES } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { inspect } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 await import('../public/file-preview-core.js');
 const P = globalThis.WeavePreview;
@@ -82,9 +82,8 @@ test('previews count toward storage, export, import and backup like the original
 
 test('the files routes take a preview and ?preview serves it, falling back to the original', async () => {
   const { w, entity } = seed();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}/api`;
-  try {
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}/api`;
     const post = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
     const withPreview = await post(`/entities/${entity}/fields/Shots/files`, {
       name: 'a.png', mime: 'image/png', bytes: PNG.toString('base64'), preview: { contentBase64: WEBP.toString('base64') },
@@ -97,7 +96,7 @@ test('the files routes take a preview and ?preview serves it, falling back to th
     assert.deepEqual(Buffer.from(await full.arrayBuffer()), PNG);
     const old = await fetch(`${base}/files/${plain.id}?preview`);
     assert.deepEqual(Buffer.from(await old.arrayBuffer()), PNG, 'a file with no preview did not fall back to the original');
-  } finally { server.close(); }
+  });
 });
 
 test('the client preview core sizes the canvas and picks the cell source', () => {

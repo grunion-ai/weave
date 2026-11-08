@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { Weave, FILE_STORAGE_CAP, FRAME_HEIGHT_SCRIPT, FRAME_LINK_BASE, frameStorageScript, viewHtml } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const PAGE = Buffer.from('<!doctype html><p>deck</p>');
 
@@ -62,10 +62,8 @@ test('GET /api/files/:id?view serves the saved storage with the page; PUT and GE
   const w = fresh();
   const e = w.createEntity('Issue', { name: 'Deck' });
   const file = w.attachFile(e.id, { name: 'deck.html', mime: 'text/html', bytes: PAGE });
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const put = (items) => fetch(`${base}/api/files/${file.id}/storage`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
-  try {
+  await withServer(w, async ({ base }) => {
+    const put = (items) => fetch(`${base}/api/files/${file.id}/storage`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
     const first = await fetch(`${base}/api/files/${file.id}?view`);
     assert.equal(first.headers.get('cache-control'), 'no-store', 'a stale snapshot is never served from a cache');
     assert.deepEqual(Buffer.from(await first.arrayBuffer()), viewHtml(PAGE, FRAME_LINK_BASE + frameStorageScript({}) + FRAME_HEIGHT_SCRIPT));
@@ -77,5 +75,5 @@ test('GET /api/files/:id?view serves the saved storage with the page; PUT and GE
     const over = await put({ big: 'x'.repeat(FILE_STORAGE_CAP) });
     assert.equal(over.status, 413);
     assert.match((await over.json()).error, /at most 5 MB/);
-  } finally { server.close(); }
+  });
 });

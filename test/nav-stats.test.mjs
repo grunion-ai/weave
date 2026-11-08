@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { APP } from './lib/source.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function seeded(path = null) {
   const w = new Weave(path ? { path } : undefined);
@@ -42,13 +42,12 @@ test('storageStats: file-backed workspace counts the .db on disk', () => {
 test('/api/health carries entities + sizeBytes for the scoped workspace', async () => {
   const w = seeded();
   w.createEntity('Contract', { name: 'Acme' });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/health`);
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/health`);
     const h = await res.json();
     assert.equal(h.entities, w.storageStats().entities);
     assert.equal(typeof h.sizeBytes, 'number');
-  } finally { server.close(); }
+  });
 });
 
 

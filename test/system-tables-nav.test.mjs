@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { APP, HTML, fnBodyOf, rulesFor, read } from './lib/source.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function build() {
   const w = new Weave();
@@ -42,9 +42,7 @@ test('GET /api/trash lists every trashed row in the workspace, and PATCH refuses
   w.deleteEntity(b.id);
   const gone = w.createTable({ space: 'Work', name: 'Scratch' });
   w.deleteTable(gone.id);
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const res = await fetch(`${base}/api/trash`);
     assert.equal(res.status, 200);
     const { total, items } = await res.json();
@@ -56,7 +54,7 @@ test('GET /api/trash lists every trashed row in the workspace, and PATCH refuses
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Automations' }),
     });
     assert.equal(renamed.status, 400);
-  } finally { server.close(); }
+  });
 });
 
 test('the sidebar anchors its name and search at the top, and pins New space then the system tables at the bottom (Issue #854)', () => {

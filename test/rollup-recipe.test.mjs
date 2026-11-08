@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function fresh(w = new Weave()) {
   w.createSpace({ name: 'Dev' });
@@ -142,11 +142,10 @@ test('a repoint names the formulas that now fail, and does not block the edit', 
 test('PATCH /api/tables/:id/fields/:id repoints and reports the formulas it breaks', async () => {
   const { w } = fresh();
   w.addField('Account', { name: 'Doubled', type: 'formula', config: { expression: 'Score * 2' } });
-  const { server } = await startServer(w, { port: 0 });
-  try {
+  await withServer(w, async ({ base }) => {
     const acc = w.findTable('Dev/Account');
     const f = w.getField('Account', 'Score');
-    const patch = (config) => fetch(`http://127.0.0.1:${server.address().port}/api/tables/${acc.id}/fields/${f.id}`, {
+    const patch = (config) => fetch(`${base}/api/tables/${acc.id}/fields/${f.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config }),
     });
     let r = await patch({ aggregate: 'min' });
@@ -161,7 +160,7 @@ test('PATCH /api/tables/:id/fields/:id repoints and reports the formulas it brea
     r = await patch({ aggregate: 'mean' });
     assert.equal(r.status, 400);
     assert.match((await r.json()).error, /Invalid aggregate 'mean'/);
-  } finally { server.close(); }
+  });
 });
 
 test('weave_update_field repoints a lookup and names the formulas it breaks', () => {

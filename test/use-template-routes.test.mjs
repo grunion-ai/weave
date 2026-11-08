@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer, createWorkspaceHub } from '../src/server.js';
-import { unwrapData } from './lib/fixtures.mjs';
+import { unwrapData, withServer } from './lib/fixtures.mjs';
 
 const post = (url, body, headers = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
 
@@ -80,9 +80,7 @@ test('an observer on the source may use a template into an open workspace', asyn
   root.createTable({ space: 'CRM', name: 'Deal' });
   const acme = new Weave();
   acme.updateWorkspace({ name: 'acme' });
-  const { server } = await startServer(root, { port: 0, workspaces: { acme } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(root, { workspaces: { acme } }, async ({ base }) => {
     const viewer = root.createAccount({ name: 'vee', role: 'observer' });
     const res = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme' }, { Authorization: `Bearer ${viewer.token}` });
     assert.equal(res.status, 201, await res.clone().text());
@@ -91,7 +89,7 @@ test('an observer on the source may use a template into an open workspace', asyn
     acme.createAccount({ name: 'own', role: 'architect' });
     const refused = await post(`${base}/api/spaces/CRM/use`, { workspace: 'acme', name: 'CRM 2' }, { Authorization: `Bearer ${viewer.token}` });
     assert.equal(refused.status, 403);
-  } finally { server.close(); }
+  });
 });
 
 test('template copies use the target local session for permission and audit identity', async () => {
@@ -193,10 +191,8 @@ test('a scoped target architect session cannot manage the workspace through anot
   target.createSpace({ name: 'Ops' });
   const scoped = target.createAccount({ name: 'scoped', role: 'architect', space: 'Ops' }).account;
   target.setRequireAuth(true);
-  const { server } = await startServer(root, { port: 0, workspaces: { target } });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const Cookie = `wv_session_${root.state.meta.id}=${root.createSession(source.id).token}; wv_session_${target.state.meta.id}=${target.createSession(scoped.id).token}`;
-  try {
+  await withServer(root, { workspaces: { target } }, async ({ base }) => {
+    const Cookie = `wv_session_${root.state.meta.id}=${root.createSession(source.id).token}; wv_session_${target.state.meta.id}=${target.createSession(scoped.id).token}`;
     const before = target.listSpaces().map(s => s.id);
     const copied = await post(`${base}/api/spaces/CRM/use`, { workspace: 'target' }, { Cookie });
     assert.equal(copied.status, 403);
@@ -204,5 +200,5 @@ test('a scoped target architect session cannot manage the workspace through anot
     assert.equal(removed.status, 403);
     assert.deepEqual(target.listSpaces().map(s => s.id), before);
     assert.ok(!target.state.meta.deletedAt);
-  } finally { server.close(); }
+  });
 });

@@ -9,6 +9,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const KEPT = 'alpha\n\nbeta';
@@ -67,16 +68,15 @@ test('REST: the refusal reaches a named field, not just the default', async () =
   const { w, leads } = build();
   w.addField(leads, { name: 'Spec', type: 'document' });
   const e = w.createEntity(leads, { name: 'named field probe', docs: { Spec: KEPT } });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/entities/${e.id}/doc`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/entities/${e.id}/doc`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: 'rewritten', field: 'Spec' }),
     });
     assert.equal(res.status, 400);
     assert.equal(w.getDoc(e.id, 'Spec'), KEPT);
-  } finally { server.close(); }
+  });
 });
 
 test('the engine refuses a document write with no text at all', () => {

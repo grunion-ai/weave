@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import '../public/phone-row.js';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const PR = globalThis.weavePhoneRow;
 const FIELDS = [
@@ -134,14 +134,13 @@ test('MCP, REST and CLI speak phoneRow by name', async () => {
   const tool = TOOLS.find((x) => x.name === 'weave_table_view');
   assert.ok(tool.inputSchema.properties.phoneRow, 'the key is in the schema');
   assert.match(tool.description, /phoneRow/);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Issue/views/Standard`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Issue/views/Standard`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phoneRow: { lead: 'Severity' } }),
     });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).phoneRow.lead, 'Severity');
-  } finally { server.close(); }
+  });
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
   const dir = tempDir('weave-phone-row-');
   const data = join(dir, 'ws.db');

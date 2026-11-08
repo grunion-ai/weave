@@ -8,10 +8,10 @@ import { request } from 'node:http';
 import { gunzipSync } from 'node:zlib';
 import { minifyJs, minifyCss, createMinified } from '../src/minify.js';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { ROOT } from './lib/source.mjs';
 import { firstPartyAssets } from './lib/bytes.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const PUBLIC = join(ROOT, 'public');
 const ASSETS = firstPartyAssets(PUBLIC);
@@ -139,8 +139,7 @@ function get(port, path, headers = {}) {
 }
 
 test('the server sends first-party scripts and styles minified, minified before compressing, and vendored files as written (Issue #1001)', async () => {
-  const { server, port } = await startServer(new Weave(), { port: 0 });
-  try {
+  await withServer(async ({ port }) => {
     const app = readFileSync(join(PUBLIC, 'app.js'), 'utf8');
     const plain = await get(port, '/app.js');
     assert.equal(plain.body.toString(), minifyJs(app));
@@ -153,5 +152,5 @@ test('the server sends first-party scripts and styles minified, minified before 
     assert.ok(vendor.body.equals(readFileSync(join(PUBLIC, 'vendor/mermaid.min.js'))), 'vendored code is already minified and never touched');
     const again = await get(port, '/app.js', { 'If-None-Match': plain.headers.etag });
     assert.equal(again.status, 304);
-  } finally { server.close(); }
+  });
 });

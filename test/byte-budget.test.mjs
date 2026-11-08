@@ -5,9 +5,9 @@ import { request } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { ROOT } from './lib/source.mjs';
 import { BUDGET_FILE, CODINGS, fit, firstPartyAssets, judge, unexplainedRaises } from './lib/bytes.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const budget = JSON.parse(readFileSync(join(ROOT, BUDGET_FILE), 'utf8'));
 const ASSETS = firstPartyAssets(join(ROOT, 'public'));
@@ -90,8 +90,7 @@ test('this change raises no byte budget without a reason (Issue #1001)', () => {
 });
 
 test('every first-party asset serves within its byte budget after compression (Issue #1001)', { timeout: 300_000 }, async () => {
-  const { server, port } = await startServer(new Weave(), { port: 0 });
-  try {
+  await withServer(async ({ port }) => {
     const refusals = [];
     const measured = {};
     for (const path of ASSETS) {
@@ -102,5 +101,5 @@ test('every first-party asset serves within its byte budget after compression (I
       }
     }
     assert.deepEqual(refusals, []);
-  } finally { server.close(); }
+  });
 });

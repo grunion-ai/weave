@@ -7,9 +7,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { dispatchTool, TOOLS } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { VOCABULARY, searchIcons } from '../src/vocabulary.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 const call = (w, name, args) => dispatchTool(w, name, args ?? {});
@@ -54,12 +54,11 @@ test('the MCP schema declares sections; REST and CLI take the comma list', async
   const t = TOOLS.find((x) => x.name === 'weave_vocabulary');
   assert.equal(t.inputSchema.properties.sections.type, 'array');
   assert.match(t.description, /sections/);
-  const { server } = await startServer(new Weave(), { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}/api/vocabulary`;
-  try {
+  await withServer(async ({ port }) => {
+    const base = `http://127.0.0.1:${port}/api/vocabulary`;
     assert.deepEqual(await (await fetch(`${base}?section=optionColors,numberFormats`)).json(), json({ optionColors: VOCABULARY.optionColors, numberFormats: VOCABULARY.numberFormats }));
     assert.deepEqual(await (await fetch(`${base}?section=icons,numberFormats&query=wallet`)).json(), json({ icons: searchIcons('wallet'), numberFormats: VOCABULARY.numberFormats }));
-  } finally { server.close(); }
+  });
   const dir = tempDir('weave-vocab-sections-');
   try {
     const out = execFileSync('node', [BIN, '--data', join(dir, 'ws.db'), 'vocabulary', 'optionColors,numberFormats'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });

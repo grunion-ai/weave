@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function crm() {
   const w = new Weave();
@@ -84,9 +84,8 @@ test('MCP weave_query and weave_get_entity carry the chip, not the id', () => {
 
 test('POST /api/tables/:id/query answers the chip under the lookup', async () => {
   const { w, northwind } = crm();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const res = await fetch(`${base}/api/tables/${w.getTable('Activities').id}/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where: [['Name', '=', 'Discovery call']] }),
     });
@@ -94,5 +93,5 @@ test('POST /api/tables/:id/query answers the chip under the lookup', async () =>
     const body = await res.json();
     assert.deepEqual(ref(body.items[0].fields.Company), { id: northwind.id, publicId: northwind.publicId, name: 'Northwind Traders', db: 'CRM/Companies' });
     assert.deepEqual(body.items[0].fields['Attendee Companies'].map((s) => s.name), ['Northwind Traders', 'Contoso']);
-  } finally { server.close(); }
+  });
 });

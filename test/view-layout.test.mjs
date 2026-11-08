@@ -7,8 +7,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
 
@@ -194,9 +194,8 @@ test('the CLI and REST take the same keys', async () => {
     assert.equal(cli('table', 'view', 'To-do/Standard', '--group', '[{"field":"Trip","heading":"chip"}]').group[0].heading, 'chip');
   } finally { rmSync(dir, { recursive: true, force: true }); }
   const { w } = plans();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const tid = w.getTable('To-do').id;
     const res = await fetch(`${base}/api/tables/${tid}/views/Standard`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ layout: 'board', collapsed: ['Completed'] }) });
     assert.equal(res.status, 200);
@@ -204,5 +203,5 @@ test('the CLI and REST take the same keys', async () => {
     const schema = await (await fetch(`${base}/api/schema`)).json();
     const t = schema.flatMap((s) => s.tables).find((x) => x.id === tid);
     assert.equal(t.views[0].layout, 'board', 'the client reads the keys from the schema');
-  } finally { server.close(); }
+  });
 });

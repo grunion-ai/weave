@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { withServer } from './lib/fixtures.mjs';
 import {
   DECK, composeDeckModel, composeSlideModel, deckRole, newSlideVersion, renderDeck,
 } from '../src/deck.js';
@@ -183,9 +184,7 @@ test('versioning refuses a table that has no Version field', () => {
 test('deck routes: html, json and a version POST', async () => {
   const { w, deck, slides } = fresh();
   w.setDoc(deck.id, JSON.stringify({ layouts: { content: { title: { x: 60, y: 60, w: 840, role: 'H1' } } } }), 'Chrome');
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const html = await fetch(`${base}/e/Deck%23${deck.publicId}/deck.html`);
     assert.equal(html.status, 200);
     assert.match(html.headers.get('content-type'), /text\/html/);
@@ -205,7 +204,7 @@ test('deck routes: html, json and a version POST', async () => {
 
     const nope = await fetch(`${base}/e/${deck.id}/deck.svg`);
     assert.equal(nope.status, 404);
-  } finally { server.close(); }
+  });
 });
 
 test('the entity view offers the deck preview on decks and slides', async () => {

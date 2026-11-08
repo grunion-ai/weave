@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { withServer } from './lib/fixtures.mjs';
 
 test('describeSchema carries space and table descriptions', () => {
@@ -17,10 +16,8 @@ test('describeSchema carries space and table descriptions', () => {
 test('GET/PATCH /api/workspace: name + description, hub re-keys on rename', async () => {
   const w = new Weave();
   w.state.meta.name = 'uno';
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const j = (r) => r.json();
-  try {
+  await withServer(w, async ({ base }) => {
+    const j = (r) => r.json();
     const before = await j(await fetch(`${base}/api/workspace`));
     assert.equal(before.name, 'uno');
 
@@ -37,9 +34,7 @@ test('GET/PATCH /api/workspace: name + description, hub re-keys on rename', asyn
     assert.ok(!list.find((x) => x.name === 'uno'));
     const health = await j(await fetch(`${base}/api/health`));
     assert.equal(health.workspace, 'primary');
-  } finally {
-    server.close();
-  }
+  });
 });
 
 test('POST /api/markdown renders markdown to html', async () => {

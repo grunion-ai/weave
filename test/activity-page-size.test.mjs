@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { APP, fnBodyOf } from './lib/source.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const PAGE = 500;
 
@@ -39,14 +39,13 @@ test('a limited feed answers one page and still reports the full total', async (
   const { w } = busyWorkspace(PAGE + 40);
   const full = w.activityFeed();
   assert.ok(full.total > PAGE, `the fixture must exceed one page, got ${full.total}`);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const page = await (await fetch(`${base}/api/activity?limit=${PAGE}`)).json();
     assert.equal(page.items.length, PAGE, 'one page of rows');
     assert.equal(page.total, full.total, 'the total still counts every event');
     assert.deepEqual(page.items.map((a) => a.id), full.items.slice(0, PAGE).map((a) => a.id), 'the newest page, in feed order');
-  } finally { server.close(); }
+  });
 });
 
 test('the Users table answers a handle list without a whole-table read', async () => {
@@ -54,14 +53,13 @@ test('the Users table answers a handle list without a whole-table read', async (
   w.inviteIssuer = 'https://idp.test';
   const users = w.getTable('System/Users');
   for (let i = 0; i < 300; i++) w.createEntity(users.id, { name: `user ${i}`, values: { Email: `u${i}@example.com`, Role: 'Editor' } });
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const res = await (await fetch(`${base}/api/tables/${users.id}/query`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ where: [['Name', 'in', ['user 7', 'user 200']]], limit: 2 }),
     })).json();
     assert.deepEqual(res.items.map((u) => u.name).sort(), ['user 200', 'user 7'], 'only the handles asked for');
-  } finally { server.close(); }
+  });
 });

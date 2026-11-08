@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { TOOLS, handleMcpMessage } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 const SPEC = () => ({
   workspace: 'personal-finance',
@@ -210,9 +210,7 @@ test('the reply is one line of compact JSON on MCP, and weave_build is listed wi
 
 test('POST /api/build is the HTTP door', async () => {
   const w = new Weave();
-  const { server } = await startServer(w, { port: 0 });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
+  await withServer(w, async ({ base }) => {
     const post = (body) => fetch(`${base}/api/build`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const dry = await (await post({ spec: SPEC(), dryRun: true })).json();
     assert.equal(dry.dryRun, true);
@@ -223,7 +221,7 @@ test('POST /api/build is the HTTP door', async () => {
     const bad = await post({ spaces: [{ name: 'Y', tables: [{ name: 'Z', fields: [{ name: 'Q', type: 'nope' }] }] }] });
     assert.equal(bad.status, 400);
     assert.equal((await bad.json()).errors[0].path, 'spaces[0].tables[0].fields[0]');
-  } finally { server.close(); }
+  });
 });
 
 test('weave build <file.json> is the CLI door, with --dry-run', () => {

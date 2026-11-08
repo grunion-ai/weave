@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { withServer } from './lib/fixtures.mjs';
 
 function seeded() {
   const w = new Weave();
@@ -81,16 +81,15 @@ test('the trash stays out, and the search never writes the saved filter', () => 
 
 test('route and MCP parity: POST /tables/:id/query and weave_query take search', async () => {
   const { w, jobs } = seeded();
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const res = await fetch(`${base}/api/tables/${jobs.id}/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ search: 'launch', limit: 200, offset: 0 }),
     }).then((r) => r.json());
     assert.equal(res.total, 2);
     assert.deepEqual(names(res), ['Alpha launch', 'Beta launch']);
-  } finally { server.close(); }
+  });
   const viaMcp = dispatchTool(w, 'weave_query', { db: 'Job', search: 'cleanup' });
   assert.deepEqual(names(viaMcp), ['Gamma cleanup']);
 });

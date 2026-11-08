@@ -7,8 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
-import { fresh } from './lib/fixtures.mjs';
+import { fresh, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 test('deleted and rollups are view settings: absent by default, stored when set, copied with the view', () => {
@@ -93,14 +92,13 @@ test('weave_table_view, the CLI and REST take them', async () => {
     assert.equal(set.rollups, false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const t = w.getTable('Task');
     const res = await fetch(`${base}/api/tables/${t.id}/views/Standard`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deleted: false, rollups: null }) });
     const body = await res.json();
     assert.equal(res.status, 200);
     assert.equal(body.deleted, undefined);
     assert.equal(body.rollups, undefined);
-  } finally { server.close(); }
+  });
 });

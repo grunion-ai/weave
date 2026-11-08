@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tempDir } from './lib/temp.mjs';
+import { withServer } from './lib/fixtures.mjs';
 
 function bugs() {
   const w = new Weave();
@@ -59,15 +59,14 @@ test('countAll answers the undeleted table, before where and search', async () =
   const tool = TOOLS.find((x) => x.name === 'weave_query');
   assert.equal(tool.inputSchema.properties.countAll.type, 'boolean');
   assert.equal(dispatchTool(w, 'weave_query', { db: 'Bug', where: [['Status', 'in', ['Fixed']]], countAll: true }).all, 5);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const r = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/${t.id}/query`, {
+  await withServer(w, async ({ base }) => {
+    const r = await fetch(`${base}/api/tables/${t.id}/query`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ where: [['Symptom', 'in', ['Slow']]], countAll: true, limit: 1 }),
     });
     const body = await r.json();
     assert.equal(body.total, 2);
     assert.equal(body.all, 5);
-  } finally { server.close(); }
+  });
   const dir = tempDir('weave-count-all-');
   try {
     const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');

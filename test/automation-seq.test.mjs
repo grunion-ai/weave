@@ -7,9 +7,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { Weave } from '../src/engine.js';
-import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
-import { workspace } from './lib/fixtures.mjs';
+import { workspace, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
@@ -120,9 +119,8 @@ test('export and import carry the rules as rows, with their numbers', () => {
 test('route, MCP and CLI carry seq (parity)', async () => {
   const { w, t } = workspace();
   rules(w, t, ['A', 'B']);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+  await withServer(w, async ({ port }) => {
+    const base = `http://127.0.0.1:${port}`;
     const listed = await (await fetch(`${base}/api/automations`)).json();
     assert.deepEqual(listed.map((x) => x.seq), [1, 2], 'GET /api/automations');
     const made = await (await fetch(`${base}/api/automations`, {
@@ -130,7 +128,7 @@ test('route, MCP and CLI carry seq (parity)', async () => {
       body: JSON.stringify({ db: 'Ops/Ticket', name: 'Rule C', trigger: { type: 'entity-created' }, actions: [{ type: 'append-doc', text: 'C' }] }),
     })).json();
     assert.equal(made.seq, 3, 'POST /api/automations');
-  } finally { server.close(); }
+  });
   assert.deepEqual(dispatchTool(w, 'weave_automations', { action: 'list' }).automations.map((x) => x.seq), [1, 2, 3], 'weave_automations list');
 
   const dir = tmp();

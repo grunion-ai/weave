@@ -7,8 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
-import { startServer } from '../src/server.js';
-import { fresh } from './lib/fixtures.mjs';
+import { fresh, withServer } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 test('density is a view setting: compact and spacious are stored, comfortable is the default and reads as absent', () => {
@@ -71,14 +70,13 @@ test('MCP, REST and CLI speak density by name', async () => {
   assert.ok(tool.inputSchema.properties.density, 'the key is in the schema');
   assert.match(tool.description, /density/);
   assert.equal(TOOLS.length, before);
-  const { server } = await startServer(w, { port: 0 });
-  try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Task/views/Standard`, {
+  await withServer(w, async ({ base }) => {
+    const res = await fetch(`${base}/api/tables/Task/views/Standard`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ density: 'compact' }),
     });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).density, 'compact');
-  } finally { server.close(); }
+  });
   const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
   const dir = tempDir('weave-view-density-');
   const data = join(dir, 'ws.db');
