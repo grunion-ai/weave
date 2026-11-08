@@ -675,6 +675,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         header: (name) => req.headers[name.toLowerCase()],
         readBody: (max) => readBody(req, { max, requireJson: req.headers.origin !== undefined, form: req.method === 'POST' && /^(?:\/w\/[^/]+)?(?:\/s\/wv[sv]_[A-Za-z0-9_-]+)?\/api\/forms\/[^/]+\/submit$/.test(path) }),
         readBytes: (max) => readBytes(req, max),
+        bodyStream: () => req,
         remote: req.socket?.remoteAddress ?? null,
       });
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });

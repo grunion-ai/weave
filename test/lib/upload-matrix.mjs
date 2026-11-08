@@ -36,7 +36,7 @@ export const CHOOSE = 'Choose another file';
 const HTML_502 = '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>';
 const HTML_503 = '<html><head><title>503 Service Unavailable</title></head><body><center><h1>503 Service Unavailable</h1></center></body></html>';
 const HTML_504 = '<html><head><title>504 Gateway Time-out</title></head><body><center><h1>504 Gateway Time-out</h1></center></body></html>';
-const UPLOAD_POST = /\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
+const UPLOAD_ROUTE = /\/api\/(?:uploads|entities\/[^/]+\/(?:fields\/[^/]+\/)?files)$/;
 
 export const file = (name, size, mime = 'application/pdf') => ({ name, size, mime });
 
@@ -118,9 +118,18 @@ async function faults(page, s) {
   const holding = new Promise((r) => { held = r; });
   if (!Object.keys(plan).length) return { holding, tries };
   const json = (status, body) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route(UPLOAD_POST, async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    const name = route.request().postDataJSON()?.name;
+  const prepared = new Map();
+  await page.route(UPLOAD_ROUTE, async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST' && /\/api\/uploads$/.test(request.url())) {
+      const asked = request.postDataJSON()?.name;
+      const answer = await route.fetch();
+      const text = await answer.text();
+      if (answer.status() === 201) prepared.set(JSON.parse(text).headers.Authorization, asked);
+      return route.fulfill({ status: answer.status(), contentType: 'application/json', body: text });
+    }
+    if (!['POST', 'PUT'].includes(request.method())) return route.continue();
+    const name = request.method() === 'PUT' ? prepared.get(request.headers().authorization) : request.postDataJSON()?.name;
     const fault = plan[name];
     if (!fault) return route.continue();
     tries[name] = (tries[name] ?? 0) + 1;
