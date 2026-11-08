@@ -1460,6 +1460,7 @@ function renderNav() {
     for (const db of space.tables) {
       if (db.system === 'workflows') continue;
       if (db.system === 'users') continue;
+      if (db.system === 'integrations') continue;
       const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
@@ -1484,6 +1485,7 @@ function renderNav() {
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
+  const links = registryTable('integrations');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
     el('div', { class: 'nav-space-row nav-system-head' },
@@ -1499,6 +1501,7 @@ function renderNav() {
     ...(systemFolded ? [] : [
       sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
       ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
+      ...(links ? [sysRow(`#/table/${links.id}`, 'link', 'Integrations', state.route?.dbId === links.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));

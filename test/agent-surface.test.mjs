@@ -128,6 +128,7 @@ const INTERNAL = {
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
   removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
+  setIntegrationCredential: 'takes a secret: an agent never holds an integration key, so a person pastes it through PUT /api/integrations/:id/credential (Feature #339)',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
   previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',

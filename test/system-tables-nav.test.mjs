@@ -87,12 +87,14 @@ test('the sidebar anchors its name and search at the top, and pins New space the
   assert.doesNotMatch(nav, /nav-stats/, 'the rows and size line is gone (Feature #333)');
 });
 
-test('the nav pins Workflows, Users, Activity and Trash, in that order, under the spaces', () => {
+test('the nav pins Workflows, Users, Integrations, Activity and Trash, in that order, under the spaces', () => {
   const nav = fnBodyOf('renderNav');
   const group = nav.slice(nav.indexOf("class: 'nav-system'"), nav.indexOf("class: 'nav-pinned'"));
   const at = (s) => group.indexOf(s);
   assert.ok(at("'#/activity'") > -1 && at("'#/trash'") > -1 && at("'Workflows'") > -1, 'the three routes');
   assert.ok(at("'Workflows'") < at("'Users'") && at("'Users'") < at("'#/activity'") && at("'#/activity'") < at("'#/trash'"), 'Workflows, Users, Activity, Trash (Issue #561, Feature #318)');
+  assert.ok(at("'Users'") < at("'Integrations'") && at("'Integrations'") < at("'#/activity'"), 'Integrations sits between Users and Activity (Feature #339)');
+  assert.match(nav, /db\.system === 'integrations'\) continue/, 'Integrations leaves the scrolling space list too');
   assert.doesNotMatch(group, /navTableMenu|draggable|grip/, 'no kebab, no grip: fixed rows');
   assert.match(nav, /db\.system === 'workflows'\) continue/, 'Workflows leaves the scrolling space list: one place in the nav');
 });
