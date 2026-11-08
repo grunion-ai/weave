@@ -196,7 +196,9 @@
       "files": [
         {
           "path": "public/vendor/tabler.min.css",
-          "sha256": "7ef750bd10546a695d0b12767ad8048bd8f3ec5de7daefb1067f9d0daa3d1c9a"
+          "sha256": "b6b30dc928ada062095d4273539bd9c28575ee300d22e46813d7eec7ca972b4e",
+          "upstreamSha256": "7ef750bd10546a695d0b12767ad8048bd8f3ec5de7daefb1067f9d0daa3d1c9a",
+          "trimmedBy": "scripts/trim-tabler.mjs"
         }
       ]
     },
