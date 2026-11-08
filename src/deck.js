@@ -102,7 +102,7 @@ const docJson = (ent, field, warnings) => {
 
 const plainValue = (v) => (v && typeof v === 'object' ? (v.name ?? null) : v);
 
-export function composeDeckModel(weave, ref) {
+export function composeDeckModel(weave, ref, { admit = () => true } = {}) {
   const ent = weave.readEntity(ref);
   const db = weave.state.tables[ent.dbId];
   if (deckRole(db, weave.state.tables) !== 'deck') {
@@ -111,7 +111,7 @@ export function composeDeckModel(weave, ref) {
   const warnings = [];
   const chrome = docJson(ent, DECK.chrome, warnings) ?? {};
   const style = docJson(ent, DECK.style, warnings);
-  const linked = ent.fields?.[DECK.slides] ?? [];
+  const linked = (ent.fields?.[DECK.slides] ?? []).filter((s) => admit(s.id));
   const picked = ordered(linked, ent.fields?.[DECK.order]);
   const slides = picked.map((s) => slideFrom(weave, s, warnings));
   if (!slides.length) {
@@ -160,10 +160,10 @@ function firstDeckOf(weave, ent) {
   return null;
 }
 
-export function renderDeck(weave, ref, { template } = {}) {
+export function renderDeck(weave, ref, { template, admit } = {}) {
   const ent = weave.readEntity(ref);
   const role = deckRole(weave.state.tables[ent.dbId], weave.state.tables);
-  const composed = role === 'slide' ? composeSlideModel(weave, ref) : composeDeckModel(weave, ref);
+  const composed = role === 'slide' ? composeSlideModel(weave, ref) : composeDeckModel(weave, ref, { admit });
   const { html, deck } = create(composed.model, { ...composed.options, style: composed.style, template });
   const v = validate(deck);
   return { html, model: deck, errors: v.errors, warnings: [...composed.warnings, ...v.warnings] };
