@@ -10467,26 +10467,39 @@ function retheme() {
   }
 }
 
+const docSaveChains = new Map();
 function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
   const key = `${entityId}::${field}`;
   clearTimeout(pendingDocSaves.get(key)?.timer);
   if (statusEl) statusEl.textContent = '·';
-  const write = async () => {
-    pendingDocSaves.delete(key);
+  let inflight = null;
+  const put = async () => {
+    const prior = docSaveChains.get(key) ?? Promise.resolve();
+    const run = prior.then(() => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }));
+    docSaveChains.set(key, run.catch(() => {}));
     try {
-      await api('PUT', `/entities/${entityId}/doc`, { field, doc: value });
+      await run;
+      if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
       onSaved?.();
       if (!statusEl) return;
       statusEl.textContent = '✓';
+      statusEl.title = 'Saved automatically';
       setTimeout(() => { if (statusEl.textContent === '✓') statusEl.textContent = ''; }, 1500);
     } catch (err) {
-      if (statusEl) statusEl.textContent = '!';
-      toast(err.message, true);
+      if (statusEl) {
+        statusEl.textContent = '!';
+        statusEl.title = 'Not saved. Your draft is kept and saves on your next edit or when you leave.';
+      }
+      toast(`${err.message}. Your draft is kept and saves on your next edit or when you leave.`, true);
     }
   };
-  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write });
+  const write = () => {
+    clearTimeout(pendingDocSaves.get(key)?.timer);
+    inflight ??= put().finally(() => { inflight = null; });
+    return inflight;
+  };
+  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write, value });
 }
-
 async function flushDocSave(entityId, field) {
   const p = pendingDocSaves.get(`${entityId}::${field}`);
   if (!p) return;
@@ -10776,7 +10789,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       const mount = () => {
         if (!host.isConnected) return;
         const ed = mountDocEditor(host, {
-          value: entity.docs?.[f.name] ?? '',
+          value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
           placeholder: `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
@@ -10795,7 +10808,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
-      ta.value = entity.docs?.[f.name] ?? '';
+      ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
       sourceBox = ta;
       host.append(ta);
