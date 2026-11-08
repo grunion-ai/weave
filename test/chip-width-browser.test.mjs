@@ -180,11 +180,11 @@ if (s) {
       const note = await page.evaluate(() => {
         const th = document.querySelector('.wv-grid thead th.col-head[data-col="Note"]');
         const hs = getComputedStyle(th);
-        const input = document.querySelector('.wv-grid tbody tr.entity-row td[data-field="Note"] input');
+        const face = document.querySelector('.wv-grid tbody tr.entity-row td[data-field="Note"] .text-dressed');
         return {
           width: Math.round(th.getBoundingClientRect().width),
           label: Math.ceil(th.querySelector('.col-label').getBoundingClientRect().width + parseFloat(hs.paddingLeft) + parseFloat(hs.paddingRight)),
-          cut: input.scrollWidth > input.clientWidth,
+          cut: face.scrollWidth > face.clientWidth,
         };
       });
       assert.equal(note.width, Math.max(40, note.label), 'Note keeps its stored width (or its label\'s), never a value floor');

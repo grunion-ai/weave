@@ -746,6 +746,12 @@ Files on a record. Bytes live in the workspace's sibling \`files/\` directory; t
 
 \`fit\` — \`trim\` (default) shows the whole file and trims the cell to its shape, so a portrait page stands tall beside a wide screenshot; \`fill\` makes every cell the same box and crops the file to it. Nothing is ever stretched.
 
+Every path takes a file of up to 10 MB: the field in the browser, the REST attach routes, \`weave attach\` and MCP. A larger file is refused by name, with the limit in the message. The browser checks the size before it reads the file, so an oversized pick never leaves the machine, and the attach routes answer an oversized body with \`413\` and a JSON body whose \`limit\` gives the limit in bytes.
+
+Each file you pick or drop shows a tile in the field at once, with its name, a progress bar and **Uploading 40%**, then **Saving** once the browser has sent it and the server is writing it. The field is \`aria-busy\` while any upload runs. Files in one pick or drop go up one at a time, and each is tried on its own, so one failure never stops the rest. One toast sums up a batch: "3 files uploaded." when all landed, or "2 of 3 files uploaded." with the file that was not saved and why.
+
+An upload that fails stays in the field as a red tile carrying the reason (Over 10 MB, Storage full, Still restarting, Error and the request id, No connection or Timed out), a Retry button that sends the same file again and a Dismiss button that drops it. A file over the limit gets no Retry, since sending it again cannot help; the toast offers **Choose another file** instead. A full disk gets no Retry either: the server answers \`507\` with code \`storage-full\`, and the toast asks you to tell whoever runs your weave. When the hosting edge answers \`502\` or \`503\`, which usually means weave is restarting after a deploy, the tile reads **Server restarting** and weave sends the file again after about 2, 5 and 10 seconds before it reports a failure. When a request times out or a gateway answers \`504\`, weave reads the row again before it reports a failure, since the server may have stored the file before its answer was lost. Any other server error names the request id the server logged, so a report can be matched to the log. The file input empties after every attempt, so the same file can be picked again. The document editor's upload button and the avatar picker check the same limit and say the same things.
+
 \`\`\`bash
 weave field add Task Files attachments
 weave field add Person Headshot attachments --config '{"multiple":false,"preview":"cover"}'
@@ -760,9 +766,9 @@ weave file read <fileId> --out ./spec.pdf
 weave file delete Task#5 <fileId>
 \`\`\`
 
-Renders by its \`preview\`. A click on a file's chip or sheet cell opens it in a panel beside the record: an image, a PDF, plain text, or an HTML upload live under \`GET /api/files/:id?view\`, never a download. The panel's arrows step through the field's files, its full-screen button opens the same file full-screen (where ← → step too), and its ✕ or Esc closes it. ⌘-click a chip to open the file in a browser tab instead. A file of any other kind stays a download link. A single-file field shows its file in place: an image, a PDF or plain text in a frame whose bottom edge drags. Every HTML file renders in place on the record (Issue #1175), in a many-file field and on the loose Files card too, one frame per file, unless the field's preview is \`link\` or \`cover\`. The page loads live under \`GET /api/files/:id?view\`, whose sandbox keeps it off the workspace's origin (its scripts run, its links open a new tab, and it can read nothing of weave's), and the frame takes the page's own height: \`?view\` adds one script after the doctype that posts the page height to weave, and weave sizes a frame only from its own window's messages. A frame starts at three quarters of the window's height, so a page laid out on the viewport height (\`100vh\`), such as a slide deck, keeps that height instead of growing without end. The stored bytes are unchanged; \`weave file read\` and the bare route return the file as uploaded.
+Renders by its \`preview\`. A click on a file's chip or sheet cell opens it in a panel beside the record: an image, a PDF, plain text, or an HTML upload live under \`GET /api/files/:id?view\`, never a download. The panel's arrows step through the field's files, its full-screen button opens the same file full-screen (where ← → step too), and its ✕ or Esc closes it. ⌘-click a chip to open the file in a browser tab instead. The grid cell is a chip too: clicking it opens the row's first viewable file in the panel, whose arrows step through the rest (Issue #1072). A file of any other kind stays a download link. A single-file field shows its file in place: an image, a PDF or plain text in a frame whose bottom edge drags. Every HTML file renders in place on the record (Issue #1175), in a many-file field and on the loose Files card too, one frame per file, unless the field's preview is \`link\` or \`cover\`. The page loads live under \`GET /api/files/:id?view\`, whose sandbox keeps it off the workspace's origin (its scripts run, its links open a new tab, and it can read nothing of weave's), and the frame takes the page's own height: \`?view\` adds one script after the doctype that posts the page height to weave, and weave sizes a frame only from its own window's messages. A frame starts at three quarters of the window's height, so a page laid out on the viewport height (\`100vh\`), such as a slide deck, keeps that height instead of growing without end. The stored bytes are unchanged; \`weave file read\` and the bare route return the file as uploaded.
 
-In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one from a dialog. An upload into a single-file field that already holds a file replaces it; the old file stays in the record's file ledger. Where a table shows its records as cards, drop a picture on a card to set its cover: it uploads into the table's cover field, a file that is no PNG, JPEG, GIF or WebP is refused, and a table with no cover field offers to add a Photo field.
+In the app, drop files from your desktop onto the field's cell in the grid, or onto its files on the record: the cell lights while files hover it, and every file you let go of uploads into the field. **+ file** on the record picks one or more from a dialog. An upload into a single-file field that already holds a file replaces it; the old file stays in the record's file ledger. Where a table shows its records as cards, drop a picture on a card to set its cover: it uploads into the table's cover field, a file that is no PNG, JPEG, GIF or WebP is refused, and a table with no cover field offers to add a Photo field.
 
 ## Gotchas
 
@@ -864,7 +870,7 @@ An icon is \`lucide:<name>\` from the inventory. An emoji is refused. An \`iconl
 
 ## Trash and restore
 
-A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a record, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed records. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone.
+A delete moves its target to the trash unless it passes \`hard: true\`, which purges it for good. \`weave_delete_entity\` trashes a record, and \`weave_restore_entity\` brings it back with its id, public id and links. \`weave_restore_field\`, \`weave_restore_table\` and \`weave_restore_space\` bring back a trashed field, table or space. \`weave_trash\` lists trashed records. \`weave_query\` takes \`includeDeleted\` to read them, or \`trashCount: true\` for the count alone. An \`includeDeleted\` answer also carries \`liveTotal\`, the live records among everything the query matched, so a paged read of a view that shows trashed records counts the whole table rather than the page in hand.
 
 ## Local file uploads
 
@@ -1145,7 +1151,7 @@ The grid holds the rows in view plus a buffer of rows above and below, the buffe
 
 ## Searching everything (⌘K)
 
-⌘K (Ctrl+K on Windows and Linux) or the sidebar's search control opens the palette. A tag at the right of its \`Search <workspace name>\` box names the current workspace. An empty palette lists Recent: the last eight records and tables opened here, newest first, kept in this browser only. Typing searches every workspace; a match from another carries that workspace's name in an outlined tag. Matches are grouped with counts: Records (name or \`#143\` id), In documents (words in a document or text field, with an excerpt), Tables, then Spaces and views; empty groups are dropped. Each match shows a kind icon, its name with your text highlighted, any workflow state chip, and its location on the right (\`Task #1\`, \`Product · table\`).
+⌘K (Ctrl+K on Windows and Linux) or the sidebar's search control opens the palette. A tag at the right of its \`Search <workspace name>\` box names the current workspace. An empty palette lists Recent: the last eight records and tables opened here, newest first, kept in this browser only. Typing searches this workspace (Issue #1308); another workspace you can open answers by name as a jump target, read from the rail. Matches are grouped with counts: Records (name or \`#143\` id), In documents (words in a document or text field, with an excerpt), Tables, then Spaces and views; empty groups are dropped. Each match shows a kind icon, its name with your text highlighted, any workflow state chip, and its location on the right (\`Task #1\`, \`Product · table\`).
 
 Linking a relation opens the same palette scoped to the relation's target tables (Issue #703): an empty box lists the linked records first, then the table's latest records, and \`GET /api/search?tables=<id,...>\` is the scoped search behind it.
 
@@ -1360,37 +1366,15 @@ One map, drawn in three places from one renderer: the \`#/map\` page, a card on 
 
 ## Automations
 
+A rule bound to one table: something happens, and weave writes.
+
 \`\`\`bash
 weave automation create Task --name 'Log completion' \\
   --trigger '{"type":"state-changed","field":"State","toState":"Done"}' \\
-  --actions '[{"type":"append-doc","text":"✅ Completed on {{Today}}."},
-              {"type":"add-comment","text":"{{Name}} moved to Done."}]'
+  --actions '[{"type":"append-doc","text":"✅ Completed on {{Today}}."}]'
 \`\`\`
 
-Triggers fire on create, update, state change, and on a schedule. Actions set fields, move state, append to a document, add a comment, or POST a webhook. A webhook that answers non-2xx, does not answer within 5 seconds, or cannot connect marks its Workflows record Failed with the reason; the write that fired it still lands. \`{{Field}}\` placeholders read the record; an empty one reads \`(no Field)\`.
-
-An \`upsert-row\` action writes a record of another table instead of the one that fired, matched on a key field that holds an id from the other system:
-
-\`\`\`json
-{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
-  "fields": { "Stripe Id": "row.Customer", "Name": "row.Company", "Plan": "row.Tier" } }
-\`\`\`
-
-When a record of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key is a text, number, url or email field and must be mapped. Each source path reads the firing record (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target record's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the Workflows record Failed. An upsert into its own table is held by the same depth limit as every automation write.
-
-A \`schedule\` trigger fires on a timer instead of a record change:
-\`\`\`json
-{ "type": "schedule", "cron": "0 9 * * 1-5", "zone": "America/Los_Angeles", "where": [["State", "!=", "Done"]] }
-\`\`\`
-\`cron\` is the five-field expression (minute, hour, day, month, weekday; \`*\`, lists, ranges and \`*/n\` steps), read on the wall clock of \`zone\` (UTC when absent). At each due minute the rule runs its actions on every live record of its table, or on the records its \`where\` clause admits, written in the query filter syntax; \`{{Today}}\` reads the clock the run happens at and \`event.type\` is \`schedule\`. The server checks every minute. A due minute fires once: a box that slept through several runs one catch-up pass when it wakes, going back seven days at most; a new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one. Health and Last Run are stamped per run as for every rule.
-
-Actions run in order and each one yields an output the later ones can read. \`set-field\` yields \`{field, value}\`, \`append-doc\` \`{field, text}\`, \`add-comment\` \`{id, text}\`, \`upsert-row\` \`{id, publicId, name, created}\` and \`webhook\` \`{url, sent}\`. A later action reads them as \`{{steps.1.publicId}}\` in its text, in a \`set-field\` string value, or as \`steps.1.name\` in an \`upsert-row\` source path, so a chain like "open the account, then write its number back on the request" is three actions:
-\`\`\`json
-[{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id", "fields": { "Stripe Id": "row.Customer", "Name": "row.Name" } },
- { "type": "set-field", "field": "Account Ref", "value": "Account#{{steps.1.publicId}}" },
- { "type": "add-comment", "text": "Opened {{steps.1.name}}; ref {{steps.2.value}}" }]
-\`\`\`
-A step that has not run yet, or a path it has not got, reads empty. The \`automation-ran\` activity entry on each record carries the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the record it stopped on.
+Triggers fire on create, update, state change and on a schedule. Actions set fields, move a state, append to a document, add a comment, upsert a record of another table, or POST a webhook. Each rule is a record of \`System/Workflows\`, which carries its On switch, State, Health and Last Run. The trigger and action reference, the cron schedule, the step outputs and a worked example are in the **Automations** guide.
 
 ## Decks
 
@@ -1418,6 +1402,186 @@ Entity mutations are undoable (\`weave undo\`, 200 deep). Schema work, hard dele
 ## The structure is data too
 
 \`System/Spaces\`, \`System/Tables\`, \`System/Fields\` and \`System/Workflows\` are ordinary tables whose records **are** the structure. Each workspace stores its own system tables, with a \`Workspace\` column identifying the workspace (the **Workspace registry** guide). Editing a record runs the same validation as the schema verb, because it is the schema verb. So does the grid foot: \`+ New space\` births a space named "New space" with the name selected for the caret to replace; \`+ New table\` and \`+ New field\` ask for the space or the table the record needs before creating it; a Workflows record starts blank like any other record; and a create the engine refuses lands in a toast rather than in silence. That is the subject of the **Configuring a space, first time right** guide.`,
+  },
+  {
+    name: 'Automations',
+    audience: 'Both',
+    order: 9.5,
+    doc: `# Automations
+
+An automation is a rule bound to one table: something happens, and weave writes. The rule names a trigger and a list of actions, it lives as a row of \`System/Workflows\`, and it runs inside the engine, so a write from the CLI, the REST API, an MCP client or the grid fires it the same way.
+
+Nothing here reaches outside the workspace except the \`webhook\` action.
+
+## The Workflows row is the control panel
+
+Every rule is a row of \`System/Workflows\`, and the row is the whole interface to it:
+
+| Column | What it holds |
+| --- | --- |
+| \`Name\` | what you call the rule |
+| \`On\` | the switch. Off means the trigger is ignored |
+| \`Script\` | the rule itself, as JSON: \`{"table", "trigger", "actions"}\` |
+| \`State\` | \`Setup incomplete\` while the Script does not compile, \`Ready\` once it does |
+| \`Health\` | \`Healthy\`, \`Warning\`, \`Failed\`, or \`No runs\` before the first fire |
+| \`Health Reason\` | why the last run failed, in the engine's words |
+| \`Last Run\` | when it last fired, to the minute |
+| \`Tables\`, \`Spaces\` | what the rule touches, filled in by the engine |
+| \`Diagram\` | the rule drawn as mermaid |
+
+Editing the Script runs the same validation the create verb runs, because it is the create verb: a Script weave cannot compile leaves the row \`Setup incomplete\` and names what is wrong. The engine computes \`State\` and stamps \`Health\`, \`Health Reason\` and \`Last Run\` on every run. The row number is the firing order: when several rules answer the same trigger, they run top to bottom.
+
+A rule's own writes can fire other rules, three deep at most, so a pair of rules that write to each other stops rather than looping.
+
+## Triggers
+
+Four trigger types, and a rule has one:
+
+| Trigger | Fires when |
+| --- | --- |
+| \`entity-created\` | a row of the table is created |
+| \`field-updated\` | a named field on a row changes |
+| \`state-changed\` | a workflow field moves, optionally only into one named state |
+| \`schedule\` | the clock reaches a cron minute |
+
+\`field-updated\` and \`state-changed\` take \`field\`; \`state-changed\` also takes \`toState\` to narrow it to one landing state.
+
+\`\`\`json
+{ "type": "state-changed", "field": "Status", "toState": "Done" }
+\`\`\`
+
+## On a schedule
+
+A \`schedule\` trigger fires on a timer instead of a row change:
+
+\`\`\`json
+{ "type": "schedule", "cron": "0 9 * * 1-5", "zone": "America/Los_Angeles", "where": [["Status", "!=", "Done"]] }
+\`\`\`
+
+\`cron\` is the five-field expression: minute, hour, day, month, weekday, with \`*\`, lists, ranges and \`*/n\` steps. It is read on the wall clock of \`zone\`, an IANA name, UTC when you leave it out. At each due minute the rule runs its actions on every live row of its table, or on the rows its \`where\` clause admits, written in the query filter syntax. \`{{Today}}\` reads the clock of the run and \`event.type\` is \`schedule\`.
+
+The server checks every minute, and a due minute fires once. A box that slept through several due minutes does one catch-up pass when it wakes, reaching back seven days at most. A new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one.
+
+## Actions
+
+Actions run in order. A rule needs at least one.
+
+| Action | What it writes |
+| --- | --- |
+| \`set-field\` | a value onto the firing row, a workflow field's state included |
+| \`append-doc\` | text at the end of a document field |
+| \`add-comment\` | a comment on the firing row |
+| \`webhook\` | a POST to an http(s) url, signed when the rule names a credential |
+| \`upsert-row\` | a row of another table, matched on a key |
+
+\`upsert-row\` is the one that writes somewhere else:
+
+\`\`\`json
+{ "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
+  "fields": { "Stripe Id": "row.Customer", "Name": "row.Company", "Plan": "row.Tier" } }
+\`\`\`
+
+When a row of the target table already holds that key, the action updates it; otherwise it creates one, so a repeated delivery never makes a duplicate. The key field is a \`text\`, \`number\`, \`url\` or \`email\` field and must be mapped. Each source path reads the firing row (\`row.<Field>\`, \`row.PublicId\`) or the trigger (\`event.type\`, \`event.field\`, \`event.toState\`). A select takes its option name and a relation the target row's Name, as the entities API does. A path that finds nothing leaves its field as it was, and an empty key marks the row \`Failed\`.
+
+## Placeholders and step outputs
+
+Text in an action reads the firing row through placeholders: \`{{Name}}\`, \`{{PublicId}}\`, \`{{Today}}\` in the workspace date format, \`{{Today:iso}}\` as 2026-10-06. An empty field reads \`(no Field)\`.
+
+Each action also yields an output the later ones can read:
+
+| Action | Output |
+| --- | --- |
+| \`set-field\` | \`{field, value}\` |
+| \`append-doc\` | \`{field, text}\` |
+| \`add-comment\` | \`{id, text}\` |
+| \`upsert-row\` | \`{id, publicId, name, created}\` |
+| \`webhook\` | \`{url, sent}\` |
+
+A later action reads them as \`{{steps.1.publicId}}\` in its text or in a \`set-field\` string value, and as \`steps.1.name\` in an \`upsert-row\` source path. The number is the action's position, counted from 1. A step that has not run yet, or a path it has not got, reads empty.
+
+Every run leaves an \`automation-ran\` entry on each row it touched. The entry holds the outputs under \`steps\`, in action order. A run that stops on a failing action adds \`failed: {step, error}\` to the entry of the row it stopped on, and the rule's \`Health Reason\` carries the same message.
+
+## Webhooks
+
+A \`webhook\` action POSTs to an \`http(s)\` url. The url is validated when the rule compiles; the \`url\` field type is not, so validate upstream if strictness matters to you.
+
+Before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, and it follows no redirect. A refusal, a non-2xx answer, no answer within 5 seconds, or a connection that cannot be made marks the rule \`Failed\` with the reason in \`Health Reason\`. The write that fired it still lands.
+
+Set \`WEAVE_WEBHOOK_ALLOW_PRIVATE=1\` on an instance whose webhooks land on its own network, such as a Railway private service or a VPS sidecar, and the private ranges are allowed. A redirect stays refused either way. A \`weave_build\` dry run drops webhook actions, so a trial never posts.
+
+### Signing a delivery
+
+Add \`signWith\` to the action and the delivery is signed, so a receiver can tell weave from anyone else:
+
+\`\`\`json
+{ "type": "webhook", "url": "https://hooks.example.com/weave", "signWith": "hooks-example" }
+\`\`\`
+
+\`signWith\` is the NAME of a credential in the keystore (\`weave key set hooks-example\`), never the value: the Script, the Workflows row, the export and the backup hold the name alone. Three headers ride along:
+
+| Header | Value |
+| --- | --- |
+| \`X-Weave-Timestamp\` | the delivery clock, unix seconds |
+| \`X-Weave-Delivery\` | a uuid, new for each delivery |
+| \`X-Weave-Signature\` | \`sha256=\` and the hex HMAC-SHA256 of \`<timestamp>.<raw body>\` under the credential |
+
+The receiver recomputes it over the bytes it read, before any JSON parse, and compares in constant time:
+
+\`\`\`js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const ts = req.headers['x-weave-timestamp'];
+const hex = createHmac('sha256', process.env.WEAVE_HOOK_SECRET).update(ts + '.' + raw).digest('hex');
+const mine = Buffer.from('sha256=' + hex);
+const theirs = Buffer.from(req.headers['x-weave-signature'] ?? '');
+const ok = mine.length === theirs.length && timingSafeEqual(mine, theirs);
+if (!ok || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return reject();
+\`\`\`
+
+Refuse a timestamp older than your replay window and remember the \`X-Weave-Delivery\` ids you have already handled. A rule that names no credential posts exactly what it posted before, with \`Content-Type\` as its only header. A rule whose credential the keystore does not hold sends nothing and reads \`Failed\`: weave never falls back to an unsigned delivery.
+
+## A worked example
+
+Two rules on a Request table. The first opens or updates the billing account when a request lands, writes the account reference back, and says so in a comment:
+
+\`\`\`bash
+weave automation create Request --name 'Open the account' \\
+  --trigger '{"type":"state-changed","field":"Status","toState":"Approved"}' \\
+  --actions '[{"type":"upsert-row","table":"Billing/Account","key":"Stripe Id",
+               "fields":{"Stripe Id":"row.Customer","Name":"row.Company"}},
+              {"type":"set-field","field":"Account Ref","value":"Account#{{steps.1.publicId}}"},
+              {"type":"add-comment","text":"Opened {{steps.1.name}} on {{Today}}; ref {{steps.2.value}}"}]'
+\`\`\`
+
+The second sweeps every weekday morning in Los Angeles and nudges whatever is still open:
+
+\`\`\`bash
+weave automation create Request --name 'Weekday nudge' \\
+  --trigger '{"type":"schedule","cron":"0 9 * * 1-5","zone":"America/Los_Angeles","where":[["Status","!=","Approved"]]}' \\
+  --actions '[{"type":"append-doc","text":"Still open on {{Today}}."},
+              {"type":"webhook","url":"https://hooks.example.com/weave/nudge"}]'
+\`\`\`
+
+Read what you have, then watch the rows:
+
+\`\`\`bash
+weave automation list Request
+weave automation describe Request
+weave activity --kind automation-ran --limit 20
+\`\`\`
+
+## Every door reaches it
+
+| Door | Calls |
+| --- | --- |
+| CLI | \`weave automation create <table> --name N --trigger '{json}' --actions '[json]'\`, \`automation list\`, \`automation describe\`, \`automation update <id> --patch '{json}'\`, \`automation delete <id>\` |
+| REST | \`POST /api/automations\` with \`{db, name, trigger, actions, enabled}\`, \`GET /api/automations?db=<table>\`, \`PATCH /api/automations/:id\`, \`DELETE /api/automations/:id\` |
+| MCP | \`weave_create_automation\`, and \`weave_automations\` with \`action: list | describe | update | delete\` |
+| Grid | a new row of \`System/Workflows\`, its Script written as JSON |
+
+\`weave_create_automation\` and \`weave_automations\` carry the MCP open-world mark: a rule can call a webhook, and no other tool leaves the workspace.
+
+Deleting a rule sends its Workflows row to the trash, where restoring it brings the rule back. Switching \`On\` off is the reversible way to stop one.`,
   },
   {
     name: 'Polymorphic relations',
@@ -1587,19 +1751,31 @@ The Notes case is the walkthrough in [[Article#5]]. The set was built for Featur
     order: 11,
     doc: `# Workspace registry
 
-Each workspace owns its **System** space, including **Users**, **Spaces**, **Tables**, **Fields**, **Forms** and **Workflows**. The workspace stores these records in its own file and checks its own accounts and roles. The hub discovers workspaces and routes requests to them. The workspace served at \`/\` is a routing default with the same permissions as any other workspace.
+Each workspace owns its **System** space, including **Users**, **Integrations**, **Spaces**, **Tables**, **Fields**, **Forms** and **Workflows**. The workspace stores these records in its own file and checks its own accounts and roles. The hub discovers workspaces and routes requests to them. The workspace served at \`/\` is a routing default with the same permissions as any other workspace.
 
 ## System records in the sidebar
 
 On desktop, **Hide sidebar** hides the workspace rail too. **Show sidebar** leads the page breadcrumb row. Rest at the left edge for 150 ms to peek; moving away for 400 ms or pressing Escape closes the peek. Clicking the edge or blank sidebar space pins it open.
 
-The **System** space sits at the bottom of the sidebar, under your spaces and **+ New space**, behind a hairline, and stays put on desktop however far the space list scrolls (Feature #333). It holds four built-in tables, in this order and with no counts: **Workflows** (this workspace's own workflows), **Users** (the accounts and invites, below), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed record in the workspace, \`#/trash\`). System folds and unfolds from its caret like any space, and the sidebar remembers the fold. On a phone, the menu scrolls as one column so System leaves room for the space list; the identity panel stays within reach at the bottom. Its stored name is System and its internal key stays \`workspace\`; a workspace whose system space was still called Workspace is renamed System the first time it opens, and \`Workspace/Users\` style names keep resolving to it. A workflow belongs to the workspace whose table its rule runs on, and its record's \`Workspace\` column says which; a record made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces record, and Restore on that record brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
+The **System** space sits at the bottom of the sidebar, under your spaces and **+ New space**, behind a hairline, and stays put on desktop however far the space list scrolls (Feature #333). It holds five built-in tables, in this order and with no counts: **Workflows** (this workspace's own workflows), **Users** (the accounts and invites, below), **Integrations** (the outside tools this workspace holds an API key for, below), **Activity** (every change in the workspace, \`#/activity\`) and **Trash** (every trashed record in the workspace, \`#/trash\`). System folds and unfolds from its caret like any space, and the sidebar remembers the fold. On a phone, the menu scrolls as one column so System leaves room for the space list; the identity panel stays within reach at the bottom. Its stored name is System and its internal key stays \`workspace\`; a workspace whose system space was still called Workspace is renamed System the first time it opens, and \`Workspace/Users\` style names keep resolving to it. A workflow belongs to the workspace whose table its rule runs on, and its record's \`Workspace\` column says which; a record made in a member workspace starts out there. \`POST /api/tables/Workflows/query\` and the Trash list answer only for the workspace you ask from, and a member cannot open another workspace's workflow by id. They cannot be renamed, moved or deleted, and neither can any system table: \`updateTable\` refuses a new name for one on every door. In Trash, a trashed table or space is listed as its Tables or Spaces record, and Restore on that record brings the whole structure back. A workspace you deleted from the icon rail is listed there too, under Workspaces, with its own Restore. The same list is \`GET /api/trash\`, \`weave_trash\` with no table, or \`weave trash\`.
 
 Under System, at the very foot of the sidebar, the identity panel shows who you are here: your avatar, your name and your role in this workspace as a chip (Architect purple, Editor blue, Observer slate). A role belongs to a workspace, never to a person, so switching workspace from the rail changes the chip. Signed out of a workspace that asks for a sign-in, the panel shows **Sign in**; an open workspace with no sign-in shows **Open access**. The **⋯** button opens the personal menu: **Theme** (auto, dark and light in turn), **Keyboard shortcuts** (the \`?\` key opens the same sheet) and **Sign out** with the running version beside it, then **Sign out everywhere**. A server running an older commit than the page it served, or one behind main or the latest release, still raises its toast and shows a tinted line above the panel naming the commits.
 
 ## Users and permissions
 
 Open **System › Users** in the workspace whose accounts you want to manage. An Architect adds people, agents and invites there. A relation from any table in that workspace can target Users for an owner or assignee. Accounts, tokens and roles belong to that workspace; an Architect in one workspace needs a separate account to enter another protected workspace.
+
+## Integrations
+
+Open **System › Integrations** to connect weave to a tool that takes an API key, such as Fibery (Feature #339). Each row is one connection: Name, On, Provider (Fibery or Generic API key), Host, Credential, Key Hint, State (Setup incomplete, Checking, Connected or Failed), Connected As, Health Reason, Last Checked, Last Used and Workspace. Credential, Key Hint, State, Connected As, Health Reason, Last Checked and Last Used are kept by weave and refuse edits.
+
+Host is the one host name the key may reach, such as \`acme.fibery.io\`. weave stores the bare name and talks https only; a Fibery Host ends in \`.fibery.io\`, and an IP address, a port or a path is refused.
+
+The key is write-only. **Add key**, then **Replace**, on the Credential cell takes the pasted key once in a password box, sends it as \`{ value }\` to \`PUT /api/integrations/<id>/credential\` and clears the box. weave tests it against Host straight away: for Fibery, an authenticated call that returns the current user, whose name lands in Connected As. A green test seals the key in the keystore as \`integration:<row id>\`, keeps its last four characters as Key Hint (a key under 16 characters shows only \`set\`) and sets State to Connected. A red test stores nothing, sets State to Failed and says why in Health Reason. Replacing a key keeps the old one until the new one tests green. Changing Host or Provider deletes the stored key, because a key only ever reaches the host it was tested on; deleting the row deletes its key, and a restored row comes back without one.
+
+weave uses a key itself and never hands it out. Inside the engine, \`integrationFetch(<row>, <url>, { method, headers, body })\` sends one https request with the row's key in the Authorization header (\`Token\` for Fibery, \`Bearer\` otherwise). It refuses any host but Host, a port, plain http, a caller-set Authorization, Proxy-Authorization or Cookie header, a method outside GET, HEAD, POST, PUT, PATCH and DELETE, and a row that is Off or has no key, all before a byte leaves. It never follows a redirect. Each call stamps Last Used and writes a \`key-used\` audit entry naming the integration, host, method, path and status, never the key, and a key the host echoes back is redacted from the answer. No route or MCP tool calls it: it is the door the http-request action of Feature #310 will use.
+
+Nothing reads a key back. The cell shows dots and the hint, with no Show or Copy, and the columns weave keeps read rather than edit. The keystore routes, \`weave_keys\` and \`weave key reveal\` refuse every \`integration:\` name, and a workflow cannot sign a webhook with one. No row, query, export, CSV, share link, Activity entry, audit entry or MCP answer carries the key. Only an architect sets a key.
 
 ## The Workspaces table
 
@@ -1983,7 +2159,7 @@ Existing access and refresh tokens still identify the caller, but the requested 
 
 A subject no account is linked to gets \`403\`: the person opens their invite (\`weave account link <name>\`) in a browser once, which pins the subject, and the agent's next call goes through. A token the provider rejects or has expired gets \`401\` with the same \`WWW-Authenticate\` header, and the client signs in again. Five refused tokens in a minute from one address get \`429\` for the rest of that minute, since each unknown token costs a call to the provider; a provider that is down gets \`502\`. Any role connects, as on \`/api/mcp\`, and \`tools/list\` names only the tools that role may call. Writes record \`<account> via MCP\`, never the access token's client id, and Created By and Modified By show the person chip with \`via MCP\` beside the name. A \`wv_\` token works on \`/mcp\` unchanged and never reaches the provider; \`/api/mcp\` accepts only \`wv_\` tokens and sessions.
 
-Every tool in \`tools/list\` carries MCP annotations: a \`title\`, \`readOnlyHint\`, \`destructiveHint\` and \`openWorldHint\`. Reads are read-only; deletes, bulk edits and whole-object replacements are destructive; only the automation tools reach outside the workspace, since a rule can call a webhook. \`/docs\` lists every tool with its marks and \`/support\` names the contact address; both answer without sign-in. Set \`WEAVE_OPENAI_APPS_CHALLENGE\` to the token the ChatGPT apps directory issues and \`/.well-known/openai-apps-challenge\` answers it as plain text, also without sign-in; unset, that path is a 404.
+Every tool in \`tools/list\` carries MCP annotations: a \`title\`, \`readOnlyHint\`, \`destructiveHint\`, \`idempotentHint\` and \`openWorldHint\`. Reads are read-only; deletes, bulk edits and whole-object replacements are destructive; reads, updates, sets, deletes and restores are idempotent, so a client may retry them, while creates, appends, imports of rows, comments, undo, token or link mints and \`weave_call\` are not; only the automation tools reach outside the workspace, since a rule can call a webhook. \`/docs\` lists every tool with its marks and \`/support\` names the contact address; both answer without sign-in. Set \`WEAVE_OPENAI_APPS_CHALLENGE\` to the token the ChatGPT apps directory issues and \`/.well-known/openai-apps-challenge\` answers it as plain text, also without sign-in; unset, that path is a 404.
 
 The resource names an origin weave was told about: \`WEAVE_ORIGIN\`, or one of the comma-separated \`WEAVE_MCP_ORIGINS\` when the request arrived on that host (\`https://mcp.weave.example.com\` on the same service). A Host header weave was not told about is refused before it reaches the door.
 
@@ -2181,6 +2357,8 @@ A record can reference a blob that is not in \`files/\` any more — Issue #250 
 | \`WEAVE_BACKUP_ENDPOINT\` | The S3-compatible endpoint for R2, B2 or MinIO (path-style, \`endpoint/bucket/key\`). Unset, the archive goes to AWS S3 in \`WEAVE_BACKUP_REGION\` (or \`AWS_REGION\`, default \`us-east-1\`). |
 
 Credentials: \`WEAVE_BACKUP_KEY_ID\` and \`WEAVE_BACKUP_SECRET\`, or the standard \`AWS_ACCESS_KEY_ID\` and \`AWS_SECRET_ACCESS_KEY\`. Every request is signed with AWS Signature Version 4; R2, B2, MinIO and S3 all accept it. Signing uses the region: R2 takes \`auto\` (the default once an endpoint is set), B2 wants its real one (\`us-west-004\`, say) in \`WEAVE_BACKUP_REGION\`.
+
+An archive larger than 8 MiB goes up as a multipart upload, one part at a time, so a backup holds one part in memory however large the archive is. \`WEAVE_BACKUP_PART_BYTES\` moves the part size; S3 requires 5 MiB for every part but the last, so a smaller setting is raised to that. A part that fails aborts the upload, which leaves no half object and no parts behind.
 
 ## Examples
 
@@ -2624,6 +2802,31 @@ The footer counts what shows: **3 of 8 to-dos · 1 completed**.
 One tool, \`weave_table_view\`, addressed by name. \`{view: "Issue"}\` lists the views in order, and the first view opens with the table (a new table's first view is \`Standard\`); \`position: 0\` makes a view the default (\`default: true\` is the older spelling of the same move). \`{view: "Issue/Open bugs", fields: ["Name", "Status"]}\` defines a view, where the list is the visible columns in order and anything left out is hidden. \`show\`, \`hide\` and \`move\` edit one field at a time, so a wide table is never resent. \`search\` is the table search box's text for the view (\`''\` or \`null\` clears it); pass it to \`weave_query\` as \`search\` to read the records the grid shows. \`widths\` sets column widths by name (\`{Name: 240}\`, merged; \`null\` clears one) and \`frozen\` says how many leading fields stay frozen beside # (0, the default, freezes only #); \`density\` is \`compact\`, \`comfortable\` (the default) or \`spacious\`; \`deleted: true\` shows the trashed records in place, and \`rollups\` is \`true\` or \`false\` for the Σ row (\`null\` follows the table); a read carries each only when it is set. \`layout\` is \`table\` or \`list\`; a read carries it once someone has chosen one, and \`null\` clears the choice. The List layout takes \`group\` (up to three levels, each a field name or \`{field, heading: "chip", order: "az", grain: "week"}\`; a read leaves out the defaults), \`completedBy\` (a checkbox), \`nest\` (a Parent link), \`collapsed\` (group paths such as \`"Japan › P1"\` and \`"Completed"\`), shared by every view of the table with the same group levels, \`hideEmpty\` (\`true\` leaves out groups with no records) and \`order\` (the manual order as record #ids); \`null\` clears any of them. The same verb is \`weave table view\` on the CLI and \`/api/tables/:table/views/:view\` over REST, and every view is a record in **System/Views**, where editing \`Fields\`, \`Filter\`, \`Sort\` or \`Search\` runs the same checks.`,
   },
   {
+    name: 'How text behaves',
+    audience: 'Both',
+    order: 20.75,
+    doc: `# How text behaves
+
+Every piece of text in weave has one role, and the role decides what a line does when it runs out of room. The rule is the same on every surface and at every view density, so a new screen inherits it.
+
+| Role | How it wraps | When it runs out of room |
+| --- | --- | --- |
+| Page and section titles | Balanced lines | Wraps. A title is never cut. |
+| Prose and descriptions | Even lines, with no single word left alone on the last one | Folds on a whole line, with **Show more** beside it. |
+| Table cells | The line count the density sets: one at Compact and Comfortable, three at Spacious | Ends in an ellipsis on the last whole line. Hover the cell for the full value. |
+| Chips and states | One row in a dense row, two at Spacious with the rest counted in +N, wrapped on a tile or a record page | A state name stays readable in full somewhere on screen. |
+| Long unbroken values | Break anywhere | Stay inside their box and never push the page wider. |
+
+**Density changes the line count, not the role.** Switching a table from Comfortable to Spacious gives its cells three lines. The text is still a table cell, and it still ends in an ellipsis with the full value on hover.
+
+**A fold ends on a whole line.** A description folds to five lines on a workspace or space page and three under a table title or a field label. The count is of lines, so a gap between paragraphs cannot cut the last line in half.
+
+**Three dots are not a cut.** An ellipsis shows every letter it draws and says there is more. Cut-off text is a letter or a line sliced by the edge of its box, and weave never shows it.
+
+To read a table cell's full value on a phone, where nothing hovers, open the row: the record page wraps every value.
+`,
+  },
+  {
     name: 'Chip and card anatomy',
     audience: 'Both',
     order: 21,
@@ -2646,8 +2849,8 @@ The grey box is the link to the record. The state mark, the segments, the caret 
 | 3 | **Name** (\`.k-label\`) | the record's \`Name\` field | **click** opens the record; **⌘/Ctrl/Shift-click or middle-click** opens it in a new tab; **right-click → Copy Link** copies its permalink (the chip is a real anchor); **hover** turns the outline brand-blue | inside the link — the label, its padding, and the id beside it all count |
 | 4 | **Segments** (\`.mention-fields\`) | the configured \`fields\`, three at most: a select or multiselect as its own chip, anything else as a label·value pair | a **select** or **multiselect** segment opens its picker and writes the record; a label·value pair is read-only | each segment is its own box; none of them navigate |
 | 5 | **Home badge** (\`.k-home\`) | names the far table when a relation can point at several (a target set), and on a document reference it always names the record's table | read it | display only |
-| 6 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses** | a 24×24px square around the glyph; the click stops there |
-| 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this record from the field — never deletes it | **click to unlink**; \`weave undo\` (or the activity record) puts it back | its own box, outside the link |
+| 6 | **Caret** (\`›\` / \`‹\`) | folds the segments in and out; shows only when there is a segment to show | **click to expand**; it turns to face the label (\`‹\`) and a second click **collapses**. On a phone, in a cell or a field row, where the expanded chip has no room, the same control **opens the record** instead; in a document it still folds | a 24×24px square around the glyph; the click stops there |
+| 7 | **Remove** (\`×\`) | in a relation cell only: unlinks this record from the field — never deletes it. A phone leaves it out of the chip, so nothing in that tap row writes; the field's link picker takes a record out there | **click to unlink**, which raises a toast carrying **Undo**; \`weave undo\` (or the activity record) puts it back later | its own box, outside the link |
 
 There is no open mark. The chip is the link, so a separate \`↗\` promises nothing. A table with an [[table:Handbook/Fields|avatar]] field puts the record's face first inside the link, before the \`#id\`; a table without one draws no face. Tier rules, radius (4px) and the shared size come from the chip system — one size for every tier, decided once in \`--wv-chip-font\` and \`--wv-chip-line\`, and a segment is drawn at that same size rather than shrunk.
 

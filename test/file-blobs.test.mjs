@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { writeFileDurable } from '../src/store.js';
 import { tempDir } from './lib/temp.mjs';
 
 const CLI = fileURLToPath(new URL('../bin/weave.js', import.meta.url));
@@ -232,4 +233,47 @@ test('POST /api/import and the CLI report the files without bytes', async () => 
   const out = JSON.parse(execFileSync('node', [CLI, 'import', '--file', dumpPath, '--data', join(tmp(), 'cli.db')], { encoding: 'utf8' }));
   assert.equal(out.missing[0].file, file);
   assert.match(out.warning, /without/);
+});
+
+test('writeFileDurable lands the bytes and leaves no temp file beside them', () => {
+  const dir = tmp();
+  const target = join(dir, 'nested', 'blob.bin');
+  writeFileDurable(target, Buffer.from('durable'));
+  assert.equal(readFileSync(target, 'utf8'), 'durable');
+  assert.deepEqual(readdirSync(join(dir, 'nested')), ['blob.bin'], 'a .tmp sibling survived the write');
+});
+
+test('writeFileDurable honours a mode, so a restored keystore stays private', () => {
+  const target = join(tmp(), 'keystore.json');
+  writeFileDurable(target, Buffer.from('{}'), { mode: 0o600 });
+  assert.equal(statSync(target).mode & 0o777, 0o600);
+});
+
+test('writeFileDurable removes its temp file when the rename cannot land', () => {
+  const dir = tmp();
+  const target = join(dir, 'occupied');
+  mkdirSync(target);
+  assert.throws(() => writeFileDurable(target, Buffer.from('x')));
+  assert.deepEqual(readdirSync(dir), ['occupied'], 'the failed write left its temp file behind');
+});
+
+test('every blob and restore write goes through writeFileDurable', () => {
+  const firstArgs = (file) => [...readFileSync(new URL(file, import.meta.url), 'utf8')
+    .matchAll(/writeFileSync\(([^,)]+)/g)].map((m) => m[1].trim());
+  assert.deepEqual(firstArgs('../src/engine.js'), ['keyPath', 'this.keystorePath'],
+    'a bare writeFileSync in the engine: blob bytes land before their record commits, so they go through writeFileDurable');
+  assert.deepEqual(firstArgs('../src/backup.js'), ['local', 'local', 'local'],
+    'a bare writeFileSync in backup: a restore lands a whole data directory, so its entries go through writeFileDurable');
+});
+
+test('an attachment at the file cap round-trips through the durable write', () => {
+  const w = new Weave({ path: join(tmp(), 'big.db') });
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Deck' });
+  const e = w.createEntity('Deck', { name: 'Big' });
+  const bytes = Buffer.alloc(8 * 1024 * 1024, 7);
+  const started = Date.now();
+  const file = w.attachFile(e.id, { name: 'big.bin', bytes });
+  assert.ok(Date.now() - started < 10_000, 'an 8 MB attach took over ten seconds: one fsync per blob, not per chunk');
+  assert.deepEqual(w.readFile(file.id).bytes, bytes);
 });

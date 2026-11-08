@@ -203,6 +203,10 @@
     const noun = all === 1 ? term.singular : term.plural;
     return `Show ${next} more \u00b7 ${shown} of ${all} ${noun}`;
   }
+  function drawnKeys(a) {
+    const walk = (gs) => (gs ?? []).flatMap((g) => [g.key, ...walk(g.groups)]);
+    return [...walk(a?.groups), ...(a?.completed ? [a.completed.key] : [])];
+  }
   function groupLabel(levels, fieldOf) {
     return levels.map((l) => fieldOf(l.field)?.name ?? l.field).join(SEP);
   }
@@ -210,6 +214,6 @@
   root.weaveListCore = {
     GROUP_CAP, LIST_CAP, BOARD_CAP, GROUP_TYPES, HEADINGS, ORDERS, DIRS, GRAINS, COMPLETED, SEP, NO_VALUE, countRows,
     groupable, levelDefaults, normalizeLevel, compactLevel, parseGroup, dateBucket,
-    applyManual, nestItems, arrange, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, moreLabel, groupLabel, groupSig,
+    applyManual, nestItems, arrange, drawnKeys, isCollapsed, toggleCollapsed, moveInOrder, locate, changedLevels, footerText, moreLabel, groupLabel, groupSig,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

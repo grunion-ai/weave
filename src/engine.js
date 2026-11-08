@@ -9,15 +9,15 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'node:fs';
-import { createHash, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
-import { Store, WeaveError } from './store.js';
+import { Store, WeaveError, writeFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
@@ -27,6 +27,7 @@ import { aggregate as aggregateValues, describeNumbers, histogram, distribution,
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
 import { TRIAL_STAGES } from './mail.js';
+import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, authHeader, INTEGRATION_METHODS, CHECK_TIMEOUT_MS } from './integrations.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -128,6 +129,8 @@ export function sniffImage(bytes) {
 
 const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
 export const PREVIEW_MAX_BYTES = 256 * 1024;
+export const FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const mbText = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
 const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export function logoType(bytes) {
@@ -229,6 +232,22 @@ export const SYSTEM_SORT_KEYS = {
 };
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
+export const QUERY_SHAPES = ['full', 'row'];
+
+export function leanRow(row) {
+  const raw = {};
+  for (const [name, value] of Object.entries(row.raw ?? {})) {
+    if (value !== row.fields?.[name]) raw[name] = value;
+  }
+  return {
+    id: row.id,
+    publicId: row.publicId,
+    name: row.name,
+    fields: row.fields,
+    raw,
+    ...(row.deletedAt ? { deletedAt: row.deletedAt } : {}),
+  };
+}
 export const DESCRIPTION_SIZES = ['none', 'small', 'medium', 'large'];
 const DESCRIPTION_CHARS = { small: 0, medium: 120, large: 320 };
 export const ACTIVITY_CAP = 500;
@@ -1648,10 +1667,7 @@ export class Weave {
         const path = this.#blobPath(id);
         if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
         if (existsSync(path)) continue;
-        mkdirSync(dirname(path), { recursive: true });
-        const temporary = `${path}.${uuid()}.tmp`;
-        try { writeFileSync(temporary, bytes, { flush: true }); renameSync(temporary, path); }
-        finally { rmSync(temporary, { force: true }); }
+        writeFileDurable(path, bytes);
       }
       this.store.batch(() => {
         if (pending) {
@@ -3692,6 +3708,7 @@ export class Weave {
   setKey(name, secret) {
     if (!name) throw new WeaveError('Key name is required', 'invalid');
     refuseReserved('key', name);
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const prior = own(data.keys, name);
     if (prior && !this.#mayGrant(prior)) throw this.#grantRefusal(prior, 'replace', name);
@@ -3709,6 +3726,7 @@ export class Weave {
   }
 
   deleteKey(name) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     if (!Object.hasOwn(data.keys, name)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(data.keys[name])) throw this.#grantRefusal(data.keys[name], 'delete', name);
@@ -3725,7 +3743,7 @@ export class Weave {
 
   listKeys() {
     const { keys } = this.#readKeystore();
-    return Object.keys(keys).filter(name => this.#keyInWorkspace(keys[name]) || this.#localKeys()).sort().map((name) => ({
+    return Object.keys(keys).filter(name => !isIntegrationKey(name) && (this.#keyInWorkspace(keys[name]) || this.#localKeys())).sort().map((name) => ({
       name,
       set: true,
       owner: this.actorName(keys[name].owner ?? null),
@@ -3734,6 +3752,7 @@ export class Weave {
   }
 
   resolveKey(name) {
+    refuseIntegrationKey(name);
     const { keys } = this.#readKeystore();
     const entry = own(keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
@@ -3760,6 +3779,7 @@ export class Weave {
   }
 
   revealKey(name, { via = 'show' } = {}) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
@@ -3797,6 +3817,7 @@ export class Weave {
 
   grantKey(name, account) {
     if (!account) throw new WeaveError('Name the account the credential is shared with', 'invalid');
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
@@ -3813,6 +3834,7 @@ export class Weave {
   }
 
   revokeKey(name, account) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
@@ -5161,7 +5183,9 @@ export class Weave {
     }
     const wsT = this.#sysTable('workspaces')
       ?? mkTable('Workspaces', 'workspaces', 'This workspace as a record. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as records.');
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
+    const integrationsT = this.#sysTable('integrations') ?? mkTable('Integrations', 'integrations', INTEGRATIONS_DESCRIPTION);
+    ensureIntegrationColumns(this, integrationsT);
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -5434,6 +5458,216 @@ export class Weave {
     if (row?.deletedAt) reg.#metaSync(() => reg.restoreEntity(row.id));
   }
 
+  #integrationNamed(db, values) {
+    const out = {};
+    for (const [k, v] of Object.entries(values ?? {})) out[this.findField(db, k)?.name ?? k] = v;
+    for (const name of INTEGRATION_KEPT) {
+      if (!(name in out)) continue;
+      if (out[name] != null && out[name] !== '') {
+        throw new WeaveError(name === 'Credential'
+          ? 'A key never goes into a row: paste it with Replace on the Integrations row (PUT /api/integrations/<id>/credential), where it is tested and sealed'
+          : `'${name}' is kept by weave and cannot be set on an Integrations row`, 'invalid');
+      }
+      delete out[name];
+    }
+    return out;
+  }
+
+  #integrationProvider(db, v) {
+    if (v == null || v === '') return null;
+    const f = this.#sysField(db, 'Provider');
+    const hit = f.config.options.find((o) => o.id === v || o.name.toLowerCase() === String(v).toLowerCase());
+    if (!hit) throw new WeaveError(`Provider '${v}' is not one of ${f.config.options.map((o) => o.name).join(', ')}`, 'invalid');
+    return hit.name;
+  }
+
+  #integrationInput(db, input) {
+    const values = this.#integrationNamed(db, { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) });
+    const provider = this.#integrationProvider(db, values.Provider);
+    if ('Host' in values) values.Host = integrationHost(values.Host, provider);
+    if (!('On' in values)) values.On = true;
+    const wsRow = values.Workspace == null ? this.#sysRow('workspaces', this.state.meta.id) : this.#sysRow('workspaces', values.Workspace);
+    if (wsRow) values.Workspace = wsRow.id;
+    return { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => k !== 'values' && CREATE_INPUT_KEYS.has(k))), values };
+  }
+
+  #updateIntegrationRow(e, db, valuesByName) {
+    const patch = this.#integrationNamed(db, valuesByName);
+    const F = (n) => this.#sysField(db, n);
+    if ('Workspace' in patch) {
+      const next = patch.Workspace == null ? null : (this.findEntity(this.#sysTable('workspaces').id, patch.Workspace) ?? this.#sysRow('workspaces', patch.Workspace))?.id;
+      if (next !== (e.values[F('Workspace').id] ?? null)) throw new WeaveError("An Integrations row belongs to the workspace it was made in and cannot move", 'invalid');
+      delete patch.Workspace;
+    }
+    const was = { provider: this.#integrationProvider(db, e.values[F('Provider').id]), host: e.values[F('Host').id] ?? null };
+    let rebound = false;
+    if ('Host' in patch || 'Provider' in patch) {
+      const provider = 'Provider' in patch ? this.#integrationProvider(db, patch.Provider) : was.provider;
+      patch.Host = integrationHost('Host' in patch ? patch.Host : was.host, provider);
+      rebound = provider !== was.provider || patch.Host !== was.host;
+    }
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
+    if (rebound) this.#dropIntegrationKey(e, 'The Host or Provider changed: paste the key again with Replace');
+    return this.getEntity(e.id);
+  }
+
+  #onReg(fn) {
+    const reg = this.#reg;
+    if (reg === this) return fn(reg);
+    const was = reg.actor;
+    reg.actor = this.actor;
+    try { return fn(reg); } finally { reg.actor = was; }
+  }
+
+  #stampIntegration(row, values) {
+    this.#onReg((reg) => reg.#metaSync(() => reg.updateEntity(row.id, values)));
+  }
+
+  #integrationRow(ref) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('integrations');
+    const row = t && (own(reg.state.entities, ref) ?? reg.findEntity(t.id, ref));
+    if (!row || row.dbId !== t.id || row.deletedAt || (this.#wsIdOfRow(row) ?? reg.state.meta.id) !== this.state.meta.id) {
+      throw new WeaveError(`No integration '${ref}' in this workspace`, 'not-found');
+    }
+    return row;
+  }
+
+  #integrationTarget(row) {
+    const t = this.#reg.#sysTable('integrations');
+    const F = (n) => this.#sysField(t, n);
+    return {
+      name: this.#reg.entityName(row),
+      provider: this.#integrationProvider(t, row.values[F('Provider').id]),
+      host: row.values[F('Host').id] ?? null,
+      on: row.values[F('On').id] === true,
+    };
+  }
+
+  #integrationEntry(rowId) {
+    const entry = own(this.#readKeystore().keys, integrationKeyName(rowId));
+    return entry?.integration === true && entry.workspace === this.state.meta.id ? entry : null;
+  }
+
+  #sealIntegrationKey(rowId, secret) {
+    const data = this.#readKeystore();
+    const name = integrationKeyName(rowId);
+    const prior = own(data.keys, name);
+    data.keys[name] = {
+      ...this.#seal(secret),
+      owner: null,
+      workspace: this.state.meta.id,
+      shared: false,
+      integration: true,
+      createdAt: prior?.createdAt ?? nowISO(),
+      ...(prior ? { rotatedAt: nowISO() } : {}),
+    };
+    this.#writeKeystore(data);
+  }
+
+  #dropIntegrationKey(row, reason) {
+    const name = integrationKeyName(row.id);
+    const had = this.#onReg((reg) => {
+      const data = reg.#readKeystore();
+      if (!Object.hasOwn(data.keys, name)) return false;
+      delete data.keys[name];
+      reg.#writeKeystore(data);
+      reg.#audit('key-deleted', { name, integration: reg.entityName(row) });
+      return true;
+    });
+    const credF = this.#sysField(this.#reg.#sysTable('integrations'), 'Credential');
+    if (had || row.values[credF.id] != null) {
+      this.#stampIntegration(row, { Credential: null, 'Key Hint': null, 'Connected As': null, State: 'Setup incomplete', 'Health Reason': reason });
+    }
+    return had;
+  }
+
+  async #checkIntegration(provider, host, secret) {
+    const { url, init } = checkRequest(provider, host, secret);
+    const target = new URL(url);
+    try {
+      const refusal = await webhookRefusal(target);
+      if (refusal) return { ok: false, reason: `${host}: ${refusal}` };
+      const res = await fetch(target, { ...init, redirect: 'manual', signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
+      return await readCheck(provider, host, res);
+    } catch (err) {
+      return { ok: false, reason: unreachable(host, err) };
+    }
+  }
+
+  async integrationFetch(ref, url, { method = 'GET', headers = {}, body = undefined } = {}) {
+    const row = this.#integrationRow(ref);
+    const target = this.#integrationTarget(row);
+    if (!target.on) throw new WeaveError(`Integration '${target.name}' is Off: switch it On to use its key`, 'forbidden');
+    const entry = this.#reg.#integrationEntry(row.id);
+    if (!entry || !target.host || !target.provider) throw new WeaveError(`Integration '${target.name}' has no key yet: paste one with Replace`, 'invalid');
+    let u;
+    try { u = new URL(String(url)); } catch { throw new WeaveError(`'${url}' is not a URL`, 'invalid'); }
+    if (u.protocol !== 'https:' || u.hostname !== target.host || u.port || u.username || u.password) {
+      throw new WeaveError(`Integration '${target.name}' only reaches https://${target.host}: refused ${u.protocol}//${u.host}`, 'forbidden');
+    }
+    const verb = String(method).toUpperCase();
+    if (!INTEGRATION_METHODS.includes(verb)) throw new WeaveError(`Method '${method}' is not one of ${INTEGRATION_METHODS.join(', ')}`, 'invalid');
+    const sent = new Headers(headers);
+    if (sent.has('authorization') || sent.has('proxy-authorization') || sent.has('cookie')) {
+      throw new WeaveError('weave sets the Authorization header from the integration key: a caller may not set Authorization, Proxy-Authorization or Cookie', 'invalid');
+    }
+    const refusal = await webhookRefusal(u);
+    if (refusal) throw new WeaveError(`Integration '${target.name}': ${target.host} ${refusal}`, 'forbidden');
+    const secret = this.#reg.#open(entry, integrationKeyName(row.id));
+    sent.set('Authorization', authHeader(target.provider, secret));
+    let res = null;
+    let failure = null;
+    try {
+      res = await fetch(u, { method: verb, headers: sent, body, redirect: 'manual', signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
+    } catch (err) {
+      failure = unreachable(target.host, err);
+    }
+    this.#onReg((reg) => {
+      const live = own(reg.state.entities, row.id);
+      const f = reg.#sysField(reg.#sysTable('integrations'), 'Last Used');
+      if (live && f) reg.#stamp(live, () => { live.values[f.id] = nowISO(); });
+      reg.#audit('key-used', { integration: target.name, host: target.host, method: verb, path: u.pathname, status: res?.status ?? null, ...(failure ? { error: failure } : {}) });
+      reg.save();
+    });
+    if (failure) throw new WeaveError(`Integration '${target.name}': ${failure}`, 'invalid');
+    const text = redact(await res.text(), secret);
+    return { status: res.status, ok: res.ok, headers: Object.fromEntries([...res.headers].filter(([k]) => k.toLowerCase() !== 'set-cookie')), body: text };
+  }
+
+  async setIntegrationCredential(ref, value) {
+    const row = this.#integrationRow(ref);
+    const secret = cleanSecret(value);
+    const before = this.#integrationTarget(row);
+    if (!before.provider || !before.host) {
+      throw new WeaveError(`Integration '${before.name}' needs a Provider and a Host before its key: the key is tested against that host`, 'invalid');
+    }
+    this.#stampIntegration(row, { State: 'Checking' });
+    const result = await this.#checkIntegration(before.provider, before.host, secret);
+    const now = this.#integrationRow(row.id);
+    const after = this.#integrationTarget(now);
+    if (after.provider !== before.provider || after.host !== before.host) {
+      throw new WeaveError(`Integration '${after.name}' changed its Host or Provider while the key was tested: paste it again`, 'conflict');
+    }
+    const at = nowISO();
+    const had = !!this.#reg.#integrationEntry(row.id);
+    if (!result.ok) {
+      const reason = redact(result.reason, secret) + (had ? ' The previous key is still stored.' : '');
+      this.#stampIntegration(row, { State: 'Failed', 'Health Reason': reason, 'Last Checked': at });
+      this.#onReg((reg) => reg.#audit('integration-check-failed', { integration: after.name, host: after.host }));
+      return { ...this.#reg.readEntity(row.id), connected: false, reason };
+    }
+    this.#onReg((reg) => {
+      reg.#sealIntegrationKey(row.id, secret);
+      reg.#audit('key-set', { name: integrationKeyName(row.id), integration: after.name, host: after.host, replaced: had });
+    });
+    this.#stampIntegration(row, {
+      Credential: integrationKeyName(row.id), 'Key Hint': keyHint(secret), State: 'Connected',
+      'Connected As': redact(result.connectedAs, secret), 'Health Reason': null, 'Last Checked': at,
+    });
+    return { ...this.#reg.readEntity(row.id), connected: true };
+  }
+
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a record', 'invalid');
@@ -5521,6 +5755,7 @@ export class Weave {
     }
     if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
     if (db.system === 'users') return this.#updateUserRow(e, db, valuesByName);
+    if (db.system === 'integrations') return this.#updateIntegrationRow(e, db, valuesByName);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
@@ -5636,6 +5871,7 @@ export class Weave {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a record', 'invalid');
     if (db.system === 'users') return this.#deleteUserRow(e);
+    if (db.system === 'integrations') { this.#dropIntegrationKey(e, null); return undefined; }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     if (db.system === 'views') {
       const hit = this.#viewAnywhere(e.sysId);
@@ -6975,6 +7211,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const meta = this.#interceptCreate(db, input);
     if (meta) return meta;
+    if (db.system === 'integrations' && !this.#inMetaSync) input = this.#integrationInput(db, input);
     if (db.system === 'forms') input = { ...input, values: normalizeFormValues(this, db, { ...Object.fromEntries(Object.entries(input).filter(([key]) => !CREATE_INPUT_KEYS.has(key))), ...(input.values ?? {}) }) };
     const flat = Object.fromEntries(
       Object.entries(input).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
@@ -8130,7 +8367,7 @@ export class Weave {
     return this.#framed(() => this.#queryIn(dbRef, opts, workspace));
   }
 
-  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null } = {}, workspace = null) {
+  #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null, shape = 'full' } = {}, workspace = null) {
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
@@ -8150,6 +8387,7 @@ export class Weave {
     if (fields != null && !Array.isArray(fields)) throw new WeaveError('fields must be a list of field names', 'invalid');
     if (fields && select) throw new WeaveError('Ask for select or fields, not both: select is a flat projection, fields cuts the entity', 'invalid');
     if (relations != null && relations !== 'full' && relations !== 'chip') throw new WeaveError(`relations must be 'full' or 'chip' (got '${relations}')`, 'invalid');
+    if (!QUERY_SHAPES.includes(shape ?? 'full')) throw new WeaveError(`shape must be 'full' or 'row' (got '${shape}')`, 'invalid');
     const pick = fields && { ids: new Set() };
     for (const name of fields ?? []) {
       const f = this.findField(db, name);
@@ -8209,16 +8447,20 @@ export class Weave {
       if (orderKey) this.#remember(this.#rowIndex().sortOrders, orderKey, rows);
     }
     const total = rows.length;
+    const liveTotal = includeDeleted ? rows.reduce((n, e) => n + (e.deletedAt ? 0 : 1), 0) : null;
     const groups = grouped ? this.#viewGroups(db, grouped, rows, { showEmpty: grouped.layout === 'list' && !grouped.hideEmpty && !filtered && !String(search ?? '').trim() }) : null;
     rows = rows.slice(offset, limit == null || limit < 0 ? undefined : offset + limit);
     const nextOffset = rows.length && offset + rows.length < total ? offset + rows.length : null;
     const items = rows.map((e) => {
-      if (!select) return this.#readEntityIn(e.id, { pick, chips });
+      if (!select) {
+        const row = this.#readEntityIn(e.id, { pick, chips });
+        return shape === 'row' ? leanRow(row) : row;
+      }
       const out = { id: e.id, publicId: e.publicId, name: this.entityName(e) };
       for (const path of select) out[path] = this.#pathValue(e, db, path);
       return out;
     });
-    return { total, ...(nextOffset != null ? { nextOffset } : {}), items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
+    return { total, ...(liveTotal != null ? { liveTotal } : {}), ...(nextOffset != null ? { nextOffset } : {}), items, ...(chips ? { chips } : {}), ...(trashCount ? { trashCount: trashed } : {}), ...(countAll ? { all } : {}), ...(groups ?? {}) };
   }
 
   #groupFieldShape(f) {
@@ -8585,24 +8827,41 @@ export class Weave {
   spaceHome(ref) {
     return this.#framed(() => {
       const sp = this.getSpace(ref);
-      const counts = this.#liveRowCounts();
       return {
         space: { id: sp.id, name: sp.name, icon: sp.icon || null, description: sp.description ?? '' },
-        tables: this.listTables(sp.id).map((db) => ({
-          id: db.id,
-          name: db.name,
-          icon: db.icon || null,
-          rowCount: counts.get(db.id) ?? 0,
-          views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'table' })),
-        })),
-        runs: this.#spaceRuns(sp.id),
+        tables: this.#homeTables(sp.id, this.#liveRowCounts()),
+        runs: this.#homeRuns((id) => id === sp.id),
       };
     });
   }
 
-  #spaceRuns(spaceId) {
+  workspaceHome() {
+    return this.#framed(() => {
+      const ws = this.getWorkspace();
+      const counts = this.#liveRowCounts();
+      const spaces = this.listSpaces().filter((sp) => !sp.system);
+      const ids = new Set(spaces.map((sp) => sp.id));
+      return {
+        workspace: { name: ws.title, description: ws.description },
+        spaces: spaces.map((sp) => ({ id: sp.id, name: sp.name, icon: sp.icon || null, tables: this.#homeTables(sp.id, counts) })),
+        runs: this.#homeRuns((id) => ids.has(id)),
+      };
+    });
+  }
+
+  #homeTables(spaceId, counts) {
+    return this.listTables(spaceId).map((db) => ({
+      id: db.id,
+      name: db.name,
+      icon: db.icon || null,
+      rowCount: counts.get(db.id) ?? 0,
+      views: (db.tableViews ?? []).map((v) => ({ id: v.id, name: v.name, layout: v.layout ?? 'table' })),
+    }));
+  }
+
+  #homeRuns(inHome) {
     const hidden = this.#hiddenSpaces();
-    const here = (e) => !e.deletedAt && this.state.tables[e.dbId]?.spaceId === spaceId && !this.#rowHidden(e, hidden);
+    const here = (e) => !e.deletedAt && inHome(this.state.tables[e.dbId]?.spaceId) && !this.#rowHidden(e, hidden);
     const fired = [];
     const writes = new Map();
     for (const e of Object.values(this.state.entities)) {
@@ -8654,7 +8913,7 @@ export class Weave {
         if (fields?.Health === 'Failed') failedStep = { step: null, error: fields['Health Reason'] ?? null };
       }
       newest.add(run.workflow);
-      if (!run.changed.size && !(failedStep && run.originId === spaceId)) continue;
+      if (!run.changed.size && !(failedStep && inHome(run.originId))) continue;
       const changedTables = new Map();
       for (const e of run.changed) {
         const table = this.state.tables[e.dbId].name;
@@ -8776,7 +9035,9 @@ export class Weave {
       if (a?.type === 'add-comment') return { type: 'add-comment', text: String(a.text ?? ''), ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
       if (a?.type === 'webhook') {
         if (!/^https?:\/\//.test(a.url ?? '')) throw new WeaveError('Webhook action needs an http(s) url', 'invalid');
-        return { type: 'webhook', url: a.url };
+        if (a.signWith == null || a.signWith === '') return { type: 'webhook', url: a.url };
+        if (typeof a.signWith !== 'string') throw new WeaveError('A webhook action\'s signWith names a credential held in the keystore, as a string: its value never enters the Script', 'invalid');
+        return { type: 'webhook', url: a.url, signWith: a.signWith };
       }
       if (a?.type === 'upsert-row') return this.#compileUpsert(a);
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
@@ -8843,7 +9104,7 @@ export class Weave {
           };
           return { type: a.type, table: this.qualifiedName(target), key: tname(a.keyFieldId), fields: Object.fromEntries(a.fields.map(([fid, path]) => [tname(fid), path])) };
         }
-        return { type: a.type, url: a.url };
+        return { type: a.type, url: a.url, ...(a.signWith ? { signWith: a.signWith } : {}) };
       });
       return { table: this.qualifiedName(db), trigger, actions };
     } catch { return null; }
@@ -9253,11 +9514,13 @@ export class Weave {
       const reg = this.#reg;
       const ms = this.webhookTimeoutMs;
       const url = new URL(action.url);
+      const body = JSON.stringify(payload);
+      const headers = { 'Content-Type': 'application/json', ...this.#webhookHeaders(action.signWith, body) };
       const failed = (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err));
       webhookRefusal(url).then((refusal) => refusal ?? fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers,
+        body,
         redirect: 'manual',
         signal: AbortSignal.timeout(ms),
       }).then((res) => {
@@ -9302,6 +9565,17 @@ export class Weave {
     if (!hit) return { e: this.createEntity(target.id, { values }, { depth: depth + 1 }), created: true };
     delete values[key.name];
     return { e: this.updateEntity(hit.id, values, { depth: depth + 1 }), created: false };
+  }
+
+  #webhookHeaders(signWith, body) {
+    if (!signWith) return {};
+    const secret = this.resolveKey(signWith);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return {
+      'X-Weave-Timestamp': timestamp,
+      'X-Weave-Delivery': uuid(),
+      'X-Weave-Signature': `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`,
+    };
   }
 
   #webhookFailed(id, run, reason) {
@@ -9526,14 +9800,13 @@ export class Weave {
     if (this.state.meta.logo?.id === id) return;
     for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
     const p = this.#blobPath(id);
-    if (p) rmSync(p, { force: true });
+    if (p && !this.store.siblingNames(id)) rmSync(p, { force: true });
   }
 
   #writeBlob(id, buf) {
     const p = this.#blobPath(id);
     if (p) {
-      mkdirSync(dirname(p), { recursive: true });
-      writeFileSync(p, buf);
+      writeFileDurable(p, buf);
       return;
     }
     this.state.fileBlobs = this.state.fileBlobs ?? {};
@@ -9544,6 +9817,7 @@ export class Weave {
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
     const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    if (buf.length > FILE_MAX_BYTES) throw new WeaveError(`${name} is ${mbText(buf.length)}; files can be up to ${mbText(FILE_MAX_BYTES)}`, 'too-large');
     const small = preview?.bytes == null ? null : Buffer.isBuffer(preview.bytes) ? preview.bytes : Buffer.from(String(preview.bytes), 'base64');
     const smallType = small && sniffImage(small);
     if (small && (!sniffImage(buf) || !PREVIEW_TYPES.has(smallType))) {

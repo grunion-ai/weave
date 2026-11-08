@@ -57,13 +57,8 @@ if (s) {
   };
 
   const navTables = (page, space) => page.evaluate((sp) => {
-    const out = [];
-    let on = false;
-    for (const n of document.querySelectorAll('#nav > *')) {
-      if (n.classList.contains('nav-space-row')) { on = n.querySelector('a.nav-space')?.textContent.trim() === sp; continue; }
-      if (on && n.matches('a.nav-db')) out.push(n.textContent.trim());
-    }
-    return out;
+    const g = [...document.querySelectorAll('#nav .nav-group')].find((n) => n.querySelector('a.nav-space')?.textContent.trim() === sp);
+    return g ? [...g.querySelectorAll('a.nav-db')].map((a) => a.textContent.trim()) : [];
   }, space);
   const navSpaces = (page) => page.$$eval('#nav .nav-space-row a.nav-space', (as) => as.map((a) => a.textContent.trim()));
   const hashIs = (page, want) => page.waitForFunction((w) => location.hash === w, want, { timeout: 5000 });

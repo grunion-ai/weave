@@ -128,6 +128,8 @@ const INTERNAL = {
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
   removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
   hasKey: 'keystore predicate', resolveKey: 'returns a secret — never leaves the process',
+  integrationFetch: 'uses a secret on the wire: only engine code such as the http-request action calls it, so the key never reaches an agent (Feature #339)',
+  setIntegrationCredential: 'takes a secret: an agent never holds an integration key, so a person pastes it through PUT /api/integrations/:id/credential (Feature #339)',
   storageStats: 'read helper — /api/health already ships it for the nav stats strip',
   relationTargetDbIds: 'read helper — the tables a relation may point at; describeSchema already ships them',
   previewFields: 'read helper — the chip preview; /api/markdown ships it inside resolved mentions',
@@ -153,6 +155,7 @@ const INTERNAL = {
   readFileStorage: 'browser bridge (Issue #1176): the app reads an HTML file\'s page storage over GET /api/files/:id/storage and seeds it into the ?view page; an agent reads the file itself with weave_files',
   writeFileStorage: 'browser bridge (Issue #1176): the app saves what a sandboxed HTML page wrote to localStorage over PUT /api/files/:id/storage; no agent writes a page\'s storage',
   spaceHome: 'browser read (Feature #344): the space home page and phone launcher draw GET /api/spaces/:id/home; an agent reads the same tables with weave_schema and the same runs from a row\'s activity',
+  workspaceHome: 'browser read (Feature #355): the phone workspace launcher draws GET /api/workspace/home; an agent reads the same spaces and tables with weave_schema and the same runs from a row\'s activity',
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
 };
 
@@ -360,7 +363,7 @@ test('every door emits the one permalink a row has, and no door builds its own (
       'scoped search': w.universalSearch('', { tables: ['Task'] })[0].url,
       'GET /api/entities/:id': (await http('GET', `/w/uno/api/entities/${row.id}`)).url,
       'GET /api/search': (await http('GET', '/w/uno/api/search?q=zebrafinch')).find((h) => h.kind === 'entity').url,
-      'GET /api/search?all': (await http('GET', '/api/search?all=1&q=zebrafinch')).find((h) => h.kind === 'entity').url,
+      'GET /api/search?all (the parameter is ignored, Issue #1308)': (await http('GET', '/w/uno/api/search?all=1&q=zebrafinch')).find((h) => h.kind === 'entity').url,
       'MCP weave_get_entity': rpc('weave_get_entity', { entity: row.id }).url,
       'MCP weave_update_entity': rpc('weave_update_entity', { entity: row.id, values: { Name: 'ship the zebrafinch' }, verbose: true }).url,
       'MCP weave_search': rpc('weave_search', { query: 'zebrafinch' }).find((h) => h.kind === 'entity').url,

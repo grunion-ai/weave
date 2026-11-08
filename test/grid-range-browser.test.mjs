@@ -318,7 +318,7 @@ if (s) {
     reset();
     const { ctx, page } = await grid();
     try {
-      await page.locator(`${sel(1, 'Note')} input`).click();
+      await page.locator(`${sel(1, 'Note')} .text-dressed`).click();
       assert.deepEqual(await selection(page), { tag: 'INPUT', start: 0, end: 2 }, 'n1, selected end to end');
       await page.locator(`${sel(1, 'Note')} input`).click();
       const again = await selection(page);
@@ -332,13 +332,13 @@ if (s) {
     reset();
     const { ctx, page } = await grid();
     try {
-      await page.locator(`${sel(1, 'Note')} input`).click();
+      await page.locator(`${sel(1, 'Note')} .text-dressed`).click();
       await page.keyboard.press('ArrowRight');
       assert.equal((await selection(page)).start, 2);
       await page.keyboard.press('ControlOrMeta+c');
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'n1', 'the cell, not the (empty) caret selection');
 
-      await page.locator(`${sel(2, 'Note')} input`).click();
+      await page.locator(`${sel(2, 'Note')} .text-dressed`).click();
       await page.keyboard.press('ArrowRight');
       await page.keyboard.press('ControlOrMeta+v');
       await page.waitForSelector('#wv-toasts .wv-toast');
@@ -355,12 +355,12 @@ if (s) {
     const { ctx, page } = await grid();
     try {
       await page.evaluate(() => navigator.clipboard.writeText('typed'));
-      await page.locator(`${sel(3, 'Note')} input`).click();
+      await page.locator(`${sel(3, 'Note')} .text-dressed`).click();
       await page.keyboard.press('ControlOrMeta+v');
       assert.equal(await page.inputValue(`${sel(3, 'Note')} input`), 'typed', 'the selection was replaced in place');
       assert.equal(value(3, 'Note'), 'n3', 'and nothing was written until the cell commits');
       await page.keyboard.press('Enter');
-      await page.waitForFunction(([id]) => !document.querySelector('#main tbody[data-mark]') && document.querySelector(`tr[data-eid="${id}"] td[data-field="Note"] input`)?.value === 'typed', [s.ids[3]]);
+      await page.waitForFunction(([id]) => !document.querySelector('#main tbody[data-mark]') && document.querySelector(`tr[data-eid="${id}"] td[data-field="Note"] .text-dressed`)?.textContent === 'typed', [s.ids[3]]);
       assert.equal(value(3, 'Note'), 'typed');
     } finally { await ctx.close(); reset(); }
   });

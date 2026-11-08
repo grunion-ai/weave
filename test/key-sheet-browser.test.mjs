@@ -63,7 +63,7 @@ if (s) {
         }
         for (const k of ['⌘K', '⌘Return', '/', '?', '⌘Z']) assert.ok(sheet.keys.includes(k), `the sheet prints ${k}`);
         assert.ok(sheet.contrast >= 4.5, `the sheet's text is legible in ${theme}, contrast ${sheet.contrast.toFixed(2)}`);
-        assert.equal((await page.$eval(cell, (td) => td.querySelector('input')?.value)), 'a', 'the ? opened no edit and typed nothing');
+        assert.equal((await page.$eval(cell, (td) => td.querySelector('input')?.value ?? td.querySelector('.text-dressed')?.textContent)), 'a', 'the ? opened no edit and typed nothing');
 
         await page.keyboard.press('Escape');
         await page.waitForSelector('#modal-back', { state: 'detached' });

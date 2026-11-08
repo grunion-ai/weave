@@ -235,4 +235,41 @@ test('every WeaveError code the engine throws has its own HTTP status', () => {
     assert.equal(statusFor(new WeaveError('x', code)), status, `${code} → ${status}`);
   }
   assert.equal(statusFor(new Error('boom')), 500, 'anything that is not a WeaveError is a 500');
+  assert.equal(statusFor(Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })), 507, 'a full disk is a 507');
+  assert.equal(statusFor(Object.assign(new Error('database or disk is full'), { code: 'ERR_SQLITE_ERROR', errcode: 13 })), 507, 'a full SQLite file is a 507');
+});
+
+test('a full disk answers 507 storage-full on attach and on a record write, a bug keeps its request id (Issue #1413)', async () => {
+  const weave = new Weave();
+  weave.createSpace({ name: 'Product' });
+  const deck = weave.createTable({ space: 'Product', name: 'Deck' });
+  const row = weave.createEntity(deck, { name: 'Board pack' });
+  const { server: full, port } = await startServer(weave, { port: 0 });
+  const call = async (method, path, body) => {
+    const res = await fetch(`http://127.0.0.1:${port}/api${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    weave.attachFile = () => { throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC', errno: -28, syscall: 'write' }); };
+    const attach = await call('POST', `/entities/${row.id}/files`, { name: 'deck.pdf', mime: 'application/pdf', contentBase64: Buffer.from('pdf').toString('base64') });
+    assert.equal(attach.status, 507);
+    assert.equal(attach.data.code, 'storage-full');
+
+    weave.updateEntity = () => { throw Object.assign(new Error('database or disk is full'), { code: 'ERR_SQLITE_ERROR', errcode: 13, errstr: 'database or disk is full' }); };
+    const save = await call('PATCH', `/entities/${row.id}`, { Name: 'Board pack v2' });
+    assert.equal(save.status, 507);
+    assert.equal(save.data.code, 'storage-full');
+
+    weave.updateEntity = () => { throw new TypeError('boom'); };
+    const bug = await call('PATCH', `/entities/${row.id}`, { Name: 'Board pack v3' });
+    assert.equal(bug.status, 500);
+    assert.equal(bug.data.code, 'internal');
+    assert.match(bug.data.id ?? '', /^[0-9a-f]{8}$/, 'the 500 carries the request id the log names');
+    assert.ok(bug.data.error.includes(bug.data.id));
+  } finally {
+    console.error = quiet;
+    full.close();
+  }
 });

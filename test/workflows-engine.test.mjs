@@ -361,3 +361,17 @@ test('a webhook that never answers times out and marks its row Failed (Issue #68
     assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: timed out after 0.15 s`);
   } finally { server.closeAllConnections(); server.close(); }
 });
+
+test('a webhook action keeps the credential it signs with through the Script round trip (Issue #951)', () => {
+  const { w, t } = demo();
+  const signed = { type: 'webhook', url: 'https://hooks.example.com/weave', signWith: 'hooks-example' };
+  const auto = w.createAutomation(t.id, { name: 'Signed notify', trigger: closeOut.trigger, actions: [signed] });
+  assert.equal(auto.actions[0].signWith, 'hooks-example', 'the compiled action carries the credential name');
+  assert.deepEqual(JSON.parse(read(w, auto.id).docs.Script).actions, [signed], 'and the Script reads it back');
+  const bare = w.createAutomation(t.id, { name: 'Bare notify', trigger: closeOut.trigger, actions: [{ type: 'webhook', url: 'https://hooks.example.com/weave' }] });
+  assert.deepEqual(JSON.parse(read(w, bare.id).docs.Script).actions, [{ type: 'webhook', url: 'https://hooks.example.com/weave' }], 'an unsigned webhook keeps the shape it had');
+  assert.throws(
+    () => w.createAutomation(t.id, { name: 'Nonsense', trigger: closeOut.trigger, actions: [{ type: 'webhook', url: 'https://hooks.example.com/weave', signWith: 42 }] }),
+    /signWith names a credential/,
+  );
+});

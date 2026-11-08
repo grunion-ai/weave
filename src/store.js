@@ -1,5 +1,6 @@
-import { readFileSync, existsSync, statSync, accessSync, constants } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants, writeFileSync, renameSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { uuid } from './ids.js';
 
 let DatabaseSync = null;
 try {
@@ -10,6 +11,17 @@ export class WeaveError extends Error {
   constructor(message, code = 'weave-error') {
     super(message);
     this.code = code;
+  }
+}
+
+export function writeFileDurable(path, bytes, options = {}) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${uuid()}.tmp`;
+  try {
+    writeFileSync(temporary, bytes, { ...options, flush: true });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
   }
 }
 
@@ -270,6 +282,31 @@ export class Store {
     this.#db.prepare('DELETE FROM file_storage WHERE file_id = ?').run(fileId);
   }
 
+  siblingNames(blobId) {
+    if (!this.path || !DatabaseSync) return false;
+    const own = resolve(this.path);
+    const dir = dirname(own);
+    let names;
+    try { names = readdirSync(dir); } catch { return true; }
+    for (const n of names) {
+      const p = join(dir, n);
+      if (!n.endsWith('.db') || p === own) continue;
+      let db;
+      try {
+        db = new DatabaseSync(p, { readOnly: true });
+        db.exec('PRAGMA busy_timeout = 5000');
+        const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        if (tables.has('entities') && db.prepare('SELECT 1 FROM entities WHERE instr(json, ?) > 0 LIMIT 1').get(blobId)) return true;
+        if (tables.has('weave_meta') && db.prepare('SELECT 1 FROM weave_meta WHERE instr(json, ?) > 0 LIMIT 1').get(blobId)) return true;
+      } catch {
+        return true;
+      } finally {
+        db?.close();
+      }
+    }
+    return false;
+  }
+
   setAuditDetail(seq, detail) {
     if (!this.#db) {
       const row = this.#memAudit.find((r) => r.seq === seq);
@@ -337,19 +374,23 @@ export class Store {
       const ids = all
         ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
         : (dirty ?? new Set());
+      if (all) db.exec('DELETE FROM entities_fts');
+      const dropEntity = db.prepare('DELETE FROM entities WHERE id = ?');
+      const putEntity = db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
+        updated_at = excluded.updated_at, json = excluded.json`);
+      const dropIndexed = db.prepare('DELETE FROM entities_fts WHERE id = ?');
+      const putIndexed = db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)');
       for (const id of ids) {
         const e = entities[id];
         if (e === undefined) {
-          db.prepare('DELETE FROM entities WHERE id = ?').run(id);
-          db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
+          dropEntity.run(id);
+          if (!all) dropIndexed.run(id);
         } else {
-          db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
-            updated_at = excluded.updated_at, json = excluded.json`)
-            .run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
-          db.prepare('DELETE FROM entities_fts WHERE id = ?').run(id);
+          putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
+          if (!all) dropIndexed.run(id);
           if (!e.deletedAt) {
-            db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)').run(id, this.#ftsText(state, e));
+            putIndexed.run(id, this.#ftsText(state, e));
           }
         }
       }

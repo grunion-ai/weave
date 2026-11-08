@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phonePage, phoneBrowser, eventually } from './lib/browser.mjs';
-import { seedIssues, combinations, STANDARD_FIELDS, LIVE, LAYOUTS, ROLLUP_MODES, GROUPS, FILTERS, SORTS, HIDDEN } from './lib/view-pane-fixture.mjs';
+import { seedIssues, combinations, STANDARD_FIELDS, LIVE, SEVERITY, LAYOUTS, ROLLUP_MODES, GROUPS, FILTERS, SORTS, HIDDEN } from './lib/view-pane-fixture.mjs';
 
 let issue;
 const s = await launch('the View pane over Issue', (weave) => { ({ issue } = seedIssues(weave)); });
@@ -146,6 +146,38 @@ if (s) {
       weave.tableView(`${issue.id}/Standard`, { group: ['Status'] });
       assert.equal(weave.tableView(`${issue.id}/Standard`).collapsed, undefined, 'new group fields expand every group');
     } finally { await page.close(); }
+  });
+
+  test('Collapse all folds every group a grouped list draws, the empty option groups with it', async () => {
+    weave.updateField(issue.id, 'Severity', { config: { options: [...SEVERITY, 'Critical'] } });
+    try {
+      write({ filters: {}, deleted: false, layout: 'list', rollups: false, subtotals: 'all', hidden: [], sort: [], group: [{ field: 'Severity' }] });
+      const page = await open('light');
+      try {
+        const drawn = () => page.$$eval('#main .list-group:not(.list-completed)', (ns) => ns.map((n) => `${n.dataset.key}:${n.classList.contains('shut') ? 'shut' : 'open'}`));
+        const open0 = await drawn();
+        assert.ok(open0.includes('Critical:open'), `the list draws the option with no rows: ${open0}`);
+        await page.click('#main .table-view-btn');
+        await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
+        if (!await page.locator('#view-pane .vp-collapse-all').count()) {
+          await page.locator('#view-pane .vp-acc', { hasText: 'Group' }).first().click();
+        }
+        await page.waitForSelector('#view-pane .vp-collapse-all');
+        await page.click('#view-pane .vp-collapse-all');
+        const shut = await eventually(
+          async () => (await drawn()).every((d) => d.endsWith(':shut')),
+          true,
+        );
+        assert.equal(shut, true, `every drawn group folds: ${await drawn()}`);
+        assert.deepEqual(
+          weave.tableView(`${issue.id}/Standard`).collapsed,
+          [...SEVERITY, 'Critical'],
+          'the view keeps a key for every group the list drew',
+        );
+      } finally { await page.close(); }
+    } finally {
+      weave.updateField(issue.id, 'Severity', { config: { options: SEVERITY } });
+    }
   });
 
   test(`the combination sample in both layouts draws what the API returns (${SAMPLE.length} setups)`, async () => {

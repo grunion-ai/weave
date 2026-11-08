@@ -5,6 +5,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { seedWeaver, syncDevelopment } from '../src/weaver-seed.js';
+import { buildManifest } from '../scripts/export-development.mjs';
+import { writeReleaseCommit } from '../scripts/release-commit.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -128,10 +130,9 @@ test('the shipped manifest carries release notes for the package version', () =>
   const current = m.releases.find((r) => r.name === `v${pkg.version}`);
   assert.ok(current, `a Development/Release row named v${pkg.version} — write the notes, then re-run export-development.mjs`);
   assert.ok((current.description ?? '').trim().length >= 40, `v${pkg.version} release notes are written`);
-  for (const r of m.releases) {
-    assert.ok(r.date, `${r.name} is dated`);
-    assert.ok((r.description ?? '').trim(), `${r.name} has notes`);
-  }
+  for (const r of m.releases) assert.ok(r.date, `${r.name} is dated`);
+  const lost = m.releases.filter((r) => !(r.description ?? '').trim()).map((r) => r.name);
+  assert.deepEqual(lost, [], `release notes lost on ${lost.join(', ')} — restore them on the tracker, where the export reads them`);
 });
 
 test('the written release order ends with the tag and the GitHub Release', () => {
@@ -263,4 +264,86 @@ test('widening a select keeps the options already there, colours and all', () =>
   const after = milestone().config.options;
   assert.deepEqual(after.slice(0, painted.length), painted, 'the existing options are untouched');
   assert.equal(after.at(-1).name, 'v9.9');
+});
+
+const AT = '2026-11-05T00:00:00.000Z';
+const relRow = (name, description) => ({
+  name,
+  fields: { Date: '2026-09-05', Commit: 'abc1234' },
+  docs: description ? { Description: description } : {},
+});
+const trackerOf = (...releases) => ({ issues: [], features: [], releases });
+
+test('the export refuses when the row being released has lost its notes', () => {
+  assert.throws(
+    () => buildManifest(trackerOf(relRow('v9.9.9', '')), { version: '9.9.9', generatedAt: AT }),
+    /Release v9\.9\.9 has no notes/,
+  );
+});
+
+test('an older release row with no notes is reported and does not stop the export', () => {
+  const reported = [];
+  const m = buildManifest(trackerOf(relRow('v9.9.8', ''), relRow('v9.9.9', '## v9.9.9\n\n- the notes')), {
+    version: '9.9.9',
+    generatedAt: AT,
+    warn: (line) => reported.push(line),
+  });
+  assert.equal(m.releases.length, 2, 'the export carried on');
+  const said = reported.join('\n');
+  assert.match(said, /v9\.9\.8/, 'it names the row at fault');
+  assert.match(said, /historical/, 'and says the row is historical');
+  assert.match(said, /docs\/development\.json/, 'and where its notes are held');
+});
+
+test('the export keeps the notes the committed manifest already carries for an emptied historical row', () => {
+  const previous = { releases: [{ name: 'v9.9.8', description: '## v9.9.8\n\n- what it shipped' }] };
+  const m = buildManifest(trackerOf(relRow('v9.9.8', ''), relRow('v9.9.9', '## v9.9.9\n\n- the notes')), {
+    version: '9.9.9',
+    generatedAt: AT,
+    previous,
+  });
+  assert.match(m.releases.find((r) => r.name === 'v9.9.8').description, /what it shipped/);
+});
+
+test('a boot sync refuses only the release row the manifest is for', () => {
+  const w = seedWeaver(new Weave());
+  const notes = '## v9.9.9\n\n- the notes';
+  const r = syncDevelopment(w, manifest({
+    releases: [
+      { name: 'v9.9.8', date: '2026-09-04', commit: 'dead123' },
+      { name: 'v9.9.9', date: '2026-09-05', commit: 'abc1234', description: notes },
+    ],
+  }));
+  assert.equal(r.applied, true, 'an older row with no notes does not refuse the manifest');
+  assert.ok(findRelease(w, 'v9.9.8'), 'the historical row still lands');
+  assert.match(findRelease(w, 'v9.9.9').docs.Description, /the notes/);
+});
+
+test('DEVELOPMENT.md names the post-merge commit write as a release step', () => {
+  const dev = readFileSync(join(ROOT, 'DEVELOPMENT.md'), 'utf8');
+  const releasing = dev.slice(dev.indexOf('## Releasing'), dev.indexOf('\n## ', dev.indexOf('## Releasing') + 1));
+  assert.match(releasing, /scripts\/release-commit\.mjs/, 'the script that writes the merged commit');
+  assert.match(releasing, /reads the row back/, 'and what it guards');
+});
+
+test('the post-merge commit write appends and never replaces the notes', async () => {
+  const calls = [];
+  const call = async (path, init = {}) => {
+    calls.push({ path, method: init.method ?? 'GET' });
+    if (init.method) return {};
+    return { docs: { Description: '## v9.9.9\n\n- the notes\n\nLanded on main as abc1234def.' } };
+  };
+  const r = await writeReleaseCommit(call, { id: 'rel-1', name: 'v9.9.9', sha: 'abc1234def' });
+  assert.equal(r.sha, 'abc1234def');
+  assert.deepEqual(calls.map((c) => c.method), ['PATCH', 'POST', 'GET'], 'patch the field, append the line, read it back');
+  assert.ok(!calls.some((c) => c.method === 'PUT'), 'no whole-document replace');
+  assert.ok(calls.some((c) => c.method === 'POST' && c.path.endsWith('/doc')));
+});
+
+test('the post-merge read-back refuses a release row that came back empty', async () => {
+  const call = async (path, init = {}) => (init.method ? {} : { docs: { Description: '' } });
+  await assert.rejects(
+    () => writeReleaseCommit(call, { id: 'rel-1', name: 'v9.9.9', sha: 'abc1234def' }),
+    /v9\.9\.9 came back with no notes/,
+  );
 });

@@ -44,7 +44,7 @@ if (s) {
     };
     for (const v of weave.tableView(list).views) if (v.name !== 'Standard') weave.tableView(`${list.id}/${v.id}`, { delete: true });
     weave.tableView(`${list.id}/Standard`, {
-      layout: 'board', groups: null, picture: null, fit: null, frame: null, flow: null, group: ['State'], completedBy: null,
+      layout: 'board', groups: null, picture: null, fit: null, frame: null, flow: null, group: ['State'], completedBy: null, density: 'comfortable',
       fields: ['Name', 'State', 'Best Price', 'Photo'], collapsed: null, order: null, filters: {}, sort: [], ...view,
     });
   };

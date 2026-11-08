@@ -60,7 +60,7 @@ if (s) {
   test('Shift+Enter from a Spaces row takes the same door', async () => {
     const page = await open(spacesT);
     const known = ids(spacesT);
-    await page.click(`tr[data-eid="${known[0]}"] td[data-field="Name"] input`);
+    await page.click(`tr[data-eid="${known[0]}"] td[data-field="Name"] .text-dressed`);
     await page.keyboard.press('Shift+Enter');
     await waitForNewRow(page, known);
     const at = await focused(page);
@@ -149,7 +149,7 @@ if (s) {
     assert.equal(await page.locator('#modal-back').count(), 0, 'switching tables stays in the tray');
     await page.fill('#tray-back input[name="name"][placeholder="Field name"]', 'Owner');
     await page.click('#tray-back button[type="submit"]');
-    await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid tr[data-eid] td[data-field="Name"] input')].some((i) => i.value === 'Owner'), null, { timeout: 5000 });
+    await page.waitForFunction(() => [...document.querySelectorAll('.wv-grid tr[data-eid] td[data-field="Name"] .text-dressed')].some((n) => n.textContent === 'Owner'), null, { timeout: 5000 });
     assert.ok(Object.values(weave.getTable(notes.id).fields).some((f) => f.name === 'Owner'), 'the field landed on the table chosen in the tray');
     assert.ok(!Object.values(weave.getTable(tasks.id).fields).some((f) => f.name === 'Owner'), 'and not on the one it opened with');
     await page.close();

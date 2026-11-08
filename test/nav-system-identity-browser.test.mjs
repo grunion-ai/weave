@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch, styleOf } from './lib/browser.mjs';
 
-let uno, ada, unoAda, wfId, usersId;
+let uno, ada, unoAda, wfId, usersId, linksId;
 const s = await launch('nav system space and identity panel', (root) => {
   root.updateWorkspace({ name: 'root' });
   root.createSpace({ name: 'Work' });
@@ -12,6 +12,7 @@ const s = await launch('nav system space and identity panel', (root) => {
   ada = root.createAccount({ name: 'Ada Lovelace', role: 'editor' }).account;
   wfId = root.getTable('System/Workflows').id;
   usersId = root.getTable('System/Users').id;
+  linksId = root.getTable('System/Integrations').id;
   uno = new Weave();
   uno.updateWorkspace({ name: 'uno' });
   uno.createSpace({ name: 'Agent' });
@@ -39,13 +40,13 @@ if (s) {
   };
   const systemRows = (page) => page.$$eval('#sidebar .nav-system a.nav-db', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
 
-  test('the nav shows a System space with the gear and Workflows, Users, Activity, Trash in order, with no counts', async () => {
+  test('the nav shows a System space with the gear and Workflows, Users, Integrations, Activity, Trash in order, with no counts', async () => {
     const { ctx, page } = await open();
     const head = page.locator('#sidebar .nav-system .nav-system-head .nav-space');
     assert.equal((await head.innerText()).trim().toLowerCase(), 'system');
     assert.equal(await head.locator('.mi-settings').count(), 1, 'the gear icon');
     assert.deepEqual(await systemRows(page), [
-      ['Workflows', `#/table/${wfId}`], ['Users', `#/table/${usersId}`], ['Activity', '#/activity'], ['Trash', '#/trash'],
+      ['Workflows', `#/table/${wfId}`], ['Users', `#/table/${usersId}`], ['Integrations', `#/table/${linksId}`], ['Activity', '#/activity'], ['Trash', '#/trash'],
     ]);
     const below = await page.evaluate(() => {
       const spaces = [...document.querySelectorAll('#nav .nav-space-row')];
@@ -75,7 +76,7 @@ if (s) {
     await page.waitForSelector('#sidebar .nav-system a.nav-db');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('#sidebar .nav-system a.nav-db');
-    assert.equal((await systemRows(page)).length, 4, 'unfolded after the next reload');
+    assert.equal((await systemRows(page)).length, 5, 'unfolded after the next reload');
     await ctx.close();
   });
 

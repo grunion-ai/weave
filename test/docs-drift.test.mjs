@@ -135,3 +135,29 @@ test('a saved view refuses a view kind the UI does not draw', () => {
   assert.throws(() => w.createView({ name: 'Monday', blocks: [{ table: 'Task', view: 'board' }] }), /board.*table/);
   assert.equal(w.createView({ name: 'Monday', blocks: [{ table: 'Task' }] }).blocks[0].view, 'table');
 });
+
+test('every refusal SOUL.md quotes from the README is still a line the README carries (Issue #1145)', () => {
+  const soul = read('SOUL.md');
+  const refusals = soul.split('## Refusals')[1];
+  assert.ok(refusals, 'SOUL.md has no Refusals section');
+  const product = refusals.split('Refused in copy:')[0];
+  assert.match(product, /from `README\.md` "What weave is not"/, 'the block still says where its quotes come from');
+  const readme = read('README.md').replace(/\s+/g, ' ');
+  let checked = 0;
+  for (const line of product.split('\n').filter((l) => l.startsWith('- '))) {
+    const elsewhere = [...line.matchAll(/`([A-Za-z0-9_/.-]+\.md)`/g)].map((m) => m[1]).filter((f) => f !== 'README.md');
+    if (elsewhere.length) continue;
+    for (const [, quote] of line.matchAll(/"([^"]{10,})"/g)) {
+      checked++;
+      assert.ok(readme.includes(quote.replace(/\s+/g, ' ')),
+        `SOUL.md quotes "${quote}" as a product refusal, and README.md no longer says it`);
+    }
+  }
+  assert.ok(checked >= 4, `only ${checked} refusal quotes found: the Refusals block no longer parses`);
+});
+
+test('SOUL.md does not refuse the marketplace weave ships through (Issue #1145)', () => {
+  const soul = read('SOUL.md');
+  assert.doesNotMatch(soul, /No marketplace\b/, 'SOUL.md still states a blanket no-marketplace refusal');
+  assert.match(read('README.md'), /Claude Code plugin marketplace/, 'the README does distribute through one');
+});

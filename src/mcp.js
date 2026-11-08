@@ -90,6 +90,7 @@ export const TOOLS = [
         search: { type: 'string', description: 'Only the records weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
         view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
         groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
+        shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value.' },
       },
       required: ['db'],
     },
@@ -250,7 +251,7 @@ export const TOOLS = [
   },
   {
     name: 'weave_create_automation',
-    description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
+    description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url, signWith?: the name of a keystore credential, never its value; weave then signs the delivery with an X-Weave-Signature header holding the HMAC-SHA256 of <X-Weave-Timestamp>.<body>, beside an X-Weave-Delivery uuid} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
     inputSchema: {
       type: 'object',
       properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
@@ -680,8 +681,16 @@ const DESTRUCTIVE = new Set([
   'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
 ]);
 const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+const IDEMPOTENT = new Set([
+  ...READ_ONLY,
+  'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity', 'weave_set_state', 'weave_link', 'weave_unlink',
+  'weave_doc_restore', 'weave_delete_comment', 'weave_update_space', 'weave_delete_space', 'weave_restore_space',
+  'weave_update_table', 'weave_table_view', 'weave_move_table', 'weave_delete_table', 'weave_restore_table',
+  'weave_update_field', 'weave_rollback_field', 'weave_delete_field', 'weave_restore_field', 'weave_apply_schema',
+  'weave_automations', 'weave_workspace', 'weave_keys', 'weave_files', 'weave_registry', 'weave_import_json',
+]);
 for (const t of TOOLS) {
-  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
+  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), idempotentHint: IDEMPOTENT.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
 }
 
 export function toolTable() {
@@ -769,7 +778,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'chip',
         includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
-        groupBy: args.groupBy ?? null,
+        groupBy: args.groupBy ?? null, shape: args.shape ?? 'full',
       });
     case 'weave_get_entity':
       return weave.readEntity(args.entity);

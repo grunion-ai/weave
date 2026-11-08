@@ -54,7 +54,7 @@ if (s) {
     const tablesT = uno.getTable('System/Tables');
     const page = await open(`${unoBase()}/#/table/${tablesT.id}`);
     await page.waitForSelector('tbody tr');
-    const row = page.locator('tbody tr', { hasText: 'Sessions' }).first();
+    const row = page.locator('tbody tr').filter({ has: page.locator('td[data-field="Name"] .text-dressed', { hasText: /^Sessions$/ }) }).first();
     assert.equal(await row.locator('a.open-link').getAttribute('href'), `#/table/${sessions.id}`);
     assert.doesNotMatch(await page.locator('#main').innerText(), /Guide/);
     await page.close();
@@ -70,10 +70,10 @@ if (s) {
       const users = uno.getTable('System/Users');
       await page.click(`#sidebar .nav-system a[href="#/table/${users.id}"]`);
       const member = uno.findEntity(users.id, 'member-person');
-      const name = page.locator(`#main .wv-grid tr[data-eid="${member.id}"] td[data-field="Name"] input`);
+      const name = page.locator(`#main .wv-grid tr[data-eid="${member.id}"] td[data-field="Name"] .text-dressed`);
       await name.waitFor();
-      assert.equal(await name.inputValue(), 'member-person');
-      const names = await page.locator('#main .wv-grid tbody td[data-field="Name"] input').evaluateAll(inputs => inputs.map(input => input.value));
+      assert.equal(await name.textContent(), 'member-person');
+      const names = await page.locator('#main .wv-grid tbody td[data-field="Name"] .text-dressed').evaluateAll(faces => faces.map(face => face.textContent));
       assert.deepEqual(names, ['member-person']);
       assert.equal(new URL(page.url()).pathname, `/w/${uno.state.meta.id}/`);
       await page.close();

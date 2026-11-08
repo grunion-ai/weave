@@ -334,7 +334,7 @@ if (s) {
       await selectStart(page, 6);
       await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });
       await page.setInputFiles('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', [png]);
-      await page.waitForFunction(() => document.querySelector('.vditor-tip')?.textContent?.includes('Upload failed'), null, { timeout: 20000 });
+      await page.locator('.doc-uploads .attach-item.is-failed', { hasText: 'Error HTTP 500' }).waitFor({ timeout: 20000 });
       const after = await value(page);
       assert.equal(after, before, 'the document is byte for byte what it was');
       assert.equal(after.includes('!['), false, 'no embed was inserted');

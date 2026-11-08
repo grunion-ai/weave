@@ -397,3 +397,70 @@ test('chipCss keeps a rule inside @media under its condition, never at the top l
   assert.doesNotMatch(css, /^\.k \{ color: blue; \}$/m, 'the phone rule never applies at every width');
   assert.doesNotMatch(css, /\.other|from \{/, 'non-chip rules and keyframe steps stay out');
 });
+
+import { read } from './lib/source.mjs';
+import { TOOLS } from '../src/mcp.js';
+
+const AUTOMATIONS = GUIDES.find((g) => g.name === 'Automations');
+const ENGINE = read('src/engine.js');
+const TRIGGER_TYPES = JSON.parse(
+  ENGINE.match(/(\['entity-created'[^\]]*\])\.includes\(trigger\.type\)/)[1].replace(/'/g, '"'),
+);
+const ACTION_TYPES = [...ENGINE.matchAll(/a\?\.type === '([a-z-]+)'/g)].map((m) => m[1]);
+
+test('the handbook gives automations a guide of their own, placed with the workspace guides (Issue #1247)', () => {
+  assert.ok(AUTOMATIONS, 'a Handbook/Guide named "Automations"');
+  assert.equal(AUTOMATIONS.audience, 'Both');
+  assert.ok(AUTOMATIONS.doc.startsWith('# Automations\n'), 'the guide opens with its own name');
+  const customization = GUIDES.find((g) => g.name === 'Making a workspace your own');
+  assert.ok(AUTOMATIONS.order > customization.order, 'it follows the guide whose automations section it replaces');
+  assert.ok(AUTOMATIONS.order < ANATOMY.order, 'the anatomy guide stays last');
+});
+
+test('the automations guide names every trigger and action the engine compiles (Issue #1247)', () => {
+  assert.ok(TRIGGER_TYPES.length >= 4 && ACTION_TYPES.length >= 5, 'the engine source still yields its trigger and action sets');
+  for (const type of TRIGGER_TYPES) {
+    assert.ok(AUTOMATIONS.doc.includes(`\`${type}\``), `the guide never names the ${type} trigger`);
+  }
+  for (const type of ACTION_TYPES) {
+    assert.ok(AUTOMATIONS.doc.includes(`\`${type}\``), `the guide never names the ${type} action`);
+  }
+});
+
+test('the automations guide documents the schedule trigger that shipped (Feature #312, Issue #1247)', () => {
+  for (const term of ['`cron`', '`zone`', '`where`', '0 9 * * 1-5', 'catch-up', 'every minute']) {
+    assert.ok(AUTOMATIONS.doc.includes(term), `the schedule section never says ${term}`);
+  }
+});
+
+test('the automations guide documents step outputs and their shapes (Feature #313, Issue #1247)', () => {
+  for (const term of ['{{steps.1.publicId}}', '`{field, value}`', '`{field, text}`', '`{id, text}`',
+    '`{id, publicId, name, created}`', '`{url, sent}`', 'automation-ran']) {
+    assert.ok(AUTOMATIONS.doc.includes(term), `the step-output section never says ${term}`);
+  }
+});
+
+test('the automations guide explains the Workflows row as the control panel (Issue #1247)', () => {
+  for (const term of ['System/Workflows', '`On`', '`Script`', '`State`', '`Health`', '`Health Reason`',
+    '`Last Run`', 'Setup incomplete', 'Ready', 'Failed']) {
+    assert.ok(AUTOMATIONS.doc.includes(term), `the control-panel section never names ${term}`);
+  }
+});
+
+test('the automations guide states what a webhook may reach and what marks a rule Failed (Issue #1247)', () => {
+  for (const term of ['http(s)', '5 seconds', 'WEAVE_WEBHOOK_ALLOW_PRIVATE', 'redirect']) {
+    assert.ok(AUTOMATIONS.doc.includes(term), `the webhook section never says ${term}`);
+  }
+});
+
+test('the automations guide carries a worked example and reaches every door (Issue #1247)', () => {
+  assert.ok(AUTOMATIONS.doc.includes('```bash'), 'the guide shows the CLI');
+  assert.ok(AUTOMATIONS.doc.includes('```json'), 'the guide shows a rule as JSON');
+  for (const door of ['weave automation create', 'POST /api/automations', '`weave_create_automation`', '`weave_automations`']) {
+    assert.ok(AUTOMATIONS.doc.includes(door), `the guide never names ${door}`);
+  }
+  const tools = new Set(TOOLS.map((t) => t.name));
+  for (const [name] of AUTOMATIONS.doc.matchAll(/\bweave_[a-z_]+/g)) {
+    assert.ok(tools.has(name), `the guide names ${name}, which src/mcp.js does not register`);
+  }
+});

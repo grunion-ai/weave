@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith } from '../scripts/ci-test.mjs';
+import { testFiles, lanes } from '../scripts/test.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/a.test.mjs', 'test/b.test.mjs', 'test/c-browser.test.mjs', 'test/d-browser.test.mjs'];
@@ -79,6 +82,134 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
   assert.match(workflow, /max-parallel: 6/);
   assert.match(workflow, /install --with-deps chromium webkit/);
+});
+
+const RESULT = (id, lane, durations) => ({
+  id, lane, attempt: 1, code: 0,
+  files: Object.keys(durations).sort(),
+  summaries: Object.entries(durations).map(([file, duration_ms]) => ({ file, duration_ms, success: true, counts: { tests: 1, failed: 0, cancelled: 0 } })),
+  skips: [],
+});
+
+test('a shard result yields the duration of every file it ran (Issue #966)', () => {
+  const durations = durationsFrom([
+    RESULT('browser-1', 'browser', { 'test/vitals-budget-browser.test.mjs': 85000, 'test/chip-browser.test.mjs': 4000 }),
+    RESULT('browser-2', 'browser', { 'test/render-budget-browser.test.mjs': 164000 }),
+  ]);
+  assert.equal(durations.get('test/vitals-budget-browser.test.mjs'), 85000);
+  assert.equal(durations.get('test/render-budget-browser.test.mjs'), 164000);
+  assert.equal(durations.size, 3);
+});
+
+test('two readings of one file give its median, and a broken result is ignored (Issue #966)', () => {
+  const durations = durationsFrom([
+    RESULT('browser-1', 'browser', { 'test/flicker-gate-browser.test.mjs': 60000 }),
+    RESULT('browser-1', 'browser', { 'test/flicker-gate-browser.test.mjs': 100000 }),
+    { id: 'browser-2', lane: 'browser' },
+    null,
+  ]);
+  assert.equal(durations.get('test/flicker-gate-browser.test.mjs'), 80000);
+  assert.equal(durations.size, 1);
+});
+
+test('a recorded duration outranks byte size, and a file with no history keeps its size (Issue #966)', () => {
+  const sizes = { 'test/vitals-budget-browser.test.mjs': 1903, 'test/grid-keymap-browser.test.mjs': 14731 };
+  const weight = weightWith(new Map([['test/vitals-budget-browser.test.mjs', 35097]]), (file) => sizes[file]);
+  assert.equal(weight('test/vitals-budget-browser.test.mjs'), 35097, 'the 1,903-byte file that loops its page loads weighs what it cost in run 41959983156');
+  assert.equal(weight('test/grid-keymap-browser.test.mjs'), 14731, 'a file the history does not name falls back to its byte size');
+});
+
+const REAL = {
+  'test/setup-flows-browser.test.mjs': { bytes: 52749, ms: 119137 },
+  'test/table-views-browser.test.mjs': { bytes: 23625, ms: 29604 },
+  'test/feedback-budget-browser.test.mjs': { bytes: 3131, ms: 321949 },
+  'test/render-budget-browser.test.mjs': { bytes: 1682, ms: 163971 },
+};
+
+test('measured durations split the two slowest browser files, which are also the two smallest (Issue #966)', () => {
+  const browser = Object.keys(REAL).sort();
+  const groups = { unit: [], browser };
+  const bytes = (file) => REAL[file].bytes;
+  const measured = new Map(Object.entries(REAL).map(([file, { ms }]) => [file, ms]));
+  const shardOf = (shards, file) => shards.find((shard) => shard.files.includes(file)).id;
+  const path = (shards) => Math.max(...shards.map((shard) => shard.files.reduce((n, f) => n + REAL[f].ms, 0)));
+
+  const byBytes = plan(browser, groups, bytes, 1, 2);
+  assert.equal(shardOf(byBytes, 'test/feedback-budget-browser.test.mjs'), shardOf(byBytes, 'test/render-budget-browser.test.mjs'),
+    'byte size lands the 322 s and the 164 s file in one shard, because at 3,131 and 1,682 bytes they are the two smallest');
+  assert.equal(path(byBytes), 515524);
+
+  const byDuration = plan(browser, groups, weightWith(measured, bytes), 1, 2);
+  assert.notEqual(shardOf(byDuration, 'test/feedback-budget-browser.test.mjs'), shardOf(byDuration, 'test/render-budget-browser.test.mjs'),
+    'the recorded durations put them in different shards');
+  assert.equal(path(byDuration), 321949, 'the critical path drops to the single slowest file');
+  assert.ok(path(byDuration) < path(byBytes));
+});
+
+test('the plan job reads the last green main run\'s durations and keeps them off CI\'s commits (Issue #966)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const job = workflow.slice(workflow.indexOf('  plan:'), workflow.indexOf('  test:'));
+  assert.match(job, /permissions:\n      contents: read\n      actions: read\n/, 'the plan job may read another run\'s artifacts');
+  assert.match(job, /gh run list [^\n]*--workflow tests --branch main --status success --limit 1/, 'the durations come from the newest green main run');
+  assert.match(job, /--json databaseId [^\n]*\|\| true\)\n/, 'a repository with no green main run still plans, by byte size');
+  assert.match(job, /\|\| echo "run \$run kept no readable shard results"\n/, 'expired or unreadable artifacts still plan, by byte size');
+  assert.doesNotMatch(job, /continue-on-error/, 'tolerance lives in the shell here too, since a killed step never reaches it');
+  assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, 'the planner is told where the downloaded durations are');
+  assert.doesNotMatch(workflow, /git (commit|push|add)/, 'no baseline is committed from CI; weave refuses pull requests opened by Actions');
+});
+
+test('every job that rebuilds the manifest reads the same durations (Issue #966)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  const jobs = {
+    plan: workflow.slice(workflow.indexOf('  plan:'), workflow.indexOf('  test:')),
+    test: workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:')),
+    gate: workflow.slice(workflow.indexOf('  gate:'), workflow.indexOf('  compatibility:')),
+  };
+  assert.match(jobs.plan, /name: plan-history\n          path: ci-history\/\n          if-no-files-found: ignore\n          overwrite: true\n/,
+    'the plan job publishes the durations it used, so the shards and the gate weigh what it weighed');
+  for (const [name, job] of Object.entries(jobs)) {
+    assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, `the ${name} job weighs by the run's own durations`);
+    assert.match(job, /node scripts\/ci-test\.mjs (plan|run|aggregate)/, `the ${name} job rebuilds the manifest`);
+    if (name !== 'plan') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, `the ${name} job takes the plan job's copy, and plans by byte size if it is not there`);
+  }
+  assert.doesNotMatch(jobs.gate, /pattern: plan-\*|pattern: '?\*/, 'the shard results and the durations land in separate directories');
+  assert.match(jobs.gate, /pattern: ci-\*\n          path: ci-results\n/,
+    'the durations artifact is named plan-history so the ci-* pattern never mixes a past run\'s shard results into this run\'s evidence');
+});
+
+test('only the browser lanes of the full suite download browser engines (Issue #967)', () => {
+  const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/,
+    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open');
+  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/ms-playwright\n/,
+    'the engine cache is restored for the lanes that use it');
+  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 2,
+    'the lane condition guards the cache and the install, and nothing else');
+});
+
+const STATIC_PLAYWRIGHT = /^\s*import\s(?:[^;]*?from\s*)?['"]playwright['"]/m;
+const SPECIFIER = /(?:^|[\s({,;=])from\s*['"](\.[^'"\n]+)['"]|(?:^|[\s({,;=])import\s*\(?\s*['"](\.[^'"\n]+)['"]/gm;
+
+function browsersReachedBy(file, seen = new Set()) {
+  const absolute = resolve(file);
+  if (seen.has(absolute)) return [];
+  seen.add(absolute);
+  let source;
+  try { source = readFileSync(absolute, 'utf8'); } catch { return []; }
+  const reached = STATIC_PLAYWRIGHT.test(source) ? [`${file} imports playwright at load`] : [];
+  for (const [, fromSpec, importSpec] of source.matchAll(SPECIFIER)) {
+    const next = relative('.', join(dirname(absolute), fromSpec ?? importSpec));
+    if (/(?:^|\/)lib\/browser\.mjs$/.test(next)) reached.push(`${file} reaches ${next}`);
+    else if (existsSync(next)) reached.push(...browsersReachedBy(next, seen));
+  }
+  return reached;
+}
+
+test('no unit-lane test opens a browser at load, so the unit shards need no engine (Issue #967)', () => {
+  const { unit } = lanes(testFiles(resolve('.')), resolve('.'));
+  assert.ok(unit.length > 100, 'the unit lane holds the bulk of the inventory');
+  assert.deepEqual(unit.flatMap((file) => browsersReachedBy(file)), [],
+    'a test that drives a browser belongs in the browser lane, which is the lane that installs the engines');
 });
 
 test('every main commit gets its own tests lane, so a later merge cancels no earlier CI gate', async () => {
@@ -235,10 +366,10 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
 });
 
-test('every gating workflow bounds each browser install attempt and retries it once', async () => {
+test('every gating workflow retries the browser install inside the step budget', async () => {
   const { readFileSync } = await import('node:fs');
   const dropIns = new Set();
-  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 15], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
+  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 20], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30]]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
@@ -246,26 +377,29 @@ test('every gating workflow bounds each browser install attempt and retries it o
     const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: \|\n([\s\S]*?)(?=\n      - )/g)];
     assert.equal(steps.length, 1, `${file} has one bounded install step`);
     const [, backstop, body] = steps[0];
-    const attempts = [...body.matchAll(/timeout (\d+)m npx --no-install playwright install --with-deps /g)].map((m) => Number(m[1]));
-    assert.equal(attempts.length, 2, `${file} attempts the install twice`);
-    for (const budget of attempts) assert.ok(budget >= 1 && budget <= 5, `${file} waits ${budget} minutes on an attempt`);
-    assert.match(body, /dpkg --configure -a \|\| true/, `${file} repairs an interrupted unpack before the second attempt`);
+    const attempts = body.match(/for attempt in ([\d ]+); do/);
+    assert.ok(attempts, `${file} loops over its install attempts`);
+    assert.ok(attempts[1].trim().split(/\s+/).length >= 3, `${file} attempts the install ${attempts[1].trim()} times, and a third attempt costs less than a re-run of the shard`);
+    assert.doesNotMatch(body, /dpkg --configure -a \|\| true/, `${file} reads the result of its dpkg repair instead of discarding it`);
+    assert.match(body, /if sudo dpkg --configure -a; then/, `${file} repairs an interrupted unpack and says whether it worked`);
     assert.match(body, /Acquire::Retries/, `${file} bounds apt's own connections`);
     const lock = body.match(/DPkg::Lock::Timeout "(\d+)"/);
     assert.ok(lock, `${file} waits for the dpkg frontend lock rather than failing the attempt on it`);
-    assert.ok(Number(lock[1]) >= 120, `${file} waits ${lock[1]}s for the dpkg lock, too short to outlast the runner's own boot-time apt-get`);
-    const shortest = Math.min(...attempts);
-    assert.ok(Number(lock[1]) <= shortest * 60, `${file} promises a ${lock[1]}s lock wait that its ${shortest}m attempt bound kills first`);
+    assert.ok(Number(lock[1]) >= 300, `${file} waits ${lock[1]}s for the dpkg lock, too short to outlast the runner's own apt-get`);
+    const waitMinutes = Number(lock[1]) / 60;
+    for (const cap of [...body.matchAll(/\btimeout (\d+)m\b/g)].map((m) => Number(m[1]))) {
+      assert.ok(cap - waitMinutes >= 5, `${file} caps an attempt at ${cap}m, which leaves ${cap - waitMinutes}m to work after the worst-case ${waitMinutes}m lock wait`);
+    }
     const dropIn = body.match(/printf '[^']*' \| sudo tee \S+ > \/dev\/null/);
     assert.ok(dropIn, `${file} writes the apt drop-in this test reasons about`);
     dropIns.add(dropIn[0]);
-    assert.ok(attempts[0] + attempts[1] <= Number(backstop), `${file} fits both attempts in the step backstop`);
     assert.ok(Number(backstop) < jobBudget, `${file} leaves the job room to run its work`);
     assert.doesNotMatch(job, /continue-on-error/, `${file} does not lean on continue-on-error, which a killed step does not survive`);
-    assert.equal(job.match(/playwright install --with-deps /g).length, 2, `${file} installs browsers in one place`);
+    assert.equal(job.match(/playwright install --with-deps /g).length, 1, `${file} installs browsers in one place`);
   }
   assert.equal(dropIns.size, 1, `every gating workflow writes one apt drop-in, so a lock wait cannot land in one and miss the others: ${[...dropIns].join(' | ')}`);
 });
+
 test('a re-run shard replaces its earlier attempt, so the gate judges the newest result', () => {
   const failed = { ...evidence()[0], attempt: 1, code: 1 };
   const rerun = { ...evidence()[0], attempt: 2 };

@@ -71,6 +71,49 @@ export function phoneProfile() {
 }
 export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
 export const phoneBrowser = () => engineOf(phoneProfile().engine);
+
+const modeledPhone = (width, height, deviceScaleFactor) => ({
+  userAgent: pw?.devices['iPhone 17']?.userAgent,
+  viewport: { width, height }, screen: { width, height }, deviceScaleFactor, isMobile: true, hasTouch: true,
+});
+const listedPhone = (name, fallback) => {
+  const { defaultBrowserType, ...page } = pw?.devices[name] ?? fallback;
+  return page;
+};
+export const PHONES = pw ? [
+  { name: 'iPhone SE (3rd generation)', page: listedPhone('iPhone SE (3rd gen)', modeledPhone(375, 667, 2)) },
+  { name: 'iPhone 17', page: listedPhone('iPhone 17') },
+  { name: 'iPhone 17 Pro Max', page: listedPhone('iPhone 17 Pro Max') },
+  { name: 'iPhone Duo closed', page: modeledPhone(466, 678, 3) },
+  { name: 'iPhone Duo open', page: modeledPhone(669, 951, 3) },
+] : [];
+
+export async function phoneMatrix(browser) {
+  const first = process.env.WEAVE_BROWSER || 'chromium';
+  const engines = [[first, browser]];
+  if (first !== 'webkit') engines.push(['webkit', await engineOf('webkit')]);
+  return engines.flatMap(([engine, b]) => PHONES.map((phone) => ({
+    engine, phone, label: `${engine === 'webkit' ? 'Safari' : 'Chrome'} on ${phone.name}`,
+    open: (options = {}) => (b ? b.newPage({ ...phone.page, ...options }) : Promise.reject(new Error(`${engine} did not launch`))),
+  })));
+}
+
+export async function eachPhone(t, matrix, check, { options } = {}) {
+  const failed = [];
+  for (const [i, run] of matrix.entries()) {
+    let page = null;
+    try {
+      page = await run.open(options);
+      const skipped = await check(page, run, i);
+      if (typeof skipped === 'string') t.diagnostic(`${run.label}: not checked, ${skipped}`);
+    } catch (error) {
+      failed.push(`${run.label}: ${String(error.message).split('\n')[0]}`);
+    } finally {
+      await page?.close().catch(() => {});
+    }
+  }
+  if (failed.length) throw new Error(`${failed.length} of ${matrix.length} phones fail:\n${failed.join('\n')}`);
+}
 export const touchScroll = (page, { x, y }, dy) => page.evaluate(([px, py, d]) => {
   let n = document.elementFromPoint(px, py);
   while (n && n !== document.documentElement && !(n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;

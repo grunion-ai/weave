@@ -9,6 +9,7 @@ const el = (tag, attrs = {}, ...children) => {
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
+  if ((tag === 'input' || tag === 'textarea') && !node.hasAttribute('autocomplete')) node.setAttribute('autocomplete', 'off');
   for (const c of children.flat()) {
     if (c == null) continue;
     node.append(c.nodeType ? c : document.createTextNode(c));
@@ -53,6 +54,217 @@ function noteSchemaVersion(version, isRead) {
   if (loadedSchemaVersion === null || !isRead) { loadedSchemaVersion = version; return; }
   if (version === loadedSchemaVersion) return;
   syncSchema();
+}
+
+const UPLOAD_STALL_MS = 30_000;
+const UPLOAD_ANSWER_MS = 60_000;
+const uploadStates = new Map();
+let uploadSeq = 0;
+const fileTooBig = (file) => (uploadCore.tooBig(file) ? uploadCore.failure(file, { kind: 'too-large' }).message : null);
+const uploadState = (key) => {
+  if (!uploadStates.has(key)) uploadStates.set(key, { jobs: [], ctl: {}, refreshing: null, again: false });
+  return uploadStates.get(key);
+};
+const uploadHostsFor = (key) => [...document.querySelectorAll('[data-upload-key]')].filter((n) => n.dataset.uploadKey === key);
+
+function sendUpload(path, body, onProgress = () => {}) {
+  warmGets.clear();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let timer = null;
+    let over = false;
+    const end = (fn, value) => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const fail = (fields) => end(reject, Object.assign(new Error(fields.error ?? fields.kind ?? `${fields.status}`), fields));
+    const wait = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { fail({ kind: 'timeout' }); xhr.abort(); }, ms);
+    };
+    xhr.upload.onprogress = (e) => {
+      const whole = e.lengthComputable && e.total > 0;
+      if (whole) onProgress(e.loaded / e.total);
+      wait(whole && e.loaded >= e.total ? UPLOAD_ANSWER_MS : UPLOAD_STALL_MS);
+    };
+    xhr.upload.onload = () => { onProgress(1); wait(UPLOAD_ANSWER_MS); };
+    xhr.onerror = () => fail({ kind: 'offline' });
+    xhr.onload = () => {
+      const data = xhr.response && typeof xhr.response === 'object' ? xhr.response : {};
+      noteSchemaVersion(xhr.getResponseHeader('X-Weave-Schema-Version'), false);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        noteRevisions('POST', path, data);
+        noteUsage('POST', path, body, data);
+        return end(resolve, data);
+      }
+      if (data.code === 'seat-required') seatToast(data);
+      fail({ status: xhr.status, code: data.code, id: data.id, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
+    };
+    xhr.open('POST', WS_PREFIX + '/api' + path);
+    xhr.responseType = 'json';
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('X-Weave-Zone', LOCAL_ZONE);
+    wait(UPLOAD_STALL_MS);
+    xhr.send(JSON.stringify(body));
+  });
+}
+
+async function landedFile(entityId, file, before, fieldName = null) {
+  const seen = (await before) ?? new Set();
+  const e = await api('GET', `/entities/${entityId}`);
+  const inField = fieldName == null ? null : [].concat(e.raw?.[fieldName] ?? []);
+  return (e.files ?? []).find((x) => x.name === file.name && x.size === file.size && !seen.has(x.id) && (!inField || inField.includes(x.id))) ?? null;
+}
+
+const withErrorId = (text, id) => {
+  const at = id ? text.indexOf(id) : -1;
+  return at < 0 ? [text] : [text.slice(0, at), el('span', { class: 'wv-error-id' }, id), text.slice(at + id.length)];
+};
+const uploadWaits = () => globalThis.WEAVE_UPLOAD_RETRY_MS ?? uploadCore.RESTART_WAIT_MS;
+
+function paintUploadTile(tile, job) {
+  tile.querySelector('.attach-up-what').textContent = job.state === 'restarting' ? uploadCore.RESTARTING : job.state === 'saving' ? 'Saving' : `Uploading ${job.percent}%`;
+  const bar = tile.querySelector('[role="progressbar"]');
+  bar.setAttribute('aria-valuenow', String(job.percent));
+  bar.firstChild.style.width = `${job.percent}%`;
+}
+
+function uploadTileEl(key, job) {
+  const name = job.file.name;
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  if (job.state === 'failed') {
+    return el('span', { class: 'attach-item is-failed', title: `${name}: ${job.failure.tile}`, dataset: { uploadJob: job.id } },
+      el('span', { class: 'attach-fail-name' }, name),
+      el('span', { class: 'attach-fail-why' }, ...withErrorId(job.failure.tile, job.failure.id)),
+      job.failure.retry ? el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Retry ${name}`,
+        onclick: (e) => { stop(e); runJobs(key, [job]); },
+      }, 'Retry') : null,
+      el('button', {
+        type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny', title: `Dismiss ${name}`, 'aria-label': `Dismiss ${name}`,
+        onclick: (e) => {
+          stop(e);
+          const st = uploadState(key);
+          st.jobs = st.jobs.filter((x) => x !== job);
+          paintUploads(key);
+        },
+      }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
+  }
+  const tile = el('span', { class: 'attach-item is-pending', title: name, dataset: { uploadJob: job.id } },
+    el('span', { class: 'attach-up-name' }, name),
+    el('span', { class: 'attach-up-what' }),
+    el('span', { class: 'attach-up-bar', role: 'progressbar', 'aria-label': `Uploading ${name}`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' },
+      el('span', { class: 'attach-up-fill' })));
+  paintUploadTile(tile, job);
+  return tile;
+}
+
+function drawUploads(host) {
+  const key = host.dataset.uploadKey;
+  const { jobs } = uploadState(key);
+  const slot = host.uploadSlot ?? host;
+  for (const n of slot.querySelectorAll(':scope > [data-upload-job]')) n.remove();
+  for (const job of jobs) slot.insertBefore(uploadTileEl(key, job), host.uploadBefore?.parentNode === slot ? host.uploadBefore : null);
+  const busy = jobs.some((j) => j.state !== 'failed');
+  if (busy) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');
+}
+const paintUploads = (key) => { for (const host of uploadHostsFor(key)) drawUploads(host); };
+
+function uploadHost(host, key, { slot = host, before = null } = {}) {
+  host.dataset.uploadKey = key;
+  host.uploadSlot = slot;
+  host.uploadBefore = before;
+  drawUploads(host);
+  return host;
+}
+
+function refreshUploads(st) {
+  if (st.refreshing) { st.again = true; return st.refreshing; }
+  st.refreshing = (async () => {
+    do {
+      st.again = false;
+      await st.ctl.refresh?.()?.catch?.((err) => toast(err.message, true));
+    } while (st.again);
+    st.refreshing = null;
+  })();
+  return st.refreshing;
+}
+
+function runUploads(key, files) {
+  const st = uploadState(key);
+  const jobs = [...files].map((file) => {
+    st.jobs = st.jobs.filter((j) => !(j.state === 'failed' && j.file.name === file.name));
+    return { id: String(++uploadSeq), file, state: 'pending', percent: 0, failure: null };
+  });
+  return runJobs(key, jobs);
+}
+
+async function runJobs(key, jobs) {
+  const st = uploadState(key);
+  for (const job of jobs) {
+    Object.assign(job, { state: 'pending', percent: 0, failure: null });
+    if (!st.jobs.includes(job)) st.jobs.push(job);
+  }
+  paintUploads(key);
+  const results = [];
+  let landed = 0;
+  for (const job of jobs) {
+    const { file } = job;
+    const fail = (err) => {
+      job.state = 'failed';
+      job.failure = uploadCore.failure(file, err);
+      results.push({ ok: false, name: file.name, size: file.size, shown: !!err.shown, ...job.failure });
+    };
+    const land = async (data) => {
+      st.jobs = st.jobs.filter((x) => x !== job);
+      await st.ctl.landed?.(file, data);
+      results.push({ ok: true, name: file.name, size: file.size });
+      landed += 1;
+      refreshUploads(st);
+    };
+    if (uploadCore.tooBig(file)) {
+      fail({ kind: 'too-large' });
+      paintUploads(key);
+      continue;
+    }
+    const before = st.ctl.known?.();
+    const repaint = () => { for (const t of document.querySelectorAll(`[data-upload-job="${job.id}"]`)) if (!t.classList.contains('is-failed')) paintUploadTile(t, job); };
+    const progress = (p) => {
+      job.percent = Math.min(100, Math.max(job.percent, Math.floor(p * 100)));
+      job.state = p >= 1 ? 'saving' : 'pending';
+      repaint();
+    };
+    try {
+      let data;
+      for (const wait of [...uploadWaits(), null]) {
+        try {
+          data = await st.ctl.send(file, progress);
+          break;
+        } catch (err) {
+          if (wait == null || uploadCore.reasonOf(err) !== 'restarting') throw err;
+          job.state = 'restarting';
+          repaint();
+          await new Promise((r) => setTimeout(r, wait));
+        }
+      }
+      await land(data);
+    } catch (err) {
+      const lost = err.kind === 'timeout' || err.status === 504;
+      const kept = lost ? await st.ctl.found?.(file, before)?.catch?.(() => null) : null;
+      if (kept) await land(kept); else fail(err);
+    }
+    paintUploads(key);
+  }
+  if (landed) await refreshUploads(st);
+  const sum = uploadCore.summary(results);
+  if (!sum || results.some((r) => r.shown)) return;
+  const retryable = jobs.filter((j) => j.state === 'failed' && j.failure.retry);
+  const action = sum.action === 'retry' && retryable.length
+    ? { label: 'Retry', run: () => runJobs(key, retryable.filter((j) => uploadState(key).jobs.includes(j) && j.state === 'failed')) }
+    : sum.action === 'choose' && st.ctl.choose ? { label: 'Choose another file', run: () => st.ctl.choose() } : null;
+  toast(sum.text, sum.kind === 'err', action, { kind: sum.kind, mono: sum.mono });
 }
 
 function fileBase64(file) {
@@ -111,7 +323,10 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     seatToast(data);
     throw Object.assign(new Error(data.error), { status: res.status, code: data.code, shown: true });
   }
-  if (!res.ok) throw Object.assign(new Error(data.error ?? `${res.status}`), { status: res.status, code: data.code, entity: data.entity });
+  if (!res.ok) {
+    const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method, data.id);
+    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity });
+  }
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
@@ -159,7 +374,7 @@ async function copyText(text, label = 'Copied') {
 
 const TOAST_MS = { info: 4000, action: 8000, err: 10000, perChar: 60, max: 20000 };
 const TOAST_LIMIT = 3;
-const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
+const TOAST_ICON = { info: 'lucide:info', success: 'lucide:check', warn: 'lucide:triangle-alert', err: 'lucide:circle-alert', automation: 'lucide:workflow' };
 const toastsUp = [];
 
 function toastLayer() {
@@ -182,7 +397,7 @@ function seatToast(data) {
   return toast(data.error, true, { label: 'Open billing', run: () => { location.href = href; } }, { key: 'seat' });
 }
 
-function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
+function toast(msg, isErr = false, action = null, { kind, key = null, mono = null } = {}) {
   kind ??= isErr ? 'err' : action ? 'success' : 'info';
   const text = String(msg);
   const layer = toastLayer();
@@ -194,13 +409,13 @@ function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
     same.left = same.life;
     return same.node;
   }
-  const floor = action ? TOAST_MS.action : kind === 'err' ? TOAST_MS.err : TOAST_MS.info;
+  const floor = action ? TOAST_MS.action : kind === 'err' || kind === 'warn' ? TOAST_MS.err : TOAST_MS.info;
   const life = Math.min(TOAST_MS.max, Math.max(floor, text.length * TOAST_MS.perChar));
   const countEl = el('span', { class: 'wv-toast-count' });
   countEl.hidden = true;
   const node = el('div', { class: `wv-toast ${kind}` },
     iconEl(TOAST_ICON[kind], 'wv-toast-icon'),
-    el('span', { class: 'wv-toast-msg' }, text, countEl));
+    el('span', { class: 'wv-toast-msg' }, ...withErrorId(text, mono), countEl));
   const item = { msg: text, kind, action, key, node, countEl, count: 1, life, left: life };
   if (action) {
     node.append(el('button', {
@@ -217,7 +432,7 @@ function toast(msg, isErr = false, action = null, { kind, key = null } = {}) {
   node.addEventListener('pointerup', (e) => { if (x0 != null && Math.abs(e.clientX - x0) >= 48) dropToast(item); x0 = null; });
   toastsUp.push(item);
   layer.append(node);
-  while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err') ?? toastsUp[0]);
+  while (toastsUp.length > TOAST_LIMIT) dropToast(toastsUp.find((t) => t.kind !== 'err' && t.kind !== 'warn') ?? toastsUp[0]);
   const live = layer.querySelector(kind === 'err' ? '#wv-live-alert' : '#wv-live-status');
   live.textContent = '';
   setTimeout(() => { live.textContent = text; }, 50);
@@ -460,7 +675,7 @@ function externalLinksOpenInTabs(e) {
 }
 addEventListener('click', externalLinksOpenInTabs, true);
 
-const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable]';
+const NATIVE_CLICK_KEEPS = 'a[href], input, textarea, select, button, label, [contenteditable], .text-dressed';
 function openNativeClick(e) {
   if (!nativeClick(e)) return;
   if (e.target?.closest?.(NATIVE_CLICK_KEEPS)) return;
@@ -931,6 +1146,11 @@ function keyboardInset() {
   const vv = window.visualViewport;
   return vv ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
 }
+function publishKeyboardInset() {
+  const v = `${Math.round(keyboardInset())}px`;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue('--wv-keyboard') !== v) root.style.setProperty('--wv-keyboard', v);
+}
 function publishHeaderOn(holder, box, pane) {
   if (!holder || !box) return;
   const h = box.getBoundingClientRect().height;
@@ -947,6 +1167,9 @@ function stickViewHeader(box) {
 }
 addEventListener('resize', publishViewHeaderHeight);
 window.visualViewport?.addEventListener('resize', publishViewHeaderHeight);
+addEventListener('resize', publishKeyboardInset);
+for (const ev of ['resize', 'scroll']) window.visualViewport?.addEventListener(ev, publishKeyboardInset);
+publishKeyboardInset();
 
 const CRUMB_ICON_FALLBACK = { space: 'lucide:folder', table: 'lucide:table', row: weaveBreadcrumbs.ROW_MARK };
 function crumbIconEl(c) {
@@ -1197,6 +1420,22 @@ document.addEventListener('dblclick', (e) => {
   renameNavTable(db, row);
 });
 
+function navDrag(handle, source, { items, home, save }) {
+  if (!state.canManageForms) return;
+  RO().guard(handle);
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button, input')) return;
+    RO().sortable(e, {
+      source, items, lock: true, scroller: $('#nav'), zone: home,
+      onDrop: ({ point, settled }) => {
+        const r = home().getBoundingClientRect();
+        const inside = point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom;
+        const next = inside ? save().then(loadSchema) : Promise.resolve(settled).then(renderNav);
+        next.catch((err) => { toast(err.message, true); renderNav(); });
+      },
+    });
+  });
+}
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
@@ -1232,21 +1471,33 @@ function renderNav() {
       }, iconEl('+', 'wv-icon')),
       kindDots('space', space, () => ({}), { title: `${space.space} actions`, extraClass: 'nav-space-menu', head: true }));
     kindContext(spaceRow, 'space', space);
-    nav.append(spaceRow);
+    const tables = el('div', { class: 'nav-tables' });
+    const group = el('div', { class: 'nav-group', dataset: { space: space.spaceId } }, spaceRow, tables);
+    const groups = () => [...nav.querySelectorAll(':scope > .nav-group:not(.wv-reorder-lift)')];
+    const slot = () => {
+      const users = groups().map((g) => g.dataset.space);
+      return state.schema.map((sp) => (sp.system ? sp.spaceId : users.shift())).indexOf(space.spaceId);
+    };
+    navDrag(spaceRow, group, { items: groups, home: () => nav, save: () => api('PATCH', `/spaces/${space.spaceId}`, { position: slot() }) });
+    nav.append(group);
     if (isFolded) continue;
     for (const db of space.tables) {
       if (db.system === 'workflows') continue;
       if (db.system === 'users') continue;
+      if (db.system === 'integrations') continue;
       const row = el('a', {
         class: 'nav-db' + (state.route?.dbId === db.id ? ' active' : ''),
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
+        draggable: 'false',
       }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
+        const rows = () => [...tables.querySelectorAll(':scope > .nav-db:not(.wv-reorder-lift)')];
+        navDrag(row, row, { items: rows, home: () => group, save: () => api('PATCH', `/tables/${db.id}`, { position: rows().indexOf(row) }) });
       }
-      nav.append(row);
+      tables.append(row);
     }
   }
   const foot = el('div', { class: 'nav-foot' },
@@ -1261,6 +1512,7 @@ function renderNav() {
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
+  const links = registryTable('integrations');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
     el('div', { class: 'nav-space-row nav-system-head' },
@@ -1276,6 +1528,7 @@ function renderNav() {
     ...(systemFolded ? [] : [
       sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
       ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
+      ...(links ? [sysRow(`#/table/${links.id}`, 'link', 'Integrations', state.route?.dbId === links.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
       sysRow('#/trash', 'trash-2', 'Trash', state.route?.page === 'trash' && !state.route.dbId),
     ]));
@@ -1958,7 +2211,7 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   return pop;
 }
 const PHONE_SHORT_LIST = 8;
-const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 88 };
+const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 118 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
@@ -2086,6 +2339,45 @@ function credentialReveal(name, keystore) {
     el('button', { class: 'btn btn-sm', type: 'button', onclick: () => take('copy') }, 'Copy'),
     el('button', { class: 'btn btn-sm', type: 'button', onclick: () => take('show') }, 'Show'),
     shown);
+}
+
+const INTEGRATION_KEPT = ['Key Hint', 'State', 'Connected As', 'Health Reason', 'Last Checked', 'Last Used'];
+
+function integrationKeptCell(f, item) {
+  const text = fieldValueCell(item.fields?.[f.name]);
+  const title = `${f.name}: kept by weave`;
+  if (f.type === 'workflow') return el('span', { class: stateChipClass(f, text || null) + (text ? '' : ' is-empty'), title }, ...stateNodes(f, text || null));
+  return el('span', { class: 'computed k k-computed integration-kept' + (text ? '' : ' is-empty'), title }, text || '—');
+}
+
+function integrationKeyCell(item, onSaved, { compact = false } = {}) {
+  const hint = String(item.fields?.['Key Hint'] ?? '');
+  const stored = !!hint;
+  const chip = el('span', {
+    class: 'k k-key hue-slate integration-key' + (stored ? '' : ' is-empty'),
+    title: stored ? 'Never shown again' : 'No key yet',
+  }, iconEl(CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), chipLabel(stored ? `••••${hint === 'set' ? '' : hint.replace(/^…/, '')}` : '—'));
+  if (compact) return chip;
+  return el('span', { class: 'cred-cell' }, chip, el('span', { class: 'cred-actions' },
+    el('button', { class: 'btn btn-sm integration-key-replace', type: 'button', onclick: () => replaceIntegrationKey(item, onSaved) }, stored ? 'Replace' : 'Add key')));
+}
+
+function replaceIntegrationKey(item, onSaved) {
+  const host = item.fields?.Host || 'its Host';
+  const input = el('input', { name: 'value', type: 'password', class: 'form-control integration-key-input', autocomplete: 'off', spellcheck: 'false', required: '', placeholder: 'Paste the API key' });
+  modal(`${item.fields?.['Key Hint'] ? 'Replace' : 'Add'} the ${item.name} key`, [
+    input,
+    el('div', { class: 'form-hint' }, `Tested against ${host}, then never shown again.`),
+  ], async (fd) => {
+    const value = String(fd.get('value') ?? '');
+    input.value = '';
+    const fresh = await api('PUT', `/integrations/${item.id}/credential`, { value });
+    const row = { ...fresh, affected: [fresh.id] };
+    await onSaved(row, 'Credential');
+    await document.querySelector('#main .table-wrap')?.wvPatchRows?.(row);
+    if (fresh.connected) toast(`${item.name} connected${fresh.fields?.['Connected As'] ? ` as ${fresh.fields['Connected As']}` : ''}`);
+    else toast(fresh.reason, true);
+  }, 'Test and save');
 }
 
 const PICKER_FIELD_TYPES = ['select', 'multiselect', 'workflow'];
@@ -2238,12 +2530,13 @@ function focusNewRow(eid, { field = null, scope = '#main', select = false, frame
   const step = () => {
     if (turn !== newRowTurn || frames-- <= 0 || (placed && grace-- <= 0)) return;
     const row = document.querySelector(`${scope} tr[data-eid="${eid}"]`);
-    const input = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] input`))
-      || row?.querySelector('td input:not([type="checkbox"])');
-    if (input && (!placed || document.activeElement === document.body)) {
+    const face = (field && row?.querySelector(`td[data-field="${CSS.escape(field)}"] :is(input, .text-dressed)`))
+      || row?.querySelector('td :is(input:not([type="checkbox"]), .text-dressed)');
+    if (face && (!placed || document.activeElement === document.body)) {
       scrollTargetIntoView(row, { block: 'nearest', instant: true, padding: stuckHeaderHeight(row), bottom: stickyFootHeight(row) });
-      activateCell(input.closest('td'));
-      if (select) input.select();
+      const td = face.closest('td');
+      activateCell(td);
+      if (select) td.querySelector('input')?.select();
       if (!placed) {
         for (const ev of ['keydown', 'pointerdown']) document.addEventListener(ev, done, { once: true, capture: true });
       }
@@ -2274,13 +2567,23 @@ function contentRect(node) {
   const r = range.getBoundingClientRect();
   return r.width || r.height ? r : node.getBoundingClientRect();
 }
-const CELL_POP_DELAY = 180;
+const CELL_POP_DELAY = 400;
+const SPILL_TYPES = ['text'];
+const spillsRight = (td) => SPILL_TYPES.includes(td.dataset.ftype);
+function gridRightEdge(td) {
+  const wrap = td.closest('.table-wrap');
+  const w = wrap.getBoundingClientRect();
+  const view = w.left + wrap.clientLeft + wrap.clientWidth;
+  const grid = td.closest('.wv-grid')?.getBoundingClientRect();
+  return grid ? Math.min(view, grid.right) : view;
+}
 function showCellPop(td, wrap) {
   const layer = cellPopLayer(wrap);
   const base = wrap.getBoundingClientRect();
   const r = td.getBoundingClientRect();
   const left = r.left - base.left + wrap.scrollLeft;
   const top = r.top - base.top + wrap.scrollTop;
+  const spill = spillsRight(td);
   const pop = el('div', {
     class: 'cell-pop',
     style: `left:${left}px; top:${top}px; min-width:${r.width}px;`,
@@ -2308,6 +2611,16 @@ function showCellPop(td, wrap) {
     text.style.borderStyle = 'solid';
     copy.replaceWith(text);
   });
+  if (spill) {
+    pop.classList.add('cell-spill-pop');
+    const tdStyle = getComputedStyle(td);
+    for (const prop of ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) pop.style[prop] = tdStyle[prop];
+    pop.style.height = `${r.height}px`;
+    pop.style.maxWidth = `${Math.max(r.width, gridRightEdge(td) - r.left)}px`;
+    layer.replaceChildren(pop);
+    pop.classList.toggle('cell-pop-cut', overflowsX(pop));
+    return;
+  }
   layer.replaceChildren(pop);
   const want = contentRect(td);
   const got = contentRect(pop);
@@ -2328,6 +2641,57 @@ function cellIsEditing(td) {
 
 function hideCellPop(wrap) {
   wrap.querySelector(':scope > .cell-pop-layer')?.replaceChildren();
+}
+
+function spillEditor(td, input) {
+  const at = input.getBoundingClientRect();
+  const cs = getComputedStyle(input);
+  const ta = el('textarea', { class: `${input.className} cell-spill-edit`, rows: 1, spellcheck: 'false' });
+  ta.defaultValue = input.defaultValue;
+  ta.value = input.value;
+  ta.tabIndex = input.tabIndex;
+  copyCellType(input, ta);
+  const px = (v) => parseFloat(v) || 0;
+  const middle = (at.height - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom) - px(cs.lineHeight)) / 2;
+  ta.style.paddingLeft = cs.paddingLeft;
+  ta.style.paddingRight = cs.paddingRight;
+  ta.style.paddingTop = `${px(cs.paddingTop) + middle}px`;
+  ta.style.paddingBottom = `${px(cs.paddingBottom) + middle}px`;
+  const edges = px(cs.borderLeftWidth) + px(cs.borderRightWidth);
+  const rims = px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+  const padRight = px(cs.paddingRight);
+  const fit = () => {
+    const box = ta.getBoundingClientRect();
+    ta.style.whiteSpace = 'pre';
+    ta.style.width = '0px';
+    ta.style.height = 'auto';
+    const text = ta.scrollWidth + padRight + edges + 1;
+    ta.style.whiteSpace = '';
+    ta.style.width = `${Math.min(Math.max(at.width, text), Math.max(at.width, gridRightEdge(td) - box.left))}px`;
+    ta.style.height = `${Math.max(at.height, ta.scrollHeight + rims)}px`;
+    const short = ta.scrollHeight - ta.clientHeight;
+    if (short > 0) ta.style.height = `${px(ta.style.height) + short}px`;
+  };
+  const { selectionStart, selectionEnd, selectionDirection } = input;
+  td.classList.add('cell-spill');
+  input.replaceWith(ta);
+  const placed = ta.getBoundingClientRect();
+  ta.style.left = `${at.left - placed.left}px`;
+  ta.style.top = `${at.top - placed.top}px`;
+  ta.focus({ preventScroll: true });
+  try { ta.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? 'none'); } catch {}
+  fit();
+  ta.addEventListener('input', fit);
+  ta.addEventListener('blur', () => {
+    td.classList.remove('cell-spill');
+    if (!ta.isConnected) return;
+    const was = input.value;
+    input.value = ta.value;
+    ta.replaceWith(input);
+    if (input.value !== was) input.dispatchEvent(new Event('change'));
+    input.dispatchEvent(new FocusEvent('blur'));
+  });
+  return ta;
 }
 
 const overflowsX = (n) => n.scrollWidth > n.clientWidth + 1;
@@ -2403,13 +2767,21 @@ function phoneLeadEl(f, item) {
   } else seg = { kind: 'field', type: f.type, label: f.name, value: String(fieldValueCell(val) ?? '') || '—' };
   return el('span', { class: 'phone-lead', dataset: { field: f.name, ftype: f.type } }, viewSegmentEl(seg));
 }
+function foldValueCounters(td) {
+  let folded = 0;
+  for (const more of td.querySelectorAll('.ms-box > .k-more:not([hidden])')) {
+    folded += Number(more.textContent.slice(1)) || 0;
+    more.hidden = true;
+  }
+  return folded;
+}
 function fitPhoneChipLines(grid) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  const wrap = grid.dataset.phoneWrap != null;
-  for (const tr of grid.querySelectorAll('tbody tr.entity-row')) {
-    const cells = [...tr.querySelectorAll(':scope > td[data-field]')];
-    for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
-    if (!phone) continue;
+  const rows = [...grid.querySelectorAll('tbody tr.entity-row')].map((tr) => [tr, [...tr.querySelectorAll(':scope > td[data-field]')]]);
+  for (const [, cells] of rows) for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
+  fitChips(grid);
+  if (!phone) return;
+  for (const [tr, cells] of rows) {
     const drawn = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
     if (!drawn.length) continue;
     const cut = drawn.filter((td) => [...td.querySelectorAll('.k-label')].some(overflowsX));
@@ -2420,22 +2792,23 @@ function fitPhoneChipLines(grid) {
       cut[0].dataset.more = `+${cut.length}`;
       continue;
     }
-    const top = shown[0].getBoundingClientRect().top;
+    const values = shown.map(foldValueCounters);
     const box = tr.getBoundingClientRect();
-    const edge = box.right - (parseFloat(getComputedStyle(tr).paddingRight) || 0);
+    const trStyle = getComputedStyle(tr);
+    const edge = box.right - (parseFloat(trStyle.paddingRight) || 0);
+    const floor = box.bottom - (parseFloat(trStyle.borderBottomWidth) || 0);
     let n = shown.length;
     const fits = () => {
       const r = shown[n - 1].getBoundingClientRect();
-      return (wrap ? r.bottom <= box.bottom + 0.5 : r.top - top < 1) && ((n === shown.length && !cut.length) || r.right + PHONE_MORE_W <= edge);
+      return r.bottom <= floor + 0.5 && ((n === shown.length && !cut.length && !values.some(Boolean)) || r.right + PHONE_MORE_W <= edge);
     };
     while (n > 1 && !fits()) shown[--n].classList.add('list-hide');
-    const hidden = cut.length + shown.length - n;
+    const hidden = cut.length + shown.length - n + values.slice(0, n).reduce((a, b) => a + b, 0);
     if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
   }
 }
 function markClippedCells(grid) {
   fitPhoneChipLines(grid);
-  fitChips(grid);
   const cutOff = new Set();
   for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
@@ -2451,8 +2824,9 @@ function markClippedCells(grid) {
     else if (chip.dataset.fieldTitle) chip.title = chip.dataset.fieldTitle;
     else chip.removeAttribute('title');
   }
+  const lines = parseInt(getComputedStyle(grid).getPropertyValue('--wv-lines'), 10) || 1;
   for (const td of grid.querySelectorAll('tbody td')) {
-    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > (grid.dataset.density === 'spacious' ? 2 : 1);
+    const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > lines;
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
     const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
     const boxCut = !!cb && (overflowsX(cb) || overflowsY(cb)
@@ -2911,13 +3285,19 @@ function dressTokens(into, tokens) {
 }
 
 function dressedText(md, input, { literal = false } = {}) {
-  const tokens = literal ? [{ text: md }] : globalThis.WeaveEditorLib.inlineTokens(md, inlineIconAccept);
-  const dressed = el('span', { class: 'text-dressed', tabindex: 0, title: tokens.map((t) => t.text).join('') });
-  dressTokens(dressed, tokens);
+  const dressed = el('span', { class: 'text-dressed', tabindex: 0 });
+  let shown = null;
+  const show = (text) => {
+    const tokens = literal ? [{ text }] : globalThis.WeaveEditorLib.inlineTokens(text, inlineIconAccept);
+    dressed.title = tokens.map((t) => t.text).join('');
+    dressTokens(dressed, tokens);
+    shown = text;
+  };
+  show(md);
   const open = () => {
     dressed.replaceWith(input);
-    input.focus();
     input.select();
+    if (input.isConnected) input.focus();
   };
   dressed.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2933,7 +3313,11 @@ function dressedText(md, input, { literal = false } = {}) {
     if (typed) document.execCommand('insertText', false, e.key);
   });
   dressed.wvEditor = input;
-  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
+  input.addEventListener('blur', () => queueMicrotask(() => {
+    if (!input.isConnected || input === document.activeElement) return;
+    if (input.value !== shown) { dressed.replaceChildren(); show(input.value); }
+    input.replaceWith(dressed);
+  }));
   return dressed;
 }
 
@@ -3062,19 +3446,28 @@ function viewCell(v, f, { compact = false } = {}) {
   return f.shape === 'card' || v.shape === 'card' ? viewCardEl(v, { compact }) : viewChipEl(v);
 }
 function avatarUpload(entityId, fieldName, done) {
-  return async (file) => {
+  const key = `${entityId}:${fieldName}:avatar`;
+  return (file, choose = null) => {
     if (!file) return;
-    try {
-      await api('POST', `/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
-        name: file.name, mime: file.type || 'application/octet-stream', bytes: await fileBase64(file),
-      });
-      await done();
-    } catch (err) { toast(err.message, true); }
+    uploadState(key).ctl = {
+      send: async (f, progress) => sendUpload(`/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
+        name: f.name, mime: f.type || 'application/octet-stream', bytes: await fileBase64(f),
+      }, progress),
+      known: () => api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id))),
+      found: (f, before) => landedFile(entityId, f, before),
+      refresh: done,
+      choose,
+    };
+    return runUploads(key, [file]);
   };
 }
 function avatarPicker(face, { cls, title, upload, onClear = null }) {
   const input = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', style: 'display:none' });
-  input.addEventListener('change', () => upload(input.files?.[0]));
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    input.value = '';
+    upload(file, () => input.click());
+  });
   const pick = el('button', {
     type: 'button', class: 'av-pick', title, 'aria-label': title,
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); input.click(); },
@@ -3083,7 +3476,7 @@ function avatarPicker(face, { cls, title, upload, onClear = null }) {
     type: 'button', class: 'btn btn-sm btn-ghost-secondary tiny av-clear', title: 'Remove photo', 'aria-label': 'Remove photo',
     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onClear(); },
   }, iconEl('lucide:x', 'wv-icon wv-icon-xs')) : null;
-  return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0]));
+  return fileDropZone(el('span', { class: 'av-control' }, pick, clear, input), (files) => upload(files?.[0], () => input.click()));
 }
 function avatarControl(item, f, { compact, saved, patch }) {
   const face = item.avatar;
@@ -3111,6 +3504,10 @@ function relationChipEl(f, s, { onRemove = null } = {}) {
     home: f.targetDbIds && s.db ? s.db.split('/').pop() : null,
     onRemove,
   });
+}
+function chipOpensRecord(caret) {
+  if (!dockCoversScreen.matches || caret.closest('.wv-prose')) return null;
+  return caret.closest('.k-rel')?.querySelector(':scope > a.mention[href]') ?? null;
 }
 function toggleMentionCaret(caret) {
   const open = caret.closest('.k-rel')?.classList.toggle('open');
@@ -3198,6 +3595,8 @@ const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sa
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
 async function uploadBody(file) {
+  const refusal = fileTooBig(file);
+  if (refusal) throw new Error(refusal);
   const [bytes, preview] = await Promise.all([fileBase64(file), WeavePreview.make(file)]);
   return {
     name: file.name, mime: file.type || 'application/octet-stream', bytes,
@@ -3579,6 +3978,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     });
     return box;
   }
+  if (f.type === 'key' && db?.system === 'integrations') return integrationKeyCell(item, onSaved, { compact });
+  if (db?.system === 'integrations' && INTEGRATION_KEPT.includes(f.name)) return integrationKeptCell(f, item);
   if (f.type === 'key') {
     const kind = f.kind ?? 'apikey';
     const store = f.keystore ?? 'local';
@@ -3608,10 +4009,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const hidden = pile ? 0 : all.length - current.length;
     if (pile) box.append(chipElFrom(chipView.facePileHtml(all, { href: (s) => `#/entity/${s.id}` })), ' ');
     for (const s of current) {
-      const onRemove = compact ? null : async () => {
+      const onRemove = compact || dockCoversScreen.matches ? null : async () => {
         try {
-          await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: [s.id] });
-          await saved();
+          await unlinkWithUndo(id, f, s, saved);
         } catch (err) { toast(err.message, true); }
       };
       box.append(relationChipEl(f, s, { onRemove }), ' ');
@@ -3678,26 +4078,36 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (f.type === 'avatar') return avatarControl(item, f, { compact, saved, patch });
   if (f.type === 'attachments') {
     const ids = item.raw?.[f.name] ?? [];
-    const upload = async (files) => {
-      let landed = 0;
-      try {
-        for (const file of files) {
-          await api('POST', `/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file));
-          landed += 1;
-        }
-      } catch (err) { toast(err.message, true); }
-      if (landed) await saved().catch((err) => toast(err.message, true));
+    const upKey = `${id}:${f.name}`;
+    const known = new Set((item.files ?? []).map((x) => x.id));
+    uploadState(upKey).ctl = {
+      send: async (file, progress) => sendUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file), progress),
+      known: () => new Set(known),
+      found: (file, before) => landedFile(id, file, before, f.name),
+      landed: (file, meta) => { if (meta?.id) known.add(meta.id); },
+      refresh: saved,
+      choose: compact ? null : () => uploadHostsFor(upKey).find((n) => n.isConnected)?.querySelector('input[type=file]')?.click(),
     };
+    const upload = (files) => runUploads(upKey, files);
     const shown = ids.length ? String(val ?? `${ids.length}`) : '';
-    const chip = el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' },
+    const files = (item.files ?? []).filter((x) => ids.includes(x.id));
+    const marks = [
       el('span', { class: 'ico' }, iconEl('lucide:file', 'wv-icon')),
-      shown ? el('span', { class: 'k-label' }, shown) : '—');
+      shown ? el('span', { class: 'k-label' }, shown) : '—',
+    ];
+    const viewable = files.filter(isViewableFile);
+    const chip = compact && viewable.length
+      ? el('a', {
+        class: 'k k-attach', title: shown || 'attachments', href: fileViewUrl(viewable[0]), target: '_blank',
+        dataset: { fileId: viewable[0].id },
+        onclick: (e) => { if (!plainClick(e)) return; e.preventDefault(); filePanel.open(viewable, 0); },
+      }, ...marks)
+      : el('span', { class: 'k k-attach' + (ids.length ? '' : ' is-empty'), title: shown || 'attachments' }, ...marks);
     chip.dropFiles = upload;
     if (compact) {
       if (ids.length === 1) new ResizeObserver(() => fitAttachName(chip)).observe(chip);
       return chip;
     }
-    const files = (item.files ?? []).filter((x) => ids.includes(x.id));
     const remove = (file) => el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Remove from this field',
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
@@ -3716,15 +4126,17 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
     box.append(chips);
-    const input = el('input', { type: 'file', style: 'display:none' });
+    const input = el('input', { type: 'file', multiple: f.multiple === false ? null : '', style: 'display:none' });
     input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      if (file) upload([file]);
+      const picked = [...(input.files ?? [])];
+      input.value = '';
+      if (picked.length) upload(picked);
     });
     chips.append(input, el('button', {
       class: 'btn btn-sm btn-ghost-secondary tiny', title: 'Upload a file into this field, or drop files here',
       onclick: () => input.click(),
     }, '+ file'));
+    uploadHost(box, upKey, { slot: chips, before: input });
     return fileDropZone(box, upload);
   }
   if (f.type === 'date') {
@@ -3782,12 +4194,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
     return dressed;
   }
-  if (!fit && typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
+  if (typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;
 }
 
+const DOC_PREVIEW_LINES = 4;
 function docPreviewCell(md, name, onOpen) {
-  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md);
+  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: DOC_PREVIEW_LINES });
   const box = el('span', {
     class: 'doc-preview' + (kind ? '' : ' is-empty'),
     tabindex: 0,
@@ -4516,7 +4929,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
-  const whole = showDeleted || !!group;
+  const whole = !!group;
   const query = {
     ...(where ? { where } : {}),
     ...(gridSort(db) ? { sort: gridSort(db) } : {}),
@@ -4529,8 +4942,8 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
   };
   const paint = (result, domains) => {
     tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
-    const items = showDeleted ? result.items.map((e) => (e.deletedAt ? { ...e, deleted: true } : e)) : result.items;
-    setFilterTotal(db, showDeleted ? items.filter((e) => !e.deleted).length : result.total, result.all);
+    const items = result.items;
+    setFilterTotal(db, showDeleted ? (result.liveTotal ?? result.total) : result.total, result.all);
     const drawn = group ? {
       ...db,
       grouping: {
@@ -4570,6 +4983,7 @@ function gridFields(db) {
 }
 
 function graftChips(db, res) {
+  for (const item of res?.items ?? []) if (item.deletedAt) item.deleted = true;
   if (!res?.chips) return res;
   const rels = db.fields.filter((f) => f.type === 'relation' || lookupTargetOf(db, f)?.type === 'relation').map((f) => f.name);
   for (const item of res.items ?? []) {
@@ -5081,6 +5495,7 @@ function listRowPrefs(db, save) {
 function drawnGroupKeys(db) {
   const drawn = $('#main')?.wvDraw;
   if (!drawn || drawn.db.id !== db.id) return [];
+  if (drawn.groupKeys) return [...drawn.groupKeys];
   const levels = VP.levelsFor(db.view?.group, db.fields, { items: drawn.items });
   return VP.model(VP.rowsFor(drawn.items, levels), { levels }).nodes.map((n) => n.key);
 }
@@ -5530,8 +5945,8 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
 
   if (list) {
     state.inlineAdd = list.board ? null : async () => main.querySelector('.list-add-name')?.focus();
-    (list.board ? renderBoard : renderList)(main, db, items, list);
-    main.wvDraw = { db, items, trashCount, pager: null };
+    const groupKeys = (list.board ? renderBoard : renderList)(main, db, items, list);
+    main.wvDraw = { db, items, trashCount, pager: null, groupKeys };
     syncPhoneBar();
     paintGridWait();
     paneSync(db);
@@ -6005,6 +6420,7 @@ function renderList(main, db, items, ctx) {
       write(item, values, order);
     };
   }
+  return listCore.drawnKeys(arranged);
 }
 function boardCardFields(db) {
   const cover = boardCore.coverField(db);
@@ -6376,6 +6792,7 @@ function renderBoard(main, db, items, ctx) {
     const undo = Object.keys(values).length ? { text: `#${item.publicId} moved to ${where}`, values: back } : null;
     write(item, values, order, undo, settled);
   }
+  return listCore.drawnKeys(arranged);
 }
 function groupFieldOptions(db) {
   return db.fields.filter((f) => listCore.groupable(f))
@@ -6917,6 +7334,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       ...phone.chips.filter((n) => !cols.includes(n)).map((n) => fieldCell(db.fields.find((x) => x.name === n), item, ' phone-only')));
     const lead = phone.lead && db.fields.find((x) => x.name === phone.lead);
     if (lead) row.querySelector(':scope > td.pid-cell > .wv-cb').prepend(phoneLeadEl(lead, item));
+    if (dockCoversScreen.matches && main.id === 'main') {
+      for (const input of row.querySelectorAll(':scope > td[data-field] > .wv-cb input.inline-edit')) {
+        if (input.value) (input.closest('.date-cell') ?? input).replaceWith(el('span', { class: 'text-dressed', title: input.value }, input.value));
+      }
+      for (const k of row.querySelectorAll(':scope > td[data-field] > .wv-cb > .k-computed:not(:has(*))')) {
+        k.classList.replace('k-computed', 'k-select');
+        k.classList.add('hue-slate');
+      }
+    }
     for (const td of row.querySelectorAll(':scope > td[data-field]:not(.cell-nostop, .phone-only)')) td.tabIndex = 0;
     for (const n of row.querySelectorAll('td :is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     return row;
@@ -7558,7 +7984,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const f = db.fields.find((x) => x.name === td.dataset.field);
       if (!f) continue;
       if (td !== document.activeElement && td.contains(document.activeElement)) continue;
-      if (was && JSON.stringify(was.fields?.[f.name] ?? null) === JSON.stringify(item.fields?.[f.name] ?? null)) continue;
+      const shown = (r) => JSON.stringify([r.fields?.[f.name] ?? null, db.system === 'integrations' && f.type === 'key' ? r.fields?.['Key Hint'] ?? null : null]);
+      if (was && shown(was) === shown(item)) continue;
       td.replaceChildren(cellBox(labeledEditorFor(f, item, db, onSaved, { compact: true, fit: true })));
       for (const n of td.querySelectorAll(':is(input, button, select, textarea, a, [tabindex])')) n.tabIndex = -1;
     }
@@ -7762,7 +8189,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
         return true;
       }
       case 'caret': {
-        if (at.tagName !== 'INPUT' || typeof at.value !== 'string') return false;
+        if (!['INPUT', 'TEXTAREA'].includes(at.tagName) || typeof at.value !== 'string') return false;
         const to = verb.to === 'end' ? at.value.length : 0;
         try { at.setSelectionRange(to, to); } catch { return false; }
         return true;
@@ -8024,7 +8451,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
 
   let popTimer = 0;
   wrap.addEventListener('mouseover', (e) => {
-    const td = e.target.closest('td.clipped');
+    const td = canHover.matches ? e.target.closest('td.clipped') : null;
     clearTimeout(popTimer);
     if (td && wrap.contains(td) && !cellIsEditing(td)) {
       popTimer = setTimeout(() => { if (!cellIsEditing(td)) showCellPop(td, wrap); }, CELL_POP_DELAY);
@@ -8034,6 +8461,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.addEventListener('mouseleave', dropCellPop);
   wrap.addEventListener('mousedown', dropCellPop, true);
   wrap.addEventListener('focusin', dropCellPop);
+  wrap.addEventListener('focusin', (e) => {
+    const input = e.target;
+    if (!canHover.matches || listRows() || !input.matches?.('input.inline-edit[type="text"]')) return;
+    const td = input.closest('tbody tr.entity-row > td[tabindex="0"]');
+    if (td && wrap.contains(td) && spillsRight(td) && (td.classList.contains('clipped') || overflowsX(input))) spillEditor(td, input);
+  });
   const listRow = (e) => (listRows() && !nativeClick(e) ? e.target?.closest?.('tbody tr.entity-row') : null);
   let press = null;
   wrap.addEventListener('pointerdown', (e) => {
@@ -8331,6 +8764,8 @@ function cellFitProbe(cell) {
     probe.style[prop] = cs[prop];
   }
   for (const node of cell.childNodes) probe.append(node.cloneNode(true));
+  const resting = cell.querySelectorAll('.text-dressed');
+  probe.querySelectorAll('.text-dressed').forEach((copy, i) => { if (resting[i]) copy.style.fontWeight = getComputedStyle(resting[i]).fontWeight; });
   const live = cell.querySelectorAll('input, textarea');
   probe.querySelectorAll('input, textarea').forEach((copy, i) => {
     const src = live[i] ?? copy;
@@ -9580,7 +10015,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     toolbarConfig: { hide: false, pin: false },
     upload: {
       multiple: true,
-      handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput),
+      handler: (files) => uploadDocFiles(files, entityId, () => editor, onInput, host),
     },
     outline: { enable: false, position: 'left' },
     preview: {
@@ -9692,26 +10127,44 @@ for (const ev of ['resize', 'scroll']) {
   });
 }
 
-async function uploadDocFiles(files, entityId, getEditor, onInput) {
+let docUploadSeq = 0;
+const DOC_UPLOAD_INPUT = '.vditor-toolbar [data-type="upload"] input[type="file"]';
+function docUploadStrip(host) {
+  if (host.uploadStrip?.isConnected) return host.uploadStrip;
+  host.uploadKey ??= `doc:${++docUploadSeq}`;
+  const strip = el('div', { class: 'doc-uploads attach-chips' });
+  host.after(strip);
+  host.uploadStrip = uploadHost(strip, host.uploadKey);
+  return strip;
+}
+
+async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) {
   if (!entityId) return 'This document has no record to attach to';
-  const editor = getEditor();
-  for (const f of files) {
-    const contentBase64 = await fileBase64(f);
-    let meta;
-    try {
-      meta = await api('POST', `/entities/${entityId}/files`, {
-        name: f.name, mime: f.type || 'application/octet-stream', contentBase64,
-      });
-    } catch (e) { return `Upload failed: ${e.message}`; }
-    const url = `${WS_PREFIX}/api/files/${meta.id}`;
-    const mime = f.type || '';
-    const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
-      : mime === 'application/pdf'
-        ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
-        : `[${f.name}](${url})`;
-    editor.insertValue(md + '\n');
-  }
-  onInput?.(editor.getValue());
+  const input = host?.querySelector(DOC_UPLOAD_INPUT);
+  if (input) input.value = '';
+  const key = host?.parentNode ? docUploadStrip(host).dataset.uploadKey : `doc:${entityId}`;
+  const seen = api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id)), () => new Set());
+  const mine = new Set();
+  uploadState(key).ctl = {
+    send: async (f, progress) => sendUpload(`/entities/${entityId}/files`, {
+      name: f.name, mime: f.type || 'application/octet-stream', contentBase64: await fileBase64(f),
+    }, progress),
+    known: () => seen.then((ids) => new Set([...ids, ...mine])),
+    found: (f, before) => landedFile(entityId, f, before),
+    landed: (f, meta) => {
+      mine.add(meta.id);
+      const url = `${WS_PREFIX}/api/files/${meta.id}`;
+      const mime = f.type || '';
+      const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
+        : mime === 'application/pdf'
+          ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
+          : `[${f.name}](${url})`;
+      getEditor().insertValue(md + '\n');
+    },
+    refresh: async () => onInput?.(getEditor().getValue()),
+    choose: host ? () => host.querySelector(DOC_UPLOAD_INPUT)?.click() : null,
+  };
+  await runUploads(key, [...files]);
   return null;
 }
 
@@ -11262,8 +11715,7 @@ async function relatedGrid(entity, f, onSaved) {
         onclick: async (e) => {
           e.stopPropagation();
           try {
-            await api('POST', `/entities/${entity.id}/unlink`, { field: f.name, targets: [item.id] });
-            await onSaved();
+            await unlinkWithUndo(entity.id, f, item, onSaved);
           } catch (err) { toast(err.message, true); }
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
@@ -11445,6 +11897,32 @@ async function showView(id) {
 const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
 let bootHomeReads = null;
 
+function workspaceSystemCard() {
+  const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
+    return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
+      el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? (db.term?.singular ?? WeaveTerm.DEFAULT.singular) : (db.term?.plural ?? WeaveTerm.DEFAULT.plural)}`));
+  });
+  return el('div', { class: 'card list-rows system-tables' },
+    el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
+      el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, 'every event in this workspace')),
+    ...registryRows);
+}
+
+async function savedPagesCard() {
+  const views = await api('GET', '/views').catch(() => []);
+  if (!views.length) return null;
+  return el('div', { class: 'card list-rows' },
+    ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
+      el('span', {}, v.name),
+      v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)), 'share-page', v)));
+}
+
 async function showHome() {
   state.route = { page: 'home' };
   syncDocTitle(null);
@@ -11457,12 +11935,6 @@ async function showHome() {
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
-  const registryRows = state.schema.filter((s) => s.system === 'workspace').flatMap((s) => s.tables).map((db) => {
-    return el('div', { class: 'list-row', dataset: { href: `#/table/${db.id}`, registry: db.system }, onclick: () => { location.hash = `#/table/${db.id}`; } },
-      el('span', {}, db.name), el('span', { class: 'k k-sys' }, 'system'),
-      el('span', { class: 'spacer' }),
-      el('span', { class: 'pid' }, `${(db.entityCount ?? 0).toLocaleString()} ${db.entityCount === 1 ? (db.term?.singular ?? WeaveTerm.DEFAULT.singular) : (db.term?.plural ?? WeaveTerm.DEFAULT.plural)}`));
-  });
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -11482,25 +11954,12 @@ async function showHome() {
         kindDots('workspace', here, wsCtx, { title: 'Workspace actions' }),
       ],
     }),
-    ...(mine.length ? [] : [emptyWorkspace()]),
-    el('div', { class: 'card list-rows system-tables' },
-      el('div', { class: 'list-row', dataset: { href: '#/activity' }, onclick: () => { location.hash = '#/activity'; } },
-        el('span', {}, 'Activity'), el('span', { class: 'k k-sys' }, 'system'),
-        el('span', { class: 'spacer' }),
-        el('span', { class: 'pid' }, 'every event in this workspace')),
-      ...registryRows));
+    ...(mine.length ? [] : [emptyWorkspace()]));
   kindContext(main.querySelector('.view-header'), 'workspace', here, wsCtx, { skip: `${OWN_CONTEXT}, .crumb-path a, .ws-logo` });
-  try {
-    const views = await api('GET', '/views');
-    if (views.length) {
-      main.append(el('div', { class: 'card list-rows' },
-        ...views.map((v) => kindContext(el('div', { class: 'list-row', dataset: { href: `#/view/${v.id}` }, onclick: () => { location.hash = `#/view/${v.id}`; } },
-          el('span', {}, v.name),
-          v.shared ? el('span', { class: 'k k-sys' }, 'shared') : null,
-          el('span', { class: 'spacer' }),
-          el('span', { class: 'pid' }, `${v.blocks.length} block${v.blocks.length === 1 ? '' : 's'}`)), 'share-page', v))));
-    }
-  } catch {}
+  if (mine.length && dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showWorkspaceLauncher(main, here.title);
+  main.append(workspaceSystemCard());
+  const pages = await savedPagesCard();
+  if (pages) main.append(pages);
   if (mine.length) {
     const card = await relationMapCard('Relation map');
     if (card) main.append(card);
@@ -11690,6 +12149,14 @@ async function gestureTop(g) {
     ours.push(u.entityId);
   }
   return ours;
+}
+
+async function unlinkWithUndo(entityId, f, target, after = () => {}) {
+  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] });
+  const gesture = { kind: 'update', ids: [entityId] };
+  lastGesture = gesture;
+  toast(`Unlinked ${target.name ?? 'the row'} from ${f.name}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
+  await after();
 }
 
 async function undoGesture(g) {
@@ -12372,7 +12839,9 @@ document.addEventListener('click', (ev) => {
   if (!caret) return;
   ev.preventDefault();
   ev.stopPropagation();
-  toggleMentionCaret(caret);
+  const open = chipOpensRecord(caret);
+  if (open) open.click();
+  else toggleMentionCaret(caret);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -12693,10 +13162,26 @@ function wireNavHold() {
     const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
     back?.focus();
   };
+  let holdFrame = null;
+  const holdAfterPaint = () => {
+    holdFrame = requestAnimationFrame(() => {
+      holdFrame = requestAnimationFrame(() => {
+        holdFrame = null;
+        if (!held && app.classList.contains('nav-peek') && narrowShell.matches) hold();
+      });
+    });
+  };
   new MutationObserver(() => {
     const open = app.classList.contains('nav-peek') && narrowShell.matches;
-    if (open && !held) hold();
-    else if (!open && held) release();
+    if (open) {
+      if (!held && holdFrame == null) holdAfterPaint();
+      return;
+    }
+    if (holdFrame != null) {
+      cancelAnimationFrame(holdFrame);
+      holdFrame = null;
+    }
+    if (held) release();
   }).observe(app, { attributes: true, attributeFilter: ['class'] });
   addEventListener('keydown', (e) => {
     if (!held || document.querySelector(NAV_KEY_OWNERS)) return;

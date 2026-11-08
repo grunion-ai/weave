@@ -237,3 +237,43 @@ test('CLI documents delete --hard, restore and trash', () => {
   }
   assert.match(help, /delete <ref> \[--hard\]/, 'the help text must document --hard');
 });
+
+test('includeDeleted answers liveTotal, so a paged show-deleted view counts the live rows of the whole match (Issue #1269)', () => {
+  const { w, tasks, a, b } = buildWorkspace();
+  for (let i = 0; i < 8; i++) w.createEntity(tasks, { name: `Task ${i}`, values: { Estimate: i } });
+  w.deleteEntity(a.id);
+  w.deleteEntity(b.id);
+  const page = w.query(tasks, { includeDeleted: true, limit: 2, offset: 0, sort: ['Name'] });
+  assert.equal(page.items.length, 2, 'one page of rows comes back');
+  assert.equal(page.total, 10, 'total counts every matching row, trashed ones included');
+  assert.equal(page.liveTotal, 8, 'liveTotal counts the live ones over the whole match, not the page');
+  assert.equal(w.query(tasks, { includeDeleted: true, limit: -1 }).liveTotal, 8, 'the whole-table answer agrees');
+  const filtered = w.query(tasks, { includeDeleted: true, where: [['Estimate', '>=', 3]], limit: 1 });
+  assert.equal(filtered.liveTotal, filtered.total - 2, 'a filter narrows liveTotal with total');
+});
+
+test('liveTotal is left out when the query reads live rows only (Issue #1269)', () => {
+  const { w, tasks, a } = buildWorkspace();
+  w.deleteEntity(a.id);
+  assert.equal('liveTotal' in w.query(tasks, {}), false, 'a live-only query spends no bytes on it');
+  assert.equal('liveTotal' in w.query(tasks, { includeDeleted: false }), false, 'nor does an explicit includeDeleted false');
+});
+
+test('REST and MCP carry liveTotal through from the engine (Issue #1269)', async () => {
+  const { w, tasks, a } = buildWorkspace();
+  w.deleteEntity(a.id);
+  assert.equal(dispatchTool(w, 'weave_query', { db: 'Task', includeDeleted: true, limit: 1 }).liveTotal, 1, 'MCP answers it');
+  const { server } = await startServer(w, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tables/Task/query`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ includeDeleted: true, limit: 1 }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.total, 2, 'the route counts both rows');
+    assert.equal(body.liveTotal, 1, 'and carries the live count of the match');
+  } finally {
+    server.close();
+  }
+});

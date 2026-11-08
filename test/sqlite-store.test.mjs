@@ -280,3 +280,52 @@ test('Issue #1085: an automation created enabled stays enabled and fires after a
   assert.deepEqual(w2.getEntity(row.id).comments.map((c) => c.text), ['hi'], 'the reopened rule fires');
 });
 
+
+function generated(rows) {
+  const w = new Weave();
+  w.createSpace({ name: 'Bulk' });
+  w.createTable({ space: 'Bulk', name: 'Row' });
+  w.addField('Row', { name: 'Amount', type: 'number' });
+  for (let i = 0; i < rows; i++) w.createEntity('Row', { name: `Row ${i}`, values: { Amount: i } });
+  return w.exportJSON({ blobs: false });
+}
+
+function importInto(snapshot, name) {
+  const path = join(tmp(), name);
+  const disk = new Weave({ path });
+  const started = performance.now();
+  disk.importJSON(snapshot);
+  const elapsed = performance.now() - started;
+  disk.store.close?.();
+  return { elapsed, path };
+}
+
+test('Issue #1094: an imported workspace keeps every row, its values and its FTS entry', () => {
+  const rows = 500;
+  const snapshot = generated(rows);
+  const live = Object.values(snapshot.entities).filter((e) => !e.deletedAt).length;
+  const { path } = importInto(snapshot, 'faithful.db');
+  const reopened = new Weave({ path });
+  const table = reopened.getTable('Bulk/Row');
+  assert.equal(reopened.listEntities(table.id).length, rows);
+  const one = reopened.findEntity(table.id, '#300');
+  assert.equal(reopened.entityName(one), 'Row 299');
+  assert.equal(reopened.getEntity(one.id).values[reopened.findField(table, 'Amount').id], 299);
+  reopened.store.close?.();
+
+  const db = new DatabaseSync(path, { readOnly: true });
+  const hits = db.prepare('SELECT id FROM entities_fts WHERE entities_fts MATCH ?').all('"Row 299"');
+  const indexed = db.prepare('SELECT count(*) AS n FROM entities_fts').get().n;
+  db.close();
+  assert.deepEqual(hits.map((h) => h.id), [one.id], 'the imported row is findable in the FTS index');
+  assert.equal(indexed, live, 'the FTS index holds one entry per live entity');
+});
+
+test('Issue #1094: import cost per row stays flat as the workspace grows', () => {
+  const small = importInto(generated(1000), 'scale-small.db');
+  const large = importInto(generated(10000), 'scale-large.db');
+  const smallPerRow = small.elapsed / 1000;
+  const largePerRow = large.elapsed / 10000;
+  const ratio = largePerRow / smallPerRow;
+  assert.ok(ratio < 3, `import is superlinear: ${smallPerRow.toFixed(3)} ms/row at 1,000 rows, ${largePerRow.toFixed(3)} ms/row at 10,000 rows (${ratio.toFixed(1)}x)`);
+});

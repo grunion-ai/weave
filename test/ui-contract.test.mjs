@@ -312,8 +312,8 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
   assert.doesNotMatch(APP, /holdToConfirm\('Delete entity'/,
     'a recoverable delete must not demand a hold');
   assert.match(APP, /label: 'Undo'[\s\S]{0,200}\/restore/, 'the toast must offer restore');
-  assert.match(APP, /function toast\(msg, isErr = false, action = null(, \{ kind(, key = null)? \} = \{\})?\)/,
-    'every caller keeps the (msg, isErr, action) shape (Issue #380 added an optional kind, Issue #917 an optional key)');
+  assert.match(APP, /function toast\(msg, isErr = false, action = null(, \{ kind(, key = null)?(, mono = null)? \} = \{\})?\)/,
+    'every caller keeps the (msg, isErr, action) shape (Issue #380 added an optional kind, Issue #917 an optional key, Issue #1413 an optional mono error id)');
   assert.ok(rulesFor('.wv-toast-action').cursor, '.wv-toast-action must be styled as a control');
 });
 
@@ -347,14 +347,11 @@ test('the description block is compact', () => {
   assert.equal(floor, px(edit['min-height']), 'autosize floor must match CSS min-height');
 });
 
-test('the description clamp is five description line-heights, toggled by a control the editor ignores', () => {
-  const desc = rulesFor('.view-desc');
-  const clamped = rulesFor('.view-desc-body.clamped');
+test('the description clamp counts five whole lines, toggled by a control the editor ignores', () => {
+  const clamped = rulesFor('.clamped');
   assert.equal(clamped.overflow, 'hidden');
-  const m = clamped['max-height']?.match(/calc\((\d+) \* ([\d.]+)em\)/);
-  assert.ok(m, `max-height is calc(<lines> * <line-height>em), got ${clamped['max-height']}`);
-  assert.equal(Number(m[1]), 5, 'five lines');
-  assert.equal(m[2], desc['line-height'], 'in the description\'s own line-height');
+  assert.equal(clamped['-webkit-line-clamp'], '5', 'five whole lines');
+  assert.equal(clamped['max-height'], undefined, 'a height cannot count lines (Issue #1306)');
   const vh = fnBody('viewHeader');
   assert.match(vh, /class: 'view-desc-body wv-prose clamped'/, 'the rendered markdown has its own body element, born clamped');
   assert.match(vh, /class: 'view-desc-more'/, 'the Show more control exists');
@@ -702,7 +699,7 @@ test('the <select> era leaves nothing behind', () => {
 test('an idle inline-edit cell casts no shadow', () => {
   assert.equal(rulesFor('.wv-edit')['box-shadow'], 'none',
     '.wv-edit must zero Tabler\'s --tblr-shadow-input');
-  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 1.5px var(--tblr-primary)',
+  assert.equal(rulesFor('.wv-edit:focus')['box-shadow'], 'inset 0 0 0 2px var(--wv-edit-ring)',
     'and the focus rule draws the one ring over that reset (Issue #1030)');
 });
 
@@ -834,8 +831,9 @@ test('the Activity table is routed, read-only and reachable from the workspace p
   assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
   assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'nothing in this table can be written from the UI');
   assert.match(view, /system table/i, 'and it says so on the page');
-  assert.match(fnBody('showHome'), /#\/activity/, 'the workspace page links to it');
-  assert.match(fnBody('showHome'), /system/, 'marked as weave\'s table rather than the user\'s');
+  assert.match(fnBody('showHome'), /workspaceSystemCard\(\)/, 'the workspace page draws the system tables card');
+  assert.match(fnBody('workspaceSystemCard'), /#\/activity/, 'the workspace page links to it');
+  assert.match(fnBody('workspaceSystemCard'), /system/, 'marked as weave\'s table rather than the user\'s');
 });
 
 test('an activity row opens the event itself, not the record it references', () => {

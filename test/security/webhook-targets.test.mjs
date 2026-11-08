@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
+import { createHmac } from 'node:crypto';
 import { read } from '../lib/source.mjs';
 import { tempDir } from '../lib/temp.mjs';
 
@@ -115,4 +116,78 @@ test('WEAVE_WEBHOOK_ALLOW_PRIVATE is named in the CLI help, the Handbook environ
   assert.match(guide.doc, /\| `WEAVE_WEBHOOK_ALLOW_PRIVATE` \|/);
   assert.match(read('Dockerfile'), /WEAVE_WEBHOOK_ALLOW_PRIVATE/);
   assert.match(read('compose.yaml'), /WEAVE_WEBHOOK_ALLOW_PRIVATE/);
+});
+
+async function delivered() {
+  const got = [];
+  const h = await hook((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => { got.push({ headers: req.headers, body: Buffer.concat(chunks).toString() }); res.end(); });
+  });
+  return { ...h, got };
+}
+
+function signedFire(w, t, url, signWith) {
+  const auto = w.createAutomation(t.id, {
+    name: 'Notify',
+    trigger: { type: 'state-changed', field: 'Status', toState: 'Done' },
+    actions: [{ type: 'webhook', url, ...(signWith ? { signWith } : {}) }],
+  });
+  w.setState(w.createEntity(t.id, { Name: 'R1' }).id, 'Status', 'Done');
+  return auto;
+}
+
+test('a webhook that names a credential signs its delivery, and the secret value never leaves the keystore (Issue #951)', async () => {
+  process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
+  const { close, got, port } = await delivered();
+  try {
+    const { w, t } = demo();
+    const secret = 'whsec-never-on-the-wire';
+    w.setKey('hooks-receiver', secret);
+    const auto = signedFire(w, t, `http://127.0.0.1:${port}/hook`, 'hooks-receiver');
+    assert.ok(await until(() => got.length === 1), 'the delivery arrived');
+    const { headers, body } = got[0];
+    assert.match(headers['x-weave-timestamp'], /^[0-9]+$/, 'the timestamp is unix seconds');
+    assert.ok(Math.abs(Date.now() / 1000 - Number(headers['x-weave-timestamp'])) < 120);
+    assert.match(headers['x-weave-delivery'], /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'the delivery id is a uuid');
+    const expected = createHmac('sha256', secret).update(`${headers['x-weave-timestamp']}.${body}`).digest('hex');
+    assert.equal(headers['x-weave-signature'], `sha256=${expected}`, 'the documented recipe reproduces the signature');
+    const wire = `${JSON.stringify(headers)}${body}${w.readEntity(auto.id).docs.Script}`;
+    assert.ok(!wire.includes(secret), 'the secret value is in no header, no body and not in the Script');
+    assert.ok(await until(() => health(w, auto.id).Health === 'Healthy'));
+  } finally { delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE; await close(); }
+});
+
+test('a webhook that names no credential sends the one-header POST it has always sent (Issue #951)', async () => {
+  process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
+  const { close, got, port } = await delivered();
+  try {
+    const { w, t } = demo();
+    signedFire(w, t, `http://127.0.0.1:${port}/hook`, null);
+    assert.ok(await until(() => got.length === 1));
+    assert.equal(got[0].headers['content-type'], 'application/json');
+    assert.deepEqual(Object.keys(got[0].headers).filter((k) => k.startsWith('x-weave-')), [], 'no signature headers appear on an unsigned hook');
+  } finally { delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE; await close(); }
+});
+
+test('a webhook naming a credential the keystore does not hold posts nothing and says why (Issue #951)', async () => {
+  process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
+  const { close, hits, port } = await hook((req, res) => { req.resume(); res.end(); });
+  try {
+    const { w, t } = demo();
+    const auto = signedFire(w, t, `http://127.0.0.1:${port}/hook`, 'never-set');
+    assert.ok(await until(() => health(w, auto.id).Health === 'Failed'));
+    assert.match(health(w, auto.id)['Health Reason'], /never-set/);
+    assert.deepEqual(hits, [], 'an unsignable delivery is not sent unsigned');
+  } finally { delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE; await close(); }
+});
+
+test('the signature recipe is documented in the Automations guide and the MCP automation tool (Issue #951)', () => {
+  const guide = GUIDES.find((g) => g.name === 'Automations');
+  assert.match(guide.doc, /X-Weave-Signature/);
+  assert.match(guide.doc, /X-Weave-Timestamp/);
+  assert.match(guide.doc, /X-Weave-Delivery/);
+  assert.match(guide.doc, /signWith/);
+  assert.match(read('src/mcp.js'), /signWith/);
 });

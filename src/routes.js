@@ -1,4 +1,4 @@
-import { Weave, WeaveError, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
+import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -31,8 +31,9 @@ export const ifMatchRevision = (header) => {
 };
 export const ownsEntity = (ws, id) => Object.hasOwn(ws.state.entities, id);
 
+export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
 export function statusFor(err) {
-  if (!(err instanceof WeaveError)) return 500;
+  if (!(err instanceof WeaveError)) return storageFull(err) ? 507 : 500;
   return { 'not-found': 404, conflict: 409, stale: 412, slug_taken: 409, slug_reserved: 400, slug_invalid: 400, invalid: 400, ambiguous: 400, forbidden: 403, 'unsupported-type': 415, 'too-large': 413, 'rate-limited': 429 }[err.code] ?? 400;
 }
 
@@ -47,14 +48,22 @@ export function errorBody(err, code = 'internal') {
   if (err instanceof WeaveError) return { error: err.message, code: err.code ?? code };
   const id = crypto.randomUUID().slice(0, 8);
   if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
+  if (storageFull(err)) return { error: 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.', code: 'storage-full', id };
   return { error: `Internal error (request ${id})`, code: 'internal', id };
 }
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
+const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
 export const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
-const boundedLimit = (value, fallback = null) => (value == null ? fallback : Math.min(Number(value), rowCap()));
+const boundedLimit = (value, fallback = null) => {
+  if (value == null) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new WeaveError(`limit must be a number, not '${value}'`, 'invalid');
+  return Math.min(n, rowCap());
+};
 
 const prefersHtml = (accept) => {
   const q = {};
@@ -1104,7 +1113,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (path.startsWith('/api/')) {
-        const body = ['POST', 'PUT', 'PATCH'].includes(rx.method) ? await rx.readBody() : {};
+        const attaching = ATTACH_ROUTE.test(path);
+        const body = ['POST', 'PUT', 'PATCH'].includes(rx.method)
+          ? await rx.readBody(attaching ? MAX_ATTACH_BODY_BYTES : undefined).catch((err) => {
+            if (!attaching || err?.code !== 'too-large') throw err;
+            throw new WeaveError(`This upload is larger than ${mbText(FILE_MAX_BYTES)}, the most a file can be`, 'too-large');
+          })
+          : {};
         weave.actor = actorForRequest;
         const route = `${rx.method} ${path}`;
         if (share) {
@@ -1588,6 +1603,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
         }
 
+        if (route === 'GET /api/workspace/home') return out(200, weave.workspaceHome());
+
         if (route === 'GET /api/workspace') {
           const ws = weave.getWorkspace();
           return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });
@@ -1687,6 +1704,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           await remirror(weave);
           return out(200, gone);
         }
+        if ((m = path.match(/^\/api\/integrations\/([^/]+)\/credential$/))) {
+          if (!role || !mayAdminister(weave, roleOn(weave))) return deny(role ? 403 : 401, 'Setting an integration key needs an architect on this workspace');
+          if (rx.method !== 'PUT') return out(405, { error: 'An integration key is written with PUT and never read back', code: 'method-not-allowed' }, { Allow: 'PUT' });
+          return out(200, await weave.setIntegrationCredential(decodeURIComponent(m[1]), body?.value));
+        }
         if (path.startsWith('/api/keys')) {
           if (!role) return deny(401, 'Managing keys needs an account on this workspace');
           const localRole = roleOn(weave);
@@ -1775,7 +1797,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const engine = oauth?.engine ?? weave;
             const account = oauth?.account ?? (authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null);
             if (!account) throw new WeaveError('Prepare uploads through OAuth or an account token', 'forbidden');
-            if (!Number.isSafeInteger(size) || size < 0 || size > MAX_BODY_BYTES) throw new WeaveError(`Upload size must be an integer from 0 to ${MAX_BODY_BYTES} bytes`, 'invalid');
+            if (!Number.isSafeInteger(size) || size < 0 || size > FILE_MAX_BYTES) throw new WeaveError(`Upload size must be an integer from 0 to ${FILE_MAX_BYTES} bytes`, 'invalid');
             if (contentBase64 != null || typeof name !== 'string' || !name.trim() || name.length > 255 || typeof mime !== 'string' || mime.length > 255) throw new WeaveError('Prepare with a filename, MIME type and size, without file content', 'invalid');
             const row = weave.getEntity(entity);
             if (row.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
@@ -2133,8 +2155,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64, preview: previewInput(body.preview) }));
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/files\/([^/]+)$/)) && rx.method === 'DELETE') {
-          weave.deleteFile(m[1], m[2]);
-          return out(200, { ok: true });
+          const result = weave.deleteFile(m[1], m[2]);
+          if (!result.deleted) return notFound({ error: `No file '${m[2]}' on this record`, code: 'not-found' });
+          return out(200, result);
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
           const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
@@ -2164,7 +2187,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/automations\/([^/]+)$/))) {
           if (rx.method === 'PATCH') return out(200, weave.updateAutomation(m[1], body));
-          if (rx.method === 'DELETE') { weave.deleteAutomation(m[1]); return out(200, { ok: true }); }
+          if (rx.method === 'DELETE') {
+            const result = weave.deleteAutomation(m[1]);
+            if (!result.deleted) return notFound({ error: `No automation '${m[1]}'`, code: 'not-found' });
+            return out(200, result);
+          }
         }
 
         if (route === 'GET /api/activity') {
@@ -2188,16 +2215,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (tables != null) {
             return out(200, weave.universalSearch(q, { limit, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
           }
-          if (rx.searchParams.get('all')) {
-            const results = [];
-            for (const [name, w] of hub.entries()) {
-              if (!canOpen(w)) continue;
-              for (const hit of w.universalSearch(q, { limit })) {
-                results.push({ workspace: name, ...hit });
-              }
-            }
-            return out(200, Weave.capRows(results, limit));
-          }
           return out(200, weave.universalSearch(q, { limit }));
         }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
@@ -2217,6 +2234,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     } catch (err) {
       const status = statusFor(err);
       const json = errorBody(err, 'internal');
+      if (json.code === 'too-large' && ATTACH_ROUTE.test(path)) json.limit = FILE_MAX_BYTES;
       return status === 404 ? notFound(json) : out(status, json, status === 429 ? { 'Retry-After': '60' } : {});
     }
   };

@@ -29,6 +29,10 @@ if (s) {
   }));
   const CLOSED = { open: false, expanded: 'false', mainInert: false };
   const HELD = { open: true, expanded: 'true', mainInert: true };
+  const openMenu = async (page) => {
+    await page.click('#main .nav-menu');
+    await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-held'));
+  };
   const focusIn = (page) => page.evaluate(() => {
     const a = document.activeElement;
     if (a?.matches('#main .nav-menu')) return 'menu';
@@ -40,7 +44,7 @@ if (s) {
       const page = await open([390, 844], theme);
       try {
         assert.deepEqual(await state(page), CLOSED, 'the menu starts closed and the page free');
-        await page.click('#main .nav-menu');
+        await openMenu(page);
         assert.deepEqual(await state(page), HELD, 'the menu is open, the button says so and the page behind is inert');
         assert.equal(await focusIn(page), 'drawer', 'focus moves into the menu');
         for (let i = 0; i < 30; i += 1) {
@@ -54,13 +58,13 @@ if (s) {
         assert.deepEqual(await state(page), CLOSED, 'Escape closes it and frees the page');
         assert.equal(await focusIn(page), 'menu', 'focus returns to the menu button');
 
-        await page.click('#main .nav-menu');
+        await openMenu(page);
         assert.deepEqual(await state(page), HELD);
         await page.click('#nav-collapse');
         assert.deepEqual(await state(page), CLOSED, 'the close button closes it and frees the page');
         assert.equal(await focusIn(page), 'menu', 'focus returns to the menu button after the close button');
 
-        await page.click('#main .nav-menu');
+        await openMenu(page);
         await page.click('#sidebar a.nav-db:has-text("Feature")');
         await page.waitForFunction(() => document.querySelector('.view-title')?.value === 'Feature' || /Feature/.test(document.querySelector('#main .crumb')?.textContent ?? ''));
         assert.equal((await state(page)).open, false, 'following a nav link closes it');
@@ -72,7 +76,7 @@ if (s) {
   test('between 600 and 900px the drawer holds the rail beside it too, and the scrim gives the page back', async () => {
     const page = await open([700, 844]);
     try {
-      await page.click('#main .nav-menu');
+      await openMenu(page);
       assert.deepEqual(await state(page), HELD);
       assert.equal(await page.evaluate(() => document.querySelector('#ws-rail').inert), true, 'the rail outside the drawer is held');
       assert.equal(await focusIn(page), 'drawer');
@@ -86,7 +90,7 @@ if (s) {
   test('with the menu open, Shift+Enter, ⌘Z and ? leave the held page alone', async () => {
     const page = await open([390, 844]);
     try {
-      await page.click('#main .nav-menu');
+      await openMenu(page);
       assert.equal((await state(page)).mainInert, true);
       await page.evaluate(() => {
         window.__keys = [];
@@ -117,7 +121,7 @@ if (s) {
   test('a menu left open when the window grows to a desktop width closes and frees the page', async () => {
     const page = await open([390, 844]);
     try {
-      await page.click('#main .nav-menu');
+      await openMenu(page);
       assert.equal((await state(page)).mainInert, true);
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.waitForFunction(() => !document.querySelector('#main').inert);

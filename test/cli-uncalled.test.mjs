@@ -65,8 +65,17 @@ test('weave audit lists the workspace audit trail newest first, capped by --limi
   assert.ok(trail[0].seq > trail[1].seq, 'newest first');
   assert.equal(trail[0].actor, 'census');
   const odd = run(['audit', '--limit', 'lots']);
-  assert.equal(odd.code, 1, 'Issue #1091: a limit that is not a number fails');
-  assert.match(odd.err, /datatype mismatch/, 'Issue #1091: with the SQLite message, not one naming the flag');
+  assert.equal(odd.code, 1, 'a --limit that is not a number is refused (Issue #1091)');
+  assert.match(odd.err, /--limit must be a number/, 'the message names the flag the caller got wrong');
+  assert.ok(!/datatype mismatch/.test(odd.err), 'SQLite never answers for a bad flag (Issue #1091)');
+  for (const verb of [['undo', '--list'], ['search', 'Alpha'], ['query', 'Task'], ['activity']]) {
+    const bad = run([...verb, '--limit', 'lots']);
+    assert.equal(bad.code, 1, `weave ${verb.join(' ')} --limit lots is refused`);
+    assert.match(bad.err, /--limit must be a number/, `weave ${verb.join(' ')} names the flag`);
+  }
+  assert.equal(ok(['audit', '--limit', '1']).json().length, 1, 'a numeric --limit still caps');
+  const whole = ok(['activity', '--limit', '-1']).json();
+  assert.equal(whole.items.length, whole.total, '--limit -1 still means the whole log');
 });
 
 test('weave key sets, lists and refuses to reveal a key it does not hold', () => {

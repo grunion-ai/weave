@@ -65,15 +65,15 @@ if (s) {
     await ctx.close();
   });
 
-  test('typing "onboard" gives one plain line per hit, grouped Records → In documents → Tables', async () => {
+  test('typing "onboard" gives one plain line per hit, grouped Records → In documents', async () => {
     const { ctx, page } = await open();
     await palette(page, 'onboard');
     const g = await groups(page);
-    assert.deepEqual(g.map((x) => x.label.replace(/\s*·?\s*\d+$/, '')), ['Records', 'In documents', 'Tables']);
+    assert.deepEqual(g.map((x) => x.label.replace(/\s*·?\s*\d+$/, '')), ['Records', 'In documents']);
     assert.deepEqual(g.map((x) => x.label.match(/\d+$/)?.[0]), g.map((x) => String(x.rows.length)), 'each header carries its count');
-    assert.deepEqual(g[0].rows, ['Design onboarding wizard', 'Onboarding call with Acme']);
+    assert.deepEqual(g[0].rows, ['Design onboarding wizard']);
     assert.deepEqual(g[1].rows, ['Apollo Launch']);
-    assert.deepEqual(g[2].rows, ['Onboarding']);
+    assert.equal(g.length, 2, 'this workspace answers alone (Issue #1308)');
     const rows = await page.$$eval('#cmdk-results [role="option"]', (rs) => rs.map((r) => ({
       text: r.innerText, height: r.getBoundingClientRect().height,
       marks: [...r.querySelectorAll('.cmdk-name mark')].map((m) => m.textContent.toLowerCase()),
@@ -85,20 +85,32 @@ if (s) {
       assert.doesNotMatch(r.prose, /#|\*\*|\]\(|`/, `no markdown in a row: ${r.prose}`);
       assert.ok(r.marks.every((m) => m === 'onboard'), `the match is marked: ${r.marks}`);
     }
-    assert.match(rows[2].prose, /Apollo Launch … Tracks the new onboarding flow and billing revamp/,
+    assert.match(rows[1].prose, /Apollo Launch … Tracks the new onboarding flow and billing revamp/,
       'a body match shows the record name and one plain excerpt');
     await ctx.close();
   });
 
-  test('a hit from another workspace carries that workspace as an outlined tag', async () => {
+  test('⌘K searches this workspace alone, and no row carries a workspace tag (Issue #1308)', async () => {
     const { ctx, page } = await open();
     await palette(page, 'onboard');
     const acme = page.locator('#cmdk-results [role="option"]', { hasText: 'Onboarding call with Acme' });
-    assert.equal(await acme.locator('.cmdk-ws').textContent(), 'crm');
+    assert.equal(await acme.count(), 0, 'a record in another workspace is not searched');
     const wizard = page.locator('#cmdk-results [role="option"]', { hasText: 'Design onboarding wizard' });
-    assert.equal(await wizard.locator('.cmdk-ws').count(), 0, 'a hit at home has no tag');
+    assert.equal(await wizard.count(), 1, 'this workspace answers');
+    assert.equal(await page.locator('#cmdk-results .cmdk-ws').count(), 0, 'no row wears a workspace tag');
     assert.equal(await page.locator('#cmdk .cmdk-inp .cmdk-ws').textContent(), 'demo', 'the input row names this workspace');
     assert.equal(await page.getAttribute('#cmdk-input', 'placeholder'), 'Search demo');
+    await ctx.close();
+  });
+
+  test('another workspace stays reachable by name as a jump target (Issue #1308)', async () => {
+    const { ctx, page } = await open();
+    await palette(page, 'crm');
+    const jump = page.locator('#cmdk-results [role="option"]', { hasText: 'crm' });
+    assert.equal(await jump.count(), 1, 'the rail names crm as one row');
+    const rail = await page.getAttribute('#ws-list a[title^="crm "]', 'href');
+    assert.equal(await jump.getAttribute('data-href'), rail, 'the row links the workspace the rail links');
+    assert.equal(await jump.locator('.cmdk-where').textContent(), 'workspace', 'the row says what it is');
     await ctx.close();
   });
 
@@ -116,11 +128,11 @@ if (s) {
     };
     assert.deepEqual(await selected(), { name: 'Design onboarding wizard', sel: 'true', active: true });
     await page.keyboard.press('ArrowDown');
-    assert.equal(await activeName(page), 'Onboarding call with Acme');
+    assert.match(await activeName(page), /^Apollo Launch/);
     await page.keyboard.press('ArrowUp');
     assert.equal(await activeName(page), 'Design onboarding wizard');
     await page.keyboard.press('ArrowUp');
-    assert.equal(await activeName(page), 'Onboarding', '↑ from the top wraps to the last row');
+    assert.match(await activeName(page), /^Apollo Launch/, '↑ from the top wraps to the last row');
     await page.keyboard.press('Tab');
     assert.equal(await activeName(page), 'Design onboarding wizard', 'Tab from the last group wraps to the first');
     await page.keyboard.press('Tab');

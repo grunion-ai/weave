@@ -38,7 +38,7 @@ if (s) {
   const overlap = (a, b) => a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5 && a.left < b.right && b.left < a.right;
   const openTasks = async (page) => {
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] input`);
+    await page.waitForSelector(`tr[data-eid="${seeded[0]}"] td[data-field="Name"] .text-dressed`);
     await page.waitForSelector('.wv-grid .add-entity-btn');
   };
 

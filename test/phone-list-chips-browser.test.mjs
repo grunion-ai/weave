@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
-const HEIGHT = { compact: 68, comfortable: 88, spacious: 88 };
+const HEIGHT = { compact: 68, comfortable: 88, spacious: 118 };
+const LINES = { compact: 1, comfortable: 1, spacious: 2 };
 
 const s = await launch('phone list chip line', (weave) => {
   weave.createSpace({ name: 'Development' });
@@ -64,7 +65,7 @@ if (s) {
   for (const [engine, b, profile] of engines) {
     for (const theme of ['light', 'dark']) {
       for (const density of ['compact', 'comfortable', 'spacious']) {
-        test(`on a phone at ${density} every row keeps one chip line under its name, inside the row, with +N for the rest (${engine}, ${theme}, Issue #730)`, async () => {
+        test(`on a phone at ${density} every row keeps ${LINES[density]} chip line(s) under its name, inside the row, with +N for the rest (${engine}, ${theme}, Issue #730, Feature #354)`, async () => {
           const page = await open(b, profile, theme, density);
           try {
             const seen = await rows(page);
@@ -75,14 +76,15 @@ if (s) {
               assert.equal(r.h, HEIGHT[density], `row ${i} is ${r.h}px`);
               assert.ok(r.chips.length >= 1, `row ${i} shows chips`);
               const tops = new Set(r.chips.map((c) => c.top));
-              assert.equal(tops.size, 1, `row ${i}'s chips share one top: ${[...tops]}`);
+              assert.ok(tops.size <= LINES[density], `row ${i}'s chips sit on ${LINES[density]} line(s) at most: ${[...tops]}`);
               for (const c of r.chips) {
                 assert.ok(c.top >= r.nameBottom, `row ${i}'s chips sit under its name`);
                 assert.ok(c.bottom <= r.h + 0.5 && c.right <= r.right + 0.5, `row ${i}'s chips sit inside the row`);
               }
               if (r.chips.some((c) => /^"\+\d+"$/.test(c.more))) counted++;
             }
-            assert.ok(counted > 0, 'a row with more chips than room shows a +N counter');
+            if (LINES[density] === 1) assert.ok(counted > 0, 'a row with more chips than room shows a +N counter');
+            else assert.ok(seen.rows.some((r) => new Set(r.chips.map((c) => c.top)).size > 1), 'the chips one line cannot hold wrap onto the next');
           } finally { await page.close(); }
         });
       }

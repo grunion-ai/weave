@@ -136,7 +136,7 @@ if (s) {
     try {
       const box = await scrollBox(page);
       const top = () => page.evaluate((b) => (b === 'wrap' ? document.querySelector('.table-wrap') : document.querySelector('#main')).scrollTop, box);
-      await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${ids[0]}"] td[data-field="Name"] .text-dressed`);
       await page.evaluate(() => document.activeElement.setSelectionRange(2, 2));
       const before = await top();
       await page.keyboard.press('End');
@@ -196,7 +196,8 @@ if (s) {
         return box.scrollTop;
       });
       assert.ok(before > 1000, `scrolled well down (${before})`);
-      await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] input`);
+      await page.click(`tr[data-eid="${eid}"] td[data-field="Name"] .text-dressed`);
+      await page.keyboard.press('End');
       await page.keyboard.type(' edited');
       await page.keyboard.press('Tab');
       await page.waitForFunction((e) => {
@@ -206,7 +207,7 @@ if (s) {
       const after = await page.evaluate(() => {
         const wrap = document.querySelector('.table-wrap');
         const box = wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main');
-        return { top: box.scrollTop, rowH: document.querySelector('.wv-grid tbody tr.entity-row').getBoundingClientRect().height, drawn: document.querySelectorAll('.wv-grid tbody tr.entity-row').length, name: document.querySelector(`tr[data-eid="${document.activeElement.closest('tr').dataset.eid}"] td[data-field="Name"] input`)?.value };
+        return { top: box.scrollTop, rowH: document.querySelector('.wv-grid tbody tr.entity-row').getBoundingClientRect().height, drawn: document.querySelectorAll('.wv-grid tbody tr.entity-row').length, name: document.querySelector(`tr[data-eid="${document.activeElement.closest('tr').dataset.eid}"] td[data-field="Name"] .text-dressed`)?.textContent };
       });
       assert.ok(Math.abs(after.top - before) <= after.rowH, `the scroll held (${before} → ${after.top})`);
       assert.ok(after.drawn < 200, `${after.drawn} rows drawn after the commit`);

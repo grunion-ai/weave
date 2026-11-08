@@ -299,7 +299,7 @@ Read the \`weave_ontology\` outline first. Then build the workspace in one \`wea
 
 The server has 65 tools. By default it lists the 17 a workspace build uses, including \`weave_build\`, and \`weave_call\` runs any of the other 48 by name. A self-hosted server lists all 65 when started with \`weave mcp --tools all\` or with \`WEAVE_MCP_TOOLS=all\` set.
 
-Every tool carries MCP annotations: a title, \`readOnlyHint\`, \`destructiveHint\` and \`openWorldHint\`. Only the automation tools reach outside the workspace, because an automation rule can call a webhook URL. \`weave_call\` can run the automation tools, so it reaches outside the workspace too. A delete moves items to a trash, where they can be restored; a hard delete purges them.
+Every tool carries MCP annotations: a title, \`readOnlyHint\`, \`destructiveHint\`, \`idempotentHint\` and \`openWorldHint\`. A tool marked idempotent leaves the workspace unchanged when it is called again with the same arguments. Only the automation tools reach outside the workspace, because an automation rule can call a webhook URL. \`weave_call\` can run the automation tools, so it reaches outside the workspace too. A delete moves items to a trash, where they can be restored; a hard delete purges them.
 
 ## Reference and help
 

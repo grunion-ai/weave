@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
-import { ROUTES, SEEDS, held, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
@@ -9,6 +9,33 @@ const STEP = 0.5;
 const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 
+const KEPT_REACH = (sel) => {
+  const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
+  const reach = (n, cx, cy, dx, dy) => {
+    let far = 0;
+    for (let d = 0.5; d <= 22; d += 0.5) {
+      const x = cx + dx * d, y = cy + dy * d;
+      if (x < 0 || y < 0 || x > innerWidth - 1 || y > innerHeight - 1) return 22;
+      if (!owns(n, document.elementFromPoint(x, y))) return far;
+      far = d;
+    }
+    return far;
+  };
+  const out = [];
+  for (const n of document.querySelectorAll(sel)) {
+    const cs = getComputedStyle(n);
+    if (!n.getClientRects().length || cs.visibility === 'hidden' || cs.pointerEvents === 'none') continue;
+    n.scrollIntoView({ block: 'center' });
+    const r = n.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    out.push({
+      w: Math.round(r.width), h: Math.round(r.height),
+      x: reach(n, cx, cy, -1, 0) + reach(n, cx, cy, 1, 0),
+      y: reach(n, cx, cy, 0, -1) + reach(n, cx, cy, 0, 1),
+    });
+  }
+  return out;
+};
 const SWEEP = (roots) => {
   const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, .text-dressed, tbody tr.entity-row';
   const tops = roots.flatMap((r) => [...document.querySelectorAll(r)]);
@@ -27,6 +54,15 @@ const SWEEP = (roots) => {
     return `${n.tagName.toLowerCase()}${cls ? `.${cls}` : ''} "${name}"`;
   };
   const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
+  const parked = (n, r) => {
+    for (let p = n.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (!/auto|scroll/.test(cs.overflowY) && !/auto|scroll/.test(cs.overflowX)) continue;
+      const b = p.getBoundingClientRect();
+      if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left - 1 || r.right > b.right + 1) return true;
+    }
+    return false;
+  };
   const overlay = (n, hit) => {
     for (let p = hit; p && p !== document.documentElement; p = p.parentElement) {
       if (/fixed|sticky/.test(getComputedStyle(p).position)) return !p.contains(n);
@@ -51,6 +87,7 @@ const SWEEP = (roots) => {
     const r = n.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) continue;
+    if (parked(n, r)) continue;
     const hit = document.elementFromPoint(cx, cy);
     if (!owns(n, hit)) {
       if (!hit || !inRoot(hit) || overlay(n, hit)) continue;
@@ -119,6 +156,87 @@ if (s) {
         const { seen, offenders } = await measure(b, profile, theme, surface);
         t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
         assert.ok(offenders.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs so the gate walks it`);
+      });
+    }
+    for (const { state, theme } of plan('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+      const surface = surfaceOf(state);
+      for (const kept of state.kept?.touch ?? []) {
+        test(`on a phone every ${kept.sel} on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #${kept.issue})`, async () => {
+          const page = await open(b, profile, theme, surface);
+          try {
+            const hits = await page.evaluate(KEPT_REACH, kept.sel);
+            assert.ok(hits.length, `the ${surface.name} draws ${kept.sel} to measure`);
+            const missed = hits.filter((h) => h.x < SPAN || h.y < SPAN);
+            assert.deepEqual(missed, [], `${missed.length} of ${hits.length} ${kept.sel} miss a ${MIN}px hit area: ${missed.map((h) => `${h.w}x${h.h} drawn, ${h.x}x${h.y} reached`).join('; ')}`);
+          } finally { await page.close(); }
+        });
+      }
+    }
+  }
+
+  const PARKED_FIXTURE = () => {
+    const small = (label, top) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'parked-fixture-btn';
+      b.setAttribute('aria-label', label);
+      b.style.cssText = `position:absolute;left:0;top:${top}px;width:20px;height:20px;`;
+      return b;
+    };
+    const scroller = document.createElement('div');
+    scroller.id = 'parked-fixture';
+    scroller.style.cssText = 'position:fixed;left:0;top:0;width:120px;height:60px;overflow-y:auto;background:#fff;z-index:9999;';
+    const tall = document.createElement('div');
+    tall.style.cssText = 'position:relative;height:400px;';
+    tall.append(small('a button in view', 10), small('a button straddling the fold', 50), small('a button parked below the fold', 300));
+    scroller.append(tall);
+    document.body.append(scroller);
+  };
+
+  for (const [engine, b, profile] of engines) {
+    test(`a control a scroller has clipped is not a missed tap target, and the one in view still is (${engine}, Issue #1187)`, async () => {
+      const page = await open(b, profile, 'light', { ...surfaceOf(STATES.find((st) => st.name === 'row page')), roots: ['#parked-fixture'] });
+      try {
+        await page.evaluate(PARKED_FIXTURE);
+        const seen = await page.evaluate(SWEEP, ['#parked-fixture']);
+        const labels = seen.map((c) => c.label);
+        assert.deepEqual(labels, ['button.parked-fixture-btn "a button in view"'],
+          `the sweep reads the button the scroller shows whole and walks past the clipped and parked ones, got ${JSON.stringify(labels)}`);
+        const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
+        assert.equal(small.length, 1, 'the 20px button the scroller shows whole is still reported as under the minimum');
+      } finally { await page.close(); }
+    });
+  }
+
+  const FOLD_BOXES = () => [...document.querySelectorAll('.wv-board :is(.board-lane-head, .board-group-head) .list-fold')].map((n) => {
+    const r = n.getBoundingClientRect();
+    return { label: n.getAttribute('aria-label') || 'a board fold', width: Math.round(r.width), height: Math.round(r.height) };
+  });
+  for (const [engine, b, profile] of engines) {
+    for (const state of STATES.filter((st) => st.layout === 'board' && st.open === 'rest')) {
+      for (const theme of themesOn(engine)) {
+        test(`on a phone every fold on the ${state.name} draws its own ${MIN}px box (${engine}, ${theme}, Issue #1217)`, async () => {
+          const page = await open(b, profile, theme, surfaceOf(state));
+          try {
+            const folds = await page.evaluate(FOLD_BOXES);
+            assert.ok(folds.length >= 1, `the ${state.name} draws a fold per head, got ${folds.length}`);
+            assert.deepEqual(folds.filter((f) => f.width < MIN || f.height < MIN)
+              .map((f) => `${f.label} draws ${f.width}x${f.height} of the ${MIN}px minimum`), [],
+            'each board head fold is a real box, so the board scroller cannot clip it the way it clips pseudo slop');
+          } finally { await page.close(); }
+        });
+      }
+    }
+  }
+
+  const sinkRow = surfaceOf(walked('touch').concat(held('touch')).find((p) => p.state.name === 'sink-row').state);
+  const avatars = { ...sinkRow, name: 'avatar controls on the phone record page', roots: ['#dock .av-control'] };
+  for (const [engine, b, profile] of engines) {
+    for (const theme of themesOn(engine)) {
+      test(`on a phone the avatar Change photo button keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #1167)`, async () => {
+        const { seen, offenders } = await measure(b, profile, theme, avatars);
+        assert.deepEqual(seen.map((c) => c.label), ['button.av-pick "Change photo"'], 'the record head offers one avatar control, its Change photo button');
+        assert.deepEqual(offenders, [], `${offenders.length} of ${seen.length} avatar controls miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
       });
     }
   }

@@ -220,6 +220,36 @@ test('backup to weave:// and restore from it round-trip, and the cloud holds cip
   } finally { s.close(); }
 });
 
+test('a backup to weave:// hands the sealed archive up as a stream, a chunk at a time', async () => {
+  const dir = tmp('bigdata');
+  const w = new Weave({ path: join(dir, 'alpha.db') });
+  w.state.meta.name = 'alpha';
+  w.createSpace({ name: 'Ops' });
+  w.createTable({ space: 'Ops', name: 'Task' });
+  const e = w.createEntity('Ops/Task', { name: 'Big' });
+  w.attachFile(e.id, { name: 'big.bin', mime: 'application/octet-stream', bytes: randomBytes(2_500_000) });
+  w.store.close?.();
+
+  const chunks = [];
+  const fetchImpl = async (url, { method = 'GET', body, duplex } = {}) => {
+    if (method !== 'PUT') return Response.json({ backups: [] });
+    assert.equal(typeof body?.getReader, 'function', 'the archive goes up as a stream, not as one Buffer');
+    assert.equal(duplex, 'half', 'a streamed request body is half duplex');
+    const reader = body.getReader();
+    for (let r; !(r = await reader.read()).done;) chunks.push(r.value.length);
+    return Response.json({ name: 'x', bytes: chunks.reduce((a, b) => a + b, 0), pruned: ['older.tar.enc'] }, { status: 201 });
+  };
+  const r = await backup({
+    dataDir: dir, out: tmp('streamed'), dest: 'weave://cloud.test/alice',
+    env: { WEAVE_BACKUP_TOKEN: 'wv_t', WEAVE_BACKUP_PASSPHRASE: PASS }, fetchImpl,
+  });
+  assert.equal(chunks.reduce((a, b) => a + b, 0), r.bytes, 'every byte of the archive went up');
+  assert.ok(chunks.length >= 2, `the 2.5 MB archive went up in chunks, not one: ${chunks.length}`);
+  assert.ok(Math.max(...chunks) <= 1024 * 1024, `no chunk held more than a megabyte: ${Math.max(...chunks)}`);
+  assert.deepEqual(r.pruned, ['older.tar.enc']);
+  assert.equal(r.uploaded, `weave://cloud.test/alice/${r.archive}`);
+});
+
 test('the nightly status names the destination kind for /api/health', () => {
   const at = (dest) => scheduleNightly({ run: async () => ({}), dest, now: () => 0, setTimer: () => ({}), log: () => {} });
   assert.equal(at('weave://weave.grunion.ai/alice').status().kind, 'weave');

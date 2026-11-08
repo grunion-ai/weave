@@ -82,7 +82,7 @@ test('.wv-edit paints rest, hover and one focus ring, and beats the global focus
   assert.equal(decl(base.body, 'padding'), 'var(--wv-edit-pad)');
   assert.equal(decl(base.body, 'font-size'), 'var(--wv-edit-fs)');
   assert.equal(decl(base.body, 'border'), '1px solid transparent');
-  assert.equal(decl(base.body, 'border-radius'), '6px');
+  assert.equal(decl(base.body, 'border-radius'), '8px');
   assert.equal(decl(base.body, 'background-color'), 'transparent');
   const hover = all.find((r) => split(r.selector).some((s) => s.startsWith('.wv-edit') && s.endsWith(':hover')));
   assert.ok(hover, 'a .wv-edit hover rule');
@@ -90,7 +90,7 @@ test('.wv-edit paints rest, hover and one focus ring, and beats the global focus
   assert.equal(decl(hover.body, 'border-color'), 'var(--tblr-border-color)');
   const focus = all.find((r) => split(r.selector).includes('.wv-edit:focus'));
   assert.ok(focus, 'a .wv-edit:focus rule');
-  assert.equal(decl(focus.body, 'box-shadow'), 'inset 0 0 0 1.5px var(--tblr-primary)');
+  assert.equal(decl(focus.body, 'box-shadow'), 'inset 0 0 0 2px var(--wv-edit-ring)');
   assert.equal(decl(focus.body, 'background-color'), 'var(--tblr-bg-surface)');
   assert.equal(decl(focus.body, 'border-color'), 'transparent');
   assert.equal(decl(focus.body, 'outline'), 'none !important', 'the global :focus-visible outline is !important, so the ring must be too');
@@ -123,6 +123,26 @@ test('an editable field that sizes to its content never collapses below 8ch, out
   assert.ok(sized.length >= 3, `found ${sized.length} content-sized field rules`);
   const short = sized.filter((r) => decl(r.body, 'min-width') !== '8ch' && !(/\.view-title(?![-\w])|\.name-edit/.test(r.selector) && !decl(r.body, 'min-width')));
   assert.deepEqual(short.map((r) => r.selector), [], 'a field without a placeholder floors at 8ch itself; the titles lean on Untitled');
+});
+
+test('one ring token paints the editor and the selected cell, opaque and at least 3:1 in both themes (Issue #1366)', () => {
+  const all = rules();
+  const token = (head) => decl(all.find((r) => r.selector === head && decl(r.body, '--wv-edit-ring')).body, '--wv-edit-ring');
+  const light = token(':root, [data-bs-theme="light"]');
+  const dark = token('[data-bs-theme="dark"]');
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  assert.match(light, /^#[0-9a-f]{6}$/);
+  assert.match(dark, /^#[0-9a-f]{6}$/);
+  assert.ok(ratio(light, '#ffffff') >= 3, `light ring ${ratio(light, '#ffffff').toFixed(2)}:1`);
+  assert.ok(ratio(dark, '#181b21') >= 3, `dark ring ${ratio(dark, '#181b21').toFixed(2)}:1`);
+  const cell = all.find((r) => r.selector === '.wv-grid tbody td[tabindex]:focus');
+  assert.equal(decl(cell.body, 'box-shadow'), 'inset 0 0 0 2px var(--wv-edit-ring)');
+  assert.equal(decl(cell.body, 'border-radius'), '8px');
 });
 
 test('the view title pulls left only when it leads its row, and the row keeps an 8px gap in both modes (Issue #1030)', () => {

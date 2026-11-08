@@ -23,6 +23,7 @@
 }
 .k-doc::after, .k-attach::after { content: "↗"; opacity: .42; font-size: var(--fs-meta); margin-left: 1px; }
 .k-attach { max-width: 100%; }
+a.k-attach, a.k-attach:hover { text-decoration: none; }
 .k-rel { padding: 0; }
 .k-rel.k-locked { padding: 0 6px; gap: 4px; color: var(--tblr-secondary); cursor: default; }
 .k-rel.k-locked:hover { border-color: var(--tblr-border-color); color: var(--tblr-secondary); }
@@ -188,6 +189,11 @@
 .wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
 .wv-rating-default .wv-rate-ico { font-size: var(--fs-h1); }
 .wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
+@media (pointer: coarse) {
+  .fieldrow .wv-rating.editable { flex-wrap: wrap; white-space: normal; gap: 0; }
+  .fieldrow .editable > .wv-rate-ico { min-width: 46px; min-height: 46px; align-items: center; }
+  .fieldrow .editable > .wv-rate-ico :is(.wv-icon, svg) { width: 20px; height: 20px; }
+}
 
 .cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
 .cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }

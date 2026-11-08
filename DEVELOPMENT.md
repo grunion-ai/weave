@@ -91,10 +91,33 @@ to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
-The `tests` workflow runs the full inventory on every main push. Its final
+The `tests` workflow runs the full inventory on every main push. Its `plan` job
+downloads the `ci-results` artifacts of the most recent successful main run and
+weights each test file by the `duration_ms` the reporter recorded for it, so the
+four browser shards balance on measured runtime; a file with no recorded
+duration keeps the byte-size weight, and a run with no usable history (expired
+artifacts, a first run, a download failure) plans entirely by byte size. Byte
+size is anti-correlated with runtime for the worst offenders, because the
+slowest browser files are small files that loop:
+`test/render-budget-browser.test.mjs` is 1,682 bytes and ran 164 seconds in run
+41959983156, where `test/setup-flows-browser.test.mjs` is 52,749 bytes and ran
+119. On that run's inventory the byte-weighted plan gave the browser shards
+1,171, 1,107, 1,939 and 1,622 seconds of work; the duration-weighted plan gives
+them 1,460 each (Issue #966). The shards and the `CI gate` rebuild the same
+manifest from the same weights: the plan job publishes what it downloaded as
+the run's `plan-history` artifact and both take their copy from there, so a
+divergence can only come from a failed download, and `aggregate` then refuses
+the shard whose `manifest` digest does not match rather than passing a plan
+nobody ran. Every step that reaches for the durations tolerates their absence in
+the shell rather than through `continue-on-error`, which a killed step never
+reaches. Its final
 `CI gate` succeeds only after every required job succeeds, and a release can
-only publish a main commit whose `CI gate` succeeded. Browser dependencies are installed in CI;
-a missing browser or skipped required browser suite fails the gate. Parallel CI
+only publish a main commit whose `CI gate` succeeded. Browser engines are installed on
+the browser lanes only, in both workflows: a unit shard opens no browser, and the
+two unit shards of run 39439094335 spent 46 and 37 seconds downloading Chromium
+and WebKit they never used (Issue #967). `test/ci-test.test.mjs` holds the lane
+condition and refuses a unit-lane test that reaches a browser at load.
+A missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data. Superseded branch runs are canceled.
 Each main push holds its own concurrency lane, keyed by the commit under test.
 A shared lane keeps one pending run at a time, so the next merge cancelled the
@@ -124,6 +147,12 @@ exits. `test/temp-dirs.test.mjs` refuses a bare
 outside the manager, such as a bare `node --test` or a browser suite that only
 takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
 directories on the disk (Issue #1083).
+
+Each lane is spawned with `WEAVE_KEYSTORE` and `WEAVE_DATA` pinned into that
+lane's own temp directory, so a test that builds a `Weave` without a keystore
+path or runs the CLI without `--data` lands in the sandbox instead of the
+developer's `~/.weave` (Issue #949). `test/test-runner.test.mjs` fails when a
+lane resolves either default under the real home directory.
 
 ### Sheriff
 
@@ -243,6 +272,20 @@ The fold also stamps the version into `server.json`. After the `publish` job tag
 the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
 `:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
 `mcp-publisher` signed in through GitHub OIDC.
+
+Once the version PR is merged, write the merged commit onto the Release row:
+
+```bash
+node scripts/release-commit.mjs --from https://weave.grunion.ai/w/weave \
+  --token-env WEAVE_TRACKER_TOKEN --release v<version> --sha <merged sha>
+```
+
+That step appends one line to the notes rather than replacing the document, then
+reads the row back and refuses when the notes came back empty or without the
+commit. A release whose notes are lost by its own run is caught by that run
+(Issue #1329). An older row that has lost its notes stops nothing: the export
+names it, keeps the notes `docs/development.json` already carries, and carries
+on.
 
 ### Canonical tracker
 
@@ -613,16 +656,20 @@ Batch the writes, or raise the budget with a new reason under
 
 ## Cut-off loop
 
-Weave never shows cut-off text. `test/lib/cutoff.mjs` is the probe: a page
-function that reports text cut by an overflow hidden or clip box (`clipped`), a
-truncated `text-overflow: ellipsis` box (`ellipsis`), a `-webkit-line-clamp` box
-holding more lines than it shows (`line-clamp`), and an input or textarea whose
-value or placeholder runs past its box (`field-value`, `field-placeholder`).
-Text inside an overflow auto or scroll container, visually hidden text and
-invisible elements are not cut-offs. The current breadcrumb's name is the one
-ellipsis the probe skips by design (Issue #1159): the title row under every
-crumb row shows the full name, so the crumb keeps a fixed share and gives way
-before any other crumb shrinks. A finding's fingerprint is its kind plus its
+Weave never shows cut-off text. Cut-off text is glyphs sliced by a box edge: a
+line cut through its middle, a letter cut in half, a chip cut at its cell's
+edge. An ellipsis is not a cut-off (Kyle, 2026-11-06): a `text-overflow:
+ellipsis` box or a `-webkit-line-clamp` box that ends on a whole line shows
+every glyph it draws, and its three dots say there is more. `test/lib/cutoff.mjs`
+is the probe: a page function that reports text cut by an overflow hidden or
+clip box, an ellipsis or line-clamp box that an ancestor box cuts, and a
+line-clamp box whose height falls short of its whole lines (all `clipped`), and
+an input or textarea whose value or placeholder runs past its box
+(`field-value`, `field-placeholder`). Text inside an overflow auto or scroll
+container, visually hidden text and invisible elements are not cut-offs. The
+current breadcrumb's name is skipped by design (Issue #1159): the title row
+under every crumb row shows the full name, so the crumb keeps a fixed share and
+gives way before any other crumb shrinks. A finding's fingerprint is its kind plus its
 selector with every number folded to `#`, and `|phone` for the phone cell.
 
 ```bash
@@ -646,6 +693,30 @@ only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
 lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.
+
+### Line endings
+
+`DESIGN.md` under Text gives every text one role. The same page function checks
+line endings when it is called as `probe({ root, endings: true })`, and reports
+two kinds with no baseline, since each is a defect on its first appearance
+(Issue #1306):
+
+| Kind | What it found |
+| --- | --- |
+| `sliced-line` | A line partly inside and partly outside the box that clips it by more than 2 px, or a line clamp shorter than its whole lines |
+| `lone-word` | A single word on the last line of a paragraph, when the word before it would fit beside it |
+
+```bash
+node scripts/line-endings.mjs                                  # both cells, all three densities
+node scripts/line-endings.mjs --cell phone --density spacious  # reproduce one
+```
+
+`PROBES.endings` in the state catalog walks the journeys, rest states and
+overlays of the `prose` seed: the messy seed, plus a description whose paragraph
+gaps fall inside the fold and a long guide. A state with a grid, list or board
+runs at `compact`, `comfortable` and `spacious`; one without runs once.
+`test/line-endings-gate-browser.test.mjs` runs each of the six cells on its own
+and fails on any finding.
 
 ### Mandatory onboarding verification
 
