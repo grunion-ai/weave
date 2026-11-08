@@ -1,0 +1,1 @@
+- On a phone, the `›` control on a relation chip in a cell or a field row opens the linked row (Issue #1401). It used to expand the chip in place, which grew the field row to about 290 px of mostly empty box and scrolled the row's name out of sight behind its field values. On a desktop, and in a document on any screen, the control still shows and hides the fields.

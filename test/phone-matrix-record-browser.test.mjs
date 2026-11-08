@@ -96,7 +96,7 @@ if (s) {
     });
   });
 
-  test('a tap on the caret of a phone relation chip opens no search and keeps the row at content height with the name in view (Issue #1401)', { todo: 'Issue #1401' }, async (t) => {
+  test('a tap on the caret of a phone relation chip opens no search and keeps the row at content height with the name in view (Issue #1401)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t4);
       if (!(await recordCoversScreen(page))) return WIDE;
