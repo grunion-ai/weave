@@ -6,7 +6,7 @@ await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
 const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
 const CSS = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
-const HANDBOOK = readFileSync(new URL('../src/handbook.js', import.meta.url), 'utf8');
+const HANDBOOK = readFileSync(new URL('../src/handbook/fields/url.md', import.meta.url), 'utf8');
 
 test('an http(s) value splits into the href, the host and the rest', () => {
   assert.deepEqual(LIB.urlParts('https://the.fibery.io/@public/api-docs#entities'),

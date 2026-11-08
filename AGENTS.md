@@ -647,8 +647,9 @@ curl -s -X POST http://127.0.0.1:4400/w/weave/api/tables/Guide/query \
   -H 'Content-Type: application/json' -d '{}'
 ```
 
-The Handbook's `Guide` and `Fields` pages are generated from `src/handbook.js`:
-edit a page there, not on the running instance. `serve` re-applies them to an
+The Handbook's `Guide` and `Fields` pages are generated from the markdown files
+in `src/handbook/` (`fields/`, `guides/`, `samples/`), which `src/handbook.js`
+loads: edit a page there, not on the running instance. `serve` re-applies them to an
 existing docs workspace on the first boot of each build whose pages changed,
 matched by name, so a guide you wrote yourself is never touched.
 `weave handbook check --data weave.db` reports drift (exit 1 when any) and
