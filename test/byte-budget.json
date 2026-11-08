@@ -132,6 +132,10 @@
       "gzip": 3881,
       "br": 3275
     },
+    "/invite-dialog.js": {
+      "gzip": 1837,
+      "br": 1565
+    },
     "/list-core.js": {
       "gzip": 3296,
       "br": 3113
