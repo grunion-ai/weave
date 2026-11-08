@@ -138,3 +138,15 @@ test('GET /api/files/:id?view serves the HTML upload in place; the bare route st
     assert.equal((await fetch(`${base}/api/files/${png.id}?view`)).headers.get('content-security-policy'), "sandbox; default-src 'none'");
   } finally { server.close(); }
 });
+
+test('fileHeaders serves an AVIF upload inline as image/avif, so a board cover and an img can draw it (Issue #1212)', () => {
+  const avif = Buffer.concat([Buffer.from('0000001c6674797061766966000000006176696600000000', 'hex'), Buffer.alloc(64)]);
+  const avis = Buffer.concat([Buffer.from('0000001c6674797061766973000000006176697300000000', 'hex'), Buffer.alloc(64)]);
+  for (const bytes of [avif, avis]) {
+    const h = fileHeaders({ name: 'pillows.avif', mime: 'image/avif' }, bytes);
+    assert.equal(h['Content-Type'], 'image/avif');
+    assert.match(h['Content-Disposition'], /^inline;/);
+  }
+  const lying = fileHeaders({ name: 'x.avif', mime: 'image/avif' }, Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'));
+  assert.equal(lying['Content-Type'], 'application/octet-stream', 'bytes that are no AVIF still download');
+});
