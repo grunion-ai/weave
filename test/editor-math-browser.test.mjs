@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { engineOf, launch } from './lib/browser.mjs';
 import { FORMATTING_SAMPLES } from '../src/handbook.js';
 
+const BENIGN = /^(Error: )?ResizeObserver loop completed with undelivered notifications\.?$/;
 let id;
 const doc = FORMATTING_SAMPLES.map((sample) => sample.doc).join('\n\n');
 const s = await launch('math renders without a rejection', (weave) => {
@@ -22,7 +23,7 @@ if (s) {
   const load = async (b) => {
     const page = await b.newPage({ viewport: { width: 2022, height: 1210 } });
     const errors = [];
-    page.on('pageerror', (e) => errors.push(String(e)));
+    page.on('pageerror', (e) => { if (!BENIGN.test(String(e))) errors.push(String(e)); });
     await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.querySelectorAll('.language-math[data-math]').length > 0,
       null, { timeout: 20000 });

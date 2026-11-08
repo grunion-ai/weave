@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage, atRest } from './lib/browser.mjs';
 
 const s = await launch('phone activity sheet', (weave) => {
   weave.revisionWindowMs = 0;
@@ -149,12 +149,13 @@ if (s) {
   }
 
   test('on a desktop Activity is the context pane right of the peek, 340px wide, not a sheet (Issue #733, Feature #348)', async () => {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 844 } });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 844 } });
     try {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await page.click('#dock .activity-btn');
       await page.waitForSelector('aside.wv-activity');
+      await atRest(page.locator('#side'));
       const p = await sheet(page);
       const width = Math.round(p.right - p.left);
       assert.ok(Math.abs(width - 340) <= 1, `a pane, not a sheet (${width}px)`);
