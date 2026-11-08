@@ -11,7 +11,7 @@ import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } 
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
-import { cliCommand, cliArgs } from '../src/commands.js';
+import { cliCommand, cliArgs, cliRest } from '../src/commands.js';
 import { guided } from '../src/field-hints.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
@@ -562,11 +562,9 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   const registered = cliCommand(command, args[0]);
-  if (registered) return out(registered.run(w, cliArgs(registered, args.slice(1), flags, { json: parseJsonFlag })));
+  if (registered) return out(registered.run(w, cliArgs(registered, cliRest(registered, args), flags, { json: parseJsonFlag })));
 
   switch (command) {
-    case 'ontology':
-      return out(w.ontology({ depth: flags.depth ?? 'outline', concept: flags.concept ?? null, since: flags.since ?? null }));
     case 'schema': {
       const [sub] = args;
       if (sub === 'apply') {

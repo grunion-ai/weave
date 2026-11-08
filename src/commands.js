@@ -1,4 +1,5 @@
 import { guided } from './field-hints.js';
+import { ONTOLOGY } from './engine.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
@@ -19,6 +20,19 @@ function fieldUpdate(w, a) {
 }
 
 export const COMMANDS = [
+  {
+    name: 'schema.ontology',
+    engine: ['ontology', 'spaceVersions'],
+    writes: 'none',
+    tool: {
+      name: 'weave_ontology',
+      description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
+      properties: { depth: { type: 'string', enum: ['outline', 'glossary'] }, concept: { type: 'string', description: 'Table or Space/Table' }, since: { type: 'string' } },
+    },
+    cli: { command: 'ontology', flags: ['depth', 'concept', 'since'] },
+    http: { method: 'GET', path: '/api/ontology', query: ['depth', 'concept', 'since'] },
+    run: (w, a) => (a.depth === 'glossary' ? ONTOLOGY : w.ontology({ depth: a.depth || 'outline', concept: a.concept || null, since: a.since || null })),
+  },
   {
     name: 'field.add',
     engine: ['addField', 'materializeField'],
@@ -151,8 +165,13 @@ export function toolDefinition(name) {
 }
 
 export function cliCommand(command, sub) {
-  return BY_CLI.get(`${command} ${sub ?? ''}`.trim()) ?? null;
+  const named = sub == null ? null : BY_CLI.get(`${command} ${sub}`);
+  if (named) return named;
+  const bare = BY_CLI.get(command);
+  return bare && !bare.cli.sub ? bare : null;
 }
+
+export const cliRest = (cmd, args) => (cmd.cli.sub ? args.slice(1) : args);
 
 export function cliArgs(cmd, positional, flags, helpers) {
   const a = {};
