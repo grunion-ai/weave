@@ -2635,6 +2635,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .fieldrow { min-height: 44px; align-items: center; }
   .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit) { min-height: 44px; }
   .entity-fields .fieldrow > .text-dressed { min-height: 44px; align-content: center; }
+  .entity-fields .fieldrow .url-dressed { padding-block: 0; }
+  .entity-fields .fieldrow .url-link { display: flex; align-items: center; min-height: 44px; }
+  .entity-fields .fieldrow .url-edit { width: 44px; height: 44px; }
   .entity-fields .fieldrow > .text-dressed, .tile-field > dd > .text-dressed { font-size: var(--fs-doc); }
   .bug-cat, .bug-mail, .bug-send { min-height: 44px; }
   .tray-close { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
