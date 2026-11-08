@@ -166,6 +166,32 @@ test('referencesFrom sorts by db then publicId, across tables', () => {
   assert.equal(refs[1].id, target.id);
 });
 
+test('referencesFrom keeps permalinks into another workspace as external entries (Issue #1478)', () => {
+  const { w, target } = seed();
+  const other = w.createEntity('Issue', { name: 'local sibling' });
+  const farA = '78d5e9de-1111-4222-8333-944455556666';
+  const farB = '0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d';
+  const issue = w.createEntity('Issue', {
+    name: 'mixed',
+    doc: [
+      'see [[Task#1]]',
+      `and [sibling](https://weave.local:4400/w/${w.state.meta.name}/e/${other.id})`,
+      `then [#1075 PR CI picks browser tests by file name](https://weave.grunion.ai/w/weave/e/${farA})`,
+      `and https://net.weave.grunion.ai/e/${farB} bare`,
+      `again [dup](https://weave.grunion.ai/w/weave/e/${farA})`,
+      'dead /e/ffffffff-ffff-4fff-8fff-ffffffffffff stays text',
+      `so does [gone](https://weave.local:4400/w/${w.state.meta.name}/e/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee)`,
+    ].join('\n'),
+  });
+  const refs = w.referencesFrom(issue.id);
+  assert.equal(refs.length, 4, 'two local refs plus two cross-workspace permalinks');
+  assert.deepEqual(refs.slice(0, 2).map((r) => r.id).sort(), [target.id, other.id].sort());
+  assert.deepEqual(refs.slice(2), [
+    { id: farA, external: true, workspace: 'weave', name: '#1075 PR CI picks browser tests by file name', url: `https://weave.grunion.ai/w/weave/e/${farA}` },
+    { id: farB, external: true, workspace: 'net', name: null, url: `https://net.weave.grunion.ai/e/${farB}` },
+  ], 'externals keep slug, uuid and the link text, and never read the far row');
+});
+
 test('GET /api/entities/:ref/references-from serves the outbound refs', async () => {
   const { w, target } = seed();
   const issue = w.createEntity('Issue', { name: 'caller', doc: 'blocked by [[Task#1]]' });
