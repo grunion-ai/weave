@@ -58,18 +58,17 @@
     Object.assign(body.style, { position: 'relative', overflow: 'hidden', cursor: 'grab', touchAction: 'none' });
     await mermaidReady;
     if (!root.mermaid) { body.textContent = 'mermaid failed to load'; return null; }
-    let svg;
-    try {
-      ({ svg } = await root.mermaid.render(`wb-${Date.now().toString(36)}`, boardSource(source)));
-    } catch {
-      body.textContent = 'Nothing drawable in this diagram.';
-      return null;
-    }
     const stage = document.createElement('div');
     stage.className = 'wb-stage';
     Object.assign(stage.style, { position: 'absolute', left: '0', top: '0', transformOrigin: '0 0' });
-    stage.innerHTML = svg;
+    const pre = document.createElement('pre');
+    pre.className = 'mermaid';
+    pre.style.margin = '0';
+    pre.textContent = boardSource(source);
+    stage.append(pre);
     body.replaceChildren(stage);
+    try { await root.mermaid.run({ nodes: [pre] }); } catch {}
+    if (!pre.querySelector('svg')) { body.textContent = 'Nothing drawable in this diagram.'; return null; }
     body.weaveBoard = panZoom(body, stage);
     return body.weaveBoard;
   }
