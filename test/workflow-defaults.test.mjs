@@ -12,7 +12,7 @@ import { withServer } from './lib/fixtures.mjs';
 
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
-const HB = readFileSync(new URL('../src/handbook.js', import.meta.url), 'utf8');
+const HB = readFileSync(new URL('../src/handbook/fields/workflow.md', import.meta.url), 'utf8');
 
 const NAMES = ['Not started', 'In progress', 'Done', 'Canceled'];
 const CATS = ['not-started', 'in-progress', 'done', 'canceled'];
@@ -106,7 +106,7 @@ test('the tray hands back the same four states the engine seeds', () => {
 test('the dialog core names the four default states, and the Handbook prints them', () => {
   assert.deepEqual(FDC.DEFAULT_WORKFLOW_STATES.map((s) => s.name), NAMES);
   assert.deepEqual(FDC.DEFAULT_WORKFLOW_STATES.map((s) => s.category), CATS);
-  const page = HB.match(/\{ name: 'workflow', kind: '[^']*', doc: `([\s\S]*?)` \},/)[1];
+  const page = HB;
   for (const n of NAMES) assert.ok(page.includes(n), `the workflow page names ${n}`);
   assert.match(page, /default/i);
 });

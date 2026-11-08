@@ -6,7 +6,7 @@ import { Weave } from '../src/engine.js';
 await import('../public/field-dialog-core.js');
 const FDC = globalThis.weaveFieldDialogCore ?? globalThis.fieldDialogCore;
 import { APP } from './lib/source.mjs';
-const HB = readFileSync(new URL('../src/handbook.js', import.meta.url), 'utf8');
+const HB = readFileSync(new URL('../src/handbook/fields/text.md', import.meta.url), 'utf8');
 
 test('the engine keeps literal on a text field, and only when it is true', () => {
   const w = new Weave();
@@ -38,5 +38,5 @@ test('the grid asks the field before dressing a text value', () => {
 });
 
 test('the Handbook names the config key', () => {
-  assert.match(HB, /\\`literal\\` — \\`true\\` paints the characters/, 'the text page documents literal');
+  assert.match(HB, /`literal` — `true` paints the characters/, 'the text page documents literal');
 });

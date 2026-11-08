@@ -105,7 +105,7 @@ Service (macOS launchd — auto-start on login, restart on crash)
   service status [--port 4400]        Plist, launchctl state, live /api/health probe
   quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
                                       files (generated mirror; check = report drift)
-  handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook.js
+  handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook/
                                       (serve does it once per build; check = report drift)
 
 Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or any file in it)

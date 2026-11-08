@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { TOOLS } from '../src/mcp.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
 
@@ -91,7 +91,7 @@ test('/docs states the MCP role rule the router enforces: every role connects an
 });
 
 test('README, AGENTS.md and the handbook say any role connects over MCP, as /docs does (Issue #1121)', () => {
-  for (const file of ['README.md', 'AGENTS.md', 'src/handbook.js']) {
+  for (const file of ['README.md', 'AGENTS.md', ...readdirSync(new URL('../src/handbook/', import.meta.url), { recursive: true }).filter((f) => f.endsWith('.md')).map((f) => `src/handbook/${f}`)]) {
     const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replace(/\s+/g, ' ');
     assert.doesNotMatch(text, /needs the Architect role/, `${file} says MCP needs the Architect role`);
   }

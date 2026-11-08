@@ -310,10 +310,7 @@ test('the MCP tool submits one row as the caller', () => {
 });
 
 test('the Handbook carries a Forms guide', () => {
-  const src = read('src/handbook.js');
-  const at = src.indexOf("name: 'Forms',");
-  assert.ok(at > 0, 'a guide named Forms');
-  const doc = src.slice(at, at + 4000);
+  const doc = read('src/handbook/guides/forms.md');
   assert.match(doc, /System\/Forms/);
   assert.match(doc, /weave_form_submit/);
   assert.match(doc, /weave form submit/);

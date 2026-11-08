@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { BUG_CATEGORIES, redact, renderBugReport, categoryById, severityFor, SYMPTOM_FIELD, SYMPTOM_OPTIONS } from '../src/bugreport.js';
 import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
@@ -694,7 +694,7 @@ test('both entry points build their link through the one builder, and never prom
   assert.match(err, /bugCore\.mailtoReport\(/, 'a page that did not load offers the same link');
   assert.match(err, /Report by email/);
   assert.match(err, /lastError:/, 'with the error folded in');
-  for (const s of [APP, src('src/handbook.js')]) {
+  for (const s of [APP, ...readdirSync(new URL('../src/handbook/', import.meta.url), { recursive: true }).filter((f) => f.endsWith('.md')).map((f) => src(`src/handbook/${f}`))]) {
     assert.doesNotMatch(s, /reply from weave@/i, 'the address is receive-only: no reply is promised from it');
     assert.doesNotMatch(s, /get back to you/i);
   }
