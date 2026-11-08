@@ -2328,7 +2328,7 @@ function integrationKeyCell(item, onSaved, { compact = false } = {}) {
   const stored = !!hint;
   const chip = el('span', {
     class: 'k k-key hue-slate integration-key' + (stored ? '' : ' is-empty'),
-    title: stored ? 'Key stored. weave never shows it again: Replace pastes a new one' : 'No key yet',
+    title: stored ? 'Never shown again' : 'No key yet',
   }, iconEl(CREDENTIAL_GLYPHS.apikey, 'ico wv-icon'), chipLabel(stored ? `••••${hint === 'set' ? '' : hint.replace(/^…/, '')}` : '—'));
   if (compact) return chip;
   return el('span', { class: 'cred-cell' }, chip, el('span', { class: 'cred-actions' },
@@ -2340,14 +2340,14 @@ function replaceIntegrationKey(item, onSaved) {
   const input = el('input', { name: 'value', type: 'password', class: 'form-control integration-key-input', autocomplete: 'off', spellcheck: 'false', required: '', placeholder: 'Paste the API key' });
   modal(`${item.fields?.['Key Hint'] ? 'Replace' : 'Add'} the ${item.name} key`, [
     input,
-    el('div', { class: 'form-hint' }, `weave tests the key against ${host} before it keeps it, and never shows it again.`),
+    el('div', { class: 'form-hint' }, `Tested against ${host}, then never shown again.`),
   ], async (fd) => {
     const value = String(fd.get('value') ?? '');
     input.value = '';
     const fresh = await api('PUT', `/integrations/${item.id}/credential`, { value });
     await onSaved(fresh, 'Credential');
     if (fresh.connected) toast(`${item.name} connected${fresh.fields?.['Connected As'] ? ` as ${fresh.fields['Connected As']}` : ''}`);
-    else toast(fresh.reason || `${item.name}: the key did not test green`, true);
+    else toast(fresh.reason, true);
   }, 'Test and save');
 }
 
