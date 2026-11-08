@@ -9,6 +9,33 @@ const STEP = 0.5;
 const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 
+const KEPT_REACH = (sel) => {
+  const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
+  const reach = (n, cx, cy, dx, dy) => {
+    let far = 0;
+    for (let d = 0.5; d <= 22; d += 0.5) {
+      const x = cx + dx * d, y = cy + dy * d;
+      if (x < 0 || y < 0 || x > innerWidth - 1 || y > innerHeight - 1) return 22;
+      if (!owns(n, document.elementFromPoint(x, y))) return far;
+      far = d;
+    }
+    return far;
+  };
+  const out = [];
+  for (const n of document.querySelectorAll(sel)) {
+    const cs = getComputedStyle(n);
+    if (!n.getClientRects().length || cs.visibility === 'hidden' || cs.pointerEvents === 'none') continue;
+    n.scrollIntoView({ block: 'center' });
+    const r = n.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    out.push({
+      w: Math.round(r.width), h: Math.round(r.height),
+      x: reach(n, cx, cy, -1, 0) + reach(n, cx, cy, 1, 0),
+      y: reach(n, cx, cy, 0, -1) + reach(n, cx, cy, 0, 1),
+    });
+  }
+  return out;
+};
 const SWEEP = (roots) => {
   const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, .text-dressed, tbody tr.entity-row';
   const tops = roots.flatMap((r) => [...document.querySelectorAll(r)]);
@@ -124,11 +151,14 @@ if (s) {
     for (const { state, theme } of plan('touch').filter((p) => themesOn(engine).includes(p.theme))) {
       const surface = surfaceOf(state);
       for (const kept of state.kept?.touch ?? []) {
-        test(`on a phone every ${kept.label} on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #${kept.issue})`, async () => {
-          const { seen, offenders } = await measure(b, profile, theme, surface);
-          assert.ok(seen.some((c) => c.label.startsWith(kept.label)), `the ${surface.name} draws a ${kept.label} to measure`);
-          const missed = offenders.filter((o) => o.startsWith(kept.label));
-          assert.deepEqual(missed, [], `${missed.length} of them miss a ${MIN}px hit area:\n${missed.join('\n')}`);
+        test(`on a phone every ${kept.sel} on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #${kept.issue})`, async () => {
+          const page = await open(b, profile, theme, surface);
+          try {
+            const hits = await page.evaluate(KEPT_REACH, kept.sel);
+            assert.ok(hits.length, `the ${surface.name} draws ${kept.sel} to measure`);
+            const missed = hits.filter((h) => h.x < SPAN || h.y < SPAN);
+            assert.deepEqual(missed, [], `${missed.length} of ${hits.length} ${kept.sel} miss a ${MIN}px hit area: ${missed.map((h) => `${h.w}x${h.h} drawn, ${h.x}x${h.y} reached`).join('; ')}`);
+          } finally { await page.close(); }
         });
       }
     }
