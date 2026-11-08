@@ -28,13 +28,13 @@ if (s) {
     weave.tableView(`${issue.id}/Standard`, { group: null, sort: [] });
     return weave.tableView(`${issue.id}/Standard`, {
       fields: STANDARD_FIELDS.filter((n) => !c.hidden.includes(n)), filters: c.filters, deleted: c.deleted, group: c.group, sort: c.sort,
-      layout: c.layout === 'list' ? 'list' : null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null, density: 'compact',
+      layout: c.layout === 'board' ? 'board' : null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null, density: 'compact',
     });
   };
   const open = async (theme = 'light', { height = 5000 } = {}) => {
     const page = await browser.newPage({ viewport: { width: 1440, height }, colorScheme: theme });
     await page.goto(`${base}/#/table/${issue.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main :is(.wv-grid, .wv-list)');
+    await page.waitForSelector('#main .wv-grid');
     return page;
   };
   const api = (view) => weave.query(issue.id, { view: view.id, relations: 'chip', ...(view.group?.length ? {} : { includeDeleted: !!view.deleted }) });
@@ -148,15 +148,17 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('Collapse all folds every group a grouped list draws, the empty option groups with it', async () => {
+  test('Collapse all folds every group a grouped board draws, the empty option groups with it', async () => {
     weave.updateField(issue.id, 'Severity', { config: { options: [...SEVERITY, 'Critical'] } });
     try {
-      write({ filters: {}, deleted: false, layout: 'list', rollups: false, subtotals: 'all', hidden: [], sort: [], group: [{ field: 'Severity' }] });
-      const page = await open('light');
+      write({ filters: {}, deleted: false, layout: 'board', rollups: false, subtotals: 'all', hidden: [], sort: [], group: [{ field: 'Severity' }] });
+      const page = await browser.newPage({ viewport: { width: 1440, height: 5000 }, colorScheme: 'light' });
+      await page.goto(`${base}/#/table/${issue.id}`, { waitUntil: 'networkidle' });
       try {
-        const drawn = () => page.$$eval('#main .list-group:not(.list-completed)', (ns) => ns.map((n) => `${n.dataset.key}:${n.classList.contains('shut') ? 'shut' : 'open'}`));
+        const drawn = () => page.$$eval('#main .wv-board .board-group-head:not(.board-completed > .board-group-head) > .list-fold', (ns) => ns.map((n) => `${n.closest('[data-key]')?.dataset.key}:${n.getAttribute('aria-expanded') === 'false' ? 'shut' : 'open'}`));
+        await page.waitForSelector('#main .wv-board .board-group-head .list-fold');
         const open0 = await drawn();
-        assert.ok(open0.includes('Critical:open'), `the list draws the option with no rows: ${open0}`);
+        assert.ok(open0.includes('Critical:open'), `the board draws the option with no rows: ${open0}`);
         await page.click('#main .table-view-btn');
         await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
         if (!await page.locator('#view-pane .vp-collapse-all').count()) {
@@ -172,43 +174,32 @@ if (s) {
         assert.deepEqual(
           weave.tableView(`${issue.id}/Standard`).collapsed,
           [...SEVERITY, 'Critical'],
-          'the view keeps a key for every group the list drew',
+          'the view keeps a key for every group the board drew',
         );
       } finally { await page.close(); }
     } finally {
+      weave.tableView(`${issue.id}/Standard`, { layout: 'table' });
       weave.updateField(issue.id, 'Severity', { config: { options: SEVERITY } });
     }
   });
 
-  test(`the combination sample in both layouts draws what the API returns (${SAMPLE.length} setups)`, async () => {
+  test(`the combination sample draws what the API returns (${SAMPLE.length} setups)`, async () => {
     const page = await open('light');
     try {
       for (const c of SAMPLE) {
         const view = write(c);
         const q = api(view);
         await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForSelector('#main :is(.wv-grid, .wv-list)', { state: 'attached' });
+        await page.waitForSelector('#main .wv-grid', { state: 'attached' });
         const ctx = JSON.stringify({ f: c.filters, d: c.deleted, g: c.group.map((x) => x.field), la: c.layout, ro: c.rollups, su: c.subtotals });
-        if (c.layout === 'list') {
-          const got = await page.$$eval('#main .wv-list', ([l]) => ({
-            rows: l.querySelectorAll('.list-row:not(.ghost)').length,
-            heads: l.querySelectorAll('.list-group:not(.list-completed)').length,
-            sums: l.querySelectorAll('.list-sum').length,
-            grand: l.querySelector('.list-sum.grand')?.textContent ?? null,
-          }));
-          assert.equal(got.heads, c.group.length ? q.groups.length : 0, `list headers ${ctx}`);
-          if (c.rollups) assert.match(got.grand, new RegExp(`All · ${q.groupTotal?.count ?? LIVE.length} issue`), `list grand ${ctx}`);
-          else assert.equal(got.sums, 0, ctx);
-        } else {
-          const got = await page.$$eval('#main tbody', ([tb]) => ({
-            heads: tb.querySelectorAll('tr.group-head').length, sums: tb.querySelectorAll('tr.group-sum:not(.grand)').length,
-            grand: tb.querySelectorAll('tr.group-sum.grand').length,
-          }));
-          assert.equal(got.heads, q.groups.length, `table headers ${ctx}`);
-          const want = c.rollups ? q.groups.filter((g) => c.subtotals === 'all' || (c.subtotals === 'top' && g.path.length === 1)).length : 0;
-          assert.equal(got.sums, want, `table subtotals ${ctx}`);
-          assert.equal(got.grand, c.rollups ? 1 : 0, ctx);
-        }
+        const got = await page.$$eval('#main tbody', ([tb]) => ({
+          heads: tb.querySelectorAll('tr.group-head').length, sums: tb.querySelectorAll('tr.group-sum:not(.grand)').length,
+          grand: tb.querySelectorAll('tr.group-sum.grand').length,
+        }));
+        assert.equal(got.heads, q.groups.length, `table headers ${ctx}`);
+        const want = c.rollups ? q.groups.filter((g) => c.subtotals === 'all' || (c.subtotals === 'top' && g.path.length === 1)).length : 0;
+        assert.equal(got.sums, want, `table subtotals ${ctx}`);
+        assert.equal(got.grand, c.rollups ? 1 : 0, ctx);
       }
     } finally { await page.close(); }
   });

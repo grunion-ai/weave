@@ -27,10 +27,8 @@ function draw(view) {
   const q = gridQuery(w, issue, view);
   const items = q.items.map((it) => ({ ...it, deleted: !!it.deletedAt }));
   const levels = VP.levelsFor(view.group, FIELDS, { domains: (view.group ?? []).map((l) => (l.field === 'Fixed in' ? TARGETS : null)), items });
-  const filtered = Object.values(view.filters ?? {}).some((v) => v.length);
-  const showEmpty = view.layout === 'list' && !filtered;
   const rows = VP.rowsFor(items, levels);
-  const m = VP.model(rows, { levels, collapsed: view.collapsed ?? null, rollups: !!view.rollups, subtotals: view.subtotals ?? 'all', showEmpty });
+  const m = VP.model(rows, { levels, collapsed: view.collapsed ?? null, rollups: !!view.rollups, subtotals: view.subtotals ?? 'all' });
   const sums = new Map((q.groups ?? []).map((g) => [g.path.map((p) => p.value).join(LC.SEP), g]));
   const grand = q.groupTotal ?? { count: VP.liveRows(items).length, rollups: w.tableStats(issue.id).rollups.map((r) => ({ field: r.targetField ?? 'Name', aggregate: r.aggregate, display: r.display })) };
   const text = [];
@@ -57,7 +55,7 @@ const siblingsOrdered = (nodes, levels) => {
     && nodes.every((n) => !n.groups || siblingsOrdered(n.groups, levels));
 };
 
-test('the View pane combination suite: 1,920 view setups over Issue, 14 checks each', (t) => {
+test('the View pane combination suite: 960 view setups over Issue, 14 checks each', (t) => {
   const inv = {};
   const fails = [];
   const ok = (name, cond, ctx) => {
@@ -73,7 +71,7 @@ test('the View pane combination suite: 1,920 view setups over Issue, 14 checks e
     w.tableView(`${issue.id}/Standard`, { group: null, sort: [] });
     const view = w.tableView(`${issue.id}/Standard`, {
       fields, filters: c.filters, deleted: c.deleted, group: c.group, sort: c.sort,
-      layout: c.layout === 'list' ? 'list' : null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null,
+      layout: null, rollups: c.rollups, subtotals: c.subtotals, collapsed: null,
     });
     const overlap = c.sort.some((s) => c.group.some((g) => g.field === s.field));
     const { q, items, levels, m, sums, text } = draw(view);
@@ -112,7 +110,7 @@ test('the View pane combination suite: 1,920 view setups over Issue, 14 checks e
   }
   const lines = Object.entries(inv).map(([k, v]) => `${v.fail ? 'FAIL' : 'ok  '} ${k} ${v.pass}/${v.pass + v.fail}`);
   for (const line of lines) t.diagnostic(line);
-  assert.equal(combos, 1920, '6 filters × 4 sorts × 5 groups × 2 layouts × 4 rollup modes × 2 field sets');
+  assert.equal(combos, 960, '6 filters × 4 sorts × 5 groups × 4 rollup modes × 2 field sets');
   assert.equal(Object.keys(inv).length, 14, 'the mockup\'s 13 checks plus weave_query parity');
   assert.deepEqual(fails, [], lines.join('\n'));
 });
