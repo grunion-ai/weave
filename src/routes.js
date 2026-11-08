@@ -1704,6 +1704,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           await remirror(weave);
           return out(200, gone);
         }
+        if ((m = path.match(/^\/api\/integrations\/([^/]+)\/credential$/))) {
+          if (!role || !mayAdminister(weave, roleOn(weave))) return deny(role ? 403 : 401, 'Setting an integration key needs an architect on this workspace');
+          if (rx.method !== 'PUT') return out(405, { error: 'An integration key is written with PUT and never read back', code: 'method-not-allowed' }, { Allow: 'PUT' });
+          return out(200, await weave.setIntegrationCredential(decodeURIComponent(m[1]), body?.value));
+        }
         if (path.startsWith('/api/keys')) {
           if (!role) return deny(401, 'Managing keys needs an account on this workspace');
           const localRole = roleOn(weave);

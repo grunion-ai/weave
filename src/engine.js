@@ -27,6 +27,7 @@ import { aggregate as aggregateValues, describeNumbers, histogram, distribution,
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
 import { TRIAL_STAGES } from './mail.js';
+import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, CHECK_TIMEOUT_MS } from './integrations.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -3707,6 +3708,7 @@ export class Weave {
   setKey(name, secret) {
     if (!name) throw new WeaveError('Key name is required', 'invalid');
     refuseReserved('key', name);
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const prior = own(data.keys, name);
     if (prior && !this.#mayGrant(prior)) throw this.#grantRefusal(prior, 'replace', name);
@@ -3724,6 +3726,7 @@ export class Weave {
   }
 
   deleteKey(name) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     if (!Object.hasOwn(data.keys, name)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(data.keys[name])) throw this.#grantRefusal(data.keys[name], 'delete', name);
@@ -3740,7 +3743,7 @@ export class Weave {
 
   listKeys() {
     const { keys } = this.#readKeystore();
-    return Object.keys(keys).filter(name => this.#keyInWorkspace(keys[name]) || this.#localKeys()).sort().map((name) => ({
+    return Object.keys(keys).filter(name => !isIntegrationKey(name) && (this.#keyInWorkspace(keys[name]) || this.#localKeys())).sort().map((name) => ({
       name,
       set: true,
       owner: this.actorName(keys[name].owner ?? null),
@@ -3749,6 +3752,7 @@ export class Weave {
   }
 
   resolveKey(name) {
+    refuseIntegrationKey(name);
     const { keys } = this.#readKeystore();
     const entry = own(keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
@@ -3775,6 +3779,7 @@ export class Weave {
   }
 
   revealKey(name, { via = 'show' } = {}) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
@@ -3812,6 +3817,7 @@ export class Weave {
 
   grantKey(name, account) {
     if (!account) throw new WeaveError('Name the account the credential is shared with', 'invalid');
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
@@ -3828,6 +3834,7 @@ export class Weave {
   }
 
   revokeKey(name, account) {
+    refuseIntegrationKey(name);
     const data = this.#readKeystore();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
@@ -5176,7 +5183,9 @@ export class Weave {
     }
     const wsT = this.#sysTable('workspaces')
       ?? mkTable('Workspaces', 'workspaces', 'This workspace as a row. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as rows.');
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users']]) {
+    const integrationsT = this.#sysTable('integrations') ?? mkTable('Integrations', 'integrations', INTEGRATIONS_DESCRIPTION);
+    ensureIntegrationColumns(this, integrationsT);
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -5449,6 +5458,176 @@ export class Weave {
     if (row?.deletedAt) reg.#metaSync(() => reg.restoreEntity(row.id));
   }
 
+  #integrationNamed(db, values) {
+    const out = {};
+    for (const [k, v] of Object.entries(values ?? {})) out[this.findField(db, k)?.name ?? k] = v;
+    for (const name of INTEGRATION_KEPT) {
+      if (!(name in out)) continue;
+      if (out[name] != null && out[name] !== '') {
+        throw new WeaveError(name === 'Credential'
+          ? 'A key never goes into a row: paste it with Replace on the Integrations row (PUT /api/integrations/<id>/credential), where it is tested and sealed'
+          : `'${name}' is kept by weave and cannot be set on an Integrations row`, 'invalid');
+      }
+      delete out[name];
+    }
+    return out;
+  }
+
+  #integrationProvider(db, v) {
+    if (v == null || v === '') return null;
+    const f = this.#sysField(db, 'Provider');
+    const hit = f.config.options.find((o) => o.id === v || o.name.toLowerCase() === String(v).toLowerCase());
+    if (!hit) throw new WeaveError(`Provider '${v}' is not one of ${f.config.options.map((o) => o.name).join(', ')}`, 'invalid');
+    return hit.name;
+  }
+
+  #integrationInput(db, input) {
+    const values = this.#integrationNamed(db, { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) });
+    const provider = this.#integrationProvider(db, values.Provider);
+    if ('Host' in values) values.Host = integrationHost(values.Host, provider);
+    if (!('On' in values)) values.On = true;
+    const wsRow = values.Workspace == null ? this.#sysRow('workspaces', this.state.meta.id) : this.#sysRow('workspaces', values.Workspace);
+    if (wsRow) values.Workspace = wsRow.id;
+    return { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => k !== 'values' && CREATE_INPUT_KEYS.has(k))), values };
+  }
+
+  #updateIntegrationRow(e, db, valuesByName) {
+    const patch = this.#integrationNamed(db, valuesByName);
+    const F = (n) => this.#sysField(db, n);
+    if ('Workspace' in patch) {
+      const next = patch.Workspace == null ? null : (this.findEntity(this.#sysTable('workspaces').id, patch.Workspace) ?? this.#sysRow('workspaces', patch.Workspace))?.id;
+      if (next !== (e.values[F('Workspace').id] ?? null)) throw new WeaveError("An Integrations row belongs to the workspace it was made in and cannot move", 'invalid');
+      delete patch.Workspace;
+    }
+    const was = { provider: this.#integrationProvider(db, e.values[F('Provider').id]), host: e.values[F('Host').id] ?? null };
+    let rebound = false;
+    if ('Host' in patch || 'Provider' in patch) {
+      const provider = 'Provider' in patch ? this.#integrationProvider(db, patch.Provider) : was.provider;
+      patch.Host = integrationHost('Host' in patch ? patch.Host : was.host, provider);
+      rebound = provider !== was.provider || patch.Host !== was.host;
+    }
+    if (Object.keys(patch).length) this.#metaSync(() => this.updateEntity(e.id, patch));
+    if (rebound) this.#dropIntegrationKey(e, 'The Host or Provider changed: paste the key again with Replace');
+    return this.getEntity(e.id);
+  }
+
+  #onReg(fn) {
+    const reg = this.#reg;
+    if (reg === this) return fn(reg);
+    const was = reg.actor;
+    reg.actor = this.actor;
+    try { return fn(reg); } finally { reg.actor = was; }
+  }
+
+  #stampIntegration(row, values) {
+    this.#onReg((reg) => reg.#metaSync(() => reg.updateEntity(row.id, values)));
+  }
+
+  #integrationRow(ref) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('integrations');
+    const row = t && (own(reg.state.entities, ref) ?? reg.findEntity(t.id, ref));
+    if (!row || row.dbId !== t.id || row.deletedAt || (this.#wsIdOfRow(row) ?? reg.state.meta.id) !== this.state.meta.id) {
+      throw new WeaveError(`No integration '${ref}' in this workspace`, 'not-found');
+    }
+    return row;
+  }
+
+  #integrationTarget(row) {
+    const t = this.#reg.#sysTable('integrations');
+    const F = (n) => this.#sysField(t, n);
+    return {
+      name: this.#reg.entityName(row),
+      provider: this.#integrationProvider(t, row.values[F('Provider').id]),
+      host: row.values[F('Host').id] ?? null,
+      on: row.values[F('On').id] === true,
+    };
+  }
+
+  #integrationEntry(rowId) {
+    const entry = own(this.#readKeystore().keys, integrationKeyName(rowId));
+    return entry?.integration === true && entry.workspace === this.state.meta.id ? entry : null;
+  }
+
+  #sealIntegrationKey(rowId, secret) {
+    const data = this.#readKeystore();
+    const name = integrationKeyName(rowId);
+    const prior = own(data.keys, name);
+    data.keys[name] = {
+      ...this.#seal(secret),
+      owner: null,
+      workspace: this.state.meta.id,
+      shared: false,
+      integration: true,
+      createdAt: prior?.createdAt ?? nowISO(),
+      ...(prior ? { rotatedAt: nowISO() } : {}),
+    };
+    this.#writeKeystore(data);
+  }
+
+  #dropIntegrationKey(row, reason) {
+    const name = integrationKeyName(row.id);
+    const had = this.#onReg((reg) => {
+      const data = reg.#readKeystore();
+      if (!Object.hasOwn(data.keys, name)) return false;
+      delete data.keys[name];
+      reg.#writeKeystore(data);
+      reg.#audit('key-deleted', { name, integration: reg.entityName(row) });
+      return true;
+    });
+    const credF = this.#sysField(this.#reg.#sysTable('integrations'), 'Credential');
+    if (had || row.values[credF.id] != null) {
+      this.#stampIntegration(row, { Credential: null, 'Key Hint': null, 'Connected As': null, State: 'Setup incomplete', 'Health Reason': reason });
+    }
+    return had;
+  }
+
+  async #checkIntegration(provider, host, secret) {
+    const { url, init } = checkRequest(provider, host, secret);
+    const target = new URL(url);
+    try {
+      const refusal = await webhookRefusal(target);
+      if (refusal) return { ok: false, reason: `${host}: ${refusal}` };
+      const res = await fetch(target, { ...init, redirect: 'manual', signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
+      return await readCheck(provider, host, res);
+    } catch (err) {
+      return { ok: false, reason: unreachable(host, err) };
+    }
+  }
+
+  async setIntegrationCredential(ref, value) {
+    const row = this.#integrationRow(ref);
+    const secret = cleanSecret(value);
+    const before = this.#integrationTarget(row);
+    if (!before.provider || !before.host) {
+      throw new WeaveError(`Integration '${before.name}' needs a Provider and a Host before its key: the key is tested against that host`, 'invalid');
+    }
+    this.#stampIntegration(row, { State: 'Checking' });
+    const result = await this.#checkIntegration(before.provider, before.host, secret);
+    const now = this.#integrationRow(row.id);
+    const after = this.#integrationTarget(now);
+    if (after.provider !== before.provider || after.host !== before.host) {
+      throw new WeaveError(`Integration '${after.name}' changed its Host or Provider while the key was tested: paste it again`, 'conflict');
+    }
+    const at = nowISO();
+    const had = !!this.#reg.#integrationEntry(row.id);
+    if (!result.ok) {
+      const reason = redact(result.reason, secret) + (had ? ' The previous key is still stored.' : '');
+      this.#stampIntegration(row, { State: 'Failed', 'Health Reason': reason, 'Last Checked': at });
+      this.#onReg((reg) => reg.#audit('integration-check-failed', { integration: after.name, host: after.host }));
+      return { ...this.#reg.readEntity(row.id), connected: false, reason };
+    }
+    this.#onReg((reg) => {
+      reg.#sealIntegrationKey(row.id, secret);
+      reg.#audit('key-set', { name: integrationKeyName(row.id), integration: after.name, host: after.host, replaced: had });
+    });
+    this.#stampIntegration(row, {
+      Credential: integrationKeyName(row.id), 'Key Hint': keyHint(secret), State: 'Connected',
+      'Connected As': redact(result.connectedAs, secret), 'Health Reason': null, 'Last Checked': at,
+    });
+    return { ...this.#reg.readEntity(row.id), connected: true };
+  }
+
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a row', 'invalid');
@@ -5536,6 +5715,7 @@ export class Weave {
     }
     if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
     if (db.system === 'users') return this.#updateUserRow(e, db, valuesByName);
+    if (db.system === 'integrations') return this.#updateIntegrationRow(e, db, valuesByName);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
@@ -5651,6 +5831,7 @@ export class Weave {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a row', 'invalid');
     if (db.system === 'users') return this.#deleteUserRow(e);
+    if (db.system === 'integrations') { this.#dropIntegrationKey(e, null); return undefined; }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     if (db.system === 'views') {
       const hit = this.#viewAnywhere(e.sysId);
@@ -6990,6 +7171,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const meta = this.#interceptCreate(db, input);
     if (meta) return meta;
+    if (db.system === 'integrations' && !this.#inMetaSync) input = this.#integrationInput(db, input);
     if (db.system === 'forms') input = { ...input, values: normalizeFormValues(this, db, { ...Object.fromEntries(Object.entries(input).filter(([key]) => !CREATE_INPUT_KEYS.has(key))), ...(input.values ?? {}) }) };
     const flat = Object.fromEntries(
       Object.entries(input).filter(([k]) => !CREATE_INPUT_KEYS.has(k)));
