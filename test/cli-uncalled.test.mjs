@@ -73,6 +73,10 @@ test('weave audit lists the workspace audit trail newest first, capped by --limi
     assert.equal(bad.code, 40, `weave ${verb.join(' ')} --limit lots is refused`);
     assert.match(bad.err, /--limit must be a number/, `weave ${verb.join(' ')} names the flag`);
   }
+  const offset = run(['query', 'Task', '--offset', 'nope']);
+  assert.equal(offset.code, 40, 'a --offset that is not a whole number is refused (Issue #1374)');
+  assert.match(offset.err, /--offset must be a whole number of rows, not 'nope'/);
+  assert.equal(ok(['query', 'Task', '--offset', '1']).json().items.length, ok(['query', 'Task']).json().items.length - 1, 'a numeric --offset still skips');
   assert.equal(ok(['audit', '--limit', '1']).json().length, 1, 'a numeric --limit still caps');
   const whole = ok(['activity', '--limit', '-1']).json();
   assert.equal(whole.items.length, whole.total, '--limit -1 still means the whole log');

@@ -1,6 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
+import { matchRoute, httpArgs } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -1983,6 +1984,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/use$/)) && rx.method === 'POST') {
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
+        const registered = matchRoute(rx.method, path);
+        if (registered) return out(registered.cmd.http.status ?? 200, registered.cmd.run(weave, httpArgs(registered, body, rx.searchParams)));
         if (route === 'POST /api/spaces') return out(201, guided(weave, 'space', weave.createSpace(body)));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
@@ -2042,31 +2045,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, weave.restoreTable(m[1]));
         }
 
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields$/)) && rx.method === 'POST') {
-          return out(201, guided(weave, 'field', weave.addField(m[1], body), body?.config));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)$/))) {
-          if (rx.method === 'PATCH') {
-            const seq = weave.state.meta.activitySeq ?? 0;
-            const field = weave.updateField(m[1], m[2], body);
-            const entry = weave.fieldChangeSince(m[1], field.id, seq);
-            return out(200, { ...guided(weave, 'field', field, body?.type == null ? body?.config : {}), activity: entry?.id ?? null, lossy: !!entry?.detail.lossy,
-              ...(entry?.detail.formulas ? { formulas: entry.detail.formulas } : {}) });
-          }
-          if (rx.method === 'DELETE') {
-            weave.deleteField(m[1], m[2], { hard: ['1', 'true'].includes(rx.searchParams.get('hard') ?? '') });
-            return out(200, { ok: true });
-          }
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreField(m[1], decodeURIComponent(m[2])));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/fields\/([^/]+)\/rollback$/)) && rx.method === 'POST') {
-          return out(200, weave.rollbackFieldConfig(body?.activity, { table: m[1], field: m[2], via: body?.via }));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/relations$/)) && rx.method === 'POST') {
-          return out(201, weave.addRelation(m[1], body));
-        }
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
@@ -2087,9 +2065,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
           const limit = body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit);
           return out(200, weave.query(m[1], { ...body, limit, viewerZone, workspace: member.state.meta.id }));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/formula-check$/)) && rx.method === 'POST') {
-          return out(200, weave.checkFormula(m[1], body?.expression, { entity: body?.entity ?? null, excludeField: body?.excludeField ?? null, scan: Boolean(body?.scan) }));
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/stats$/)) && rx.method === 'GET') {
           const by = rx.searchParams.get('by') || null;
