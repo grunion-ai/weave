@@ -831,3 +831,16 @@ test('full backups preserve hub routing aliases without putting them in single-w
   const single = await backup({ dataDir: dir, workspace: 'alpha', out: tmp('hub-single'), env: {} });
   assert.equal(readTar(single.path).some(e => e.name === '_hub.json'), false);
 });
+
+test('a temp file left in files/ by an interrupted blob write is neither archived nor counted an orphan', async () => {
+  const src = seedDataDir();
+  writeFileSync(join(src.dir, 'files', `${src.kept.id}.9f0c1d2e.tmp`), 'half a blob');
+  const outDir = tmp('tmp-out');
+  const r = await backup({ dataDir: src.dir, out: outDir, env: {}, now: () => new Date('2026-11-08T04:00:00Z') });
+  closeAll(src.alpha, src.beta);
+  assert.equal(r.files, 1, 'the interrupted write is not a blob');
+  assert.equal(r.orphans.count, 1, 'only the deleted blob is an orphan');
+  const tar = join(outDir, 'peek-tmp.tar');
+  decryptFile(r.path, tar, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
+  assert.ok(!readTar(tar).some((e) => e.name.endsWith('.tmp')), 'a .tmp entry rode into the archive');
+});

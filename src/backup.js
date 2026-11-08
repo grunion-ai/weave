@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, scryptSync, createCipheriv, createDecipheriv } from 'node:crypto';
-import { WeaveError } from './store.js';
+import { WeaveError, writeFileDurable } from './store.js';
 
 let DatabaseSync = null;
 try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
@@ -314,7 +314,7 @@ export async function backup({
     const entries = [];
     const filesDir = join(dataDir, 'files');
     const present = new Set(c.dirs.includes('files')
-      ? readdirSync(filesDir).filter((f) => { try { return statSync(join(filesDir, f)).isFile(); } catch { return false; } })
+      ? readdirSync(filesDir).filter((f) => !f.endsWith('.tmp')).filter((f) => { try { return statSync(join(filesDir, f)).isFile(); } catch { return false; } })
       : []);
     const referenced = new Set();
     for (const db of dbs) {
@@ -442,9 +442,8 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
     const landed = [];
     for (const e of landing) {
       const target = join(dataDir, e.name);
-      mkdirSync(dirname(target), { recursive: true });
       if (e.name.endsWith('.db')) for (const s of ['-wal', '-shm']) rmSync(target + s, { force: true });
-      writeFileSync(target, e.data, e.name === 'keystore.json' ? { mode: 0o600 } : undefined);
+      writeFileDurable(target, e.data, e.name === 'keystore.json' ? { mode: 0o600 } : {});
       landed.push(e.name);
     }
     return {
