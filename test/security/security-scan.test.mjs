@@ -17,10 +17,11 @@ test('a fingerprint ignores the line number and indentation but not the code', (
   assert.equal(fingerprint(result('r', 'f.js', 1, 2), 'one\n two\nthree'), 'r|f.js|one two');
 });
 
-test('the baseline hides what it holds and shows anything beyond it, duplicates included', () => {
+test('the baseline hides every fingerprint it lists, however often a run reports it, and shows any it does not list (Issue #1302)', () => {
   assert.deepEqual(newFindings(['a', 'b'], ['a', 'b', 'c']), []);
   assert.deepEqual(newFindings(['a', 'd'], ['a']), ['d']);
-  assert.deepEqual(newFindings(['a', 'a'], ['a']), ['a']);
+  assert.deepEqual(newFindings(['a', 'a'], ['a']), [], 'a taint rule that reports one listed line twice on one run and once on the next is one tree, one result');
+  assert.deepEqual(newFindings(['d', 'd'], ['a']), ['d', 'd']);
 });
 
 test('the summary has one line per tool and the exit code follows the fails', () => {

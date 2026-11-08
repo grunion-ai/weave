@@ -14,15 +14,8 @@ export function fingerprint(result, source) {
 }
 
 export function newFindings(fingerprints, baseline) {
-  const allowed = new Map();
-  for (const f of baseline) allowed.set(f, (allowed.get(f) ?? 0) + 1);
-  const fresh = [];
-  for (const f of fingerprints) {
-    const left = allowed.get(f) ?? 0;
-    if (left > 0) allowed.set(f, left - 1);
-    else fresh.push(f);
-  }
-  return fresh;
+  const allowed = new Set(baseline);
+  return fingerprints.filter((f) => !allowed.has(f));
 }
 
 export const summaryLine = (name, status, detail = '') => `${name}: ${status}${detail ? ` (${detail})` : ''}`;
