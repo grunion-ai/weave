@@ -1797,12 +1797,23 @@ export class Weave {
     return this.spaceMembers(sp.id);
   }
 
+  #nameHolders(kind, name, { spaceId, except } = {}) {
+    const key = String(name).toLowerCase();
+    const hits = Object.values(kind === 'Space' ? this.state.spaces : this.state.tables)
+      .filter((x) => x !== except && (spaceId === undefined || x.spaceId === spaceId) && x.name.toLowerCase() === key);
+    return { live: hits.find((x) => !x.deletedAt), held: hits.find((x) => x.deletedAt) };
+  }
+
+  #assertNameFree(kind, name, label, scope) {
+    const { live, held } = this.#nameHolders(kind, name, scope);
+    if (live) throw new WeaveError(`${kind} '${label}' already exists`, 'conflict');
+    if (held) throw new WeaveError(`${kind} '${label}' is in the trash — restore or purge it first`, 'conflict');
+  }
+
   createSpace({ name, description = '', icon = '', template = false }) {
     if (!name) throw new WeaveError('Space name is required', 'invalid');
     refuseReserved('space', name);
-    if (Object.values(this.state.spaces).some((s) => !s.deletedAt && s.name.toLowerCase() === String(name).toLowerCase())) throw new WeaveError(`Space '${name}' already exists`, 'conflict');
-    const held = Object.values(this.state.spaces).find((s) => s.deletedAt && s.name.toLowerCase() === name.toLowerCase());
-    if (held) throw new WeaveError(`Space '${name}' is in the trash — restore or purge it first`, 'conflict');
+    this.#assertNameFree('Space', name, name);
     const space = { id: uuid(), name, description, ...(iconValue(icon) ? { icon: iconValue(icon) } : {}), ...(template === true ? { template: true } : {}), createdAt: nowISO() };
     this.state.spaces[space.id] = space;
     this.#settlePositions();
@@ -1881,8 +1892,7 @@ export class Weave {
     this.#mayChange(s.id, 'architect');
     if (!s.deletedAt) return s;
     if (s.system && this.state.meta.registry === 'hub') throw new WeaveError('The registry lives at the weave root now — this workspace\'s own System space is a tombstone', 'invalid');
-    const clash = Object.values(this.state.spaces).find((x) => !x.deletedAt && x.name.toLowerCase() === s.name.toLowerCase());
-    if (clash) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
+    if (this.#nameHolders('Space', s.name).live) throw new WeaveError(`A live space already holds the name '${s.name}'`, 'conflict');
     s.deletedAt = null;
     this.#restoreSysRow('spaces', s.id);
     this.#audit('space-restored', { name: s.name }, s.id);
@@ -1896,9 +1906,7 @@ export class Weave {
     if (!name) throw new WeaveError('Table name is required', 'invalid');
     refuseReserved('table', name);
     const qualified = `${sp.name}/${name}`;
-    if (Object.values(this.state.tables).some((d) => !d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase())) throw new WeaveError(`Table '${qualified}' already exists`, 'conflict');
-    const held = Object.values(this.state.tables).find((d) => d.deletedAt && d.spaceId === sp.id && d.name.toLowerCase() === name.toLowerCase());
-    if (held) throw new WeaveError(`Table '${qualified}' is in the trash — restore or purge it first`, 'conflict');
+    this.#assertNameFree('Table', name, qualified, { spaceId: sp.id });
     const nameField = { id: uuid(), name: 'Name', type: 'text', config: {} };
     const docField = { id: uuid(), name: 'Description', type: 'document', config: {} };
     const db = {
@@ -2043,10 +2051,7 @@ export class Weave {
       if (position == null) return db;
       return this.updateTable(db.id, { position });
     }
-    const clash = Object.values(this.state.tables).find((d) => d.id !== db.id
-      && d.spaceId === sp.id && d.name.toLowerCase() === db.name.toLowerCase());
-    if (clash?.deletedAt) throw new WeaveError(`Table '${sp.name}/${db.name}' is in the trash — restore or purge it first`, 'conflict');
-    if (clash) throw new WeaveError(`Table '${sp.name}/${db.name}' already exists`, 'conflict');
+    this.#assertNameFree('Table', db.name, `${sp.name}/${db.name}`, { spaceId: sp.id, except: db });
     const from = this.state.spaces[db.spaceId]?.name;
     const left = db.spaceId;
     db.spaceId = sp.id;
@@ -2065,8 +2070,7 @@ export class Weave {
     if (src.system) throw new WeaveError(`Table '${src.name}' is part of the system registry`, 'invalid');
     if (src.deletedAt) throw new WeaveError(`Table '${src.name}' is in the trash — restore it first`, 'conflict');
     const sp = this.state.spaces[src.spaceId];
-    const taken = (n) => Object.values(this.state.tables)
-      .some((d) => d.spaceId === src.spaceId && d.name.toLowerCase() === n.toLowerCase());
+    const taken = (n) => { const { live, held } = this.#nameHolders('Table', n, { spaceId: src.spaceId }); return !!(live || held); };
     let name = `${src.name} Copy`;
     for (let i = 2; taken(name); i++) name = `${src.name} Copy ${i}`;
     const newId = uuid();
@@ -2216,8 +2220,7 @@ export class Weave {
     if (!db.deletedAt) return db;
     const sp = this.state.spaces[db.spaceId];
     if (sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is inside the trashed space '${sp.name}' — restore the space first`, 'invalid');
-    const clash = Object.values(this.state.tables).find((x) => !x.deletedAt && x.spaceId === db.spaceId && x.name.toLowerCase() === db.name.toLowerCase());
-    if (clash) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
+    if (this.#nameHolders('Table', db.name, { spaceId: db.spaceId }).live) throw new WeaveError(`A live table already holds the name '${this.qualifiedName(db)}'`, 'conflict');
     db.deletedAt = null;
     this.#restoreSysRow('tables', db.id);
     for (const v of db.tableViews ?? []) this.#restoreSysRow('views', v.id);
@@ -8226,11 +8229,15 @@ export class Weave {
     this.#forgetDerived();
   }
 
-  readEntity(id, { viewerZone = null } = {}) {
-    if (viewerZone == null) return this.#framed(() => this.#readEntityIn(id));
+  #inViewerZone(viewerZone, fn) {
+    if (viewerZone == null) return fn();
     const prev = this.viewerZone;
     this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#framed(() => this.#readEntityIn(id)); } finally { this.viewerZone = prev; }
+    try { return fn(); } finally { this.viewerZone = prev; }
+  }
+
+  readEntity(id, { viewerZone = null } = {}) {
+    return this.#inViewerZone(viewerZone, () => this.#framed(() => this.#readEntityIn(id)));
   }
   #readEntityIn(id, { pick = null, chips = null } = {}) {
     const e = this.getEntity(id);
@@ -8385,10 +8392,7 @@ export class Weave {
   }
 
   query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {
-    if (viewerZone == null) return this.#inQuery(dbRef, opts, workspace);
-    const prev = this.viewerZone;
-    this.viewerZone = DG.isZone(viewerZone) ? viewerZone : null;
-    try { return this.#inQuery(dbRef, opts, workspace); } finally { this.viewerZone = prev; }
+    return this.#inViewerZone(viewerZone, () => this.#inQuery(dbRef, opts, workspace));
   }
   #inQuery(dbRef, opts, workspace) {
     return this.#framed(() => this.#queryIn(dbRef, opts, workspace));
@@ -8659,42 +8663,30 @@ export class Weave {
   }
 
   setDoc(entityId, markdown, fieldRef = null) {
+    return this.#writeDoc(entityId, markdown, fieldRef, 'write', 'doc-updated', (before, text) => text);
+  }
+
+  appendDoc(entityId, markdown, fieldRef = null) {
+    return this.#writeDoc(entityId, markdown, fieldRef, 'append', 'doc-appended', (before, text) => (before ? before.replace(/\n*$/, '\n\n') : '') + text);
+  }
+
+  #writeDoc(entityId, markdown, fieldRef, verb, kind, compute) {
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
-    const after = this.#docText(markdown, 'write');
+    const text = this.#docText(markdown, verb);
     const db = this.state.tables[e.dbId];
     const f = this.#resolveDocField(db, fieldRef);
     e.docs = e.docs ?? {};
     const before = e.docs[f.id] ?? '';
+    const after = compute(before, text);
     if (before === after) return e;
     const prior = { at: e.updatedAt, by: e.modifiedBy };
     e.docs[f.id] = after;
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     const r = this.#restoring;
-    this.#logActivity(e, 'doc-updated', r ? { ...docChange(f.name, before, after), restoredFrom: r.seq, restoredAt: r.at, restoredBy: r.actor ?? null }
+    this.#logActivity(e, kind, r ? { ...docChange(f.name, before, after), restoredFrom: r.seq, restoredAt: r.at, restoredBy: r.actor ?? null }
       : docChange(f.name, before, after));
-    this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
-    this.#recordDocRevision(e, f, before, after, { prior });
-    this.save();
-    return e;
-  }
-
-  appendDoc(entityId, markdown, fieldRef = null) {
-    this.#mayWriteRow(entityId);
-    const e = this.getEntity(entityId);
-    const addition = this.#docText(markdown, 'append');
-    const db = this.state.tables[e.dbId];
-    const f = this.#resolveDocField(db, fieldRef);
-    e.docs = e.docs ?? {};
-    const before = e.docs[f.id] ?? '';
-    const after = (before ? before.replace(/\n*$/, '\n\n') : '') + addition;
-    if (before === after) return e;
-    const prior = { at: e.updatedAt, by: e.modifiedBy };
-    e.docs[f.id] = after;
-    e.updatedAt = nowISO();
-    e.modifiedBy = this.actor;
-    this.#logActivity(e, 'doc-appended', docChange(f.name, before, after));
     this.#recordUndo('update', e, { before: { values: {}, docs: { [f.id]: before } } });
     this.#recordDocRevision(e, f, before, after, { prior });
     this.save();
