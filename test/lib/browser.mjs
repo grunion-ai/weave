@@ -72,9 +72,9 @@ export function phoneProfile() {
 export const phonePage = (browser, options = {}) => browser.newPage({ ...phoneProfile().page, ...options });
 export const phoneBrowser = () => engineOf(phoneProfile().engine);
 
-const modeledPhone = (width, height, deviceScaleFactor) => ({
+const modeledPhone = (width, height, deviceScaleFactor, screen = { width, height }) => ({
   userAgent: pw?.devices['iPhone 17']?.userAgent,
-  viewport: { width, height }, screen: { width, height }, deviceScaleFactor, isMobile: true, hasTouch: true,
+  viewport: { width, height }, screen, deviceScaleFactor, isMobile: true, hasTouch: true,
 });
 const listedPhone = (name, fallback) => {
   const { defaultBrowserType, ...page } = pw?.devices[name] ?? fallback;
@@ -84,7 +84,7 @@ export const PHONES = pw ? [
   { name: 'iPhone SE (3rd generation)', page: listedPhone('iPhone SE (3rd gen)', modeledPhone(375, 667, 2)) },
   { name: 'iPhone 17', page: listedPhone('iPhone 17') },
   { name: 'iPhone 17 Pro Max', page: listedPhone('iPhone 17 Pro Max') },
-  { name: 'iPhone Duo closed', page: modeledPhone(466, 678, 3) },
+  { name: 'iPhone Duo closed', page: modeledPhone(382, 580, 3, { width: 466, height: 678 }) },
   { name: 'iPhone Duo open', page: modeledPhone(669, 951, 3) },
 ] : [];
 
