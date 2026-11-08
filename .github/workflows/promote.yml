@@ -10,6 +10,10 @@ on:
         required: false
         type: boolean
         default: false
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [tests, dev-soak]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -20,7 +24,11 @@ concurrency:
 
 jobs:
   select:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository ||
+      github.event_name != 'workflow_run' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:

@@ -5,7 +5,7 @@ Agents work in isolated branches and run targeted checks locally. A ready pull
 request lands on main after a fast `Dev gate` and deploys to dev.weave.grunion.ai
 within a minute. The full test inventory runs on main. The `promote` workflow
 moves production to the newest main commit that passed both the `CI gate` and
-the dev soak.
+the dev soak, as soon as the later of the two completes.
 
 ## Daily flow
 
@@ -345,20 +345,28 @@ https://weave.grunion.ai runs with `WEAVE_TRACK=branch:production` and a
 `WEAVE_DEPLOY_TOKEN`, so it serves `releases/c<sha>/` folders and swaps, watches
 and rolls back exactly as dev does (Daily flow, steps 5 and 6).
 
-`.github/workflows/promote.yml` (Feature #322) moves the branch. It runs every
-hour and acts when the UTC hour is a multiple of the repository variable
-`PROMOTION_EVERY_HOURS` (default 2); `workflow_dispatch` acts at once, and its
-`dry_run` input only prints the pick. `scripts/promote.mjs select` picks the
-newest main commit that has a push `tests` run whose `CI gate` succeeded and a
-`dev-soak` commit status of success, and that descends from the `production`
-head. With none it exits quietly. The `promote` job then, in the `production`
-environment:
+`.github/workflows/promote.yml` (Feature #322) moves the branch. A successful
+`tests` or `dev-soak` run on main triggers selection the moment it completes
+(Issue #965), so a commit that turns green at minute 24 is promoted at minute 24
+instead of waiting for the next batch window. The hourly schedule stays as the
+recovery path: a scheduled run acts only when the UTC hour is a multiple of the
+repository variable `PROMOTION_EVERY_HOURS` (default 2), and that window binds
+scheduled runs alone. `workflow_dispatch` acts at once, and its `dry_run` input
+only prints the pick. `scripts/promote.mjs select` picks the newest main commit
+that has a push `tests` run whose `CI gate` succeeded and a `dev-soak` commit
+status of success, and that descends from the `production` head. With none it
+exits quietly. The `promote` job then, in the `production` environment:
 
 1. pushes `<sha>:refs/heads/production` through the promotion deploy key
    (`PROMOTION_DEPLOY_KEY`), a fast-forward that is never forced;
 2. calls `POST /_supervisor/check` with `PROD_DEPLOY_TOKEN`;
 3. waits up to 25 minutes for `/api/health` to show `supervisor.commit` at that
    SHA, `lastSwap.ok` true and `supervisor.watch` for `c<sha>` with `ok` true.
+
+Every run names its `outcome` in the job output and the step summary, so a run
+that promoted nothing says which nothing it found: `eligible`, `current`,
+`none`, `window`, `paused`, `awaiting-revert` or `dry-run` from `select`, and
+`deployed` or `rejected` from the promotion job.
 
 A failed watch or a rollback fails the run, files the Issue row
 `Error: production rolled back the promotion of <sha>`, writes one alert line

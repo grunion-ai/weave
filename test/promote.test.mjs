@@ -193,6 +193,54 @@ test('helpers: verdict, revert detection and a push that can only fast-forward',
   assert.ok(!args.some((a) => /^(-f|--force|--force-with-lease|--mirror|--delete|\+)/.test(a) || a.startsWith('+') || a.startsWith(':')));
 });
 
+test('a completion trigger promotes the minute a candidate is eligible, where the schedule waits for the batch window', async () => {
+  const commits = [commit(2)];
+  const gates = { [sha(2)]: 'success' };
+  const soaks = { [sha(2)]: 'success' };
+  const waited = await select(fake({ commits, gates, soaks }).io, opts({ event: 'schedule', now: at(11) }));
+  assert.equal(waited.action, 'skip');
+  assert.equal(waited.outcome, 'window');
+  const triggered = await select(fake({ commits, gates, soaks }).io, opts({ event: 'workflow_run', now: at(11) }));
+  assert.equal(triggered.action, 'promote');
+  assert.equal(triggered.outcome, 'eligible');
+  assert.equal(triggered.sha, sha(2));
+});
+
+test('a completion trigger whose newest commit has no green gate and soak selects nothing', async () => {
+  for (const [gate, soak] of [['failure', 'success'], ['success', 'failure'], [null, null]]) {
+    const f = fake({ commits: [commit(2)], gates: { [sha(2)]: gate }, soaks: { [sha(2)]: soak } });
+    const out = await select(f.io, opts({ event: 'workflow_run', now: at(11) }));
+    assert.equal(out.action, 'skip');
+    assert.equal(out.outcome, 'none');
+  }
+});
+
+test('deployed, already current and no eligible candidate are three distinguishable outcomes', async () => {
+  const current = await select(fake({ status: 'identical' }).io, opts());
+  const none = await select(fake({ commits: [commit(2)], gates: { [sha(2)]: 'success' } }).io, opts());
+  const paused = await select(fake().io, opts({ paused: true }));
+  const f = fake({ commits: [commit(2), commit(3)], health: [live(1), live(3)] });
+  const deployed = await promote(f.io, { sha: sha(3), from: sha(1) }, fast);
+  assert.equal(current.outcome, 'current');
+  assert.equal(none.outcome, 'none');
+  assert.equal(deployed.outcome, 'deployed');
+  assert.equal(new Set([current.outcome, none.outcome, deployed.outcome, paused.outcome]).size, 4);
+  assert.notEqual(current.reason, none.reason);
+  const rejected = fake({ commits: [commit(2)], hook: { action: 'skipped', reason: 'failed at boot' } });
+  assert.equal((await promote(rejected.io, { sha: sha(2), from: sha(1) }, fast)).outcome, 'rejected');
+});
+
+test('promote.yml selects when tests or dev-soak completes, and only for a successful main run', () => {
+  const yml = readFileSync('.github/workflows/promote.yml', 'utf8');
+  assert.match(yml, /^  workflow_run:.*\n    workflows: \[tests, dev-soak\]\n    types: \[completed\]\n    branches: \[main\]$/m);
+  const selectJob = yml.slice(yml.indexOf('  select:'), yml.indexOf('  promote:'));
+  assert.match(selectJob, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(selectJob, /github\.event\.workflow_run\.head_branch == 'main'/);
+  assert.match(selectJob, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
+  assert.match(selectJob, /github\.event_name != 'workflow_run' && github\.ref == 'refs\/heads\/main'/);
+  assert.doesNotMatch(yml, /workflow_run\.head_sha|workflow_run\.head_branch \}\}|pull_request_target/);
+});
+
 test('promote.yml: hourly schedule plus dispatch, one run at a time, read-only token, prod secrets only in the production job', () => {
   const yml = readFileSync('.github/workflows/promote.yml', 'utf8');
   assert.match(yml, /^on:\n  schedule:\n    - cron: "\d+ \* \* \* \*"\n  workflow_dispatch:/m);

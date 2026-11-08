@@ -12,7 +12,7 @@ export const SOAK = 'dev-soak';
 export const GITHUB_HOST_KEY = 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl';
 
 const short = (sha) => String(sha).slice(0, 10);
-const skip = (reason) => ({ action: 'skip', reason });
+const skip = (outcome, reason) => ({ action: 'skip', outcome, reason });
 
 export const inWindow = (now, everyHours) => now.getUTCHours() % Math.max(1, Math.floor(everyHours) || 1) === 0;
 export const revertsCommit = (message, sha) => String(message).includes(`This reverts commit ${sha}`);
@@ -31,26 +31,26 @@ export function verdict(health, sha) {
 }
 
 export async function select(io, { paused = false, now = new Date(), event = 'workflow_dispatch', everyHours = 2 } = {}) {
-  if (paused) return skip('PROMOTION_PAUSED is true');
-  if (event === 'schedule' && !inWindow(now, everyHours)) return skip(`outside the ${everyHours}-hour batch window`);
+  if (paused) return skip('paused', 'PROMOTION_PAUSED is true');
+  if (event === 'schedule' && !inWindow(now, everyHours)) return skip('window', `outside the ${everyHours}-hour batch window`);
   const head = await io.production();
   if (!head) throw new Error(`no ${BRANCH} branch to promote from`);
   const { status, commits } = await io.range(head);
-  if (status === 'identical') return skip(`${BRANCH} is already at main (${short(head)})`);
+  if (status === 'identical') return skip('current', `${BRANCH} is already at main (${short(head)})`);
   if (status !== 'ahead') throw new Error(`${BRANCH} ${short(head)} is not an ancestor of main (compare: ${status})`);
   let from = 0;
   const health = await io.health();
   if (health?.supervisor?.commit !== head) {
     const at = commits.findLastIndex((c) => revertsCommit(c.message, head));
-    if (at < 0) return skip(`prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(head)}; waiting for a main commit that reverts it`);
+    if (at < 0) return skip('awaiting-revert', `prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(head)}; waiting for a main commit that reverts it`);
     from = at;
   }
   for (const c of commits.slice(from).reverse()) {
     if (await io.gate(c.sha) !== 'success') continue;
     if (await io.soak(c.sha) !== 'success') continue;
-    return { action: 'promote', sha: c.sha, from: head };
+    return { action: 'promote', outcome: 'eligible', sha: c.sha, from: head };
   }
-  return skip(`no main commit newer than ${short(head)} has CI gate and ${SOAK} success`);
+  return skip('none', `no main commit newer than ${short(head)} has CI gate and ${SOAK} success`);
 }
 
 async function waitLive(io, sha, { deadlineMs, pollMs, sleep }) {
@@ -79,7 +79,7 @@ export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pol
     : await waitLive(io, sha, { deadlineMs, pollMs, sleep });
   if (outcome.state === 'passed') {
     if (outcome.health?.auth?.ok === false) await io.alert(`weave promote: ${short(sha)} is live, but sign-in is broken: /api/health reads auth.ok false (an architect read names the provider's error code)${self ? `; ${self}` : ''}`);
-    return { action: 'promoted', sha, from, health: outcome.health };
+    return { action: 'promoted', outcome: 'deployed', sha, from, health: outcome.health };
   }
 
   const { commits } = await io.range(from, sha);
@@ -108,7 +108,7 @@ export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pol
   const prLine = revert?.html_url ? `Revert PR: ${revert.html_url}` : note;
   const issue = await io.fileIssue({ name: issueName(sha), description: [...lines, '', prLine, '', 'Fix shape: reproduce on dev with the promoted commit, land the fix as a new PR; promotion resumes once main carries a commit that reverts or supersedes it with CI gate and dev-soak success.', '', `Filed by the promote workflow, ${new Date().toISOString().slice(0, 10)}.`].join('\n') });
   await io.alert(`weave promote: production rejected ${short(sha)} (${outcome.why}); ${prLine}${issue?.url ? `; Issue ${issue.url}` : ''}`);
-  return { action: 'failed', sha, from, reason: outcome.why, revert, issue };
+  return { action: 'failed', outcome: 'rejected', sha, from, reason: outcome.why, revert, issue };
 }
 
 export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
@@ -181,7 +181,7 @@ async function main(env = process.env) {
     const out = await select(io, { paused: env.PROMOTION_PAUSED === 'true', event: env.PROMOTION_EVENT, everyHours: Number(env.PROMOTION_EVERY_HOURS || 2) });
     console.log(JSON.stringify(out));
     const dry = env.PROMOTION_DRY_RUN === 'true';
-    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, reason: out.reason ?? (dry ? 'dry run' : 'promote') });
+    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, outcome: dry ? 'dry-run' : out.outcome, reason: out.reason ?? (dry ? 'dry run' : 'promote') });
     return;
   }
   if (process.argv[2] === 'promote') {
@@ -189,7 +189,7 @@ async function main(env = process.env) {
     if (!/^[0-9a-f]{40}$/.test(env.SHA ?? '') || !/^[0-9a-f]{40}$/.test(env.FROM ?? '')) throw new Error('Expected SHA and FROM as full commit SHAs');
     const out = await promote(io, { sha: env.SHA, from: env.FROM }, { self });
     console.log(JSON.stringify({ ...out, health: out.health?.supervisor }));
-    output(env, { result: out.action, sha: out.sha, reason: out.reason });
+    output(env, { result: out.action, outcome: out.outcome, sha: out.sha, reason: out.reason });
     if (out.action !== 'promoted') process.exitCode = 1;
     return;
   }
