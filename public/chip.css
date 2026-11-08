@@ -189,6 +189,11 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .wv-rating-default .wv-rating { flex-wrap: wrap; white-space: normal; border-radius: 4px; padding: 2px; gap: 2px; }
 .wv-rating-default .wv-rate-ico { font-size: var(--fs-h1); }
 .wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
+@media (pointer: coarse) {
+  .fieldrow .wv-rating.editable { flex-wrap: wrap; white-space: normal; gap: 0; }
+  .fieldrow .editable > .wv-rate-ico { min-width: 46px; min-height: 46px; align-items: center; }
+  .fieldrow .editable > .wv-rate-ico :is(.wv-icon, svg) { width: 20px; height: 20px; }
+}
 
 .cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
 .cg-wrap.cg-sparkwrap .cg { width: 80px; height: 18px; }

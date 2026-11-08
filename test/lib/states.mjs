@@ -621,7 +621,7 @@ const SHARED_STATES = [
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { touch: [1165, 1166, 1167, 1168] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { touch: [1166, 1167, 1168] }, kept: { touch: [{ issue: 1165, label: 'button.wv-rate-ico' }] } },
 ];
 
 export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...A11Y_STATES, ...TOUCH_STATES, ...SHARED_STATES];
