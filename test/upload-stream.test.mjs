@@ -53,10 +53,16 @@ test('a streamed upload leaves no staging file behind, whether it lands or is re
     const good = await s.prepare({ entity: s.row.id, name: 'note.txt', mime: 'text/plain', size: 5 }).then((r) => r.json());
     assert.equal((await s.put(good, Buffer.from('hello'))).status, 201);
     const short = await s.prepare({ entity: s.row.id, name: 'note.txt', mime: 'text/plain', size: 5 }).then((r) => r.json());
-    assert.equal((await s.put(short, Buffer.from('hi'))).status, 400);
+    const cutGrant = short;
+    const cut = await s.put(short, Buffer.from('hi'));
+    assert.equal(cut.status, 400);
+    assert.equal((await cut.json()).code, 'incomplete-upload', 'a body that stops early reads as a lost connection, not a refusal');
     const over = await s.prepare({ entity: s.row.id, name: 'note.txt', mime: 'text/plain', size: 5 }).then((r) => r.json());
     assert.equal((await s.put(over, Buffer.from('far too long'))).status, 413);
-    assert.deepEqual(readdirSync(join(s.dir, 'files')).filter((n) => n.endsWith('.upload')), [], 'no staging file is left in files/');
+    assert.equal((await s.put(over, Buffer.from('hello'))).status, 401, 'a grant spent on a refused upload stays spent');
+    assert.equal((await s.put(cutGrant, Buffer.from('hello'))).status, 400, 'a grant whose body was cut answers the cut, so the browser retry reads as a lost connection');
+    assert.deepEqual(readdirSync(join(s.dir, 'uploads')), [], 'a refused upload left its staging file behind');
+    assert.deepEqual(readdirSync(join(s.dir, 'files')).filter((n) => !s.w.getEntity(s.row.id).files.some((f) => f.id === n)), [], 'the blob directory holds only the files the record keeps');
   } finally { s.stop(); }
 });
 

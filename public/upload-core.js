@@ -29,7 +29,7 @@
     if (err?.kind === 'too-large' || err?.status === 413 || err?.code === 'too-large') return 'too-large';
     if (err?.status === 507 || err?.code === 'storage-full') return 'storage-full';
     if (err?.kind === 'timeout' || err?.status === 504) return 'timeout';
-    if (err?.kind === 'offline' || err?.code === 'offline') return 'offline';
+    if (err?.kind === 'offline' || err?.code === 'offline' || err?.code === 'incomplete-upload') return 'offline';
     if (err?.status === 502 || err?.status === 503) return 'restarting';
     if (err?.status >= 500) return 'server';
     return 'refused';

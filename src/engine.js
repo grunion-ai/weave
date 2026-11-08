@@ -9794,9 +9794,8 @@ export class Weave {
   }
 
   #stagePath(id) {
-    const p = this.#blobPath(id);
-    if (!p) throw new WeaveError('This workspace keeps file bytes in its database, so it cannot take a streamed upload', 'invalid');
-    return `${p}.upload`;
+    if (!this.#blobPath(id)) throw new WeaveError('This workspace keeps file bytes in its database, so it cannot take a streamed upload', 'invalid');
+    return join(dirname(this.store.path), 'uploads', id);
   }
 
   #blobHead(path, bytes = 64) {
@@ -9835,7 +9834,9 @@ export class Weave {
   }
 
   #adoptBlob(id) {
-    renameSync(this.#stagePath(id), this.#blobPath(id));
+    const blob = this.#blobPath(id);
+    mkdirSync(dirname(blob), { recursive: true });
+    renameSync(this.#stagePath(id), blob);
   }
 
   #writeBlob(id, buf) {

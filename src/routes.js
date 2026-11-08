@@ -196,6 +196,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const challenges = new Map();
   const handoffs = new Map();
   const uploads = new Map();
+  const spentUploads = new Map();
   const remirror = async (w) => {
     const orgId = billing ? w.billing().billing.orgId : null;
     if (!orgId) return null;
@@ -644,9 +645,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const uploadToken = /^Bearer (wvu_[A-Za-z0-9_-]+)$/i.exec(authz ?? '')?.[1];
     if (uploadToken) {
       prune(uploads);
+      prune(spentUploads);
       upload = uploads.get(uploadToken);
+      const spent = upload ? null : spentUploads.get(uploadToken);
+      if (spent?.incomplete && path === '/api/uploads' && rx.method === 'PUT') {
+        return out(400, { error: 'The upload ended before all of its bytes arrived; prepare it again and send the whole file', code: 'incomplete-upload' }, { 'Cache-Control': 'no-store' });
+      }
       if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || rx.method !== 'PUT') return deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP');
       uploads.delete(uploadToken);
+      spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
       upload.engine.maybeRefresh();
       if (upload.accountId == null) {
         if (upload.engine.listAccounts().length) return deny(401, 'This workspace now has accounts; prepare the upload again');
@@ -1146,10 +1153,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (role === 'editor' && weave.state.tables[entity.dbId]?.system) return deny(403, 'This token cannot change the schema');
         if (!rx.readBytes && !(rx.bodyStream && weave.filesOnDisk())) throw new WeaveError('This server cannot receive raw uploads', 'invalid');
         if (Number(rx.header('content-length')) > upload.size) throw new WeaveError(`Body too large: ${upload.size} bytes at most`, 'too-large');
-        const streamed = rx.bodyStream && weave.filesOnDisk() ? await weave.streamBlob(rx.bodyStream(), upload.size) : null;
+        const attempt = spentUploads.get(uploadToken);
+        const cutShort = (err) => {
+          if (!(err instanceof WeaveError) || !['too-large', 'invalid'].includes(err.code)) attempt.incomplete = true;
+          return err;
+        };
+        const streamed = rx.bodyStream && weave.filesOnDisk()
+          ? await weave.streamBlob(rx.bodyStream(), upload.size).catch((err) => { throw cutShort(err); })
+          : null;
         try {
-          const bytes = streamed ?? await rx.readBytes(upload.size);
-          if ((streamed ? streamed.size : bytes.length) !== upload.size) throw new WeaveError('Upload byte count differs from the prepared size; prepare again', 'invalid');
+          const bytes = streamed ?? await rx.readBytes(upload.size).catch((err) => { throw cutShort(err); });
+          if ((streamed ? streamed.size : bytes.length) !== upload.size) {
+            attempt.incomplete = true;
+            throw new WeaveError('The upload ended before all of its bytes arrived; prepare it again and send the whole file', 'incomplete-upload');
+          }
           upload.engine.maybeRefresh();
           weave.maybeRefresh();
           const byAccount = upload.accountId != null;
@@ -1163,7 +1180,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (weave.getEntity(upload.entity).deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
           weave.actor = actorForRequest;
           const file = { name: upload.name, mime: upload.mime, preview: upload.preview, ...(streamed ? { staged: streamed } : { bytes: Buffer.from(bytes) }) };
-          return out(201, upload.field == null ? weave.attachFile(entity.id, file) : weave.attachToField(entity.id, upload.field, file), { 'Cache-Control': 'no-store' });
+          const landed = upload.field == null ? weave.attachFile(entity.id, file) : weave.attachToField(entity.id, upload.field, file);
+          spentUploads.get(uploadToken).landed = true;
+          return out(201, landed, { 'Cache-Control': 'no-store' });
         } finally {
           if (streamed) weave.dropStagedBlob(streamed.id);
         }
