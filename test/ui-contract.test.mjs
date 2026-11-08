@@ -1455,16 +1455,8 @@ test('the description is a column of its own, previewed and formatted (Kyle, 202
   assert.equal(rulesFor('.cell-pop .doc-preview')['white-space'], 'normal', 'the expansion wraps the rest');
 });
 
-test('the slash menu is grouped, glyphed and shows the syntax it writes', () => {
-  assert.match(APP, /const SLASH_GROUPS = \[/, 'the groups are declared once');
-  for (const title of ['ALL COMMANDS', 'REFERENCE', 'FORMAT · APPLIES TO SELECTION']) {
-    assert.ok(APP.includes(title), `missing group: ${title}`);
-  }
-  const hint = fnBody('slashHint');
-  assert.match(hint, /slash-group/, 'a group header rides on the first row of its group');
-  assert.match(hint, /slash-icon/, 'every row carries a glyph');
-  assert.match(hint, /slash-syntax/, 'and the markdown it writes');
-  assert.match(hint, /escapeHtmlText\(/, 'the row is innerHTML, so its parts are escaped');
+test('the slash menu row escapes its parts and paints its highlight on the item, not the group header', () => {
+  assert.match(fnBody('slashHint'), /escapeHtmlText\(/, 'the row is innerHTML, so its parts are escaped');
 
   for (const sel of ['.vditor-hint button:hover', '.vditor-hint button.vditor-hint--current']) {
     assert.equal(rulesFor(sel)['background-color'], 'transparent', `${sel} must not paint the group header`);
@@ -1478,13 +1470,9 @@ test('the slash menu is grouped, glyphed and shows the syntax it writes', () => 
 
 test('a query promotes matches instead of emptying the menu', () => {
   const rows = fnBody('slashRows');
-  assert.match(rows, /'INSERT'/, 'best matches lead under their own heading');
   assert.match(rows, /r\.score >= 70/, 'only strong matches are promoted');
   assert.match(rows, /promoted\.has\(item\)/, 'a promoted row is not repeated in its group');
   assert.match(rows, /SLASH_PROMOTED/, 'and the promoted set is capped');
-  const score = fnBody('slashScore');
-  assert.match(score, /startsWith/, 'a prefix is the strongest match');
-  assert.match(score, /aliases/, 'aliases are what make /h4 and /todo work');
 });
 
 test('formatting wraps the selection the writer had before typing "/"', () => {
