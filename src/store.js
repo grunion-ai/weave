@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS entities (
   id TEXT PRIMARY KEY, db_id TEXT NOT NULL, public_id INTEGER,
   updated_at TEXT, json TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_entities_db ON entities(db_id);
-CREATE INDEX IF NOT EXISTS idx_entities_pid ON entities(db_id, public_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_pid ON entities(db_id, public_id);
 CREATE TABLE IF NOT EXISTS automations (id TEXT PRIMARY KEY, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,
@@ -57,6 +57,57 @@ export const DOC_REVISION_CAP = 200;
 function addRestoredFrom(exec) {
   try { exec('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
   catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+}
+
+function uniquePublicIds(db) {
+  const index = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_entities_pid'").get();
+  if (/UNIQUE/i.test(index?.sql ?? '')) return;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const dupes = db.prepare(`SELECT e.id, e.db_id FROM entities e
+      WHERE e.public_id IS NOT NULL AND EXISTS (SELECT 1 FROM entities o
+        WHERE o.db_id = e.db_id AND o.public_id = e.public_id AND o.rowid < e.rowid)
+      ORDER BY e.rowid`).all();
+    const top = db.prepare('SELECT MAX(public_id) AS n FROM entities WHERE db_id = ?');
+    const move = db.prepare("UPDATE entities SET public_id = ?, json = json_set(json, '$.publicId', ?) WHERE id = ?");
+    const counter = db.prepare(`UPDATE tables SET json = json_set(json, '$.publicIdCounter', ?)
+      WHERE id = ? AND COALESCE(json_extract(json, '$.publicIdCounter'), 0) < ?`);
+    for (const { id, db_id } of dupes) {
+      const next = (top.get(db_id).n ?? 0) + 1;
+      move.run(next, next, id);
+      counter.run(next, db_id, next);
+    }
+    db.exec('DROP INDEX IF EXISTS idx_entities_pid');
+    db.exec('CREATE UNIQUE INDEX idx_entities_pid ON entities(db_id, public_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+function claimPublicIds(db, tables, entities, ids) {
+  const holder = db.prepare('SELECT id FROM entities WHERE db_id = ? AND public_id = ?');
+  const top = db.prepare('SELECT MAX(public_id) AS n FROM entities WHERE db_id = ?');
+  const claimed = new Map();
+  let moved = 0;
+  for (const id of ids) {
+    const e = entities[id];
+    if (!e || e.publicId == null) continue;
+    if (!claimed.has(e.dbId)) claimed.set(e.dbId, new Set());
+    const mine = claimed.get(e.dbId);
+    const held = holder.get(e.dbId, e.publicId)?.id;
+    const leaving = held && ids.has(held) && entities[held] === undefined;
+    const table = tables[e.dbId];
+    const stored = top.get(e.dbId).n ?? 0;
+    if ((held && held !== id && !leaving) || mine.has(e.publicId)) {
+      e.publicId = Math.max(stored, table?.publicIdCounter ?? 0, ...mine) + 1;
+      moved++;
+    }
+    mine.add(e.publicId);
+    if (table) table.publicIdCounter = Math.max(table.publicIdCounter ?? 0, stored, e.publicId);
+  }
+  return moved;
 }
 
 function isWorkspaceShape(data) {
@@ -141,6 +192,7 @@ export class Store {
     }
     db.exec(SCHEMA);
     addRestoredFrom((q) => db.exec(q));
+    uniquePublicIds(db);
     try {
       db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)");
     } catch (err) {
@@ -348,9 +400,14 @@ export class Store {
     if (!this.path) return;
     if (!this.#db) this.#open();
     const db = this.#db;
+    let moved = 0;
     if (!this.#batch) db.exec('BEGIN IMMEDIATE');
     try {
       const { spaces, tables, entities, automations, ...rest } = state;
+      const ids = all
+        ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
+        : (dirty ?? new Set());
+      moved = all ? 0 : claimPublicIds(db, tables, entities, ids);
       const metaJson = JSON.stringify(rest);
       if (metaJson !== this.#cache.meta) {
         db.prepare('INSERT INTO weave_meta (id, json) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json').run(metaJson);
@@ -371,9 +428,6 @@ export class Store {
           }
         }
       }
-      const ids = all
-        ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
-        : (dirty ?? new Set());
       if (all) db.exec('DELETE FROM entities_fts');
       const dropEntity = db.prepare('DELETE FROM entities WHERE id = ?');
       const putEntity = db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
@@ -381,7 +435,7 @@ export class Store {
         updated_at = excluded.updated_at, json = excluded.json`);
       const dropIndexed = db.prepare('DELETE FROM entities_fts WHERE id = ?');
       const putIndexed = db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)');
-      for (const id of ids) {
+      for (const id of [...ids].sort((a, b) => (entities[a] === undefined ? 0 : 1) - (entities[b] === undefined ? 0 : 1))) {
         const e = entities[id];
         if (e === undefined) {
           dropEntity.run(id);
@@ -399,6 +453,7 @@ export class Store {
       if (!this.#batch) { db.exec('ROLLBACK'); this.#loadState(); }
       throw err;
     }
+    return moved;
   }
 
   #ftsText(state, e) {

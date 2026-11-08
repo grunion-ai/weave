@@ -1683,7 +1683,7 @@ export class Weave {
             }
           }
         }
-        this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll });
+        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
       });
       this.#detachedStorage = null;
       this.#dirty.clear();
