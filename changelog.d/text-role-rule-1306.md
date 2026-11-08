@@ -1,0 +1,4 @@
+- One rule per text role across every surface and density (Issue #1306): titles balance, prose wraps evenly and folds on a whole line, and `DESIGN.md` and the Handbook guide "How text behaves" write the rule down.
+- A description with a paragraph gap inside its fold no longer loses the bottom of its last line above Show more, and a field note folds on its third whole line without a fade (Issue #1306).
+- The related subtable on a record page fits its card: a 1% column width no longer inflated it to 19,931 px (Issue #1260).
+- A long text value on a phone table row at Spacious ends on one whole line in its pill, where its second and third lines were sliced by the 22 px box (Issue #1420).

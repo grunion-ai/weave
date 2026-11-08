@@ -694,6 +694,30 @@ lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.
 
+### Line endings
+
+`DESIGN.md` under Text gives every text one role. The same page function checks
+line endings when it is called as `probe({ root, endings: true })`, and reports
+two kinds with no baseline, since each is a defect on its first appearance
+(Issue #1306):
+
+| Kind | What it found |
+| --- | --- |
+| `sliced-line` | A line partly inside and partly outside the box that clips it by more than 2 px, or a line clamp shorter than its whole lines |
+| `lone-word` | A single word on the last line of a paragraph, when the word before it would fit beside it |
+
+```bash
+node scripts/line-endings.mjs                                  # both cells, all three densities
+node scripts/line-endings.mjs --cell phone --density spacious  # reproduce one
+```
+
+`PROBES.endings` in the state catalog walks the journeys, rest states and
+overlays of the `prose` seed: the messy seed, plus a description whose paragraph
+gaps fall inside the fold and a long guide. A state with a grid, list or board
+runs at `compact`, `comfortable` and `spacious`; one without runs once.
+`test/line-endings-gate-browser.test.mjs` runs each of the six cells on its own
+and fails on any finding.
+
 ### Mandatory onboarding verification
 
 [The onboarding verification contract](docs/onboarding-verification.md) maps the
