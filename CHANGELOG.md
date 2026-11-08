@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.122 (2026-11-08)
+
+- `DELETE /api/entities/:entity/files/:file` and `DELETE /api/automations/:id` now answer 404 `not-found` when they remove nothing, and 200 with the engine's own body (`deleted: true`, plus `entity` for a file) when they do. Both routes used to drop the engine result and answer 200 `{"ok":true}` either way, so a typo in a file id under a real record read as a successful delete. The CLI and the MCP tools already returned the `deleted` flag and are unchanged. (Issue #1087)
+- An attachment's bytes now reach the disk before its record commits. `writeFileDurable` in `src/store.js` writes a `<path>.<uuid>.tmp` with `{ flush: true }` and renames it into place, and the engine's blob writer, the workspace-detach blob path and `restore` all go through it. The store runs `PRAGMA synchronous = FULL`, so until now a power loss after `attachFile`, a preview write, a logo upload, an `importJSON` or a restore could leave a row pointing at a missing or truncated `files/<id>`. A backup also ignores a `.tmp` left in `files/` by an interrupted write instead of archiving it and counting it an orphan. (Issue #1411)
+- The four workflow downloads that fetch a pinned release asset, the `gitleaks`, `actionlint` and `hadolint` installs in the required `security scan` and the `mcp-publisher` install in the release job, now carry `--retry 3 --retry-all-errors --retry-delay 2 --max-time 120`. One transient 504 from GitHub's release-asset CDN used to fail the whole check and block auto-merge on every open pull request. The pinned versions and the `sha256sum -c -` verification are unchanged, so a retry that returns corrupt bytes still fails. (Issue #1419)
+
 ## v0.4.121 (2026-11-08)
 
 - A backup to `s3://` or `weave://` no longer reads the sealed archive into memory before it uploads: S3 destinations go up as a multipart upload through the existing SigV4 signer, `weave://` streams its PUT body, and the archive is sealed into the file the tar writer is already writing rather than into a second temp copy. Peak RSS for a 320 MB archive drops from 741 MB to 305 MB and stops tracking archive size. `WEAVE_BACKUP_PART_BYTES` moves the 8 MiB part size. (Issue #1410)
