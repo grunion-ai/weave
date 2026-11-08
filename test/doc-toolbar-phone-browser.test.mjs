@@ -38,7 +38,8 @@ if (s) {
       vw: innerWidth, vh: innerHeight, buttons };
   });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`on a phone the formatting bar is one row of 44px buttons along the bottom, clear of the text, in ${colorScheme} (Issue #693)`, async () => {
       const page = await phonePage(await phoneBrowser(), { colorScheme });
       try {

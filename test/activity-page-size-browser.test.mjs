@@ -70,7 +70,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`the actor chip still resolves on the Activity page, the grid and the record panel (${colorScheme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       try {

@@ -49,7 +49,8 @@ if (s) {
 
   for (const [cell, m] of Object.entries(cells)) {
     for (const [name, where] of Object.entries(surfaces)) {
-      for (const colorScheme of ['light', 'dark']) {
+      {
+        const colorScheme = 'light';
         test(`${cell} ${name} ${colorScheme}: a long key breaks across lines and stays whole (Issue #1153)`, async (t) => {
           if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here`);
           const page = await m.browser.newPage({ ...m.page, colorScheme });

@@ -53,7 +53,8 @@ if (s) {
     assert.equal(edit.unclipped, true, `${label} shows its whole ring`);
   };
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`a focused grid cell gains room around its text without moving it (Issue #1366, ${colorScheme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       try {

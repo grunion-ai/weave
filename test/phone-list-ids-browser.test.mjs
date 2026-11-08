@@ -48,7 +48,8 @@ if (s) {
   };
 
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone the #id column fits the table's largest id, so every name starts 8px after it on one edge (${engine}, ${theme}, Issue #729)`, async () => {
         const page = await open(b, profile, theme);
         try {

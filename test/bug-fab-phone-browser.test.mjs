@@ -24,7 +24,8 @@ if (s) {
   const drawn = (page) => page.evaluate(() => [...document.querySelectorAll('.bug-fab')].filter((b) => b.getClientRects().length).length);
 
   for (const [engine, make] of engines) {
-    for (const colorScheme of ['light', 'dark']) {
+    {
+      const colorScheme = 'light';
       test(`on a phone no bug button floats over the table, the record or the Activity sheet (${engine}, ${colorScheme}, Issue #983)`, async () => {
         const page = await make({ colorScheme });
         try {

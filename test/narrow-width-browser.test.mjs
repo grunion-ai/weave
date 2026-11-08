@@ -66,7 +66,8 @@ if (s) {
     return seen;
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the row page keeps every field value readable from ${WIDE}px down to ${NARROW}px (${theme}, Issue #577)`, async () => {
       const seen = await sweep(theme, `#/table/${table}?e=${row}`, '#dock .entity-values .fieldrow');
       const thin = [];

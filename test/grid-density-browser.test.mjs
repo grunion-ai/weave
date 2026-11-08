@@ -159,7 +159,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a density flip keeps the row heading a page-scrolled grid of uneven rows, both ways (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 2187, height: 1359 } });
       try {

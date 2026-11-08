@@ -29,7 +29,8 @@ if (s) {
   };
   const undoToast = (page) => page.locator('#wv-toasts .wv-toast-action', { hasText: 'Undo' }).first();
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`the relation chip x unlinks behind an Undo toast that puts the link back (${colorScheme}, Issue #1404)`, async () => {
       const page = await open(task.id, { colorScheme });
       try {

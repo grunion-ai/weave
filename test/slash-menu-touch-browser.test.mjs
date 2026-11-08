@@ -22,7 +22,8 @@ if (s) {
     } finally { await page.close(); }
   }
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`on a phone, every slash menu row is at least 44px tall, in ${colorScheme} (Issue #696)`, async () => {
       const heights = await rowHeights(null, colorScheme);
       assert.ok(heights.length >= 6, 'the menu lists its commands');

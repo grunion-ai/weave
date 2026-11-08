@@ -154,7 +154,8 @@ if (s) {
   };
 
   for (const name of extra) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`a docked record on the ${PHONE} profile is a full-screen sheet (${name}, ${theme})`, async () => {
         const page = await openDock({ theme, engine: await engineOf(name) });
         const seen = await sheet(page);

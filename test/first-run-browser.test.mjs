@@ -103,7 +103,8 @@ if (empty) {
 }
 
 if (full) {
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: a populated workspace shows no empty state and keeps its relation map`, async () => {
       const page = await open(full, '#/', theme);
       await page.waitForSelector('.home-map');

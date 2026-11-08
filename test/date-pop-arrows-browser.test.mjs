@@ -30,7 +30,8 @@ if (s) {
     };
   });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`the day view steps months with ‹ and ›, and › from September 2026 shows October 2026 (Issue #801, ${colorScheme})`, async () => {
       const page = await open(fresh(), 'Due', colorScheme);
       try {

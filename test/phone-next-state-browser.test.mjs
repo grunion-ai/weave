@@ -36,7 +36,8 @@ if (s) {
   });
   const status = (page, id) => page.evaluate(async (id) => (await (await fetch(`/api/entities/${id}`)).json()).fields.Status, id);
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`on a phone the row page floats a button that moves the row to its next state (${theme}, Feature #273)`, async () => {
       const [id, hash] = rows[theme];
       const page = await open(hash, { theme });

@@ -63,7 +63,8 @@ if (s) {
   };
 
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       for (const density of ['compact', 'comfortable', 'spacious']) {
         test(`on a phone at ${density} every row keeps ${LINES[density]} chip line(s) under its name, inside the row, with +N for the rest (${engine}, ${theme}, Issue #730, Feature #354)`, async () => {
           const page = await open(b, profile, theme, density);

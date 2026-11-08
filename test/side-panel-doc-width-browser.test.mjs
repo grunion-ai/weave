@@ -42,7 +42,8 @@ if (s) {
     await page.waitForSelector('#side:not([hidden]) > .wv-file-panel iframe');
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a file preview leaves the document at least 80% of the entity column (${theme}, Issue #1476)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       try {

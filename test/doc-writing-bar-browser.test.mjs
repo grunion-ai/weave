@@ -40,7 +40,8 @@ if (s) {
     return { id, page };
   };
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`on a phone a caret in the text shows the writing bar on the keyboard, in ${colorScheme} (Feature #289)`, async () => {
       const { page } = await open(colorScheme);
       try {

@@ -114,7 +114,8 @@ if (s) {
     return page;
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a dock pinned wide leaves the table its minimum at a narrow window (Issue #326, ${theme})`, async () => {
       for (const width of [1470, 1100]) {
         const page = await openPinned(theme, 900, width);

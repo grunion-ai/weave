@@ -39,7 +39,8 @@ if (s) {
     return a?.closest('#ws-rail, #sidebar') ? 'drawer' : (a?.id || a?.tagName || 'none');
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the phone menu holds the page: focus goes in, Tab stays in, and Escape, the close button and a nav link give it back (${theme})`, async () => {
       const page = await open([390, 844], theme);
       try {

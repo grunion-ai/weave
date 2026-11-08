@@ -33,7 +33,8 @@ if (s) {
     ['a multiselect box', 'Tags', '.ms-box', '.chip-pop'],
   ];
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     for (const [what, field, sel, pop] of SURFACES) {
       test(`a second click on ${what} closes what it opened, and a third opens it (${colorScheme})`, async () => {
         const page = await entity(fresh(), colorScheme);

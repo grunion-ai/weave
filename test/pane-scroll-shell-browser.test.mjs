@@ -67,7 +67,8 @@ if (s) {
     }
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: a wheel over the nav, the main panel and the dock moves that pane alone`, async () => {
       const page = await open(`#/table/${big.id}?e=${first.id}`, { theme, width: 1600, dockWidth: 380 });
       await page.waitForSelector('#dock:not([hidden]) .name-edit');

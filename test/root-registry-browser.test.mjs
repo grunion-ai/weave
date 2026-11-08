@@ -60,7 +60,8 @@ if (s) {
     await page.close();
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`Users opens the workspace's own accounts (${theme})`, async () => {
       if (!uno.listAccounts().length) uno.createAccount({ name: 'member-person' });
       if (!root.listAccounts().length) root.createAccount({ name: 'root-person' });

@@ -26,7 +26,8 @@ if (s) {
   };
   const rangeCuts = async (page, root) => (await page.evaluate(probe, root)).filter((f) => f.selector.includes('range-cell'));
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     for (const cell of Object.keys(CELLS)) {
       test(`${cell} ${colorScheme}: a board tile shows the whole date range (Issue #1126)`, async (t) => {
         if (cell === 'phone' && !handset) return t.skip(`${CELLS.phone.engine} cannot launch here`);

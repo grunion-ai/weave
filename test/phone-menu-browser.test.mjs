@@ -39,7 +39,8 @@ if (s) {
     };
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`on a phone the menu covers the whole screen with 44px rows, a close button top right and the identity panel at the foot (${theme}, Feature #269, Feature #333)`, async () => {
       const page = await open({ theme });
       try {

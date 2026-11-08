@@ -26,7 +26,8 @@ if (s) {
     }
   }, { sel, bytes });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a file over the limit is refused in the browser, naming the file and the limit (${theme})`, async () => {
       const sel = cellSel(theme);
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });

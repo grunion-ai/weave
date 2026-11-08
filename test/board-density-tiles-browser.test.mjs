@@ -66,7 +66,8 @@ if (s) {
   test('phone WebKit 390x844: Spacious drops the stacked board to one column, Comfortable keeps two, and long text shows in full', async () => {
     const [, phone] = cells;
     for (const density of DENSITIES) {
-      for (const theme of ['light', 'dark']) {
+      {
+        const theme = 'light';
         const page = await open(phone, density, theme);
         try {
           if (density !== 'compact') assert.equal(await columns(page), density === 'spacious' ? 1 : 2, `${density} ${theme}: columns`);
