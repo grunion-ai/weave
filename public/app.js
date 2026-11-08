@@ -726,11 +726,10 @@ function releaseDockPanel() {
       liveEditors.delete(ed);
     }
   }
-  for (const set of [refChipLayers, docRails, docFolds, docCodeAuto]) {
+  for (const set of DOC_DECOR) {
     for (const st of [...set]) {
       if (panel.contains(st.host)) {
-        clearTimeout(st.timer);
-        (st.layer ?? st.rail)?.remove();
+        dropDecor(st);
         set.delete(st);
       }
     }
@@ -9592,7 +9591,8 @@ const docBubbles = new Set();
 function attachToolbarBubble(host) {
   const st = { host };
   st.place = () => placeToolbarBubble(st);
-  for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, () => queueMicrotask(st.place));
+  st.schedule = () => queueMicrotask(st.place);
+  for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, st.schedule);
   docBubbles.add(st);
   st.place();
 }
@@ -9726,7 +9726,7 @@ const refChipLayers = new Set();
 const refResolveCache = new Map();
 
 function scheduleDecorFor(host) {
-  for (const s of [...refChipLayers, ...docRails, ...docFolds, ...docCodeAuto, ...docCodeRaw]) {
+  for (const s of DOC_DECOR.flatMap((set) => [...set])) {
     if (s.host === host) s.schedule();
   }
 }
@@ -10046,6 +10046,7 @@ function refreshDashRail(st) {
 }
 
 const docFolds = new Set();
+const DOC_DECOR = [docBubbles, refChipLayers, docCodeAuto, docCodeRaw, docRails, docFolds];
 
 function docFoldState(entityId, field, next) {
   const key = `weave-doc-folds:${entityId}:${field}`;
@@ -10321,26 +10322,12 @@ function teardownDocEditors() {
     try { ed.destroy(); } catch {}
   }
   liveEditors.clear();
-  for (const st of refChipLayers) {
-    clearTimeout(st.timer);
-    st.layer.remove();
+  for (const set of DOC_DECOR) {
+    for (const st of set) dropDecor(st);
+    set.clear();
   }
-  refChipLayers.clear();
-  for (const st of docRails) {
-    clearTimeout(st.timer);
-    st.rail.remove();
-  }
-  docRails.clear();
-  for (const st of docFolds) {
-    clearTimeout(st.timer);
-    st.layer.remove();
-  }
-  docFolds.clear();
-  for (const st of docCodeAuto) clearTimeout(st.timer);
-  docCodeAuto.clear();
-  for (const st of docCodeRaw) st.stop();
-  docCodeRaw.clear();
 }
+function dropDecor(st) { clearTimeout(st.timer); st.stop?.(); (st.layer ?? st.rail)?.remove(); }
 
 function docSectionCollapse(entityId, field, next) {
   const key = `weave-doc-collapsed:${entityId}:${field}`;

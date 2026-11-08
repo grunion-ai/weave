@@ -70,14 +70,16 @@ test('the caret degrades a chip back to literal text', () => {
   assert.match(APP, /selectionchange/, 'caret moves must re-evaluate chips');
 });
 
-test('teardown clears every decoration registry with the editors', () => {
-  const teardown = APP.match(/function teardownDocEditors\(\)[^]{0,700}/)[0];
-  const scheduled = APP.match(/function scheduleDecorFor\(host\) \{\s*for \(const s of \[([^\]]+)\]\)/)[1]
-    .split(',').map((n) => n.trim().replace(/^\.\.\./, ''));
-  assert.ok(scheduled.length >= 4, `scheduleDecorFor names the registries: ${scheduled}`);
-  for (const name of scheduled) {
-    assert.match(teardown, new RegExp(`${name}\\.clear\\(\\)`), `${name} must be cleared on teardown`);
+test('every decoration registry is one list that schedule, teardown and dock release all walk (Feature #177)', () => {
+  const names = APP.match(/const DOC_DECOR = \[([^\]]+)\]/)[1].split(',').map((n) => n.trim());
+  const registries = [...APP.matchAll(/^const (\w+) = new Set\(\);$/gm)].map((m) => m[1]).filter((n) => APP.includes(`${n}.add(st)`));
+  assert.deepEqual([...names].sort(), [...registries].sort(), 'every Set a decoration pass adds its state to is in DOC_DECOR');
+  for (const fn of ['scheduleDecorFor', 'teardownDocEditors', 'releaseDockPanel']) {
+    const body = APP.slice(APP.indexOf(`function ${fn}(`), APP.indexOf('\n}\n', APP.indexOf(`function ${fn}(`)));
+    assert.match(body, /DOC_DECOR/, `${fn} walks DOC_DECOR`);
+    for (const name of names) assert.doesNotMatch(body, new RegExp(`\\b${name}\\b`), `${fn} names no registry by hand`);
   }
+  assert.match(APP, /function dropDecor\(st\) \{ clearTimeout\(st\.timer\); st\.stop\?\.\(\); \(st\.layer \?\? st\.rail\)\?\.remove\(\); \}/, 'one teardown per state');
 });
 
 test('the layer is click-transparent except for the chips themselves', () => {
