@@ -124,9 +124,7 @@ test('the words a screen reader hears', () => {
   assert.equal(cg.sparkLabel([]), 'no values');
 });
 
-test('the colours mirror the engine, and an unknown one falls back to ink', () => {
-  const engine = readFileSync(join(ROOT, 'src/engine.js'), 'utf8');
-  assert.deepEqual(cg.COLORS, JSON.parse(engine.match(/CELL_COLORS = (\[[^\]]*\])/)[1].replace(/'/g, '"')));
+test('an unknown colour falls back to ink', () => {
   assert.equal(cg.colorOf('accent'), 'accent');
   assert.equal(cg.colorOf(undefined), 'ink');
   assert.equal(cg.colorOf('plaid'), 'ink');

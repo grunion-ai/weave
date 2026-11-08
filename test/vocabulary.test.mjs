@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { VOCABULARY, FIELD_TYPE_VOCABULARY, OPTION_COLORS, ICONS } from '../src/vocabulary.js';
-import { FIELD_TYPES, Weave } from '../src/engine.js';
+import { FIELD_TYPES, Weave, STATE_CATEGORIES, CELL_COLORS } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,7 +65,7 @@ test('the icon vocabulary gives the value form, not just the names', () => {
 });
 
 test('the closed sets match the engine and the field dialog', () => {
-  assert.deepEqual(VOCABULARY.stateCategories, list(ENGINE, 'STATE_CATEGORIES'));
+  assert.deepEqual(VOCABULARY.stateCategories, STATE_CATEGORIES);
   assert.deepEqual(VOCABULARY.aggregates, list(ENGINE, 'AGGREGATES'));
   assert.deepEqual(VOCABULARY.documentKinds, list(ENGINE, 'DOCUMENT_KINDS'));
   assert.deepEqual(VOCABULARY.numberFormats, list(DIALOG, 'NUMBER_FORMATS'));
@@ -73,7 +73,7 @@ test('the closed sets match the engine and the field dialog', () => {
   assert.deepEqual(VOCABULARY.numberDisplays, list(DIALOG, 'NUMBER_DISPLAYS'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(ENGINE, 'SPARKLINE_STYLES'));
   assert.deepEqual(VOCABULARY.sparklineStyles, list(DIALOG, 'SPARKLINE_STYLES'));
-  assert.deepEqual(VOCABULARY.cellColors, list(ENGINE, 'CELL_COLORS'));
+  assert.deepEqual(VOCABULARY.cellColors, CELL_COLORS);
   assert.deepEqual(VOCABULARY.cellColors, list(DIALOG, 'CELL_COLORS'));
   assert.deepEqual(VOCABULARY.dateFormats, list(DIALOG, 'DATE_FORMATS'));
   assert.deepEqual(VOCABULARY.cardinalities, list(DIALOG, 'CARDINALITIES'));

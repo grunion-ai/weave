@@ -9,6 +9,8 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
+import '../public/cell-graphics.js';
+import '../public/field-dialog-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -228,11 +230,8 @@ const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
 const DERIVED_CACHE_CAP = 32;
-export const SYSTEM_SORT_KEYS = {
-  'Created At': 'createdAt', 'Modified At': 'updatedAt',
-  'Created By': 'createdBy', 'Modified By': 'modifiedBy',
-  'Public Id': 'publicId',
-};
+export const { STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES } = globalThis.fieldDialogCore;
+export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fieldDialogCore.SYSTEM_SORT).map((s) => [s.name, s.key]));
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
@@ -342,7 +341,7 @@ const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separato
 const ROLLUP_COSTUME_KEYS = NUMBER_COSTUME_KEYS.filter((k) => k !== 'separator');
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
-export const CELL_COLORS = ['ink', 'icon', 'accent'];
+export const CELL_COLORS = globalThis.weaveCellGraphics.COLORS;
 function cellColorValue(color) {
   if (color == null) return 'ink';
   if (!CELL_COLORS.includes(color)) throw new WeaveError(`Invalid color '${color}' (${CELL_COLORS.join(', ')})`, 'invalid');
@@ -380,14 +379,7 @@ function docChange(field, before, after) {
   };
 }
 
-const STATE_CATEGORIES = ['not-started', 'in-progress', 'done', 'canceled'];
 const RETIRED_STATE_CATEGORIES = { other: 'in-progress' };
-const DEFAULT_WORKFLOW_STATES = [
-  { name: 'Not started', category: 'not-started' },
-  { name: 'In progress', category: 'in-progress' },
-  { name: 'Done', category: 'done' },
-  { name: 'Canceled', category: 'canceled' },
-];
 
 const WORKFLOW_STATES = [
   { name: 'Setup incomplete', category: 'not-started', default: true },
