@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inviteEmail, inviteAcceptedEmail, trialEmail, ROLES, art, longDate } from '../src/mail.js';
+import { inviteEmail, trialEmail, ROLES, art, longDate } from '../src/mail.js';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { LOCKUP_SIZES } from '../brand/build-logos.mjs';
@@ -12,7 +12,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ORIGIN = 'https://weave.example.com';
 const LINK = `${ORIGIN}/api/auth/oidc/start?invite=wvi_abc`;
 const invite = (over = {}) => inviteEmail({ inviter: 'kyle', workspace: 'weave', role: 'editor', expires: 'October 10', link: LINK, origin: ORIGIN, ...over });
-const accepted = (over = {}) => inviteAcceptedEmail({ workspace: 'weave', role: 'editor', member: 'dana', joined: 'October 3', members: `${ORIGIN}/w/weave/#members`, origin: ORIGIN, ...over });
 const BILLING = `${ORIGIN}/w/weave/billing`;
 const trial = (over = {}) => trialEmail({ workspace: 'weave', stage: 'ending', daysLeft: 3, endsAt: '2026-10-10T00:00:00.000Z', billing: BILLING, origin: ORIGIN, ...over });
 
@@ -38,22 +37,6 @@ You got this email because kyle entered your address to invite you to a workspac
   }
 });
 
-test('accepted: subject, preheader and plain text are the approved copy', () => {
-  const m = accepted();
-  assert.equal(m.subject, 'New Editor in the weave workspace: dana');
-  assert.equal(m.preheader, "Change dana's role or remove them in the weave workspace's Members section.");
-  assert.equal(m.text, `The weave workspace has a new Editor: dana accepted your invite.
-
-To change dana's role or remove them, open the Members section on the weave home page:
-${ORIGIN}/w/weave/#members
-
-You got this email because you sent an invite from the weave workspace on weave.example.com. weave deleted the address you entered for this invite when dana accepted it.
-`);
-  for (const line of ['>Invite accepted<', '>New Editor in weave<', '>Open Members<', '>Joined October 3<', 'weave · weave.example.com']) {
-    assert.ok(m.html.includes(line), `html carries ${line}`);
-  }
-});
-
 test('each role renders its own chip, colours and capability line, in html and text', () => {
   for (const [id, r] of Object.entries(ROLES)) {
     const m = invite({ role: id });
@@ -61,8 +44,6 @@ test('each role renders its own chip, colours and capability line, in html and t
     assert.ok(m.html.includes(`You can ${r.line.replace("'", '&#39;')}.`), `${id} line in html`);
     assert.ok(m.text.includes(`As ${art(r.name)} ${r.name}, you can ${r.line}.`), `${id} line in text`);
     assert.ok(m.html.includes(`.chip-${id}{background:${r.chipDark[0]} !important;color:${r.chipDark[1]} !important}`), `${id} dark chip`);
-    const a = accepted({ role: id });
-    assert.ok(a.html.includes(`Can ${r.line.replace("'", '&#39;')}.`) && a.text.includes(`new ${r.name}:`), `${id} accepted`);
   }
   assert.deepEqual(Object.keys(ROLES).sort(), [...Weave.ROLES].sort(), 'the roles are the engine\'s');
   assert.throws(() => invite({ role: 'owner' }), /role 'owner'/);
@@ -78,8 +59,7 @@ test('a or an follows the first letter of the role name', () => {
 test('every variable is escaped in the html', () => {
   const evil = '<script>alert(1)</script>';
   const m = invite({ workspace: evil, inviter: '"><img src=x onerror=alert(1)>', expires: '<b>soon</b>', link: `${ORIGIN}/x?a="><script>` });
-  const a = accepted({ workspace: evil, member: "<i>o'neil</i>", joined: '<u>today</u>', members: 'https://x/"><script>' });
-  for (const html of [m.html, a.html]) {
+  for (const html of [m.html]) {
     assert.ok(!html.includes('<script'), 'no script tag survives');
     assert.ok(!/<img[^>]*onerror/.test(html), 'no injected img');
     assert.ok(!/<(b|i|u)>(soon|o|today)/.test(html), 'no injected markup');
@@ -94,15 +74,10 @@ test('text and html carry the same facts', () => {
     assert.ok(m.text.includes(fact), `text: ${fact}`);
     assert.ok(m.html.includes(fact), `html: ${fact}`);
   }
-  const a = accepted({ workspace: 'acme', member: 'bo', role: 'architect' });
-  for (const fact of ['acme', 'bo', 'Architect', 'Members section', `${ORIGIN}/w/weave/#members`, 'weave.example.com']) {
-    assert.ok(a.text.includes(fact), `text: ${fact}`);
-    assert.ok(a.html.includes(fact), `html: ${fact}`);
-  }
 });
 
 test('the html is mail-client safe: no SVG, no rope, no web font, a PNG mark on the origin', () => {
-  for (const { html } of [invite(), accepted(), trial(), trial({ stage: 'last' })]) {
+  for (const { html } of [invite(), trial(), trial({ stage: 'last' })]) {
     assert.ok(!/<svg/i.test(html), 'Gmail strips SVG');
     assert.ok(!/<path/i.test(html), 'no rope graphic, only the lockup image');
     assert.ok(!html.includes('fonts.googleapis'), 'no Google Fonts link');
@@ -200,8 +175,7 @@ test('preview: Architect only, sample values, ?role and ?theme', async () => {
     assert.equal(html, inviteEmail({ inviter: 'kyle', workspace: 'weave', role: 'editor', expires: 'October 10', link: 'https://weave.example.com/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8', origin: 'https://weave.example.com' }).html);
     assert.match(await (await get('/api/mail/preview/invite?role=observer', architect)).text(), />Observer</);
     assert.match(await (await get('/api/mail/preview/invite?theme=dark', architect)).text(), /background:#0b1220/);
-    const acc = await (await get('/api/mail/preview/accepted?role=architect', architect)).text();
-    assert.ok(acc.includes('>New Architect in weave<') && acc.includes('>dana<') && acc.includes('Joined October 3'));
+    assert.equal((await get('/api/mail/preview/accepted', architect)).status, 404, 'the unsent invite-accepted email has no preview (Issue #656)');
     const tr = await (await get('/api/mail/preview/trial', architect)).text();
     assert.ok(tr.includes('>Your free trial ends in 3 days<') && tr.includes('https://weave.example.com/w/weave/billing'));
     assert.ok((await (await get('/api/mail/preview/trial-last', architect)).text()).includes('>Your free trial ends today<'));

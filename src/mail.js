@@ -144,32 +144,6 @@ You got this email because ${inviter} entered your address to invite you to a wo
   return { subject, preheader, html: shell(theme, { origin, preheader, body, footer }), text };
 }
 
-export function inviteAcceptedEmail({ workspace, role, member, joined, members, origin, host = new URL(origin).host, theme } = {}) {
-  const r = roleOf(role);
-  const subject = `New ${r.name} in the ${workspace} workspace: ${member}`;
-  const preheader = `Change ${member}'s role or remove them in the ${workspace} workspace's Members section.`;
-  const body = (at) => `
-<div${at('eyebrow')}>Invite accepted</div>
-<h1${at('h1')}>New ${esc(r.name)} in ${esc(workspace)}</h1>
-<p${at('lead')}>The ${esc(workspace)} workspace has a new ${esc(r.name)}: <b${at('ink')}>${esc(member)}</b> accepted your invite.</p>
-<table role="presentation" width="100%"${at('panel')}>
-${head(at, first(member), member, `Joined ${joined}`, true)}
-${row(at, 'Role', `${chip(at, role, theme)}<span${at('can')}>Can ${esc(r.line)}.</span>`)}
-${row(at, 'Workspace', `${esc(workspace)} · ${esc(host)}`)}
-</table>
-${button(at, members, 'Open Members')}
-<p${at('small')}>To change ${esc(member)}'s role or remove them, open the Members section on the ${esc(workspace)} home page.</p>`;
-  const footer = `You got this email because you sent an invite from the ${esc(workspace)} workspace on ${esc(host)}. weave deleted the address you entered for this invite when ${esc(member)} accepted it.`;
-  const text = `The ${workspace} workspace has a new ${r.name}: ${member} accepted your invite.
-
-To change ${member}'s role or remove them, open the Members section on the ${workspace} home page:
-${members}
-
-You got this email because you sent an invite from the ${workspace} workspace on ${host}. weave deleted the address you entered for this invite when ${member} accepted it.
-`;
-  return { subject, preheader, html: shell(theme, { origin, preheader, body, footer }), text };
-}
-
 export function trialEmail({ workspace, stage = 'ending', daysLeft, endsAt, billing, origin, host = new URL(origin).host, theme } = {}) {
   if (!TRIAL_STAGES.includes(stage)) throw new Error(`No email copy for trial stage '${stage}' (${TRIAL_STAGES.join(', ')})`);
   const last = stage === 'last';

@@ -2027,7 +2027,7 @@ The person opens the link and signs in at the provider, signing up there first i
 
 An invite creates or links an account in the workspace it was made in. Access to another workspace requires an account there, with its own role. A link that was revoked, spent, expired or made in another workspace answers \`410\` before the provider; a sign-in with no invite and no membership gets the refusal page, **No access to** the workspace. Invalid-invite recovery offers ordinary sign-in or **Open workspace** for an existing member, plus **Find your workspaces**. It never grants access or redeems the invalid link again.
 
-An architect sees the emails weave sends about an invite or a trial, filled with sample values, at \`GET /api/mail/preview/invite\`, \`GET /api/mail/preview/accepted\`, \`GET /api/mail/preview/trial\` and \`GET /api/mail/preview/trial-last\`. Add \`?role=observer\`, \`editor\` or \`architect\` to pick the role, and \`?theme=light\` or \`?theme=dark\` to paint one palette instead of following the mail client's setting.
+An architect sees the emails weave sends about an invite or a trial, filled with sample values, at \`GET /api/mail/preview/invite\`, \`GET /api/mail/preview/trial\` and \`GET /api/mail/preview/trial-last\`. Add \`?role=observer\`, \`editor\` or \`architect\` to pick the role, and \`?theme=light\` or \`?theme=dark\` to paint one palette instead of following the mail client's setting.
 
 \`\`\`bash
 weave invite dylan@example.com --role observer   # prints the invite and its url

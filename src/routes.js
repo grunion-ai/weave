@@ -13,7 +13,7 @@ import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } 
 import { CLIENT_FAULTS } from './oidc.js';
 import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
-import { inviteEmail, inviteAcceptedEmail, trialEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
+import { inviteEmail, trialEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import { BillingUnavailable, PAID_ROLES } from './billing.js';
 import { ANONYMOUS, viewerFor, spaceRole, workspaceRole, topRole, withViewers, unrestricted } from './access.js';
 import '../public/starter-core.js';
@@ -1729,14 +1729,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
         if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
-          const make = { invite: inviteEmail, accepted: inviteAcceptedEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
-          if (!make) return notFound({ error: `No email named '${m[1]}' (invite, accepted, trial, trial-last)`, code: 'not-found' });
+          const make = { invite: inviteEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
+          if (!make) return notFound({ error: `No email named '${m[1]}' (invite, trial, trial-last)`, code: 'not-found' });
           const asked = rx.searchParams?.get('role') || 'editor';
           if (!MAIL_ROLES[asked]) throw new WeaveError(`Invalid role '${asked}' (${Object.keys(MAIL_ROLES).join(', ')})`, 'invalid');
           const o = originFor(rx);
-          const email = make({ inviter: 'kyle', workspace: 'weave', member: 'dana', expires: 'October 10', joined: 'October 3', role: asked,
+          const email = make({ inviter: 'kyle', workspace: 'weave', expires: 'October 10', role: asked,
             daysLeft: 3, endsAt: '2026-10-10T00:00:00.000Z', billing: `${o}/w/weave/billing`,
-            link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, members: `${o}/w/weave/#members`, origin: o,
+            link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, origin: o,
             theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         }
