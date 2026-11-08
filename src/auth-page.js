@@ -138,7 +138,7 @@ const COPY_JS = `for (const b of document.querySelectorAll('[data-copy]')) b.add
 
 const copyable = (text, label) => `    <div class="copyable"><code>${esc(text)}</code><button class="small" type="button" data-copy="${esc(text)}" aria-label="${esc(label)}">Copy</button></div>\n`;
 
-export function renderMcpDoorPage({ workspace, url, server = 'weave', docsHref = '/docs' } = {}) {
+export function renderMcpDoorPage({ workspace, url, server = 'weave', docsHref = '/docs', signInHref = null, signUpHref = null } = {}) {
   const add = `claude mcp add --transport http ${server} ${url}`;
   return `<!doctype html>
 <html lang="en"><head>
@@ -160,7 +160,8 @@ ${copyable(add, 'Copy the Claude Code command')}    <p class="sub">Then run <cod
     <h2>ChatGPT</h2>
     <p class="sub">Add a custom connector with the address above.</p>
     <a class="provider" href="${esc(docsHref)}">Connect an agent guide</a>
-  </div>
+${signInHref ? `    <p class="sub" style="margin-top:14px"><a href="${esc(signInHref)}">Sign in</a>${signUpHref ? ` or <a href="${esc(signUpHref)}">Create an account</a>` : ''} to open ${esc(workspace)} in a browser.</p>
+` : ''}  </div>
 </main>
 <script>${COPY_JS}</script>
 </body></html>`;

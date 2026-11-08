@@ -259,7 +259,7 @@ The source is public at https://github.com/grunion-ai/weave. The full agent refe
 
 export const AGENT_DOCS = `# Connect an agent
 
-weave is an open-source (MIT), self-hosted work platform in which AI agents are first-class users. Workspaces hold spaces, spaces hold tables, and tables hold rows that link through relations and carry markdown documents. The MCP server, REST API, CLI and browser UI run the same engine.
+{{ACCOUNT}}weave is an open-source (MIT), self-hosted work platform in which AI agents are first-class users. Workspaces hold spaces, spaces hold tables, and tables hold rows that link through relations and carry markdown documents. The MCP server, REST API, CLI and browser UI run the same engine.
 
 ## MCP URL
 
