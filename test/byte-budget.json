@@ -217,8 +217,8 @@
       "br": 2686
     },
     "/start.js": {
-      "gzip": 13623,
-      "br": 12145
+      "gzip": 14438,
+      "br": 12851
     },
     "/starter-core.js": {
       "gzip": 16413,
@@ -267,7 +267,7 @@
     "/phone-row.js": "PR #388 (Issue #1032) added hitBoxes, the 44 px phone list hit geometry that replaced the padded lookup in app.js: gzip 1,039 to 1,585, br 899 to 1,433. Budget set 5% above",
     "/setup-core.js": "PR #347 (onboarding recovery) grew setup-core.js after PR #359 measured it: gzip 1,313 to 1,641, br 1,173 to 1,460, budget set 5% above",
     "/space-home-core.js": "Feature #344: Kyle ruled the space home keys by table name, so the core gained rowsByTable and table labels: gzip 927 to 1,017, br 842 to 914, budget set 5% above. Feature #355: the core gained workspaceSections for the phone workspace launcher: gzip 1,068 budget to 1,179 served, br 960 to 1,065, budget set 5% above",
-    "/start.js": "PR #541 (Issue #1284) added startLink and returnOf so a signed-out start link signs in and goes on to the workspace: gzip 12,917 to 12,974, br 11,513 to 11,566. Budget set 5% above",
+    "/start.js": "PR #693 (Issue #1334, Issue #1340) added the load-failure alert with Try again and the support link, and the logo that keeps the draft, on top of PR #613 sign-in door work: gzip 13,750, br 12,239. Budget set 5% above",
     "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above. PR #555 reverts Issue #1286 (PR #546) and removes its raise to gzip 41,000, br 33,600, restoring the earlier gzip 40,868, br 33,428. Feature #348 (PR #542) had added the group header, crumb and breakdown rules under that headroom and raised no budget for this asset, so the reverted file still carries them: served gzip 40,871 over 40,868, br 33,451 over 33,428. Budget set 5% above at gzip 42,915, br 35,124. Issues #1361 to #1364 (upload progress and failure tiles, the amber warn toast, the red accent on error toasts): served gzip 43,180 over 42,915, br 35,313 over 35,124. Budget set 5% above",
     "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
     "/upload-core.js": "Issue #1413 (upload error causes) added the restarting, storage-full and request-id failures, the retry waits and the generic-call strings: gzip 1,551 to 1,864, br 1,349 to 1,634 served. Budget set 5% above",

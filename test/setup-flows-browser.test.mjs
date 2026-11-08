@@ -552,6 +552,44 @@ if (openHub) {
     });
   }
 
+  test('a failed /api/start shows an alert with Try again and Support, and the retry walks on to the workspace (Issue #1334)', async () => {
+    const p = await page();
+    person(openHub, { email: 'retry1334@example.com' });
+    let failing = true;
+    await p.route('**/api/start', (r) => (failing && r.request().method() === 'GET' ? r.fulfill({ status: 500, json: { error: 'Internal error (request x)', code: 'internal' } }) : r.continue()));
+    await p.goto(`${openHub.base}/start?setup=skip`);
+    const alert = p.locator('main .alert[role="alert"]');
+    await alert.waitFor();
+    assert.match(await alert.textContent(), /weave did not answer/);
+    assert.equal(await p.locator('main a[href="/support"]').count(), 1, 'a support link sits under the alert');
+    failing = false;
+    await p.click('main [data-go="retry"]');
+    await step(p, 'account');
+    await go(p, 'signin');
+    await p.waitForURL(/\/w\/retry1334\/$/, { timeout: 15000 });
+    await p.context().close();
+  });
+
+  test('the weave logo during setup keeps the draft: it reopens the same step with the name and choice (Issue #1340)', async () => {
+    const p = await page();
+    person(openHub, { email: 'logo1340@example.com' });
+    await signIn(p, openHub);
+    await nameIt(p, 'Pia Studio', 'pia-studio');
+    await step(p, 'work');
+    assert.equal(await p.locator('a.brand').getAttribute('href'), '/start?setup=resume', 'the logo points at the draft');
+    await p.click('a.brand');
+    await step(p, 'work');
+    await p.getByRole('button', { name: 'Back', exact: true }).click();
+    await step(p, 'workspace');
+    assert.equal(await p.inputValue('input[name="name"]'), 'Pia Studio');
+    assert.equal(await p.inputValue('input[name="slug"]'), 'pia-studio');
+    await go(p, 'next');
+    await step(p, 'work');
+    await go(p, 'skip');
+    await p.waitForURL(/\/w\/pia-studio\/$/, { timeout: 15000 });
+    await p.context().close();
+  });
+
   test('closed sign-up: a stranger gets an invite-only page, not a 403', async () => {
     const p = await page();
     person(closedHub);
