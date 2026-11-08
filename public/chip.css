@@ -191,8 +191,8 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .wv-rating-default .wv-rate-ico .wv-icon, .wv-rating-default .wv-rate-ico .wv-icon svg { width: 19px; height: 19px; }
 @media (pointer: coarse) {
   .fieldrow .wv-rating.editable { flex-wrap: wrap; white-space: normal; gap: 0; }
-  .fieldrow .editable > .wv-rate-ico { min-width: 46px; min-height: 46px; align-items: center; }
-  .fieldrow .editable > .wv-rate-ico :is(.wv-icon, svg) { width: 20px; height: 20px; }
+  .fieldrow .wv-rating.editable > .wv-rate-ico { min-width: 46px; min-height: 46px; align-items: center; justify-content: flex-start; }
+  .fieldrow .wv-rating.editable > .wv-rate-ico .wv-icon, .fieldrow .wv-rating.editable > .wv-rate-ico .wv-icon svg { width: 20px; height: 20px; }
 }
 
 .cg-wrap.cg-sparkwrap { display: inline-flex; width: 80px; height: 18px; }
