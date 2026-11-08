@@ -3284,6 +3284,15 @@ function dressTokens(into, tokens) {
   return into;
 }
 
+function swapToEdit(display, input) {
+  display.addEventListener('click', (e) => {
+    e.stopPropagation();
+    display.replaceWith(input);
+    input.focus();
+  });
+  input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(display); });
+  return display;
+}
 function dressedText(md, input, { literal = false } = {}) {
   const dressed = el('span', { class: 'text-dressed', tabindex: 0 });
   let shown = null;
@@ -4191,25 +4200,14 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   if (graphic) {
     graphic.tabIndex = 0;
     graphic.classList.add('num-dressed');
-    graphic.addEventListener('click', (e) => {
-      e.stopPropagation();
-      graphic.replaceWith(input);
-      input.focus();
-    });
-    input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(graphic); });
-    return graphic;
+    return swapToEdit(graphic, input);
   }
   if (f.type === 'number' && val != null && String(val) !== String(rawVal)) {
-    const dressed = el('span', { class: 'num-dressed', tabindex: 0, title: String(val), onclick: (e) => {
-      e.stopPropagation();
-      dressed.replaceWith(input);
-      input.focus();
-    } }, String(val));
+    const dressed = el('span', { class: 'num-dressed', tabindex: 0, title: String(val) }, String(val));
     if (typeof rawVal === 'number' && f.format !== 'compact') {
       dressed.dataset.compact = numberCore.dressNumber({ format: 'compact', currency: f.currency }, isPercent ? rawVal * 100 : rawVal) + (isPercent ? '%' : f.unit ? ` ${f.unit}` : '');
     }
-    input.addEventListener('blur', () => { if (input.isConnected) input.replaceWith(dressed); });
-    return dressed;
+    return swapToEdit(dressed, input);
   }
   if (typeof rawVal === 'string' && rawVal !== '') return dressedText(rawVal, input, { literal: true });
   return input;

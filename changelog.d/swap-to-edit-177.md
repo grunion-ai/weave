@@ -1,0 +1,1 @@
+- **Number cells swap to their input through one helper** (Feature #177): a number cell's graphic (bar, rating, progress) and its formatted value each carried a copy of the click-to-edit, blur-to-restore swap. Both go through `swapToEdit(display, input)` now. Behaviour is unchanged. Gate: `test/swap-to-edit.test.mjs`.
