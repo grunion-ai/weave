@@ -9,7 +9,7 @@ const { Weave } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
 const { dispatchTool } = await import('../../src/mcp.js');
 
-const SECRET = 'wvtest_SEALED_9f8e7d6c5b4a3210ZYXW';
+const SECRET = 'pasted-integration-value-sealed-qrst';
 
 async function seed() {
   const dir = tempDir('weave-int-sec-');

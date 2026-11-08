@@ -8,8 +8,8 @@ process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
 const { keyHint, integrationHost } = await import('../src/integrations.js');
 
-const SECRET = 'fib_live_7Hq2ZpW9xLr4Ks8Vd3Mn5Tb6';
-const OTHER = 'fib_live_A1b2C3d4E5f6G7h8I9j0K1zz';
+const SECRET = 'pasted-integration-value-one-wxyz';
+const OTHER = 'pasted-integration-value-two-abcd';
 
 function fresh() {
   const keystorePath = join(tempDir('weave-int-'), 'keystore.json');
