@@ -1055,11 +1055,12 @@ test('docs go fullscreen and diagrams become whiteboards (Features #47, #46)', (
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(app.includes('function fullscreenViewer('), 'the in-tree dialog exists');
-  const viewer = app.slice(app.indexOf('function fullscreenViewer('), app.indexOf('let cytoscapeLoading'));
+  const viewer = app.slice(app.indexOf('function fullscreenViewer('), app.indexOf('function openWhiteboard('));
   assert.ok(!viewer.includes("title: 'Back'") && !viewer.includes('history'), 'no Back beside the X: a sandboxed frame is cross-origin, so its history is out of reach (Issue #1174)');
   assert.ok(app.includes('function openWhiteboard('), 'the whiteboard exists');
-  assert.ok(html.includes('graph-parse.js'), 'the parser loads with the app');
-  assert.ok(app.includes("src = '/vendor/cytoscape.min.js'"), 'cytoscape is lazy — 434KB only when a whiteboard opens');
+  assert.ok(html.includes('/whiteboard.js'), 'the whiteboard loads with the app');
+  assert.match(app, /drawWhiteboard\(body, mmdSource, mermaidLoading\)/, 'the whiteboard draws through the document mermaid renderer (Issue #662)');
+  assert.ok(!existsSync(join(ROOT, 'public/vendor/cytoscape.min.js')) && !existsSync(join(ROOT, 'public/graph-parse.js')), 'no second diagram renderer is vendored (Issue #662)');
   assert.ok(app.includes('pre.dataset.mmd'), 'the mermaid source survives its own rendering');
   const frame = app.slice(app.indexOf("class: 'fsv-frame'"), app.indexOf("class: 'fsv-frame'") + 120);
   assert.ok(frame.includes('allowfullscreen'), 'the viewer frame permits fullscreen from inside (Safari)');
