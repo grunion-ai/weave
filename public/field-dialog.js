@@ -461,7 +461,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
     }
   }
   if (d.time) {
-    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: dc.formatDate(todayIso + 'T14:30', { ...costume, clock: id, time: true }).split(' ').slice(parts.length ? 1 : 0).join(' ') })), d.clock ?? weaveDateGrain.DEFAULT_CLOCK, (v) => { d.clock = v; redraw(); changed(); })));
+    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: weaveDateGrain.clockText('14:30', id) })), d.clock ?? weaveDateGrain.DEFAULT_CLOCK, (v) => { d.clock = v; redraw(); changed(); })));
     const zoneHint = {
       floating: 'The wall clock as typed, no zone stored — 09:15 is 09:15 everywhere. What every field did before.',
       fixed: 'The zone travels with the field: a store opening at 09:15 PT opens at 09:15 PT for a reader in Berlin.',
