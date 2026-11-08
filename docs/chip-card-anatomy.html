@@ -197,6 +197,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 .av-control { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .av-pick { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
 .av-pick:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+@media (pointer: coarse) { .av-pick:has(.head-av) { align-items: center; justify-content: center; min-width: 44px; min-height: 44px; } }
 .av-control.is-file-drop .wv-av { box-shadow: 0 0 0 2px var(--tblr-primary); }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
 .wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-grid); line-height: 1.35; white-space: normal; }

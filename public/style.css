@@ -717,6 +717,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .av-control { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .av-pick { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
 .av-pick:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+@media (pointer: coarse) { .av-pick:has(.head-av) { align-items: center; justify-content: center; min-width: 44px; min-height: 44px; } }
 .av-control.is-file-drop .wv-av { box-shadow: 0 0 0 2px var(--tblr-primary); }
 .wv-av.head-av { --wv-av-size: 40px; font-size: var(--fs-doc); }
 .wv-av.field-av { --wv-av-size: 32px; font-size: var(--fs-body); }

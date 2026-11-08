@@ -185,6 +185,18 @@ if (s) {
     }
   }
 
+  const sinkRow = surfaceOf(walked('touch').concat(held('touch')).find((p) => p.state.name === 'sink-row').state);
+  const avatars = { ...sinkRow, name: 'avatar controls on the phone record page', roots: ['#dock .av-control'] };
+  for (const [engine, b, profile] of engines) {
+    for (const theme of themesOn(engine)) {
+      test(`on a phone the avatar Change photo button keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #1167)`, async () => {
+        const { seen, offenders } = await measure(b, profile, theme, avatars);
+        assert.deepEqual(seen.map((c) => c.label), ['button.av-pick "Change photo"'], 'the record head offers one avatar control, its Change photo button');
+        assert.deepEqual(offenders, [], `${offenders.length} of ${seen.length} avatar controls miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
+      });
+    }
+  }
+
   const REACH = () => {
     const menu = document.querySelector('#sidebar').getBoundingClientRect();
     const clips = (n) => {

@@ -1,0 +1,1 @@
+- On a phone the Change photo button beside a record's name is a 44 px tap target, up from 40 px, in line with the rest of the phone UI. The photo itself keeps its 40 px size (Issue #1167).

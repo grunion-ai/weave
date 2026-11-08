@@ -647,7 +647,7 @@ const SHARED_STATES = [
   { name: 'sink-table', route: 'sink-table', open: 'rest', layout: 'table', cells: BOTH },
   { name: 'sink-list', route: 'sink-list', open: 'rest', layout: 'list', cells: BOTH, hold: { touch: [1170] } },
   { name: 'sink-board', route: 'sink-board', open: 'rest', layout: 'board', cells: BOTH },
-  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], hold: { touch: [1167, 1168] }, kept: { touch: [{ issue: 1165, sel: '#dock .fieldrow .wv-rate-ico' }, { issue: 1166, sel: '#dock .fieldrow input.form-check-input' }] } },
+  { name: 'sink-row', route: 'sink-row', open: 'rest', layout: null, cells: BOTH, roots: ['#dock'], kept: { touch: [{ issue: 1165, sel: '#dock .fieldrow .wv-rate-ico' }, { issue: 1166, sel: '#dock .fieldrow input.form-check-input' }] } },
 ];
 
 const PROSE_STATES = [
