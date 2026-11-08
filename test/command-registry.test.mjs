@@ -181,3 +181,29 @@ test('one script of space and table writes answers the same on CLI, MCP and HTTP
     assert.match((await res.json()).error, /space is required/);
   } finally { server.close(); }
 });
+
+test('the HTTP role gate reads writes from the registry: an editor is refused every schema write and runs the rest (Feature #179)', async () => {
+  const w = new Weave();
+  seed(w);
+  w.addField('Task', { name: 'Points', type: 'number' });
+  w.createAccount({ name: 'arch', role: 'architect' });
+  const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
+  const { server } = await startServer(w, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const sample = { db: 'Task', field: 'Points', space: 'Ops' };
+  try {
+    for (const c of COMMANDS) {
+      if (c.http.method === 'GET') continue;
+      const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(sample[k] ?? 'x'));
+      const body = c.name === 'formula.check' ? { expression: 'Points * 2' } : {};
+      const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const json = await res.json();
+      if (c.writes === 'schema') {
+        assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
+        assert.equal(json.error, 'This token cannot change the schema');
+      } else {
+        assert.equal(res.status, 200, `${c.http.method} ${c.http.path} writes no schema: ${JSON.stringify(json)}`);
+      }
+    }
+  } finally { server.close(); }
+});
