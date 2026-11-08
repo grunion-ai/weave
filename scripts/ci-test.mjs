@@ -8,6 +8,9 @@ import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
+export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
+
 export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
   if (!files.length) throw new Error('Empty CI selection');
   if (JSON.stringify([...files].sort()) !== JSON.stringify([...groups.unit, ...groups.browser].sort())) throw new Error('Lane coverage mismatch');
@@ -154,15 +157,15 @@ export function newestAttempts(results) {
   return [...newest.values()];
 }
 
-function currentPlan() {
-  const files = testFiles(ROOT);
-  return plan(files, lanes(files, ROOT), weightWith(recordedDurations(), sizeOf));
+export function currentPlan() {
+  const groups = gating(lanes(testFiles(ROOT), ROOT));
+  return plan([...groups.unit, ...groups.browser], groups, weightWith(recordedDurations(), sizeOf));
 }
 
 function currentPrPlan() {
   const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
   const diff = execFileSync('git', ['diff', '-W', '--no-renames', 'HEAD^1', 'HEAD', '--', 'public', 'src', 'bin'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  return prPlan(lanes(testFiles(ROOT), ROOT), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
+  return prPlan(gating(lanes(testFiles(ROOT), ROOT)), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
 }
 
 async function main() {
