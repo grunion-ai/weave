@@ -929,7 +929,11 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
     'a document is anchored, and still draggable by its whole head');
   assert.match(body, /node\.classList\.add\('attach-block'\)/, 'an attachment row is a block too');
 
-  assert.match(body, /const named = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
+  assert.match(body, /const given = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
+  assert.match(body, /given\.includes\(FILES_BLOCK\) \? given : given\.flatMap\(\(k\) => \(k === VALUES_BLOCK \? \[k, FILES_BLOCK\] : \[k\]\)\)/,
+    'an unplaced Files card sits directly under the fields (Feature #357)');
+  assert.match(body, /k === FILES_BLOCK \? \[k, DECK_BLOCK\] : \[k\]/, 'the deck or slide preview follows the Files card (Feature #357)');
+  assert.match(body, /blocks\.set\(DECK_BLOCK, section\)/, 'the deck section takes its place in the body order instead of the top of the page');
   const rb = fnBody('reorderBlocks');
   assert.match(rb, /\[\.\.\.body\.children\]\.map\(\(n\) => n\.dataset\.block\)/,
     'the move already happened, so the DOM is the new order');

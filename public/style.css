@@ -1502,6 +1502,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .attach-item.is-missing, .attach-item.is-failed { color: var(--tblr-secondary); background: none; border: 1px dashed var(--tblr-border-color); padding: 0 3px 0 6px; }
 .attach-item.is-failed { gap: 4px; color: var(--wv-danger-text); border: 1px solid color-mix(in srgb, var(--wv-danger-text) 45%, transparent); background: color-mix(in srgb, var(--wv-danger-text) 7%, transparent); }
 .attach-item.is-pending { gap: 6px; padding: 1px 8px 1px 7px; color: var(--tblr-secondary); }
+:root:not([data-bs-theme="dark"]) .attach-item > a { color: var(--tblr-primary-darken); }
 .attach-up-name, .attach-fail-name { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attach-up-name { color: var(--tblr-body-color); }
 .attach-fail-why, .attach-up-what { white-space: nowrap; font-variant-numeric: tabular-nums; }
