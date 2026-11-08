@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
-import { ROUTES, SEEDS, STATES, held, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
@@ -120,6 +120,17 @@ if (s) {
         t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
         assert.ok(offenders.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs so the gate walks it`);
       });
+    }
+    for (const { state, theme } of plan('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+      const surface = surfaceOf(state);
+      for (const kept of state.kept?.touch ?? []) {
+        test(`on a phone every ${kept.label} on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #${kept.issue})`, async () => {
+          const { seen, offenders } = await measure(b, profile, theme, surface);
+          assert.ok(seen.some((c) => c.label.startsWith(kept.label)), `the ${surface.name} draws a ${kept.label} to measure`);
+          const missed = offenders.filter((o) => o.startsWith(kept.label));
+          assert.deepEqual(missed, [], `${missed.length} of them miss a ${MIN}px hit area:\n${missed.join('\n')}`);
+        });
+      }
     }
   }
 
