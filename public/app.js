@@ -1892,13 +1892,17 @@ function swallowClick(ms = 600) {
   addEventListener('click', eat, true);
 }
 
+function placeNear(pop, anchor, { gap = 4 } = {}) {
+  const r = anchor.getBoundingClientRect();
+  const h = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + gap + h > innerHeight ? Math.max(8, r.top - h - gap) : r.bottom + gap) + 'px';
+}
 function showPopover(trigger, rows, { owns = (t) => trigger.contains(t) } = {}) {
   document.querySelector('.chip-pop')?.remove();
   const pop = el('div', { class: 'chip-pop' }, ...rows);
   document.body.append(pop);
-  const r = trigger.getBoundingClientRect();
-  pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-  pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
+  placeNear(pop, trigger);
   dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: owns, close: () => pop.remove() });
 
   const opts = [...pop.querySelectorAll('.chip-pop-row')].map((o) => (o.matches('label') ? o.querySelector('input') ?? o : o));
@@ -2210,9 +2214,7 @@ const PHONE_ROW_H = { compact: 68, comfortable: 88, spacious: 118 };
 
 function anchorPop(pop, anchor) {
   if (anchor?.getBoundingClientRect) {
-    const r = anchor.getBoundingClientRect();
-    pop.style.left = Math.min(r.left, innerWidth - pop.offsetWidth - 8) + 'px';
-    pop.style.top = (r.bottom + 4 + pop.offsetHeight > innerHeight ? Math.max(8, r.top - pop.offsetHeight - 4) : r.bottom + 4) + 'px';
+    placeNear(pop, anchor);
   } else {
     pop.classList.add('picker-centered');
   }
