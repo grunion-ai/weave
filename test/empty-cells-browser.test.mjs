@@ -63,7 +63,8 @@ if (s) {
     return page;
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a row with every field empty shows nothing in its cells at rest (${theme})`, async () => {
       const page = await openGrid(theme);
       assert.deepEqual(await marks(page, empty.id), {}, 'no hint, dash or placeholder at rest');

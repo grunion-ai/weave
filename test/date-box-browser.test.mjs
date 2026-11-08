@@ -46,7 +46,8 @@ if (s) {
   });
 
   for (const engine of ['chromium', 'webkit']) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`a stored column width never cuts the widest date and time short (${engine}, ${theme})`, async (t) => {
         const b = engine === 'chromium' ? browser : await engineOf(engine);
         if (!b) return t.skip(`${engine} is not installed`);

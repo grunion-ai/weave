@@ -47,7 +47,8 @@ if (s) {
   };
 
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone a 200px touch drag down the list selects nothing and opens nothing, and a tap still opens the row (${engine}, ${theme}, Issue #738)`, async () => {
         const page = await open(b, profile, theme);
         try {

@@ -502,6 +502,14 @@ integration tests; ordinary jobs use the shared default, which is keyed on a has
 worktree with changed manager code gets its own manager, and the old one exits after
 five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
+## Theme loops
+
+A browser case runs in both themes only when it reads paint: a computed colour, a
+contrast, a screenshot, a border or shadow, an icon or image. A theme cannot change a
+geometry, a count, a class name or a text value, so a case that reads only those runs
+once, in light. `test/theme-loop-guard.test.mjs` fails a `for (const theme of ['light',
+'dark'])` loop whose body reads no paint (Issue #667).
+
 ## State catalog
 
 `test/lib/states.mjs` is the one list of app states the runtime probes walk

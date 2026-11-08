@@ -26,7 +26,8 @@ if (s) {
     return page;
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a name whose value overflows its control is marked clipped (${theme})`, async () => {
       const page = await grid(theme);
       try {

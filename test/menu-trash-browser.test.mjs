@@ -63,7 +63,8 @@ if (s) {
   const navSpaces = (page) => page.$$eval('#nav .nav-space-row a.nav-space', (as) => as.map((a) => a.textContent.trim()));
   const hashIs = (page, want) => page.waitForFunction((w) => location.hash === w, want, { timeout: 5000 });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: a table goes to the trash with a hold and Undo puts it back in its space (Feature #296, Feature #346)`, async () => {
       const name = uniq('Doomed');
       const db = weave.createTable({ space: 'Product', name });

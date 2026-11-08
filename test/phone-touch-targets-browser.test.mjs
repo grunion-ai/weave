@@ -272,7 +272,8 @@ if (s) {
     act: (page) => page.click('#main .nav-menu'),
   };
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone every space and table in the menu sits in view and takes a tap (${engine}, ${theme}, Issue #1164)`, async () => {
         const page = await open(b, profile, theme, phoneMenu);
         try {

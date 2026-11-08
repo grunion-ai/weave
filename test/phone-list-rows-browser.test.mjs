@@ -60,7 +60,8 @@ if (s) {
     };
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`on a phone the table is a list of 88px rows: muted #id, a two-line name, then value chips (${theme}, Feature #272)`, async () => {
       const page = await open({ theme });
       try {

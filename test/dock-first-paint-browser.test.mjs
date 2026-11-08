@@ -99,7 +99,8 @@ if (s) {
     await page.close();
   });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`on a phone, tapping a row opens the record from the list row before the server answers, in ${colorScheme} (Issue #1059)`, async () => {
       const page = await phonePage(await phoneBrowser(), { colorScheme });
       await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });

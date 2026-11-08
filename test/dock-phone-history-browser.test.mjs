@@ -32,7 +32,8 @@ if (s) {
     return page;
   }
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`on a phone, opening a row is a step Back undoes and Forward redoes, in ${colorScheme}`, async () => {
       const page = await phoneTable(colorScheme);
       const before = await depth(page);

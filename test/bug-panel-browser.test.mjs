@@ -67,7 +67,8 @@ if (s) {
   });
 
   test('the submit control names the action and wears its key (Issue #847)', async () => {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       const page = await open();
       try {
         await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);

@@ -13,7 +13,8 @@ if (s) {
   const settles = (page, want) => page.waitForFunction((w) =>
     window.__weaveEditors.values().next().value.getValue().trim() === w, want, { timeout: 10000 });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`Mod+Shift+Z redoes what Mod+Z undid in a document, in ${colorScheme} (Issue #697)`, async () => {
       const id = weave.createEntity(notes, { name: 'Redo case' }).id;
       const page = await browser.newPage({ colorScheme });

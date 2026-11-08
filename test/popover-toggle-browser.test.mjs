@@ -27,7 +27,8 @@ if (s) {
   };
 
   const paneOpen = (page) => page.evaluate(() => !document.querySelector('#view-pane').hidden);
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a second click on View closes its pane, and a third opens it (${theme})`, async () => {
       const page = await table(theme);
       await page.click('#main .table-view-btn');

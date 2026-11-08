@@ -35,7 +35,8 @@ if (s) {
   const meets = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
   const inside = (a, o) => a.l >= o.l - 0.5 && a.r <= o.r + 0.5 && a.t >= o.t - 0.5 && a.b <= o.b + 0.5;
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`every tile sits inside its field row and clear of the + file button (${theme}) (Issue #1191)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);

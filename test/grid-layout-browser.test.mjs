@@ -109,7 +109,8 @@ if (s) {
   });
 
   const THIRTY = 'Quickstart for a new workspace';
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: a thirty-character name reads whole at the Name default; a stored width still wins`, async () => {
       const db = weave.createTable({ space: 'Layout', name: `Names ${++n}` });
       weave.createEntity(db, { name: THIRTY });

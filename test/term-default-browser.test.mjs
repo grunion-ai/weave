@@ -18,7 +18,8 @@ if (s) {
     assert.deepEqual(weave.termOf(weave.getTable(months.id)), { singular: 'record', plural: 'records', set: false });
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the grid of a table with no term says record in its toolbar and its add row (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await page.goto(`${base}/#/table/${months.id}`, { waitUntil: 'networkidle' });

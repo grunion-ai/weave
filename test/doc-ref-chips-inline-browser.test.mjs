@@ -64,7 +64,8 @@ if (s) {
     return page;
   };
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`a long aliased reference reads as one inline chip, with no [[ or ]] showing and the prose after it beside the chip, in ${colorScheme}`, async () => {
       const page = await openEditor(colorScheme);
       try {

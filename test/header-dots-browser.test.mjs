@@ -31,7 +31,8 @@ const overlaps = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a
 if (s) {
   const { base, browser, table, entity } = s;
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     for (const dock of [0, 500, 700, 900]) {
       test(`on a desktop the table ⋮ stays at the right end of the breadcrumb row with the dock ${dock ? `${dock}px wide` : 'shut'} (${theme}, Issue #853)`, async () => {
         const page = await browser.newPage({ viewport: { width: 1470, height: 794 } });
@@ -58,7 +59,8 @@ if (s) {
   const webkit = await engineOf('webkit');
   if (webkit && IPHONE) phones.push([`webkit ${PHONE}`, webkit, IPHONE]);
   for (const [engine, b, profile] of phones) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone the table ⋮ stays in the header beside the sliders button, open sheet or not (${engine}, ${theme}, Issue #853)`, async () => {
         const page = await b.newPage(profile);
         try {

@@ -40,7 +40,8 @@ if (s) {
     '.entity-body > .doc-section .doc-section-head .opt-grip',
   ];
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a phone row page draws no decorative grip (${theme}, Issue #806)`, async () => {
       const page = await phone(build(), theme);
       for (const sel of DECORATION) {

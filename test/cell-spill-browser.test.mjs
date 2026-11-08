@@ -82,7 +82,8 @@ if (s) {
     return readPop(page);
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a clipped name spills right from its own top-left edge on one line (${theme})`, async () => {
       const page = await grid({ theme });
       try {

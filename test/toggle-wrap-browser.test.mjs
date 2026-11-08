@@ -13,7 +13,8 @@ if (s) {
   const cutWords = (page, root) => page.evaluate(probe, root).then((all) => all.filter((f) => String(f.selector).includes('wv-toggle-word')));
   const whole = (locator) => locator.evaluate((w) => ({ text: w.textContent, over: w.scrollWidth - w.clientWidth, lines: Math.round(w.getBoundingClientRect().height / parseFloat(getComputedStyle(w).lineHeight)) }));
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`${colorScheme}: a board tile prints both toggle labels whole beside the switch (Issue #1156)`, async () => {
       const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport, colorScheme });
       try {
