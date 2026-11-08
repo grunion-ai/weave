@@ -27,21 +27,11 @@ const HAND_WRITTEN = [
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
   ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
-  ['space.create', ['createSpace'], 'weave_create_space', 'space create', ['POST /api/spaces']],
   ['space.list', ['listSpaces'], 'weave_schema', 'space', ['GET /api/spaces']],
-  ['space.update', ['updateSpace'], 'weave_update_space', 'space update', ['PATCH /api/spaces/:ref']],
-  ['space.delete', ['deleteSpace'], 'weave_delete_space', 'space delete', ['DELETE /api/spaces/:ref']],
-  ['space.restore', ['restoreSpace'], 'weave_restore_space', 'space restore', ['POST /api/spaces/:ref/restore']],
   ['space.members', ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'], 'weave_update_space', 'space members', ['GET /api/spaces/:ref/members', 'PUT /api/spaces/:ref/members/:ref', 'DELETE /api/spaces/:ref/members/:ref']],
   ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
-  ['table.create', ['createTable'], 'weave_create_table', 'table create', ['POST /api/tables']],
   ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
-  ['table.update', ['updateTable'], 'weave_update_table', 'table update', ['PATCH /api/tables/:ref']],
-  ['table.move', ['moveTable'], 'weave_move_table', 'table move', ['POST /api/tables/:ref/move']],
-  ['table.duplicate', ['duplicateTable'], 'weave_duplicate_table', 'table duplicate', ['POST /api/tables/:ref/duplicate']],
-  ['table.delete', ['deleteTable'], 'weave_delete_table', 'table delete', ['DELETE /api/tables/:ref']],
-  ['table.restore', ['restoreTable'], 'weave_restore_table', 'table restore', ['POST /api/tables/:ref/restore']],
   ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
   ['entity.create', ['createEntity'], 'weave_create_entity', 'create', ['POST /api/tables/:ref/entities']],
   ['entity.read', ['readEntity', 'getEntity', 'query', 'listEntities'], 'weave_get_entity', 'get', ['GET /api/entities/:ref']],
@@ -234,12 +224,8 @@ test('a create tool takes every option the engine create takes', () => {
 });
 
 test('the CLI creates take the same options', () => {
-  const block = (cmd) => {
-    const i = CLI.indexOf(`case '${cmd}'`);
-    return CLI.slice(i, i + 2600);
-  };
-  assert.match(block('space'), /createSpace\(\{[^}]*icon/, 'weave space create passes --icon through');
-  assert.match(block('table'), /createTable\(\{[^}]*icon/, 'weave table create passes --icon through');
+  assert.ok(cliCommand('space', 'create').cli.flags.includes('icon'), 'weave space create passes --icon through');
+  assert.ok(cliCommand('table', 'create').cli.flags.includes('icon'), 'weave table create passes --icon through');
 });
 
 test('every MCP tool is documented in AGENTS.md', () => {

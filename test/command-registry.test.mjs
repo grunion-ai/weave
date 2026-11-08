@@ -24,12 +24,12 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
     assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
     assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
-    assert.deepEqual(TOOLS.find((t) => t.name === c.tool.name), { ...toolDefinition(c.tool.name), annotations: TOOLS.find((t) => t.name === c.tool.name).annotations }, `${c.tool.name} in tools/list is the registry entry`);
+    assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
     assert.equal(BY_TOOL.get(c.tool.name), c);
     assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     assert.equal(matchRoute(c.http.method, c.http.path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${c.http.path} is the registry entry`);
-    for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
-    for (const k of c.http.path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+    for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
+    for (const k of c.http.path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
   }
 });
 
@@ -129,5 +129,55 @@ test('weave\'s own model is served on every door, and the workspace outline stil
     }
     const bad = await fetch(`${base}/api/ontology?depth=deep`);
     assert.equal(bad.status, 400, 'an unknown depth is still refused');
+  } finally { server.close(); }
+});
+
+test('one script of space and table writes answers the same on CLI, MCP and HTTP (Feature #179)', async () => {
+  const dir = tempDir('weave-registry-schema-');
+  const data = join(dir, 'ws.db');
+  const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry' };
+  const cli = (args) => {
+    const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, `weave ${args.join(' ')}: ${r.stderr}`);
+    return JSON.parse(r.stdout);
+  };
+  new Weave({ path: data });
+  const mcpWeave = new Weave();
+  const mcp = (name, args) => {
+    const res = handleMcpMessage(mcpWeave, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { ...args, verbose: true } } }, { tools: 'all' });
+    assert.ok(!res.result.isError, `${name}: ${res.result.content[0].text}`);
+    return JSON.parse(unwrapData(res.result.content[0].text));
+  };
+  const { server } = await startServer(new Weave(), { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const http = async (method, path, body) => {
+    const res = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const json = await res.json();
+    assert.ok(res.ok, `${method} ${path}: ${JSON.stringify(json)}`);
+    return json;
+  };
+  const strip2 = (v) => JSON.parse(JSON.stringify(strip(v), (k, x) => (k.endsWith('Id') || ['fieldOrder', 'fields', 'members', 'url', 'icon', 'position', 'views', 'publicId', 'nameFieldId', 'next', 'hints', 'term'].includes(k) ? undefined : x)));
+  try {
+    const steps = [
+      [['space', 'create', 'Ops', '--description', 'Daily'], ['weave_create_space', { name: 'Ops', description: 'Daily' }], ['POST', '/api/spaces', { name: 'Ops', description: 'Daily' }]],
+      [['space', 'create', 'Lab'], ['weave_create_space', { name: 'Lab' }], ['POST', '/api/spaces', { name: 'Lab' }]],
+      [['space', 'update', 'Lab', '--description', 'Experiments'], ['weave_update_space', { space: 'Lab', description: 'Experiments' }], ['PATCH', '/api/spaces/Lab', { description: 'Experiments' }]],
+      [['table', 'create', 'Ops', 'Task'], ['weave_create_table', { space: 'Ops', name: 'Task' }], ['POST', '/api/tables', { space: 'Ops', name: 'Task' }]],
+      [['table', 'update', 'Task', '--description', 'Work'], ['weave_update_table', { db: 'Task', description: 'Work' }], ['PATCH', '/api/tables/Task', { description: 'Work' }]],
+      [['table', 'duplicate', 'Task'], ['weave_duplicate_table', { db: 'Task' }], ['POST', '/api/tables/Task/duplicate']],
+      [['table', 'move', 'Task', 'Lab'], ['weave_move_table', { db: 'Task', space: 'Lab' }], ['POST', '/api/tables/Task/move', { space: 'Lab' }]],
+      [['table', 'delete', 'Task'], ['weave_delete_table', { db: 'Task' }], ['DELETE', '/api/tables/Task']],
+      [['table', 'restore', 'Lab/Task'], ['weave_restore_table', { db: 'Lab/Task' }], ['POST', '/api/tables/Lab%2FTask/restore']],
+      [['space', 'delete', 'Lab'], ['weave_delete_space', { space: 'Lab' }], ['DELETE', '/api/spaces/Lab']],
+      [['space', 'restore', 'Lab'], ['weave_restore_space', { space: 'Lab' }], ['POST', '/api/spaces/Lab/restore']],
+    ];
+    for (const [c, [tool, args], [method, path, body]] of steps) {
+      const fromHttp = strip2(await http(method, path, body));
+      assert.deepEqual(strip2(mcp(tool, args)), fromHttp, `${tool} and ${method} ${path} answer alike`);
+      assert.deepEqual(strip2(cli(c)), fromHttp, `weave ${c.slice(0, 2).join(' ')} and ${method} ${path} answer alike`);
+    }
+    const res = await fetch(`${base}/api/tables/Lab%2FTask/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(res.status, 400, 'a move with no space is still refused');
+    assert.match((await res.json()).error, /space is required/);
   } finally { server.close(); }
 });

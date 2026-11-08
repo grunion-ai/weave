@@ -203,20 +203,8 @@ export const TOOLS = [
     description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
   },
-  {
-    name: 'weave_create_space',
-    description: 'Create a space (top-level grouping of tables).',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' } }, required: ['name'] },
-  },
-  {
-    name: 'weave_create_table',
-    description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
-    inputSchema: {
-      type: 'object',
-      properties: { space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' } },
-      required: ['space', 'name'],
-    },
-  },
+  toolDefinition('weave_create_space'),
+  toolDefinition('weave_create_table'),
   toolDefinition('weave_add_field'),
   toolDefinition('weave_check_formula'),
   toolDefinition('weave_add_relation'),
@@ -253,21 +241,7 @@ export const TOOLS = [
     description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
     inputSchema: { type: 'object', properties: { sections: { type: 'array', items: { type: 'string' } }, section: { type: 'string' }, query: { type: 'string' } } },
   },
-  {
-    name: 'weave_update_space',
-    description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused. access: private shows the space to its members and the workspace architects only; member (with an optional role that overrides the workspace role) and removeMember manage who belongs, which takes an architect of the workspace or of the space.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        space: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, icon: { type: 'string' }, template: { type: 'boolean' }, position: { type: 'number', description: 'Its place in the sidebar: 0 is the first space' },
-        access: { type: 'string', enum: ['open', 'private'], description: 'open: every account reads it at its workspace role. private: only its members and the workspace architects see it' },
-        member: { type: 'string', description: 'An account to add as a member, or whose space role to change' },
-        role: { type: 'string', description: 'The member\'s role in this space (observer, editor or architect); it overrides the workspace role. Omit to keep the workspace role' },
-        removeMember: { type: 'string', description: 'An account to remove from the space' },
-      },
-      required: ['space'],
-    },
-  },
+  toolDefinition('weave_update_space'),
   {
     name: 'weave_template_list',
     description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon.',
@@ -282,32 +256,9 @@ export const TOOLS = [
       required: ['space', 'workspace'],
     },
   },
-  {
-    name: 'weave_delete_space',
-    description: 'Move a space to the trash (recoverable — its tables and records go dark with it). Pass hard: true to purge it and every table in it for good.',
-    inputSchema: { type: 'object', properties: { space: { type: 'string' }, hard: { type: 'boolean' } }, required: ['space'] },
-  },
-  {
-    name: 'weave_restore_space',
-    description: 'Restore a trashed space; its tables and records come back with it.',
-    inputSchema: { type: 'object', properties: { space: { type: 'string' } }, required: ['space'] },
-  },
-  {
-    name: 'weave_update_table',
-    description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one record is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        db: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
-        icon: { type: 'string' }, noun: { type: 'string' },
-        systemFields: { type: 'array', items: { type: 'string' } },
-        fieldOrder: { type: 'array', items: { type: 'string' } },
-        hideRollups: { type: 'boolean' },
-        position: { type: 'number', description: 'Its place inside its space: 0 is the first table' },
-      },
-      required: ['db'],
-    },
-  },
+  toolDefinition('weave_delete_space'),
+  toolDefinition('weave_restore_space'),
+  toolDefinition('weave_update_table'),
   {
     name: 'weave_table_view',
     description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. collapsed: paths. hideEmpty: no empty groups. order: #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
@@ -323,26 +274,10 @@ export const TOOLS = [
       required: ['view'],
     },
   },
-  {
-    name: 'weave_move_table',
-    description: 'Move a table into another space. Only its home changes — every record, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, space: { type: 'string' }, position: { type: 'number' } }, required: ['db', 'space'] },
-  },
-  {
-    name: 'weave_duplicate_table',
-    description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Records are not copied — the copy starts empty.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
-  },
-  {
-    name: 'weave_delete_table',
-    description: 'Move a table to the trash (recoverable — its records go dark with it). Pass hard: true to purge table and records for good.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, hard: { type: 'boolean' } }, required: ['db'] },
-  },
-  {
-    name: 'weave_restore_table',
-    description: 'Restore a table out of the trash: the table, its records and their relations come back exactly as they were.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
-  },
+  toolDefinition('weave_move_table'),
+  toolDefinition('weave_duplicate_table'),
+  toolDefinition('weave_delete_table'),
+  toolDefinition('weave_restore_table'),
   toolDefinition('weave_update_field'),
   toolDefinition('weave_rollback_field'),
   toolDefinition('weave_delete_field'),
@@ -783,10 +718,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
-    case 'weave_create_space':
-      return guided(weave, 'space', weave.createSpace(pick(args, ['name', 'description', 'icon', 'template'])));
-    case 'weave_create_table':
-      return guided(weave, 'table', weave.createTable(pick(args, ['space', 'name', 'description', 'icon'])));
     case 'weave_create_automation':
       return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions, enabled: args.enabled });
     case 'weave_export_csv':
@@ -804,13 +735,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     }
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
-    case 'weave_update_space': {
-      if (args.member != null) weave.setSpaceMember(args.space, args.member, { role: args.role ?? null });
-      if (args.removeMember != null) weave.removeSpaceMember(args.space, args.removeMember);
-      const patch = pick(args, ['name', 'description', 'icon', 'template', 'position', 'access']);
-      const sp = Object.keys(patch).length ? weave.updateSpace(args.space, patch) : weave.getSpace(args.space);
-      return { ...sp, members: weave.spaceMembers(sp.id) };
-    }
     case 'weave_template_list':
       return { templates: weave.listTemplates() };
     case 'weave_template_use':
@@ -818,26 +742,10 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
       }
       return caller.useTemplate({ space: args.space, workspace: args.workspace, name: args.name });
-    case 'weave_delete_space':
-      weave.deleteSpace(args.space, { hard: Boolean(args.hard) });
-      return { space: args.space, deleted: true, hard: Boolean(args.hard) };
-    case 'weave_restore_space':
-      return weave.restoreSpace(args.space);
-    case 'weave_update_table':
-      return weave.updateTable(args.db, pick(args, ['name', 'description', 'icon', 'noun', 'hiddenFields', 'systemFields', 'fieldOrder', 'hideRollups', 'position']));
     case 'weave_table_view': {
       const { view, ...patch } = args;
       return weave.tableView(view, Object.keys(patch).length ? patch : null);
     }
-    case 'weave_move_table':
-      return weave.moveTable(args.db, args.space, { position: args.position ?? null });
-    case 'weave_duplicate_table':
-      return weave.duplicateTable(args.db);
-    case 'weave_delete_table':
-      weave.deleteTable(args.db, { hard: Boolean(args.hard) });
-      return { table: args.db, deleted: true, hard: Boolean(args.hard) };
-    case 'weave_restore_table':
-      return weave.restoreTable(args.db);
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {
