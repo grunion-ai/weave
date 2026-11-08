@@ -10,7 +10,7 @@ const s = await launch('activity in two places', (weave) => {
   table = weave.createTable({ space: 'Dev', name: 'Issue' });
   weave.addField(table, { name: 'Spec', type: 'document' });
   weave.addField(table, { name: 'Priority', type: 'select', config: { options: ['P1', 'P2'] } });
-  weave.updateTable(table, { systemFields: ['Created At'] });
+  weave.updateTable(table, { systemFields: ['Created At'], referencePanels: ['References', 'Referenced by'] });
   cited = weave.createEntity(table, { name: 'Cited', doc: 'nothing yet' });
   row = weave.createEntity(table, { name: 'Two places', doc: 'first draft', values: { Priority: 'P2' } });
   weave.setDoc(row.id, 'second draft, after [[Issue#1]]', 'Description');

@@ -152,3 +152,13 @@ test('a workspace written under the old default reads without a rewrite', () => 
   assert.equal(w4.getTable('Task').hideRollups, undefined, 'nothing to rewrite');
   assert.equal(tval(w4, tableRowOf(w4, 'Task'), 'Hide Rollups'), true, 'and it reads hidden');
 });
+
+test('export/import and duplicate carry referencePanels (Issue #1479)', () => {
+  const w = fresh();
+  w.updateTable('Task', { referencePanels: ['Referenced by'] });
+  const w2 = new Weave();
+  w2.importJSON(JSON.parse(JSON.stringify(w.exportJSON())));
+  assert.deepEqual(w2.getTable('Task').referencePanels, ['Referenced by'], 'survives the interchange layer');
+  const copy = w.duplicateTable('Task');
+  assert.deepEqual(w.getTable(copy.id).referencePanels, ['Referenced by'], 'a duplicate shows the same panels');
+});

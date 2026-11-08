@@ -6344,7 +6344,9 @@ function eyeGesture(hold) {
   let done = false;
   return () => { if (done) return; done = true; eyeGestures--; hold(); };
 }
-function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false } = {}) {
+const REFERENCE_PANELS = ['References', 'Referenced by'];
+const showsRefPanel = (db, name) => (db?.referencePanels ?? []).includes(name);
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false, refPanels = false } = {}) {
   let pop;
   const home = mount ? $('#main') : anchor.closest('#main, #dock');
   const raw = () => allTables().find((d) => d.id === db.id) ?? db;
@@ -6484,7 +6486,13 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     if (deleted) deleted.checked = showsDeleted(t);
     const rollups = pop.querySelector('[data-rollups] input');
     if (rollups) rollups.checked = showsRollups(t);
+    for (const box of pop.querySelectorAll('[data-ref-panel]')) box.querySelector('input').checked = showsRefPanel(t, box.dataset.refPanel);
   };
+  const flipRefPanel = (name) => write((t) => {
+    const on = new Set(t.referencePanels ?? []);
+    if (on.has(name)) on.delete(name); else on.add(name);
+    return { table: { referencePanels: REFERENCE_PANELS.filter((n) => on.has(n)) } };
+  });
   const shown = shownOf(liveTable());
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
     el('div', { class: 'field-visibility-actions' },
@@ -6493,6 +6501,9 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     el('div', { class: 'table-field-legend' }, 'Show / hide', el('span', {}, 'Drag to reorder')),
     el('div', { class: 'table-field-list' }, ...order.map((n) => makeRow(n, shown.has(n)))),
     el('hr'), el('button', { class: 'chip-pop-row fields-add', type: 'button', onclick: () => { if (!mount) pop?.remove(); addFieldDialog(db); } }, lucideEl('plus'), 'New field'),
+    ...(refPanels ? [el('div', { class: 'table-field-foot' },
+      el('div', { class: 'eye-head' }, 'Reference panels'),
+      ...REFERENCE_PANELS.map((name) => el('div', { class: 'table-field-line' }, gap(), checkRow(showsRefPanel(db, name), name, () => flipRefPanel(name), { refPanel: name }))))] : []),
     ...(rowsSection ? [el('div', { class: 'table-field-foot' },
       el('div', { class: 'eye-head' }, 'Rows'),
       el('div', { class: 'table-field-line' }, gap(), checkRow(showsDeleted(db), `Deleted ${db.term.plural}${trashCount ? ` (${trashCount})` : ''}`, () => write((t) => ({ deleted: !showsDeleted(t) })), { deleted: '' })),
@@ -10486,7 +10497,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, mount),
   }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
-  eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false }); });
+  eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false, refPanels: true }); });
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',
@@ -10530,7 +10541,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
-  const openSide = () => grid.classList.toggle('side-open', refsOut.length > 0 || refsIn.length > 0);
+  const openSide = () => grid.classList.toggle('side-open', (showsRefPanel(db, 'References') && refsOut.length > 0) || (showsRefPanel(db, 'Referenced by') && refsIn.length > 0));
   openSide();
   mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
@@ -10928,8 +10939,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   };
   const drawRefs = () => {
     openSide();
-    refCard('References', 'ref-outbound-card', refsOut);
-    refCard('Referenced by', 'ref-inbound-card', refsIn);
+    if (showsRefPanel(db, 'References')) refCard('References', 'ref-outbound-card', refsOut);
+    if (showsRefPanel(db, 'Referenced by')) refCard('Referenced by', 'ref-inbound-card', refsIn);
   };
   drawRefs();
   activityPanel.mounted(id, mount);

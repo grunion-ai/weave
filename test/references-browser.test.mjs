@@ -2,16 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let target, issue, loner, mixed, aside;
+let target, issue, loner, mixed, aside, quiet;
 
 const s = await launch('reference panels', (weave) => {
   weave.createSpace({ name: 'Dev' });
   weave.createTable({ space: 'Dev', name: 'Task' });
   weave.createTable({ space: 'Dev', name: 'Issue' });
+  weave.createTable({ space: 'Dev', name: 'Note' });
+  for (const t of ['Task', 'Issue']) weave.updateTable(t, { referencePanels: ['References', 'Referenced by'] });
   target = weave.createEntity('Task', { name: 'Ship the editor' });
   issue = weave.createEntity('Issue', { name: 'Editor loses focus', doc: 'blocks [[Task#1]] until fixed' });
   loner = weave.createEntity('Issue', { name: 'Nobody mentions me' });
   aside = weave.createEntity('Task', { name: 'Aside' });
+  quiet = weave.createEntity('Note', { name: 'Quiet note', doc: `see [[Task#${aside.publicId}]]` });
   mixed = weave.createEntity('Issue', {
     name: 'Points across workspaces',
     doc: [
@@ -101,6 +104,32 @@ if (s) {
     await page.waitForSelector('.entity-grid:not(.side-open)');
     assert.equal(await page.$('.ref-backlinks-card'), null, 'no empty reference panel');
     assert.equal(await page.isVisible('.entity-side'), false, 'the side column is gone, not blank');
+    await page.close();
+  });
+
+  test('a table that never turned the panels on draws no reference card and keeps the side column closed (Issue #1479)', async () => {
+    const page = await open(quiet.id);
+    await page.waitForSelector('.entity-grid:not(.side-open)');
+    assert.equal(await page.$('.ref-backlinks-card'), null, 'the record has a reference, but no card draws for it');
+    assert.equal(await page.isVisible('.entity-side'), false, 'and the side column stays shut');
+    await page.close();
+  });
+
+  test('References turns on in the record eye, shows its count and survives a reload (Issue #1479)', async () => {
+    const page = await open(quiet.id);
+    const panelBox = (name) => `.chip-pop [data-ref-panel="${name}"] input`;
+    await page.click('#main .eye-btn');
+    await page.waitForSelector(panelBox('References'));
+    assert.equal(await page.isChecked(panelBox('References')), false, 'off by default');
+    assert.equal(await page.isChecked(panelBox('Referenced by')), false, 'both of them');
+    await page.click(panelBox('References'));
+    await card(page, '.ref-outbound-card');
+    assert.deepEqual(await panelTitles(page), ['References · 1']);
+    assert.ok(await page.$eval('.entity-grid', (g) => g.classList.contains('side-open')), 'the side column opens for it');
+    assert.deepEqual(weave.findTable('Note').referencePanels, ['References'], 'stored on the table, like field visibility');
+    await page.reload({ waitUntil: 'load' });
+    await card(page, '.ref-outbound-card');
+    assert.deepEqual(await panelTitles(page), ['References · 1'], 'the choice survives a reload');
     await page.close();
   });
 

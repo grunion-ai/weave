@@ -6,6 +6,7 @@ const s = await launch('reference panel fold', (weave) => {
   weave.createSpace({ name: 'Dev' });
   weave.createTable({ space: 'Dev', name: 'Task' });
   weave.createTable({ space: 'Dev', name: 'Issue' });
+  for (const t of ['Task', 'Issue']) weave.updateTable(t, { referencePanels: ['References', 'Referenced by'] });
   target = weave.createEntity('Task', { name: 'Ship the editor' });
   issue = weave.createEntity('Issue', { name: 'Editor loses focus', doc: 'blocks [[Task#1]] until fixed' });
   sibling = weave.createEntity('Issue', { name: 'Editor drops paste', doc: 'also blocks [[Task#1]]' });
