@@ -9,7 +9,7 @@ import '../public/list-core.js';
 import '../public/view-pane-core.js';
 import '../public/board-core.js';
 import '../public/phone-row.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
@@ -17,7 +17,7 @@ import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
-import { Store, WeaveError } from './store.js';
+import { Store, WeaveError, writeFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
@@ -1666,10 +1666,7 @@ export class Weave {
         const path = this.#blobPath(id);
         if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
         if (existsSync(path)) continue;
-        mkdirSync(dirname(path), { recursive: true });
-        const temporary = `${path}.${uuid()}.tmp`;
-        try { writeFileSync(temporary, bytes, { flush: true }); renameSync(temporary, path); }
-        finally { rmSync(temporary, { force: true }); }
+        writeFileDurable(path, bytes);
       }
       this.store.batch(() => {
         if (pending) {
@@ -9587,8 +9584,7 @@ export class Weave {
   #writeBlob(id, buf) {
     const p = this.#blobPath(id);
     if (p) {
-      mkdirSync(dirname(p), { recursive: true });
-      writeFileSync(p, buf);
+      writeFileDurable(p, buf);
       return;
     }
     this.state.fileBlobs = this.state.fileBlobs ?? {};

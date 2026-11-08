@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants, writeFileSync, renameSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { uuid } from './ids.js';
 
 let DatabaseSync = null;
 try {
@@ -10,6 +11,17 @@ export class WeaveError extends Error {
   constructor(message, code = 'weave-error') {
     super(message);
     this.code = code;
+  }
+}
+
+export function writeFileDurable(path, bytes, options = {}) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${uuid()}.tmp`;
+  try {
+    writeFileSync(temporary, bytes, { ...options, flush: true });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
   }
 }
 
