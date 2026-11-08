@@ -1,1 +1,0 @@
-- On a phone record page the URL field's link is a 44 px tall tap target and its edit pen a 44 px box, in line with the rest of the phone UI. The pen's icon keeps its 14 px size (Issue #1168).
