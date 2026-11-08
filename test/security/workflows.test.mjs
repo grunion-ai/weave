@@ -145,3 +145,23 @@ test('no workflow names the floating ubuntu-latest runner, so an Ubuntu bump is 
   }
   assert.deepEqual(floating, [], 'pin the runner by name, as every gating job already does');
 });
+
+test('every workflow download of a release asset retries a transient failure and cannot hang', () => {
+  const downloads = [];
+  for (const f of files) {
+    for (const [i, line] of text(f).split('\n').entries()) {
+      if (!/\/releases\/download\//.test(line)) continue;
+      const at = `${f}:${i + 1}`;
+      if (!/\bcurl\b/.test(line)) {
+        downloads.push(`${at} the whole curl on one line, where this test can read its flags`);
+        continue;
+      }
+      const retry = line.match(/--retry\s+(\d+)/);
+      if (!retry || Number(retry[1]) < 3) downloads.push(`${at} --retry 3 or more`);
+      if (!/--retry-all-errors\b/.test(line)) downloads.push(`${at} --retry-all-errors`);
+      if (!/--retry-delay\s+\d+/.test(line)) downloads.push(`${at} --retry-delay`);
+      if (!/--max-time\s+\d+/.test(line)) downloads.push(`${at} --max-time`);
+    }
+  }
+  assert.deepEqual(downloads, [], 'one 504 from the release-asset CDN fails a required check (Issue #1419)');
+});
