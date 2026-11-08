@@ -2213,9 +2213,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, result);
         }
         if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
-          const { meta, bytes } = weave.readFile(m[1], { preview: rx.searchParams?.has('preview') ?? false });
+          const preview = rx.searchParams?.has('preview') ?? false;
           const view = rx.searchParams?.has('view') ?? false;
-          if (!view || !isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
+          const known = weave.readFileMeta(m[1]);
+          if (!view || !isHtmlFile(known)) {
+            const etag = `"${m[1]}${preview ? '-preview' : ''}"`;
+            const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
+            if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
+            const { meta, bytes } = weave.readFile(m[1], { preview });
+            return out(200, bytes, { ...fileHeaders(meta, bytes, { view }), ...cache });
+          }
+          const { meta, bytes } = weave.readFile(m[1], { preview });
+          if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
           const page = viewHtml(bytes, frameStorageScript(weave.readFileStorage(m[1]).items) + FRAME_HEIGHT_SCRIPT);
           return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
         }

@@ -531,7 +531,7 @@ export const ONTOLOGY = {
       key: 'file', name: 'File', storedIn: 'entity.files',
       definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields. An HTML file also keeps its page storage (Issue #1176): the localStorage its page writes while weave shows it, held in the store\'s file_storage table beside the file and never written into the file\'s bytes.',
       identity: 'uuid; the blob is files/<id> next to the workspace',
-      api: ['attachFile', 'attachToField', 'readFile', 'deleteFile', 'readFileStorage', 'writeFileStorage'],
+      api: ['attachFile', 'attachToField', 'readFile', 'readFileMeta', 'deleteFile', 'readFileStorage', 'writeFileStorage'],
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
@@ -9856,17 +9856,21 @@ export class Weave {
     return file;
   }
 
-  readFile(fileId, { preview = false } = {}) {
+  readFileMeta(fileId) {
     for (const e of Object.values(this.state.entities)) {
       const meta = e.files.find((f) => f.id === fileId);
-      if (!meta || this.#rowHidden(e)) continue;
-      const small = preview && meta.preview && this.#readBlob(meta.preview.id);
-      if (small) return { meta: { ...meta.preview, name: meta.name }, bytes: small };
-      const bytes = this.#readBlob(fileId);
-      if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
-      return { meta, bytes };
+      if (meta && !this.#rowHidden(e)) return meta;
     }
     throw new WeaveError(`File '${fileId}' not found`, 'not-found');
+  }
+
+  readFile(fileId, { preview = false } = {}) {
+    const meta = this.readFileMeta(fileId);
+    const small = preview && meta.preview && this.#readBlob(meta.preview.id);
+    if (small) return { meta: { ...meta.preview, name: meta.name }, bytes: small };
+    const bytes = this.#readBlob(fileId);
+    if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
+    return { meta, bytes };
   }
 
   #fileMeta(fileId) {
