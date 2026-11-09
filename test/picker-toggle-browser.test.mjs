@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let sprints;
 const s = await launch('picker toggle', (weave) => {
@@ -104,7 +104,7 @@ if (s) {
       await pop.waitFor();
       await pop.locator('.date-day.in', { hasText: /^20$/ }).click();
       await page.waitForFunction(() => !document.querySelector('.date-pop'));
-      assert.equal(weave.readEntity(id).raw.Due, '2026-09-20', 'the pick landed');
+      assert.equal(await eventually(() => weave.readEntity(id).raw.Due, '2026-09-20'), '2026-09-20', 'the pick landed');
       await trigger(page, 'Due', '.date-pick-btn').click();
       await page.waitForSelector('.date-pop');
     } finally { await page.close(); }
@@ -120,7 +120,7 @@ if (s) {
       await trigger(page, 'Tags', '.ms-box').click();
       await page.waitForFunction(() => !document.querySelector('.chip-pop'));
       await page.waitForFunction(() => document.querySelector('.entity-fields .ms-box')?.textContent.includes('bug'));
-      assert.deepEqual(weave.readEntity(id).raw.Tags, ['bug'], 'the staged tag was written');
+      assert.deepEqual(await eventually(() => weave.readEntity(id).raw.Tags, ['bug']), ['bug'], 'the staged tag was written');
       await settle(page);
       assert.equal(await count(page, '.chip-pop'), 0, 'and the picker stayed closed');
     } finally { await page.close(); }
