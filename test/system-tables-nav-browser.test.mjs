@@ -126,12 +126,12 @@ if (s) {
     assert.ok(spaces.includes('Work'), 'user spaces stay in the sidebar');
     assert.ok(!spaces.includes('System') && !spaces.includes('Workspace'), 'the registry space is not a scrolling sidebar space');
     const listed = await page.locator('#nav .nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
-    for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms']) {
+    for (const name of ['Spaces', 'Tables', 'Fields', 'Views', 'Workspaces', 'Forms', 'Failed Deliveries']) {
       assert.ok(!listed.includes(name), `${name} is not a sidebar row`);
     }
     const registry = await page.locator('#main .system-tables .list-row[data-registry]').evaluateAll((rows) => rows.map((r) => [r.dataset.registry, r.dataset.href]));
     const spacesId = registry.find(([kind]) => kind === 'spaces')?.[1];
-    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['fields', 'forms', 'integrations', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
+    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['deliveries', 'fields', 'forms', 'integrations', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
       'the workspace page lists every registry table');
     assert.match(spacesId ?? '', /^#\/table\//);
     await page.click('#main .system-tables .list-row[data-registry="spaces"]');

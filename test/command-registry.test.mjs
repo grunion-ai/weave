@@ -233,7 +233,9 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
       const body = bodies[c.name] ?? {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
-      if (c.writes === 'schema') {
+      if (c.name === 'automation.replay') {
+        assert.deepEqual([res.status, json.code], [404, 'not-found'], `${c.http.method} ${c.http.path} writes no schema and looks the record up`);
+      } else if (c.writes === 'schema') {
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
         assert.equal(json.error, 'This token cannot change the schema');
       } else {
@@ -310,7 +312,7 @@ test('the automation family answers the same on CLI, MCP and HTTP, and a miss na
     assert.equal(again.status, 404, 'deleting a deleted automation over HTTP is a 404');
     assert.deepEqual(await again.json(), { error: `No automation '${made.http.id}'`, code: 'not-found' });
     assert.deepEqual(d.mcp('weave_automations', { action: 'delete', automation: made.mcp.id }), { id: made.mcp.id, deleted: false }, 'MCP answers deleted: false');
-    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete)");
+    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete, replay)");
     const miss = d.run(['automation', 'run']);
     assert.notEqual(miss.status, 0);
     assert.match(miss.stderr, /Unknown automation subcommand 'run'\. Try: create, list, describe, update, delete/);

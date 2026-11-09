@@ -22,7 +22,7 @@ import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
-import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason } from './delivery.js';
+import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText } from './delivery.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
@@ -5367,6 +5367,16 @@ export class Weave {
       for (const v of wfT.tableViews ?? []) if (v.fields.includes(on.id)) lead(v.fields);
       this.save();
     }
+    const deliveriesT = this.#sysTable('deliveries') ?? mkTable('Failed Deliveries', 'deliveries', DELIVERIES_DESCRIPTION);
+    if (!this.#sysField(deliveriesT, 'Status')) this.addField(deliveriesT.id, { name: 'Status', type: 'select', config: { options: DELIVERY_STATUSES } }).system = true;
+    if (!this.#sysField(deliveriesT, 'Workflow')) {
+      const { field, inverse } = this.addRelation(deliveriesT.id, { name: 'Workflow', targetDb: wfT.id, cardinality: 'many-to-one', inverseName: 'Failed Deliveries' });
+      field.system = true;
+      inverse.system = true;
+    }
+    for (const [n, type, config] of [['Record', 'text'], ['Request', 'document', { kind: 'code' }], ['Attempts', 'document', { kind: 'code' }], ['Last Error', 'text'], ['Last Attempt', 'date', { time: true }]]) {
+      if (!this.#sysField(deliveriesT, n)) this.addField(deliveriesT.id, { name: n, type, ...(config ? { config } : {}) }).system = true;
+    }
     const usersT = this.#sysTable('users')
       ?? mkTable('Users', 'users', 'Every account and pending invite in this workspace, as a record. A record with an Email invites that person at its Role; a record with Kind Agent and no Email makes an agent account and shows its token once. Editing Role or Name changes the account; deleting the record revokes the invite or deletes the account.');
     for (const [n, type, config] of USER_COLUMNS) {
@@ -5376,7 +5386,7 @@ export class Weave {
       ?? mkTable('Workspaces', 'workspaces', 'This workspace as a record. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as records.');
     const integrationsT = this.#sysTable('integrations') ?? mkTable('Integrations', 'integrations', INTEGRATIONS_DESCRIPTION);
     ensureIntegrationColumns(this, integrationsT);
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations']]) {
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations'], [deliveriesT, 'Failed Deliveries']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -5959,6 +5969,7 @@ export class Weave {
     if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
     if (db.system === 'users') return this.#updateUserRow(e, db, valuesByName);
     if (db.system === 'integrations') return this.#updateIntegrationRow(e, db, valuesByName);
+    if (db.system === 'deliveries') return this.#updateDeliveryRow(e, db, valuesByName);
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
     const patch = { ...valuesByName };
     if ('Workspace' in patch) {
@@ -9662,6 +9673,7 @@ export class Weave {
     const job = this.#send(request).then(
       (answer) => {
         this.#dropDelivery(request.delivery);
+        if (request.deadLetter) this.#letterLanded(request, answer);
         run.db = own(this.state.tables, run.db.id) ?? run.db;
         unrestricted(() => this.#stepRun(run, r, i, answer));
       },
@@ -9715,21 +9727,111 @@ export class Weave {
     this.#dropDelivery(request.delivery);
     if (!err?.retryable || attempts.length >= cap) {
       run.failed = true;
+      if (request.deadLetter || err?.retryable) this.#deadLetter(run, r, request, attempts);
       this.#finishRun(run, err?.retryable ? exhaustedReason(err.message, attempts.length) : attempts.at(-1).error);
       return;
     }
     const next = new Date(now.getTime() + retryDelayMs(attempts.length));
     const reason = waitingReason(err.message, attempts.length, cap, next);
-    const snapshot = JSON.parse(JSON.stringify({
-      workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => e.id), event: run.event, depth: run.depth, at: run.at, r, i,
-      ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs }),
-      request: { ...request, attempts },
-    }));
-    (this.state.meta.deliveries ??= []).push({ ...snapshot, next: next.toISOString(), reason });
+    (this.state.meta.deliveries ??= []).push({ ...this.#runSnapshot(run, r, i, { ...request, attempts }), next: next.toISOString(), reason });
     const row = own(reg.state.entities, run.rule.row.id);
     if (row && !row.deletedAt) reg.#stampRun(row, null, run.at, reason);
     this.save();
     if (reg !== this) reg.save();
+  }
+
+  #runSnapshot(run, r, i, request) {
+    return JSON.parse(JSON.stringify({
+      workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => e.id), event: run.event, depth: run.depth, at: run.at, r, i,
+      ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs }),
+      request,
+    }));
+  }
+
+  #deadLetter(run, r, request, attempts) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('deliveries');
+    if (!t) return;
+    const F = (n) => reg.#sysField(t, n);
+    const last = attempts.at(-1);
+    const existing = request.deadLetter ? own(reg.state.entities, request.deadLetter) : null;
+    if (existing && !existing.deletedAt) {
+      const all = [...(existing.delivery?.request?.attempts ?? []), ...attempts];
+      reg.#stamp(existing, () => {
+        reg.#setOption(existing, F('Status'), 'Failed');
+        existing.values[F('Last Error').id] = last.error;
+        existing.values[F('Last Attempt').id] = last.at;
+        existing.docs = { ...(existing.docs ?? {}), [F('Attempts').id]: attemptsText(all) };
+        existing.delivery = { ...existing.delivery, request: { ...existing.delivery.request, attempts: all } };
+      });
+      return;
+    }
+    const e = this.#liveRow(run.ran[r]?.e ?? run.rows[r]);
+    const { deadLetter, ...kept } = request;
+    const made = reg.#metaSync(() => reg.createEntity(t.id, {
+      name: deliveryName(request),
+      values: {
+        Status: 'Failed', Workflow: run.rule.row.id, 'Last Error': last.error, 'Last Attempt': last.at,
+        Record: `${this.qualifiedName(run.db)} #${e.publicId} ${this.entityName(e)}`,
+        ...(reg.#sysRow('workspaces', this.state.meta.id) ? { Workspace: reg.#sysRow('workspaces', this.state.meta.id).id } : {}),
+      },
+      docs: { Request: requestText(request), Attempts: attemptsText(attempts) },
+    }));
+    const row = own(reg.state.entities, made.id);
+    reg.#stamp(row, () => { row.delivery = this.#runSnapshot(run, r, run.ran[r]?.outs.length ?? 0, { ...kept, attempts }); });
+  }
+
+  #letterLanded(request, answer) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('deliveries');
+    const row = own(reg.state.entities, request.deadLetter);
+    if (!t || !row || row.deletedAt) return;
+    const F = (n) => reg.#sysField(t, n);
+    const at = this.now().toISOString();
+    const all = [...(row.delivery?.request?.attempts ?? []), ...(request.attempts ?? []), { at, status: answer.status, error: `HTTP ${answer.status}, delivered` }];
+    reg.#stamp(row, () => {
+      reg.#setOption(row, F('Status'), 'Delivered');
+      row.values[F('Last Attempt').id] = at;
+      row.docs = { ...(row.docs ?? {}), [F('Attempts').id]: attemptsText(all) };
+      row.delivery = { ...row.delivery, request: { ...row.delivery.request, attempts: all } };
+    });
+    reg.save();
+  }
+
+  replayDelivery(ref) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('deliveries');
+    const row = t && (own(reg.state.entities, ref) ?? reg.findEntity(t.id, ref));
+    if (!row || row.dbId !== t.id || row.deletedAt) throw new WeaveError(`No failed delivery '${ref}'`, 'not-found');
+    const name = reg.entityName(row);
+    const statusF = reg.#sysField(t, 'Status');
+    const status = statusF.config.options.find((o) => o.id === row.values[statusF.id])?.name ?? null;
+    if (status === 'Delivered') throw new WeaveError(`The delivery '${name}' was already delivered`, 'invalid');
+    const d = row.delivery;
+    if (!d?.request) throw new WeaveError(`The delivery '${name}' holds no stored request to send`, 'invalid');
+    const rule = reg.#allRules().find((x) => x.row.id === d.workflow);
+    const owner = rule?.owner;
+    const run = owner?.#reviveRun(d);
+    if (!run) throw new WeaveError(`The workflow behind the delivery '${name}' is gone or no longer sends this step, so it cannot be replayed`, 'invalid');
+    if (owner.#inFlight.has(d.request.delivery) || (owner.state.meta.deliveries ?? []).some((x) => x.request.delivery === d.request.delivery)) {
+      throw new WeaveError(`The delivery '${name}' is being sent already`, 'conflict');
+    }
+    reg.#stamp(row, () => reg.#setOption(row, statusF, 'Replay'));
+    reg.save();
+    owner.#awaitStep(run, d.r, d.i, { ...d.request, attempts: [], deadLetter: row.id });
+    return { id: row.id, publicId: row.publicId, name, status: 'Replay' };
+  }
+
+  #updateDeliveryRow(e, db, valuesByName) {
+    const statusF = this.#sysField(db, 'Status');
+    const key = Object.keys(valuesByName).find((k) => this.findField(db, k)?.id === statusF.id);
+    if (key === undefined) return undefined;
+    const want = statusF.config.options.find((o) => o.id === valuesByName[key] || o.name.toLowerCase() === String(valuesByName[key] ?? '').toLowerCase())?.name;
+    if (want !== 'Replay') throw new WeaveError('weave sets Failed and Delivered: set Status to Replay to send the delivery again', 'invalid');
+    const { [key]: _, ...rest } = valuesByName;
+    if (Object.keys(rest).length) this.#metaSync(() => this.updateEntity(e.id, rest));
+    this.replayDelivery(e.id);
+    return this.getEntity(e.id);
   }
 
   #reviveRun(d) {

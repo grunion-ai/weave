@@ -31,3 +31,25 @@ export class DeliveryError extends Error {
     this.retryable = retryable({ status, network, refused });
   }
 }
+
+export const DELIVERIES_DESCRIPTION = 'Every webhook or API call an automation could not deliver after its last retry, as a record: the rule, the record that fired it, the request it sent with any credential held by name, each attempt and the last error. Set Status to Replay to send it again; the steps after it then run.';
+
+export const DELIVERY_STATUSES = [
+  { name: 'Failed', hue: 'red' },
+  { name: 'Replay', hue: 'blue' },
+  { name: 'Delivered', hue: 'green' },
+];
+
+export function deliveryName(request) {
+  const u = new URL(request.url);
+  return `${request.method} ${u.host}${u.pathname}`;
+}
+
+export function requestText(request) {
+  const { method, url, headers, body, signWith, integration } = request;
+  return JSON.stringify({ method, url, headers, ...(body !== undefined ? { body } : {}), ...(signWith ? { signWith } : {}), ...(integration ? { integration } : {}) }, null, 2);
+}
+
+export function attemptsText(attempts) {
+  return attempts.map((a) => `${utcMinute(new Date(a.at))}  ${a.error}`).join('\n');
+}
