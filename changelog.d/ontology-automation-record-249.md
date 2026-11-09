@@ -1,1 +1,0 @@
-- **The ontology lists an automation as a record of System/Workflows** (Feature #249): `weave ontology --depth glossary` and docs/ONTOLOGY.md move Automation out of the machinery and into a new records group, with System/Workflows as its registry. Gate: `test/ontology.test.mjs`.

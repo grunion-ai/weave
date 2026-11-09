@@ -1,1 +1,0 @@
-- Audit and activity run from the command registry on every door: `weave audit`, `weave activity [id]`, `weave_audit`, `weave_activity`, `GET /api/audit` and `GET /api/activity[/<id>]` dispatch from one entry each, and every door keeps its own default page (Feature #179).
