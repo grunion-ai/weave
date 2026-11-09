@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let rows, ids, people;
 const s = await launch('grid ranges', (weave) => {
@@ -361,7 +361,7 @@ if (s) {
       assert.equal(value(3, 'Note'), 'n3', 'and nothing was written until the cell commits');
       await page.keyboard.press('Enter');
       await page.waitForFunction(([id]) => !document.querySelector('#main tbody[data-mark]') && document.querySelector(`tr[data-eid="${id}"] td[data-field="Note"] .text-dressed`)?.textContent === 'typed', [s.ids[3]]);
-      assert.equal(value(3, 'Note'), 'typed');
+      assert.equal(await eventually(() => value(3, 'Note'), 'typed'), 'typed');
     } finally { await ctx.close(); reset(); }
   });
 

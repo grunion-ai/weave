@@ -12,6 +12,7 @@ const s = await launch('daterange', (weave) => {
   weave.addField(sprints, { name: 'Quarter', type: 'daterange', config: { grain: ['year', 'month'] } });
 });
 if (s) {
+  const landed = (page) => page.evaluate(() => window.weaveSaves.flush());
   const { base, browser, weave } = s;
   const freshSprint = (values) => weave.createEntity(sprints, { name: 'Range case', values }).id;
 
@@ -72,11 +73,12 @@ if (s) {
         assert.equal(await pop.locator('.date-smart').count(), 2, 'typed start and end inputs live inside it');
         await pop.locator('.date-smart').first().fill('2026-08-10');
         await pop.locator('.date-smart').first().press('Enter');
+        await landed(page);
         assert.equal(weave.readEntity(id).raw.Window ?? null, null, 'one end is a start, not a range');
         assert.equal(await pop.locator('.date-day.sel').count(), 1, 'the start is lit');
         assert.equal(await page.locator('.date-pop').count(), 1, 'and the dialog waits for the end');
         await pop.locator('.date-day.in', { hasText: /^14$/ }).click();
-        await page.waitForTimeout(300);
+        await landed(page);
         assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-10', end: '2026-08-14' });
         assert.equal(await page.locator('.date-pop').count(), 0, 'the second click is done: the dialog closes');
         assert.equal(await row.locator('.range-text').inputValue(), '2026-08-10 – 2026-08-14');
@@ -99,7 +101,7 @@ if (s) {
       assert.notEqual(lit, 'rgba(0, 0, 0, 0)', 'the span has a paint of its own');
       await pop.locator('.date-day.in', { hasText: /^20$/ }).click();
       await pop.locator('.date-day.in', { hasText: /^18$/ }).click();
-      await page.waitForTimeout(300);
+      await landed(page);
       assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-18', end: '2026-08-20' });
     } finally { await page.close(); }
   });
@@ -120,12 +122,12 @@ if (s) {
       assert.ok(await ends.nth(1).evaluate((n) => n === document.activeElement), 'focus moves to the end input');
       await ends.nth(1).fill('2026-09-30');
       await ends.nth(1).press('Enter');
-      await page.waitForTimeout(300);
+      await landed(page);
       assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-09-01', end: '2026-09-30' });
       assert.equal(await page.locator('.date-pop').count(), 0, 'Enter on the end is done');
       await row.locator('.date-pick-btn').click();
       await page.locator('.date-pop.range .date-pop-link', { hasText: 'Clear' }).click();
-      await page.waitForTimeout(300);
+      await landed(page);
       assert.equal(weave.readEntity(id).raw.Window ?? null, null, 'Clear empties the range');
     } finally { await page.close(); }
   });
@@ -144,6 +146,7 @@ if (s) {
       await pop.locator('.date-pick-cell', { hasText: 'Mar' }).click();
       await page.waitForTimeout(300);
       const year = new Date().getFullYear();
+      await landed(page);
       assert.deepEqual(weave.readEntity(id).raw.Quarter, { start: `${year}-01`, end: `${year}-03` });
     } finally { await page.close(); }
   });
@@ -164,7 +167,7 @@ if (s) {
       assert.equal(await row.locator('.k-range').count(), 0, 'the read-only chip is gone');
       await box.fill('2026-08-01 – 2026-08-30');
       await box.press('Enter');
-      await page.waitForTimeout(300);
+      await landed(page);
       assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-01', end: '2026-08-30' }, 'a typed range commits from the grid');
       await cell.locator('.date-pick-btn').click();
       await page.locator('.date-pop.range').waitFor();
@@ -181,12 +184,12 @@ if (s) {
 
     await box.fill('2026-08-01');
     await box.press('Enter');
-    await page.waitForTimeout(200);
+    await landed(page);
     assert.equal(weave.readEntity(id).raw.Window ?? null, null, 'one end alone is not a range');
 
     await box.fill('2026-08-01 to 2026-09-15');
     await box.press('Enter');
-    await page.waitForTimeout(300);
+    await landed(page);
     assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-01', end: '2026-09-15' });
     assert.equal(weave.readEntity(id).fields.Window, '2026-08-01 – 2026-09-15');
     await page.close();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let tasks;
 
@@ -102,14 +102,8 @@ if (s) {
       await page.keyboard.press('Enter');
       await page.keyboard.press('Enter');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
+      assert.deepEqual(await eventually(() => valueOf(id, 'Tags'), ['bug', 'feature']), ['bug', 'feature'], 'the record carries what the box held');
     } finally { await page.close(); }
-    let saved;
-    for (let i = 0; i < 20; i++) {
-      saved = valueOf(id, 'Tags');
-      if (saved?.length === 2) break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    assert.deepEqual(saved, ['bug', 'feature'], 'the record carries what the box held');
   });
 
   test('the rows are numbered and ⌥2 takes the second one', async () => {
