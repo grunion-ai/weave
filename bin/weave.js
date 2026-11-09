@@ -7,14 +7,14 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
-import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
+import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
 import { cliCommand, cliRun, cliMiss } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
-import { listForms, getForm, submitForm, leaveWorkspace, createForm, updateForm, getFormDefinition } from '../src/forms.js';
+import { listForms, getForm, submitForm, createForm, updateForm, getFormDefinition } from '../src/forms.js';
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -53,12 +53,6 @@ function numberFlag(name, fallback = null) {
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new WeaveError(`--${name} must be a number, not '${raw}'`, 'invalid');
   return value;
-}
-
-function pickFlags(names) {
-  const patch = {};
-  for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = n === 'position' ? Number(flags[n]) : flags[n];
-  return patch;
 }
 
 function resolveEntityRef(w, ref, dbFlag) {
@@ -565,47 +559,13 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), withHub: (fn) => { const hub = createWorkspaceHub(w); try { return fn(hub); } finally { for (const [, on] of hub.entries()) on.store.close?.(); } }, entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), actor: CLI_ACTOR, withHub: (fn) => { const hub = createWorkspaceHub(w); try { return fn(hub); } finally { for (const [, on] of hub.entries()) on.store.close?.(); } }, entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '' });
     return (typeof registered.cli.raw === 'function' ? registered.cli.raw(flags) : registered.cli.raw) ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
   if (miss) throw miss;
 
   switch (command) {
-    case 'account': {
-      const [sub, ref] = args;
-      if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));
-      if (sub === 'set') return out(w.setAccountRole(ref, flags.role));
-      if (sub === 'delete') return out(w.deleteAccount(ref));
-      if (sub === 'list' || !sub) return out(w.listAccounts());
-      if (sub === 'sessions') return out(w.listSessions(ref));
-      if (sub === 'revoke-session') {
-        if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
-        return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
-      }
-      if (sub === 'link' || sub === 'unlink') {
-        if (!ref) throw new WeaveError(`account ${sub} needs an account name`, 'invalid');
-        if (flags.email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): run account link <name> and send the invite link it prints', 'invalid');
-        const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
-        if (sub === 'unlink') {
-          if (!flags.subject || flags.subject === true) throw new WeaveError('account unlink needs --subject <provider subject> (account list shows it)', 'invalid');
-          return out(w.unlinkIdentity(ref, { issuer: issuer ?? null, subject: String(flags.subject) }));
-        }
-        if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
-        const made = w.linkIdentity(ref, { issuer });
-        return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-      }
-      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, set, list, delete, sessions, revoke-session, link, unlink`);
-    }
-    case 'invite': {
-      const [sub, ref] = args;
-      if (sub === 'list') return out(w.listInvites());
-      if (sub === 'revoke') return out(w.revokeInvite(ref));
-      const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
-      if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
-      const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
-      return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-    }
     case 'field': {
       const [sub, db] = args;
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
@@ -641,14 +601,6 @@ async function main() {
         return out(data);
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
-    }
-    case 'workspace': {
-      const [sub] = args;
-      if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
-      if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
-      if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
-      if (!sub) return out(w.getWorkspace());
-      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move, leave`);
     }
     case 'form': {
       const [sub, ref] = args;

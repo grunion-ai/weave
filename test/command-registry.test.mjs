@@ -24,7 +24,7 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(['schema', 'entity', 'keystore', 'none'].includes(c.writes), `${c.name} says what it writes`);
     assert.equal(typeof c.run, 'function', `${c.name} runs`);
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
-    assert.ok(c.http, `${c.name} has an HTTP door`);
+    assert.ok(c.http || c.via?.http, `${c.name} has an HTTP door or names where its route lives`);
     for (const door of ['tool', 'cli']) assert.ok(c[door] || c.via?.[door], `${c.name} has a ${door} door or names the one that carries it`);
     if (c.via?.tool) assert.ok(TOOLS.some((t) => t.name === c.via.tool), `${c.name}: ${c.via.tool} is in tools/list`);
     if (c.via?.cli) assert.ok(COMMANDS.some((x) => x.name === c.via.cli && x.cli), `${c.name}: ${c.via.cli} carries the CLI door`);
@@ -229,7 +229,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use', 'workspace.move'].includes(c.name) || c.cli?.command === 'share') continue;
+      if (!c.http || c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use', 'workspace.move'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -1082,4 +1082,56 @@ test('the workspace record, logo and order answer on CLI, MCP and HTTP, each doo
     assert.match((await none.json()).error, /position is required/);
     assert.deepEqual(d.cli(['workspace', 'link-preview']).linkPreview, true, 'the hand-written subcommands still answer');
   } finally { d.close(); }
+});
+
+test('accounts, identity links and invites answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-accounts-', { env: { WEAVE_OIDC_ISSUER: 'https://idp.example.test' } });
+  process.env.WEAVE_OIDC_ISSUER = 'https://idp.example.test';
+  try {
+    assert.equal(matchRoute('DELETE', '/api/accounts/a/identities').cmd.name, 'account.unlink');
+    assert.equal(matchRoute('DELETE', '/api/accounts/a').cmd.name, 'account.delete');
+    const made = await d.http('POST', '/api/accounts', { name: 'http-bot', role: 'architect' });
+    assert.equal(made.account.name, 'http-bot');
+    const arch = { authorization: `Bearer ${made.token}` };
+    const http = (method, path, payload) => d.http(method, path, payload, arch);
+    assert.equal(d.cli(['account', 'create', 'cli-bot']).account.name, 'cli-bot');
+    assert.equal(d.mcp('weave_accounts', { action: 'create', name: 'mcp-bot' }).account.name, 'mcp-bot');
+    const listed = await http('GET', '/api/accounts');
+    assert.ok(Array.isArray(listed) && listed.some((a) => a.name === 'http-bot'));
+    assert.ok(Array.isArray(d.cli(['account'])), 'a bare weave account lists');
+    assert.ok(Array.isArray(d.mcp('weave_accounts', { action: 'list' }).accounts), 'MCP wraps the list');
+    await http('POST', '/api/accounts', { name: 'peer', role: 'editor' });
+    assert.equal((await http('PATCH', '/api/accounts/peer', { role: 'observer' })).role, 'observer');
+    assert.equal(d.cli(['account', 'set', 'cli-bot', '--role', 'observer']).role, 'observer');
+    const unknown = d.call('weave_accounts', { action: 'nope' });
+    assert.match(unknown.content[0].text, /Unknown accounts action 'nope' \(list, create, set, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity, invite, invites, revoke-invite\)/);
+
+    const link = await http('POST', '/api/accounts/http-bot/identities', { issuer: 'https://idp.example.test' });
+    assert.match(link.url, /\/api\/auth\/oidc\/start\?invite=/);
+    assert.match(d.cli(['account', 'link', 'cli-bot', '--issuer', 'https://idp.example.test']).url, /invite=/);
+    assert.match(d.mcp('weave_accounts', { action: 'link-identity', account: 'mcp-bot' }).url, /invite=/);
+    assert.match(d.run(['account', 'link', 'cli-bot', '--email', 'a@b.c']).stderr, /weave no longer links by email/);
+    assert.match(d.run(['account', 'unlink', 'cli-bot']).stderr, /account unlink needs --subject/);
+
+    const invited = await http('POST', '/api/invites', { email: 'pat@example.test', role: 'editor', issuer: 'https://idp.example.test' });
+    assert.equal(invited.mailed, false);
+    assert.match(invited.url, /invite=/);
+    assert.match(d.cli(['invite', 'sam@example.test', '--issuer', 'https://idp.example.test']).url, /invite=/);
+    assert.match(d.mcp('weave_accounts', { action: 'invite', email: 'lee@example.test' }).url, /invite=/);
+    const pending = await http('GET', '/api/invites');
+    assert.equal(pending.length >= 1, true);
+    assert.deepEqual(d.cli(['invite', 'list']).map((i) => i.email), ['sam@example.test'], 'invite list answers the bare list');
+    assert.ok(Array.isArray(d.mcp('weave_accounts', { action: 'invites' }).invites));
+    assert.ok((await http('DELETE', `/api/invites/${encodeURIComponent(invited.id)}`)).revoked);
+
+    assert.deepEqual(d.mcp('weave_accounts', { action: 'sessions', account: 'mcp-bot' }), { sessions: [] });
+    assert.deepEqual(d.cli(['account', 'sessions', 'cli-bot']), []);
+    assert.match(d.run(['account', 'revoke-session', 'cli-bot']).stderr, /account revoke-session needs --all or --id/);
+    assert.equal(await http('DELETE', '/api/accounts/peer').then((r) => typeof r), 'object');
+    assert.equal(d.cli(['workspace', 'require-auth', '--off']), false, 'require-auth off answers false');
+    assert.equal(d.mcp('weave_accounts', { action: 'require-auth', on: false }), false);
+    assert.equal(d.cli(['workspace', 'link-preview']).linkPreview, true);
+    assert.equal(d.cli(['workspace']).name.length > 0, true, 'a bare weave workspace reads');
+    assert.match(d.run(['workspace', 'nope']).stderr, /Unknown workspace subcommand 'nope'/);
+  } finally { delete process.env.WEAVE_OIDC_ISSUER; d.close(); }
 });
