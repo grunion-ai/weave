@@ -7166,7 +7166,8 @@ export class Weave {
     return String(e.values[db.nameFieldId] ?? '');
   }
 
-  createEntity(dbRef, input = {}, { depth = 0 } = {}) {
+  createEntity(dbRef, input = {}, { depth = 0, viewerZone = null } = {}) {
+    if (viewerZone != null) return this.#inViewerZone(viewerZone, () => this.createEntity(dbRef, input, { depth }));
     this.#mayWriteTable(dbRef);
     const db = this.getTable(dbRef);
     const meta = this.#interceptCreate(db, input);
@@ -7357,10 +7358,12 @@ export class Weave {
   #resolveDefault(field) {
     const d = field.config.default;
     if (field.type === 'date' && DYNAMIC_DATE_DEFAULTS.includes(d)) {
-      const iso = this.now().toISOString();
-      if (field.config.grain != null) return DG.coerce(field.config, iso.slice(0, 16));
-      const stamp = d === 'now()' && field.config.time ? iso.slice(0, 16) : iso.slice(0, 10);
-      return field.config.zone === 'instant' && field.config.time ? stamp + 'Z' : stamp;
+      const c = field.config;
+      const zone = c.zone === 'fixed' ? c.zoneName : c.zone === 'instant' ? 'UTC' : this.viewerZone ?? 'UTC';
+      const wall = DG.fromInstant(this.now().toISOString(), zone);
+      if (c.grain != null) return DG.coerce(c, wall);
+      const stamp = d === 'now()' && c.time ? wall : wall.slice(0, 10);
+      return c.zone === 'instant' && c.time ? stamp + 'Z' : stamp;
     }
     return d;
   }

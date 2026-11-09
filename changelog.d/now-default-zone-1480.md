@@ -1,0 +1,1 @@
+- A `now()` or `today()` date default reads the creator's wall clock: a floating field stamps the time in the zone the creating request names in `X-Weave-Zone` (UTC when it names none), and a fixed field stamps the time in its own zone. A row created at 21:41 UTC from New York now stores 16:41 instead of 21:41 (Issue #1480).

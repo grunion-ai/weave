@@ -738,6 +738,34 @@ test('now() on a field with time keeps the time; a specific datetime default sta
   assert.equal(w.getEntity(b.id).values[g.id], '2026-12-24T18:00');
 });
 
+test('a floating now() default stamps the wall clock of the creating request zone (Issue #1480)', () => {
+  const { w, tasks } = buildWorkspace();
+  w.now = () => new Date('2026-11-08T21:41:00Z');
+  const f = w.addField(tasks, { name: 'Saved', type: 'date', config: { time: true, default: 'now()' } });
+  const day = w.addField(tasks, { name: 'Logged', type: 'date', config: { default: 'today()' } });
+  const e = w.createEntity(tasks, { name: 'A' }, { viewerZone: 'America/New_York' });
+  assert.equal(w.getEntity(e.id).values[f.id], '2026-11-08T16:41');
+  w.now = () => new Date('2026-11-09T02:30:00Z');
+  const late = w.createEntity(tasks, { name: 'Late' }, { viewerZone: 'America/New_York' });
+  assert.equal(w.getEntity(late.id).values[day.id], '2026-11-08');
+  assert.equal(w.getEntity(late.id).values[f.id], '2026-11-08T21:30');
+  const bare = w.createEntity(tasks, { name: 'B' });
+  assert.equal(w.getEntity(bare.id).values[f.id], '2026-11-09T02:30');
+  assert.equal(w.viewerZone ?? null, null);
+});
+
+test('a fixed-zone now() default stamps the wall clock in its zoneName; instant stays UTC (Issue #1480)', () => {
+  const { w, tasks } = buildWorkspace();
+  w.now = () => new Date('2026-11-08T21:41:00Z');
+  const fixed = w.addField(tasks, { name: 'Office', type: 'date', config: { time: true, zone: 'fixed', zoneName: 'America/New_York', default: 'now()' } });
+  const instant = w.addField(tasks, { name: 'At', type: 'date', config: { time: true, zone: 'instant', default: 'now()' } });
+  const e = w.createEntity(tasks, { name: 'A' }, { viewerZone: 'Asia/Tokyo' });
+  assert.equal(w.getEntity(e.id).values[fixed.id], '2026-11-08T16:41');
+  assert.equal(w.getEntity(e.id).values[instant.id], '2026-11-08T21:41Z');
+  const bare = w.createEntity(tasks, { name: 'B' });
+  assert.equal(w.getEntity(bare.id).values[fixed.id], '2026-11-08T16:41');
+});
+
 test('only today() and now() are dynamic — other tokens are refused as dates', () => {
   const { w, tasks } = buildWorkspace();
   assert.throws(() => w.addField(tasks, { name: 'X', type: 'date', config: { default: 'yesterday()' } }), /not a valid date/);
