@@ -1,1 +1,0 @@
-- **The Workflows table reads as the automation control panel** (Feature #249): its Standard view shows On, Name, When, Then, Health and Last Run. When names the table and the trigger in words and Then lists the actions in words, both written by the engine, so you can see what a rule does without opening its Script. Gate: `test/workflows-panel.test.mjs`.
