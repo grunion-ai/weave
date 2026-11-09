@@ -393,13 +393,21 @@ https://weave.grunion.ai runs with `WEAVE_TRACK=branch:production` and a
 `WEAVE_DEPLOY_TOKEN`, so it serves `releases/c<sha>/` folders and swaps, watches
 and rolls back exactly as dev does (Daily flow, steps 5 and 6).
 
-`.github/workflows/promote.yml` (Feature #322) moves the branch. It is scheduled
-every hour, and a scheduled run acts when the newest `production` deployment is
+`.github/workflows/promote.yml` (Feature #322) moves the branch. It runs when a
+`tests` or `dev-soak` run on main completes with success, so a commit promotes
+as soon as the later of its two checks passes (Issues #1535, #965). The chain
+`dev` (push) → `dev-soak` → `promote` is three `workflow_run` levels, the most
+GitHub fires. A completion run acts at once, like `workflow_dispatch`, and
+reads main itself instead of the event's SHA. The hourly schedule stays as the
+recovery path: a scheduled run acts when the newest `production` deployment is
 at least the repository variable `PROMOTION_EVERY_HOURS` (default 2) less half
 an hour old. GitHub delivers scheduled runs late or drops them under load, so
-the gate counts from the last promotion and never from the clock hour (Issue
-#1493). `workflow_dispatch` acts at once, and its `dry_run` input only prints the
-pick. `scripts/promote.mjs select` picks the
+that gate counts from the last promotion and never from the clock hour (Issue
+#1493). When the pick was committed to main more than `PROMOTION_EVERY_HOURS`
+ago, the promote job writes one alert line naming the lag before it moves
+production, since the completion triggers should have taken it sooner. The
+`promotion` concurrency group keeps one run at a time. `workflow_dispatch` acts
+at once, and its `dry_run` input only prints the pick. `scripts/promote.mjs select` picks the
 newest main commit that has a push `tests` run whose `CI gate` succeeded and a
 `dev-soak` commit status of success, and that descends from the `production`
 head. With none it exits quietly. The `promote` job then, in the `production`
