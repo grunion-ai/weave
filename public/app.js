@@ -9252,8 +9252,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         const ed = mountDocEditor(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
-          readOnly: locked,
-          placeholder: locked ? '' : `Write ${f.name}… press / for blocks`,
+          readOnly: !!entity.readOnly,
+          placeholder: entity.readOnly ? '' : `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
             scheduleDocSave(id, f.name, value);
             rail.schedule();
