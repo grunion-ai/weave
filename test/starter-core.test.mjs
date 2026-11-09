@@ -325,6 +325,22 @@ test('the sample rows date to the month they are built in', () => {
   for (const t of rows(w, 'Money/Transactions')) assert.match(String(t.fields.Date), /^2027-02-/);
 });
 
+test('Personal finance: Months carries a month date and sorts on it, so October sorts above November', () => {
+  const w = new Weave();
+  build(w, byId('finance'));
+  const table = w.getTable('Money/Months');
+  const date = w.findField(table, 'Date');
+  assert.equal(date?.type, 'date');
+  assert.deepEqual(date.config.grain, ['year', 'month']);
+  assert.equal(rows(w, 'Money/Months')[0].fields.Date.slice(0, 7), '2026-10', 'the sample month carries its date');
+  w.createEntity('Money/Months', { name: 'November 2026', Date: '2026-11-01' });
+  w.createEntity('Money/Months', { name: 'September 2026', Date: '2026-09-01' });
+  const [view] = w.tableView(table.id).views;
+  assert.deepEqual(view.sort.map((s) => [s.field, s.dir]), [['Date', 'asc']], 'the standard view sorts on Date');
+  const sorted = w.query('Money/Months', { sort: view.sort }).items.map((e) => e.name);
+  assert.deepEqual(sorted, ['September 2026', 'October 2026', 'November 2026']);
+});
+
 test('Tasks carries a workflow with a default state', () => {
   const w = new Weave();
   build(w, byId('tasks'));
