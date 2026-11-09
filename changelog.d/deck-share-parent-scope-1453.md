@@ -1,0 +1,1 @@
+- A share that reaches a slide but not its deck now renders that slide's `deck.html` without the deck's chrome, style, format or space; a slide in several decks takes its frame from the first deck the share reaches (Issue #1453).

@@ -129,15 +129,15 @@ export function composeDeckModel(weave, ref, { admit = () => true } = {}) {
   };
 }
 
-export function composeSlideModel(weave, ref) {
+export function composeSlideModel(weave, ref, { admit = () => true } = {}) {
   const ent = weave.readEntity(ref);
   const db = weave.state.tables[ent.dbId];
   if (deckRole(db, weave.state.tables) !== 'slide') {
     throw new WeaveError(`'${ent.db}#${ent.publicId}' is not a slide — a slide table has a document field named '${DECK.model}'`, 'invalid');
   }
   const warnings = [];
-  const parent = firstDeckOf(weave, ent);
-  const context = parent ? composeDeckModel(weave, parent.id) : null;
+  const parent = firstDeckOf(weave, ent, admit);
+  const context = parent ? composeDeckModel(weave, parent.id, { admit }) : null;
   const slide = slideFrom(weave, { id: ent.id }, warnings);
   const model = context
     ? { ...context.model, title: ent.name || context.model.title, slides: [slide] }
@@ -148,22 +148,22 @@ export function composeSlideModel(weave, ref) {
   };
 }
 
-function firstDeckOf(weave, ent) {
+function firstDeckOf(weave, ent, admit) {
   const db = weave.state.tables[ent.dbId];
   for (const f of fieldsOf(db)) {
     if (f.type !== 'relation') continue;
     if (deckRole(weave.state.tables[f.config?.targetDb], weave.state.tables) !== 'deck') continue;
     const val = ent.fields?.[f.name];
-    const first = Array.isArray(val) ? val[0] : val;
+    const first = (Array.isArray(val) ? val : [val]).find((d) => d && admit(d.id));
     if (first) return first;
   }
   return null;
 }
 
-export function renderDeck(weave, ref, { template, admit } = {}) {
+export function renderDeck(weave, ref, { template, admit = () => true } = {}) {
   const ent = weave.readEntity(ref);
   const role = deckRole(weave.state.tables[ent.dbId], weave.state.tables);
-  const composed = role === 'slide' ? composeSlideModel(weave, ref) : composeDeckModel(weave, ref, { admit });
+  const composed = role === 'slide' ? composeSlideModel(weave, ref, { admit }) : composeDeckModel(weave, ref, { admit });
   const { html, deck } = create(composed.model, { ...composed.options, style: composed.style, template });
   const v = validate(deck);
   return { html, model: deck, errors: v.errors, warnings: [...composed.warnings, ...v.warnings] };
