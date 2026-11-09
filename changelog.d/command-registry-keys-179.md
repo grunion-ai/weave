@@ -1,0 +1,1 @@
+- Keys run from the command registry on every door: `weave key`, `weave_keys` and `/api/keys` dispatch from one entry per action, and `weave_keys` still refuses `reveal`. `weave key <unknown>` now lists its subcommands as list, set, reveal, share, unshare, delete. The cross-workspace probe and the route census now cover every registry route (Feature #179).

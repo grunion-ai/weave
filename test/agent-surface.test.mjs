@@ -71,8 +71,6 @@ const HAND_WRITTEN = [
   ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
-  ['keys', ['setKey', 'listKeys', 'deleteKey'], 'weave_keys', 'key', ['GET /api/keys', 'POST /api/keys', 'DELETE /api/keys/:rest']],
-  ['keys.reveal', ['revealKey', 'grantKey', 'revokeKey'], null, 'key reveal', ['POST /api/keys/:ref/reveal', 'POST /api/keys/:ref/share', 'DELETE /api/keys/:ref/share']],
   ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry', ['GET /api/registry', 'POST /api/registry/rebuild']],
   ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map', ['GET /api/relation-map.mmd']],
 ];
@@ -200,10 +198,10 @@ test('every capability has an HTTP route that exists', () => {
 });
 
 test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else has drifted', () => {
-  const cliList = CLI.match(/Unknown key subcommand '\$\{sub\}'\. Try: ([a-z, ]+)`/)[1].split(', ');
-  const mcpList = MCP.match(/Unknown keys action '\$\{args\.action\}' \(([a-z, ]+)\)/)[1].split(', ');
-  assert.deepEqual(new Set(mcpList), new Set(cliList.filter((a) => a !== 'reveal')),
-    'the two advertised lists are hand-typed in two files; reveal is the only sanctioned difference (Feature #143)');
+  const keys = COMMANDS.filter((c) => c.cli.command === 'key');
+  const offered = keys.filter((c) => !c.toolRefusal).map((c) => c.action);
+  assert.deepEqual(offered, keys.map((c) => c.cli.sub).filter((a) => a !== 'reveal'), 'reveal is the only sanctioned difference (Feature #143)');
+  assert.match(keys.find((c) => c.action === 'reveal').toolRefusal, /not an agent action/);
 });
 
 test('a create tool takes every option the engine create takes', () => {

@@ -561,7 +561,7 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   const registered = cliCommand(command, args[0]);
-  if (registered) return out(cliRun(registered, w, args, flags, { json: parseJsonFlag }));
+  if (registered) return out(cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8') }));
   const miss = cliMiss(command, args[0]);
   if (miss) throw miss;
 
@@ -619,22 +619,6 @@ async function main() {
       if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-    }
-    case 'key': {
-      const [sub, name] = args;
-      if (sub === 'set') {
-        const value = flags.value ?? readFileSync(0, 'utf8').trim();
-        return out(w.setKey(name, value));
-      }
-      if (sub === 'delete') return out(w.deleteKey(name));
-      if (sub === 'reveal') {
-        process.stdout.write(w.revealKey(name, { via: flags.copy ? 'copy' : 'show' }) + '\n');
-        return;
-      }
-      if (sub === 'share') return out(w.grantKey(name, flags.with === true ? true : flags.with));
-      if (sub === 'unshare') return out(w.revokeKey(name, flags.with));
-      if (sub === 'list' || !sub) return out(w.listKeys());
-      throw new WeaveError(`Unknown key subcommand '${sub}'. Try: set, list, reveal, share, unshare, delete`);
     }
     case 'audit':
       return out(w.listAudit({ limit: numberFlag('limit', 50) }));
