@@ -313,11 +313,24 @@ test('Issue #1094: an imported workspace keeps every row, its values and its FTS
   assert.equal(indexed, live, 'the FTS index holds one entry per live entity');
 });
 
-test('Issue #1094: import cost per row stays flat as the workspace grows', () => {
-  const small = importInto(generated(1000), 'scale-small.db');
-  const large = importInto(generated(10000), 'scale-large.db');
-  const smallPerRow = small.elapsed / 1000;
-  const largePerRow = large.elapsed / 10000;
+const IMPORT_SCALE_SAMPLES = 3;
+
+test('Issue #1094: import cost per row stays flat as the workspace grows', (t) => {
+  const sizes = { small: 1000, large: 10000 };
+  const snapshots = { small: generated(sizes.small), large: generated(sizes.large) };
+  const best = { small: Infinity, large: Infinity };
+  const readings = { small: [], large: [] };
+  for (let sample = 0; sample < IMPORT_SCALE_SAMPLES; sample++) {
+    for (const size of ['small', 'large']) {
+      const { elapsed } = importInto(snapshots[size], `scale-${size}-${sample}.db`);
+      readings[size].push(elapsed);
+      best[size] = Math.min(best[size], elapsed);
+    }
+  }
+  const smallPerRow = best.small / sizes.small;
+  const largePerRow = best.large / sizes.large;
   const ratio = largePerRow / smallPerRow;
-  assert.ok(ratio < 3, `import is superlinear: ${smallPerRow.toFixed(3)} ms/row at 1,000 rows, ${largePerRow.toFixed(3)} ms/row at 10,000 rows (${ratio.toFixed(1)}x)`);
+  const runs = (size) => readings[size].map((ms) => ms.toFixed(0)).join(',');
+  t.diagnostic(`import scale best of ${IMPORT_SCALE_SAMPLES}: ${smallPerRow.toFixed(3)} ms/row at 1,000 (runs ${runs('small')} ms), ${largePerRow.toFixed(3)} ms/row at 10,000 (runs ${runs('large')} ms), ratio ${ratio.toFixed(2)}x`);
+  assert.ok(ratio < 3, `import is superlinear: ${smallPerRow.toFixed(3)} ms/row at 1,000 rows, ${largePerRow.toFixed(3)} ms/row at 10,000 rows (${ratio.toFixed(1)}x), the fastest of ${IMPORT_SCALE_SAMPLES} interleaved imports at each size`);
 });
