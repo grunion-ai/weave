@@ -195,7 +195,8 @@ test('every capability has an HTTP route that exists', () => {
 test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else has drifted', () => {
   const keys = COMMANDS.filter((c) => c.cli.command === 'key');
   const offered = keys.filter((c) => !c.toolRefusal).map((c) => c.action);
-  assert.deepEqual(offered, keys.map((c) => c.cli.sub).filter((a) => a !== 'reveal'), 'reveal is the only sanctioned difference (Feature #143)');
+  assert.deepEqual(offered, keys.map((c) => c.cli.sub).filter((a) => a !== 'reveal' && a !== 'migrate'), 'reveal (Feature #143) and migrate (Feature #213) are the only sanctioned differences');
+  assert.match(keys.find((c) => c.action === 'migrate').toolRefusal, /not an agent action/);
   assert.match(keys.find((c) => c.action === 'reveal').toolRefusal, /not an agent action/);
 });
 

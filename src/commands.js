@@ -65,11 +65,11 @@ const AUTOMATIONS_TOOL = {
 
 const KEYS_TOOL = {
   name: 'weave_keys',
-  description: 'The keystore behind `key` (credential) fields: the field holds the NAME of a secret; the secret lives encrypted in a chmod-600 file beside the workspace. action: list (names, owners, sharing) | set (name, value) | share (name, account) | unshare (name, account) | delete. No MCP tool returns a secret value — revealing one is a human act on the CLI or the HTTP surface, gated by that credential\'s own access list and written to the audit log.',
+  description: 'The keystore behind `key` (credential) fields: the field holds the NAME of a secret; the secret lives in weave\'s key store, an encrypted chmod-600 file or the macOS keychain, never in the workspace. action: list (names, owners, sharing) | set (name, value) | share (name, account) | unshare (name, account) | delete. No MCP tool returns a secret value — revealing one is a human act on the CLI or the HTTP surface, gated by that credential\'s own access list and written to the audit log.',
   inputSchema: {
     type: 'object',
     properties: {
-      action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' },
+      action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' }, to: { type: 'string' },
       account: { type: 'string', description: 'For share/unshare: the account the credential opens to.' },
     },
     required: ['action'],
@@ -478,6 +478,17 @@ export const COMMANDS = [
     cli: { command: 'key', sub: 'delete', positional: ['name'] },
     http: { method: 'DELETE', path: '/api/keys/:name*' },
     run: (w, a) => w.deleteKey(a.name),
+  },
+  {
+    name: 'key.migrate',
+    engine: ['migrateKeys'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'migrate',
+    toolRefusal: 'Moving the key store is not an agent action: run `weave key migrate --to keychain` or `--to file` on the machine that holds it.',
+    cli: { command: 'key', sub: 'migrate', flags: ['to'] },
+    http: { method: 'POST', path: '/api/keys/migrate' },
+    run: (w, a) => w.migrateKeys(a.to),
   },
   {
     name: 'csv.export',

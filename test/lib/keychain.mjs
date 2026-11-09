@@ -20,7 +20,7 @@ export function throwawayKeychain(prefix = 'weave-kc-') {
   execFileSync(SECURITY, ['set-keychain-settings', path]);
   return {
     path,
-    find: (service, account = 'weave') => execFileSync(SECURITY, ['find-generic-password', '-s', service, '-a', account, '-w', path], { encoding: 'utf8' }).replace(/\n$/, ''),
+    find: (service, account = 'weave') => execFileSync(SECURITY, ['find-generic-password', '-s', service, '-a', account, '-w', path], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).replace(/\n$/, ''),
     dump: () => execFileSync(SECURITY, ['dump-keychain', path], { encoding: 'utf8' }),
     remove: () => { if (existsSync(path)) execFileSync(SECURITY, ['delete-keychain', path]); },
   };

@@ -15,9 +15,12 @@ export const keyFilePath = (path) => path.replace(/\.json$/, '') + '.key';
 
 export const keystoreFilePath = (value) => (value && !KEYSTORE_KINDS.includes(value) ? value : null);
 
-export function keystoreKind({ path, pick = null, platform = process.platform, home = userInfo().homedir, security = SECURITY } = {}) {
+let accountHome = null;
+const realHome = () => (accountHome ??= userInfo().homedir);
+
+export function keystoreKind({ path, pick = null, platform = process.platform, home = realHome(), security = SECURITY, exists = existsSync(path) } = {}) {
   if (KEYSTORE_KINDS.includes(pick)) return pick;
-  if (existsSync(path) || path !== join(home, '.weave', 'keystore.json')) return 'file';
+  if (exists || path !== join(home, '.weave', 'keystore.json')) return 'file';
   return platform === 'darwin' && existsSync(security) ? 'keychain' : 'file';
 }
 
@@ -92,6 +95,7 @@ export function fileStore({ path, env = process.env }) {
 
 export function runSecurity(security, args, input = '') {
   const r = spawnSync(security, args, { input, encoding: 'utf8' });
+  if (r.error?.code === 'ENOENT') throw new WeaveError(`The keychain store needs ${security}, the macOS security tool, and this machine has none`, 'invalid');
   if (r.error) throw r.error;
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
@@ -166,4 +170,22 @@ export function keychainStore({ keychain = null, security = SECURITY, run = runS
       drop(INDEX_SERVICE);
     },
   };
+}
+
+export function migrateKeys(from, to) {
+  if (from.kind === to.kind) throw new WeaveError(`The keys already live in the ${to.kind} store`, 'invalid');
+  const source = from.read();
+  const names = Object.keys(source.keys).sort();
+  const values = Object.fromEntries(names.map((n) => [n, from.value(n, source.keys[n])]));
+  const target = to.read();
+  for (const n of names) {
+    const { iv, ct, tag, legacy, value, ...meta } = source.keys[n];
+    target.keys[n] = { ...meta, value: values[n] };
+  }
+  to.write(target);
+  const landed = to.read().keys;
+  const unread = names.filter((n) => !Object.hasOwn(landed, n) || to.value(n, landed[n]) !== values[n]);
+  if (unread.length) throw new WeaveError(`Migration stopped before deleting anything: ${unread.join(', ')} did not read back from the ${to.kind} store`, 'invalid');
+  from.clear();
+  return { from: from.kind, to: to.kind, moved: names };
 }

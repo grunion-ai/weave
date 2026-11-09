@@ -310,9 +310,16 @@ test('the key family answers the same on CLI, MCP and HTTP, and MCP still never 
     assert.deepEqual(await d.http('POST', '/api/keys/stripe/reveal', {}, auth), { name: 'stripe', value: 'sk-one' });
     assert.equal(d.call('weave_keys', { action: 'reveal', name: 'stripe' }).content[0].text, 'Error: Revealing a secret is not an agent action — use `weave key reveal` or the app.');
     assert.equal(d.call('weave_keys', { action: 'rotate' }).content[0].text, "Error: Unknown keys action 'rotate' (list, set, share, unshare, delete)");
+    assert.equal(d.call('weave_keys', { action: 'migrate', to: 'keychain' }).content[0].text, 'Error: Moving the key store is not an agent action: run `weave key migrate --to keychain` or `--to file` on the machine that holds it.');
+    const pinned = d.run(['key', 'migrate', '--to', 'keychain']);
+    assert.notEqual(pinned.status, 0);
+    assert.match(pinned.stderr, /After the move weave would still read the file store/);
+    const remote = await d.raw('POST', '/api/keys/migrate', { to: 'keychain' }, auth);
+    assert.equal(remote.status, 403);
+    assert.match((await remote.json()).error, /local operator act/);
     const miss = d.run(['key', 'rotate']);
     assert.notEqual(miss.status, 0);
-    assert.match(miss.stderr, /Unknown key subcommand 'rotate'\. Try: list, set, reveal, share, unshare, delete/);
+    assert.match(miss.stderr, /Unknown key subcommand 'rotate'\. Try: list, set, reveal, share, unshare, delete, migrate/);
     const unread = await d.raw('GET', '/api/keys/stripe', null, auth);
     assert.equal(unread.status, 404);
     assert.deepEqual(await unread.json(), { error: 'Secrets cannot be read back', code: 'not-found' });
