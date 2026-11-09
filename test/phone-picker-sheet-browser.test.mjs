@@ -52,6 +52,92 @@ if (s) {
     await page.mouse.up();
   };
 
+  const flickSheet = async (page, sel, dy) => {
+    await atRest(page.locator(sel));
+    await page.evaluate((q) => {
+      globalThis.wvFlick = null;
+      const mark = (e) => {
+        if (e.type === 'pointerdown') globalThis.wvFlick = { at: e.timeStamp, last: e.timeStamp };
+        else if (globalThis.wvFlick) globalThis.wvFlick.last = e.timeStamp;
+      };
+      for (const type of ['pointerdown', 'pointermove']) {
+        document.querySelector(`${q} .sheet-grip`).addEventListener(type, mark, { capture: true });
+      }
+    }, sel);
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy);
+    await page.mouse.up();
+    const seen = await page.evaluate(() => globalThis.wvFlick);
+    return Math.max(1, Math.round((seen?.last ?? 0) - (seen?.at ?? 0)));
+  };
+
+  const openPicker = async (page) => {
+    await page.click('#dock .chip-trigger[title="Status"]');
+    await page.waitForSelector('.picker-pop .sheet-grip');
+    await atRest(page.locator('.picker-pop'));
+    return (await page.locator('.picker-pop').boundingBox()).height;
+  };
+
+  test('a flick of a fifth of the picker sheet dismisses it, and a slow drag that far springs it back (Issue #1110)', async () => {
+    const page = await open({ width: 390 });
+    try {
+      const was = await page.textContent('#dock .chip-trigger[title="Status"]');
+      let h = await openPicker(page);
+      await dragSheet(page, '.picker-pop', Math.round(h * 0.2), { step: 60 });
+      await atRest(page.locator('.picker-pop'));
+      assert.ok(await page.isVisible('.picker-pop'),
+        'a fifth of the sheet is a dismissal only when the finger moves fast, so a slow drag that far springs back');
+      assert.equal(await page.locator('.picker-pop').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true);
+      const reach = Math.round(h * 0.2);
+      const budget = Math.round(reach / 0.5);
+      const spans = [];
+      let standing = true;
+      for (let i = 0; i < 3 && standing; i += 1) {
+        spans.push(await flickSheet(page, '.picker-pop', reach));
+        standing = (await page.locator('.picker-pop').count()) > 0;
+      }
+      assert.equal(standing, false,
+        `a ${reach}px flick, a fifth of the sheet and under its one-third threshold, left it standing after ${spans.length} tries: the harness delivered them over ${spans.join(', ')} ms and a flick has under ${budget} ms`);
+      assert.equal(await page.textContent('#dock .chip-trigger[title="Status"]'), was, 'flicking it away changes nothing');
+    } finally { await page.close(); }
+  });
+
+  test('the picker sheet dismisses when the last movement arrives with the release, not as a move (Issue #1064)', async () => {
+    const page = await open({ width: 390 });
+    try {
+      const was = await page.textContent('#dock .chip-trigger[title="Status"]');
+      const h = await openPicker(page);
+      const box = await page.locator('.picker-pop .sheet-grip').boundingBox();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.evaluate(() => {
+        globalThis.wvGripPointer = null;
+        document.querySelector('.picker-pop .sheet-grip')
+          .addEventListener('pointerdown', (e) => { globalThis.wvGripPointer = e.pointerId; }, { capture: true });
+      });
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (let i = 1; i <= 6; i += 1) {
+        await page.waitForTimeout(150);
+        await page.mouse.move(x, y + (h * 0.12 * i) / 6);
+      }
+      await page.waitForSelector('.picker-pop.sheet-dragging');
+      await page.evaluate(({ at, to }) => {
+        document.querySelector('.picker-pop .sheet-grip').dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true,
+          pointerId: globalThis.wvGripPointer, button: 0, buttons: 0, clientX: at, clientY: to,
+        }));
+      }, { at: x, to: y + h * 0.5 });
+      await page.mouse.up();
+      await page.waitForSelector('.picker-pop', { state: 'detached' });
+      assert.equal(await page.textContent('#dock .chip-trigger[title="Status"]'), was, 'dragging it away changes nothing');
+    } finally { await page.close(); }
+  });
+
   test('atRest waits for a transform that has not started yet (Issue #901)', async () => {
     const page = await open();
     try {

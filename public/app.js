@@ -562,7 +562,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
   if (first) first.focus();
 }
 
-function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
+function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false } = {}) {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
@@ -583,7 +583,7 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create') {
     e.preventDefault();
     try {
       await onSubmit(new FormData(form));
-      close();
+      if (!stay) close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
     }
@@ -11711,7 +11711,7 @@ function installPhoneBar() {
     onclick: () => {
       const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
       if (db?.system) state.inlineAdd?.();
-      else if (db) newRowSheet(db);
+      else if (db) newRowTray(db);
     },
   }, lucideEl('plus'));
   document.body.append(el('div', { class: 'phone-bar' }, search, add));
@@ -11772,30 +11772,20 @@ function sheetGrip(sheet, close) {
   return grip;
 }
 
-function newRowSheet(start) {
-  const pickTable = !start;
+function newRowTray(start) {
   let db = start ?? allTables().find((t) => !t.system);
   if (!db) return null;
-  document.querySelector('.new-row-sheet')?.closeSheet?.();
-  const back = el('div', { class: 'new-row-back', 'aria-hidden': 'true' });
-  const sheet = el('div', { class: 'new-row-sheet', role: 'dialog', 'aria-modal': 'true' });
-  let picked = {};
-  let off = () => {};
-  const close = () => { off(); removeEventListener('keydown', esc, true); sheet.remove(); back.remove(); };
-  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
-  sheet.closeSheet = close;
   const phone = dockCoversScreen.matches;
+  let picked = {};
   const name = phone
     ? el('input', { class: 'new-row-name', type: 'text', enterkeyhint: 'done', 'aria-label': 'Name' })
     : el('textarea', { class: 'new-row-name', rows: '2', 'aria-label': 'Name' });
-  const create = el('button', { class: 'new-row-create', type: 'button', disabled: '' }, 'Create');
-  if (phone) name.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || e.isComposing) return;
-    e.preventDefault();
-    create.click();
+  const fieldsBox = el('div', { class: 'new-row-fields' });
+  const tables = allTables().filter((t) => !t.system);
+  const tablePick = start ? null : pickerSelect({
+    name: 'table', title: 'Table', value: db.id,
+    options: tables.map((t) => ({ id: t.id, label: t.name, sub: t.space })),
   });
-  const more = el('button', { class: 'new-row-more', type: 'button', disabled: '' }, 'All fields');
-  name.addEventListener('input', () => { create.disabled = more.disabled = !name.value.trim(); });
   const choiceFields = () => {
     const hidden = new Set(db.hiddenFields ?? []);
     return db.fields.filter((f) => (f.type === 'select' || f.type === 'multiselect') && !hidden.has(f.name) && (f.options ?? []).length && f.options.length <= NEW_ROW_OPTIONS).slice(0, NEW_ROW_CHOICES);
@@ -11826,77 +11816,56 @@ function newRowSheet(start) {
     paint();
     return el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, f.name), box);
   };
-  const tableChip = pickTable ? el('button', { class: 'new-row-table', type: 'button', 'aria-haspopup': 'dialog' }) : null;
-  const title = el('h2', { class: 'new-row-title' });
-  const fieldsBox = el('div', { class: 'new-row-fields' });
-  const draw = () => {
-    const term = rowNoun(db);
-    title.textContent = `New ${term}`;
-    sheet.setAttribute('aria-label', `New ${term}`);
-    name.placeholder = `Name this ${term}`;
-    tableChip?.replaceChildren(iconEl(db.icon, 'wv-icon') ?? '', el('span', {}, db.name), lucideEl('chevron-down'));
-    tableChip?.setAttribute('aria-label', `Table: ${db.name}`);
-    fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
-  };
-  tableChip?.addEventListener('click', () => searchPicker({
-    anchor: tableChip, title: 'Table',
-    options: allTables().filter((t) => !t.system).map((t) => ({ id: t.id, label: t.name, sub: t.space })),
-    currentId: db.id,
-    onPick: (o) => { db = allTables().find((t) => t.id === o.id) ?? db; picked = {}; draw(); },
-  }));
-  const write = async (then) => {
-    const text = name.value.trim();
-    if (!text) return;
-    create.disabled = more.disabled = true;
-    const values = { ...filterSeed(db) };
-    for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
-    try {
-      const made = await api('POST', `/tables/${db.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
-      close();
-      await loadSchema();
-      if (state.route?.page === 'db' && state.route.dbId === db.id) await showDatabase(db.id, state.route.view);
-      await then(made);
-    } catch (err) { create.disabled = more.disabled = false; toast(err.message, true); }
-  };
-  const writeAndStay = async () => {
+  const write = async () => {
     const text = name.value.trim();
     if (!text) return;
     const target = db;
     const values = { ...filterSeed(target) };
     for (const [k, v] of Object.entries(picked)) if (v !== undefined && !(Array.isArray(v) && !v.length)) values[k] = v;
-    name.value = '';
-    picked = {};
-    create.disabled = more.disabled = true;
-    draw();
-    name.focus({ preventScroll: true });
+    if (phone) {
+      name.value = '';
+      picked = {};
+      create.disabled = true;
+      draw();
+      name.focus({ preventScroll: true });
+    }
     try {
       const made = await api('POST', `/tables/${target.id}/entities`, { name: text, ...(Object.keys(values).length ? { values } : {}) });
-      toast(`Created ${text}`, false, { label: 'Open', run: () => { if (sheet.isConnected) close(); openEntity(made.id); } });
       await loadSchema();
       if (state.route?.page === 'db' && state.route.dbId === target.id) await showDatabase(target.id, state.route.view);
+      if (!phone) return openEntity(made.id);
+      toast(`Created ${text}`, false, { label: 'Open', run: () => { back.querySelector('.tray-close')?.click(); openEntity(made.id); } });
     } catch (err) {
-      if (sheet.isConnected && !name.value) {
+      if (phone && back.isConnected && !name.value) {
         name.value = text;
-        create.disabled = more.disabled = false;
+        create.disabled = false;
       }
-      toast(err.message, true);
+      throw err;
     }
   };
-  if (phone) create.addEventListener('mousedown', (e) => e.preventDefault());
-  create.addEventListener('click', () => (phone ? writeAndStay() : write((made) => openEntity(made.id))));
-  more.addEventListener('click', () => write((made) => { location.hash = `#/entity/${made.id}`; }));
-  sheet.append(
-    sheetGrip(sheet, close),
-    el('div', { class: 'new-row-head' }, title, tableChip),
+  const back = tray(`New ${rowNoun(db)}`, [
+    ...(tablePick ? [el('div', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Table'), tablePick)] : []),
     el('label', { class: 'new-row-field' }, el('span', { class: 'new-row-label' }, 'Name'), name),
     fieldsBox,
-    el('div', { class: 'new-row-actions' }, more, create));
+  ], write, 'Create', { stay: phone });
+  const title = back.querySelector('#tray-title');
+  const create = back.querySelector('.tray-actions button[type="submit"]');
+  const draw = () => {
+    const term = rowNoun(db);
+    title.textContent = `New ${term}`;
+    name.placeholder = `Name this ${term}`;
+    fieldsBox.replaceChildren(...choiceFields().map(choiceEl));
+  };
+  create.disabled = true;
+  name.addEventListener('input', () => { create.disabled = !name.value.trim(); });
+  tablePick?.input.addEventListener('change', () => {
+    db = tables.find((t) => t.id === tablePick.input.value) ?? db;
+    picked = {};
+    draw();
+  });
   draw();
-  document.body.append(back, sheet);
-  off = dismissOutside({ inside: (t) => sheet.contains(t) || !!t.closest?.('.picker-pop, .chip-pop, #wv-toasts'), close, swallow: () => true, open: () => sheet.isConnected });
-  addEventListener('keydown', esc, true);
   name.focus({ preventScroll: true });
-  return sheet;
+  return back;
 }
 function syncPhoneBar() {
   const parts = syncPhoneBar.parts;

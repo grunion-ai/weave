@@ -44,25 +44,25 @@ if (s) {
     });
   });
 
-  test('with the keyboard up the New task sheet keeps its Name field and Create button above the keyboard (keyboard modeled, Issue #1386)', async (t) => {
+  test('with the keyboard up the New task tray keeps its Name field and Create button above the keyboard (keyboard modeled, Issue #1386, Issue #1471)', async (t) => {
     await eachPhone(t, matrix, async (page, run) => {
       await page.addInitScript(stubKeyboard);
       await openTable(page, base, tasks);
       if (!(await page.isVisible('.phone-bar .phone-new'))) return NO_BAR;
       await page.tap('.phone-bar .phone-new');
-      await page.waitForSelector('.new-row-sheet .new-row-name');
-      await atRest(page.locator('.new-row-sheet'));
+      await page.waitForSelector('#tray .new-row-name');
+      await atRest(page.locator('#tray'));
       const screen = run.phone.page.screen?.height ?? run.phone.page.viewport.height;
       const keyboard = Math.round((KEYBOARD_ON_17_PRO * screen) / SCREEN_17_PRO);
       await page.evaluate((h) => window.wvTestKeyboard(h), keyboard);
       const read = () => page.evaluate(() => {
         const room = window.visualViewport.height;
         const fits = (q) => { const r = document.querySelector(q).getBoundingClientRect(); return r.top >= 0 && r.bottom <= room + 0.5; };
-        return { name: fits('.new-row-name'), create: fits('.new-row-create'), focused: !!document.activeElement?.matches('.new-row-name') };
+        return { name: fits('#tray .new-row-name'), create: fits('#tray .tray-actions button[type="submit"]'), focused: !!document.activeElement?.matches('.new-row-name') };
       });
       const want = { name: true, create: true, focused: true };
       const got = await eventually(read, want, { timeout: 3000 });
-      const at = await page.evaluate(() => ({ room: Math.round(window.visualViewport.height), name: Math.round(document.querySelector('.new-row-name').getBoundingClientRect().bottom), create: Math.round(document.querySelector('.new-row-create').getBoundingClientRect().bottom) }));
+      const at = await page.evaluate(() => ({ room: Math.round(window.visualViewport.height), name: Math.round(document.querySelector('#tray .new-row-name').getBoundingClientRect().bottom), create: Math.round(document.querySelector('#tray .tray-actions button[type="submit"]').getBoundingClientRect().bottom) }));
       assert.deepEqual(got, want, `a ${keyboard} px keyboard leaves ${at.room} px of page, but the Name field ends at ${at.name} px and Create at ${at.create} px`);
     });
   });
