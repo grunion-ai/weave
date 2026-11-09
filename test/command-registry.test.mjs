@@ -953,3 +953,13 @@ test('vocabulary answers the same on CLI, MCP and HTTP, and an unknown section i
     assert.match(mcp.content[0].text, /Unknown vocabulary section 'nope'/);
   } finally { d.close(); }
 });
+
+test('GET /api/share is a registry route and still answers 404 without a share token (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-share-current-');
+  try {
+    assert.equal(matchRoute('GET', '/api/share').cmd.name, 'share.current');
+    const res = await d.raw('GET', '/api/share');
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
+  } finally { d.close(); }
+});

@@ -1,0 +1,1 @@
+- `GET /api/share`, the share token's own read, dispatches from the command registry with the same answer and the same 404 without a token (Feature #179).
