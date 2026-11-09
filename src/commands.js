@@ -48,6 +48,21 @@ function fieldUpdate(w, a) {
   };
 }
 
+const UPLOAD = Symbol('upload');
+export const previewInput = (p) => (p && typeof p === 'object' && (p.contentBase64 ?? p.bytes) != null ? { bytes: p.contentBase64 ?? p.bytes } : null);
+const FILES_TOOL = {
+  name: 'weave_files',
+  description: 'Files already attached to an entity: action read (returns base64 content) | delete. Attach one with weave_attach_file.',
+  inputSchema: {
+    type: 'object',
+    properties: { action: { type: 'string' }, entity: { type: 'string' }, file: { type: 'string' } },
+    required: ['action', 'file'],
+  },
+};
+const mcpUpload = (a) => {
+  if (typeof a.contentBase64 !== 'string') throw new Error('Send contentBase64, or prepare:true and size for a raw upload.');
+  return { name: a.name, mime: a.mime, bytes: a.contentBase64 };
+};
 const REGISTRY_TOOL = {
   name: 'weave_registry',
   description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
@@ -140,10 +155,10 @@ const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets 
 
 const AUTOMATIONS_TOOL = {
   name: 'weave_automations',
-  description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
+  description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash) | replay (delivery: a System/Failed Deliveries record; sends its stored request again and runs the steps after it). Create one with weave_create_automation.',
   inputSchema: {
     type: 'object',
-    properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
+    properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' }, delivery: { type: 'string', description: 'For replay: the id, public id or Name of a System/Failed Deliveries record.' } },
     required: ['action'],
   },
 };
@@ -299,6 +314,15 @@ export const COMMANDS = [
     run: (w, a) => guided(w, 'space', w.createSpace({ name: a.name, description: a.description ?? '', icon: a.icon ?? '', template: truthy(a.template) })),
   },
   {
+    name: 'space.list',
+    engine: ['listSpaces'],
+    writes: 'none',
+    via: { tool: 'weave_schema' },
+    cli: { command: 'space', sub: 'list', default: true },
+    http: { method: 'GET', path: '/api/spaces' },
+    run: (w) => w.listSpaces(),
+  },
+  {
     name: 'space.update',
     engine: ['updateSpace', 'spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
     writes: 'schema',
@@ -320,6 +344,34 @@ export const COMMANDS = [
     cli: { command: 'space', sub: 'update', positional: ['space'], flags: ['name', 'description', 'icon', 'position', 'access', 'template'], args: (a) => ({ ...a, ...(a.template != null ? { template: truthy(a.template) } : {}), ...(a.position != null ? { position: Number(a.position) } : {}) }) },
     http: { method: 'PATCH', path: '/api/spaces/:space' },
     run: spaceUpdate,
+  },
+  {
+    name: 'space.members',
+    engine: ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
+    writes: 'none',
+    via: { tool: 'weave_update_space' },
+    cli: { command: 'space', sub: 'members', positional: ['space', 'account'], flags: ['role', 'remove'] },
+    http: { method: 'GET', path: '/api/spaces/:space/members', args: (a) => ({ space: a.space }) },
+    run: (w, a) => {
+      if (a.account === undefined) return w.spaceMembers(a.space);
+      return a.remove ? w.removeSpaceMember(a.space, a.account) : w.setSpaceMember(a.space, a.account, { role: a.role ?? null });
+    },
+  },
+  {
+    name: 'space.member.set',
+    engine: ['setSpaceMember'],
+    writes: 'schema',
+    via: { tool: 'weave_update_space', cli: 'space.members' },
+    http: { method: 'PUT', path: '/api/spaces/:space/members/:account', args: (a, body) => ({ space: a.space, account: a.account, role: body?.role ?? null }) },
+    run: (w, a) => w.setSpaceMember(a.space, a.account, { role: a.role }),
+  },
+  {
+    name: 'space.member.remove',
+    engine: ['removeSpaceMember'],
+    writes: 'schema',
+    via: { tool: 'weave_update_space', cli: 'space.members' },
+    http: { method: 'DELETE', path: '/api/spaces/:space/members/:account' },
+    run: (w, a) => w.removeSpaceMember(a.space, a.account),
   },
   {
     name: 'space.delete',
@@ -502,6 +554,16 @@ export const COMMANDS = [
       result: (r) => { if (!r.deleted) throw new WeaveError(`No automation '${r.id}'`, 'not-found'); return r; },
     },
     run: (w, a) => w.deleteAutomation(a.automation),
+  },
+  {
+    name: 'automation.replay',
+    engine: ['replayDelivery'],
+    writes: 'entity',
+    tool: AUTOMATIONS_TOOL,
+    action: 'replay',
+    cli: { command: 'automation', sub: 'replay', positional: ['delivery'] },
+    http: { method: 'POST', path: '/api/automations/deliveries/:delivery/replay' },
+    run: (w, a) => w.replayDelivery(a.delivery),
   },
   {
     name: 'key.list',
@@ -1268,6 +1330,73 @@ export const COMMANDS = [
     cli: { command: 'share', sub: 'regenerate', positional: ['share'], args: sharePatchFlags },
     http: { method: 'POST', path: '/api/shares/:share/regenerate', args: (a, body) => ({ share: a.share, patch: body ?? {} }), result: linked },
     run: (w, a) => w.regenerateShare(a.share, a.patch ?? sharePatch(a)),
+  },
+  {
+    name: 'file.attach',
+    engine: ['attachFile', 'attachToField'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_attach_file',
+      description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
+      inputSchema: {
+        type: 'object',
+        properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
+        required: ['entity', 'name'],
+      },
+    },
+    cli: {
+      command: 'file', sub: 'attach', default: true, positional: ['entity'],
+      args: (a, flags, { entityRef, bytes }) => {
+        if (!flags.path) throw new WeaveError('file attach needs --path');
+        return { entity: entityRef(a.entity, flags.db), field: flags.field || null, [UPLOAD]: { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: bytes(flags.path).toString('base64') } };
+      },
+    },
+    http: {
+      method: 'POST', path: '/api/entities/:entity/files', also: ['/api/entities/:entity/fields/:field/files'], status: 201,
+      args: (a, body) => ({ entity: a.entity, field: a.field ?? null, [UPLOAD]: { name: body.name, mime: body.mime, bytes: a.field == null ? body.contentBase64 : body.bytes ?? body.contentBase64, preview: previewInput(body.preview) } }),
+    },
+    run: (w, a, ctx) => {
+      if (a[UPLOAD] === undefined && a.prepare === true) {
+        if (!ctx?.caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
+        return ctx.caller.prepareUpload(a);
+      }
+      const file = a[UPLOAD] ?? mcpUpload(a);
+      return a.field == null ? w.attachFile(a.entity, file) : w.attachToField(a.entity, a.field, file);
+    },
+  },
+  {
+    name: 'file.read',
+    engine: ['readFile'],
+    writes: 'none',
+    tool: FILES_TOOL,
+    action: 'read',
+    cli: {
+      command: 'file', sub: 'read', positional: ['file'], raw: (flags) => !flags.out,
+      result: ({ meta, bytes }, flags, { write }) => {
+        if (!flags.out) return Buffer.from(bytes);
+        write(flags.out, Buffer.from(bytes));
+        return { ...meta, path: flags.out };
+      },
+    },
+    http: { method: 'GET', path: '/api/files/:file', serve: (a, ctx) => ctx.serveFile(a.file) },
+    run: (w, a) => w.readFile(a.file),
+    toolResult: ({ meta, bytes }) => ({ ...meta, contentBase64: Buffer.from(bytes).toString('base64') }),
+  },
+  {
+    name: 'file.delete',
+    engine: ['deleteFile'],
+    writes: 'entity',
+    tool: FILES_TOOL,
+    action: 'delete',
+    cli: { command: 'file', sub: 'delete', positional: ['entity', 'file'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), file: a.file }) },
+    http: {
+      method: 'DELETE', path: '/api/entities/:entity/files/:file',
+      result: (r, a) => {
+        if (!r.deleted) throw new WeaveError(`No file '${a.file}' on this record`, 'not-found');
+        return r;
+      },
+    },
+    run: (w, a) => w.deleteFile(a.entity, a.file),
   },
 ];
 

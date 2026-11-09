@@ -12,7 +12,7 @@ test('every workspace carries the System space with Spaces and Tables', () => {
   const names = w.listEntities(w.getTable('Spaces').id).map((e) => w.entityName(e));
   assert.deepEqual(names, ['System']);
   const tNames = w.listEntities(w.getTable('Tables').id).map((e) => w.entityName(e)).sort();
-  assert.deepEqual(tNames, ['Fields', 'Forms', 'Integrations', 'Spaces', 'Tables', 'Users', 'Views', 'Workflows', 'Workspaces']);
+  assert.deepEqual(tNames, ['Failed Deliveries', 'Fields', 'Forms', 'Integrations', 'Spaces', 'Tables', 'Users', 'Views', 'Workflows', 'Workspaces']);
 });
 
 test('creating structure creates its row; the row follows renames and deletes', () => {

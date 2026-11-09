@@ -94,15 +94,7 @@ export const TOOLS = [
   toolDefinition('weave_create_automation'),
   toolDefinition('weave_export_csv'),
   toolDefinition('weave_import_csv'),
-  {
-    name: 'weave_attach_file',
-    description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
-    inputSchema: {
-      type: 'object',
-      properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
-      required: ['entity', 'name'],
-    },
-  },
+  toolDefinition('weave_attach_file'),
   {
     name: 'weave_vocabulary',
     description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
@@ -192,15 +184,7 @@ export const TOOLS = [
     },
   },
   toolDefinition('weave_keys'),
-  {
-    name: 'weave_files',
-    description: 'Files already attached to an entity: action read (returns base64 content) | delete. Attach one with weave_attach_file.',
-    inputSchema: {
-      type: 'object',
-      properties: { action: { type: 'string' }, entity: { type: 'string' }, file: { type: 'string' } },
-      required: ['action', 'file'],
-    },
-  },
+  toolDefinition('weave_files'),
   toolDefinition('weave_registry'),
   toolDefinition('weave_relation_map'),
   toolDefinition('weave_export_json'),
@@ -467,15 +451,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
-    case 'weave_attach_file': {
-      if (args.prepare === true) {
-        if (!caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
-        return caller.prepareUpload(args);
-      }
-      if (typeof args.contentBase64 !== 'string') throw new Error('Send contentBase64, or prepare:true and size for a raw upload.');
-      const file = { name: args.name, mime: args.mime, bytes: args.contentBase64 };
-      return args.field == null ? weave.attachFile(args.entity, file) : weave.attachToField(args.entity, args.field, file);
-    }
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_template_list':
@@ -539,15 +514,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'invites': return { invites: weave.listInvites() };
         case 'revoke-invite': return weave.revokeInvite(args.invite ?? args.id);
         default: throw new Error(`Unknown accounts action '${args.action}' (list, create, set, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity, invite, invites, revoke-invite)`);
-      }
-    case 'weave_files':
-      switch (args.action) {
-        case 'read': {
-          const { meta, bytes } = weave.readFile(args.file);
-          return { ...meta, contentBase64: Buffer.from(bytes).toString('base64') };
-        }
-        case 'delete': return weave.deleteFile(args.entity, args.file);
-        default: throw new Error(`Unknown files action '${args.action}' (read, delete)`);
       }
     default:
       throw unknownTool(name);

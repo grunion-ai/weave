@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
@@ -23,20 +23,25 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(['schema', 'entity', 'keystore', 'none'].includes(c.writes), `${c.name} says what it writes`);
     assert.equal(typeof c.run, 'function', `${c.name} runs`);
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
-    assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
-    assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
-    assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
-    if (c.action !== undefined) {
-      const key = c.actionArg ?? 'action';
-      assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
-      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
-    } else assert.equal(BY_TOOL.get(c.tool.name), c);
-    assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
+    assert.ok(c.http, `${c.name} has an HTTP door`);
+    for (const door of ['tool', 'cli']) assert.ok(c[door] || c.via?.[door], `${c.name} has a ${door} door or names the one that carries it`);
+    if (c.via?.tool) assert.ok(TOOLS.some((t) => t.name === c.via.tool), `${c.name}: ${c.via.tool} is in tools/list`);
+    if (c.via?.cli) assert.ok(COMMANDS.some((x) => x.name === c.via.cli && x.cli), `${c.name}: ${c.via.cli} carries the CLI door`);
+    if (c.tool) {
+      assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
+      assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
+      if (c.action !== undefined) {
+        const key = c.actionArg ?? 'action';
+        assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
+        if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
+      } else assert.equal(BY_TOOL.get(c.tool.name), c);
+    }
+    if (c.cli) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
       assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
-      for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+      if (c.tool) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
     }
-    for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
+    if (c.tool && c.cli) for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
   }
 });
 
@@ -206,7 +211,8 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
   const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen };
+  const filed = w.attachFile(alpha, { name: 'gate.txt', mime: 'text/plain', bytes: Buffer.from('gate').toString('base64') }).id;
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen, file: filed };
   const bodies = {
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
@@ -216,17 +222,20 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'doc.set': { doc: 'second' },
     'doc.append': { doc: 'third' },
     'comment.add': { text: 'more' },
+    'file.attach': { name: 'more.txt', mime: 'text/plain', contentBase64: Buffer.from('more').toString('base64') },
     'view.create': { name: 'Gate', blocks: [{ table: 'Task' }] },
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli.command === 'share') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
-      if (c.writes === 'schema') {
+      if (c.name === 'automation.replay') {
+        assert.deepEqual([res.status, json.code], [404, 'not-found'], `${c.http.method} ${c.http.path} writes no schema and looks the record up`);
+      } else if (c.writes === 'schema') {
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
         assert.equal(json.error, 'This token cannot change the schema');
       } else {
@@ -303,7 +312,7 @@ test('the automation family answers the same on CLI, MCP and HTTP, and a miss na
     assert.equal(again.status, 404, 'deleting a deleted automation over HTTP is a 404');
     assert.deepEqual(await again.json(), { error: `No automation '${made.http.id}'`, code: 'not-found' });
     assert.deepEqual(d.mcp('weave_automations', { action: 'delete', automation: made.mcp.id }), { id: made.mcp.id, deleted: false }, 'MCP answers deleted: false');
-    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete)");
+    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete, replay)");
     const miss = d.run(['automation', 'run']);
     assert.notEqual(miss.status, 0);
     assert.match(miss.stderr, /Unknown automation subcommand 'run'\. Try: create, list, describe, update, delete/);
@@ -808,5 +817,80 @@ test('the share family answers the same on CLI, MCP and HTTP, and HTTP still add
     for (const [method, path, name] of [['GET', '/api/shares', 'share.list'], ['POST', '/api/shares', 'share.mint'], ['POST', '/api/shares/x/renew', 'share.renew'], ['DELETE', '/api/shares/x', 'share.revoke'], ['PATCH', '/api/shares/x', 'share.update'], ['POST', '/api/shares/x/regenerate', 'share.regenerate']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
+  } finally { d.close(); }
+});
+
+test('file attach, read and delete answer the same on CLI, MCP and HTTP, and each door keeps its own bytes (Feature #179)', async () => {
+  const withFiles = (w) => { seed(w); w.addField('Task', { name: 'Papers', type: 'attachments' }); };
+  const d = await threeDoors('weave-registry-files-', { seeded: withFiles });
+  const dir = tempDir('weave-registry-files-src-');
+  const src = join(dir, 'note.txt');
+  writeFileSync(src, 'hello files');
+  const b64 = Buffer.from('hello files').toString('base64');
+  const file = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['entity', 'path', 'hash', 'sha256', 'url'].includes(k) ? undefined : x)));
+  try {
+    const alpha = { cli: d.cli(['query', 'Task']).items[0].id, mcp: d.mcpWeave.query('Task').items[0].id, http: d.httpWeave.query('Task').items[0].id };
+    for (const field of [null, 'Papers']) {
+      const made = {
+        cli: d.cli(['file', 'attach', alpha.cli, '--path', src, '--mime', 'text/plain', ...(field ? ['--field', field] : [])]),
+        mcp: d.mcp('weave_attach_file', { entity: alpha.mcp, name: 'note.txt', mime: 'text/plain', contentBase64: b64, ...(field ? { field } : {}) }),
+        http: await d.http('POST', `/api/entities/${alpha.http}${field ? `/fields/${field}` : ''}/files`, { name: 'note.txt', mime: 'text/plain', contentBase64: b64 }),
+      };
+      assert.deepEqual(file(made.mcp), file(made.http), `weave_attach_file and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      assert.deepEqual(file(made.cli), file(made.http), `weave file attach and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      const fromHttp = await d.raw('GET', `/api/files/${made.http.id}`);
+      assert.equal(fromHttp.status, 200);
+      assert.ok(fromHttp.headers.get('etag'), 'GET /api/files/:id still sends its ETag');
+      assert.equal(await fromHttp.text(), 'hello files');
+      assert.equal((await d.raw('GET', `/api/files/${made.http.id}`, undefined, { 'if-none-match': fromHttp.headers.get('etag') })).status, 304, 'GET /api/files/:id still answers 304');
+      const read = d.mcp('weave_files', { action: 'read', file: made.mcp.id });
+      assert.equal(Buffer.from(read.contentBase64, 'base64').toString(), 'hello files', 'weave_files read still answers base64');
+      assert.equal(read.name, 'note.txt');
+      const out = d.run(['file', 'read', made.cli.id]);
+      assert.equal(out.stdout, 'hello files', 'weave file read still writes the bytes, no newline');
+      const saved = join(dir, 'out.txt');
+      const meta = d.cli(['file', 'read', made.cli.id, '--out', saved]);
+      assert.equal(meta.path, saved);
+      assert.equal(meta.name, 'note.txt');
+      const gone = {
+        cli: d.cli(['file', 'delete', alpha.cli, made.cli.id]),
+        mcp: d.mcp('weave_files', { action: 'delete', entity: alpha.mcp, file: made.mcp.id }),
+        http: await d.http('DELETE', `/api/entities/${alpha.http}/files/${made.http.id}`),
+      };
+      assert.deepEqual(file(gone.mcp), file(gone.http), 'weave_files delete and DELETE files answer alike');
+      assert.deepEqual(file(gone.cli), file(gone.http), 'weave file delete and DELETE files answer alike');
+    }
+    const missing = await d.raw('DELETE', `/api/entities/${alpha.http}/files/00000000-0000-4000-8000-000000000000`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: "No file '00000000-0000-4000-8000-000000000000' on this record", code: 'not-found' });
+    assert.equal(d.call('weave_files', { action: 'zap', file: 'x' }).content[0].text, "Error: Unknown files action 'zap' (read, delete)");
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt' }).content[0].text, /Send contentBase64, or prepare:true and size/);
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt', prepare: true, size: 3 }).content[0].text, /Prepare uploads over the authenticated HTTP MCP endpoint/);
+    const noPath = d.run(['file', 'attach', alpha.cli]);
+    assert.notEqual(noPath.status, 0);
+    assert.match(noPath.stderr, /file attach needs --path/);
+    const miss = d.run(['file', 'zap']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown file subcommand 'zap'\. Try: attach, read, delete/);
+    for (const [method, path, name] of [['POST', '/api/entities/x/files', 'file.attach'], ['POST', '/api/entities/x/fields/y/files', 'file.attach'], ['GET', '/api/files/x', 'file.read'], ['DELETE', '/api/entities/x/files/y', 'file.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('space list and members answer the same on CLI and HTTP, and a bare space still lists (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-space-members-', { seeded: (w) => { seed(w); w.createAccount({ name: 'ann', role: 'editor' }); } });
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  try {
+    assert.deepEqual(bare(d.cli(['space', 'list'])), bare(await d.http('GET', '/api/spaces', undefined, auth)), 'space list and GET /api/spaces answer alike');
+    assert.deepEqual(bare(d.cli(['space'])), bare(d.cli(['space', 'list'])), 'a bare weave space lists');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops'])), bare(await d.http('GET', '/api/spaces/Ops/members', undefined, auth)), 'members read alike');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--role', 'observer'])), bare(await d.http('PUT', '/api/spaces/Ops/members/ann', { role: 'observer' }, auth)), 'a member set answers alike');
+    assert.equal(d.cli(['space', 'members', 'Ops']).find((m) => m.name === 'ann').role, 'observer');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--remove'])), bare(await d.http('DELETE', '/api/spaces/Ops/members/ann', undefined, auth)), 'a member removal answers alike');
+    assert.deepEqual(d.cli(['space', 'members', 'Ops']), []);
+    const refused = d.run(['space', 'bogus']);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /Unknown space subcommand 'bogus'\. Try: create, list, update, members, delete, restore/);
   } finally { d.close(); }
 });

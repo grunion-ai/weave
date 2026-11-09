@@ -357,6 +357,16 @@ async function main() {
       } catch (err) {
         console.warn(`Showcase sync skipped: ${err.message}`);
       }
+      try {
+        if (docsW) {
+          const { syncDocumentationPresentation } = await import('../src/documentation-presentation.js');
+          const r = syncDocumentationPresentation(docsW);
+          if (r.applied) console.log(`Documentation presentation: ${r.attached} attachments, ${r.fields} fields, ${r.descriptions} descriptions`);
+          for (const conflict of r.conflicts) console.warn(`Documentation presentation preserved ${conflict}`);
+        }
+      } catch (err) {
+        console.warn(`Documentation presentation skipped: ${err.message}`);
+      }
       if (docsW && docsW !== w) docsW.store.close?.();
     };
     if (!deferred) await bootWrites();
@@ -565,8 +575,8 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
-    return registered.cli.raw ? process.stdout.write(result) : out(result);
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
+    return (typeof registered.cli.raw === 'function' ? registered.cli.raw(flags) : registered.cli.raw) ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
   if (miss) throw miss;
@@ -625,17 +635,6 @@ async function main() {
       if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-    }
-    case 'space': {
-      const [sub, name] = args;
-      if (sub === 'list' || !sub) return out(w.listSpaces());
-      if (sub === 'members') {
-        const [, , account] = args;
-        if (account && flags.remove) return out(w.removeSpaceMember(name, account));
-        if (account) return out(w.setSpaceMember(name, account, { role: flags.role ?? null }));
-        return out(w.spaceMembers(name));
-      }
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, members, delete, restore`);
     }
     case 'template': {
       const [sub, ref] = args;
@@ -762,22 +761,6 @@ async function main() {
         return out(submitForm(w, ref, input, { actor: CLI_ACTOR, idempotencyKey: flags['idempotency-key'], server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
       }
       throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, config, create, update, submit`);
-    }
-    case 'file': {
-      const [sub, ref, fileId] = args;
-      if (sub === 'attach') {
-        if (!flags.path) throw new WeaveError('file attach needs --path');
-        const e = resolveEntityRef(w, ref, flags.db);
-        const file = { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: readFileSync(flags.path).toString('base64') };
-        return out(flags.field ? w.attachToField(e.id, flags.field, file) : w.attachFile(e.id, file));
-      }
-      if (sub === 'read') {
-        const { meta, bytes } = w.readFile(ref);
-        if (flags.out) { writeFileSync(flags.out, Buffer.from(bytes)); return out({ ...meta, path: flags.out }); }
-        return process.stdout.write(Buffer.from(bytes));
-      }
-      if (sub === 'delete') return out(w.deleteFile(resolveEntityRef(w, ref, flags.db).id, fileId));
-      throw new WeaveError(`Unknown file subcommand '${sub}'. Try: attach, read, delete`);
     }
     default:
       console.error(`Unknown command '${command}'. Run: weave help`);
