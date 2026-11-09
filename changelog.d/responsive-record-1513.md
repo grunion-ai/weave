@@ -1,0 +1,1 @@
+- A record takes the available pane when the table and record cannot each fit 400px. Closing it restores the table. The split divider is 8px, and navigation uses the sidebar icon at every width (Issue #1513).
