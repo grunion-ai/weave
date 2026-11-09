@@ -7,7 +7,8 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 
 export const LAZY = ['public/field-dialog.js', 'public/activity-log.js', 'public/command-palette.js', 'public/date-picker.js', 'public/activity-panel.js', 'public/forms-dialog.js', 'public/automation-map.js'];
-export const APP = ['public/app.js', ...LAZY].map(read).join('\n');
+export const ROUTED = ['public/relation-map.js'];
+export const APP = ['public/app.js', ...LAZY, ...ROUTED].map(read).join('\n');
 export const HTML = read('public/index.html');
 export const CHIP_CSS = read('public/chip.css');
 export const CSS = [CHIP_CSS, read('public/style.css')].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
