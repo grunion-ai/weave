@@ -13,17 +13,18 @@ import { Store } from '../src/store.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AXE = readFileSync(join(HERE, 'vendor/axe-4.10.2.min.js'), 'utf8');
 const BASELINE = JSON.parse(readFileSync(join(HERE, 'a11y-baseline.json'), 'utf8')).violations;
-const RULES = ['label', 'region', 'color-contrast', 'aria-prohibited-attr', 'label-title-only'];
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
 const EDITOR = '.vditor';
 const EDITOR_OFF = {};
-const EDITOR_RULES = RULES.filter((r) => !EDITOR_OFF[r]);
+const disabled = (off) => Object.fromEntries(Object.keys(off).map((r) => [r, { enabled: false }]));
+const VIEWPORTS = { desktop: { viewport: { width: 1280, height: 800 } }, phone: { viewport: { width: 393, height: 852 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true } };
 const ROW = '.wv-grid tbody tr.entity-row';
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
-const keyOf = ({ route, state, theme, rule, target }) => [route, state, theme, rule, target.replace(UUID, '#')].join(' | ');
+const keyOf = ({ route, state, theme, cell, rule, target }) => [route, state, theme, cell, rule, target.replace(UUID, '#')].join(' | ');
 const partsOf = (key) => {
-  const [route, state, theme, rule, target] = key.split(' | ');
-  return { route, state, theme, rule, target };
+  const [route, state, theme, cell, rule, target] = key.split(' | ');
+  return { route, state, theme, cell, rule, target };
 };
 
 await import('../public/chip-core.js');
@@ -81,10 +82,10 @@ if (s && doors) {
   const ctx = { ...s, doors };
   const plan = walked('a11y');
   const routes = plan.filter((p) => p.state.open === 'rest');
-  const statesOn = (route, theme) => plan.filter((p) => p.state.open === 'overlay' && p.state.route === route && p.theme === theme).map((p) => p.state);
+  const statesOn = (route, theme, cell) => plan.filter((p) => p.state.open === 'overlay' && p.state.route === route && p.theme === theme && p.cell === cell).map((p) => p.state);
 
-  const open = async (url, ready, theme, { session = false } = {}) => {
-    const ctx = await (session ? doors : s).browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: theme });
+  const open = async (url, ready, theme, { session = false, cell = 'desktop' } = {}) => {
+    const ctx = await (session ? doors : s).browser.newContext({ ...VIEWPORTS[cell], colorScheme: theme });
     if (session) await ctx.addCookies([{ name: `wv_session_${doors.weave.state.meta.id}`, value: doors.weave.createSession(architect.id).token, url: doors.base }]);
     const page = await ctx.newPage();
     page.close = () => ctx.close();
@@ -97,29 +98,29 @@ if (s && doors) {
 
   const axe = async (page, { root = null, editor = false } = {}) => {
     if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ content: AXE });
-    const run = (context, rules) => page.evaluate(([c, r]) => window.axe.run(
+    const run = (context, rules) => page.evaluate(([c, r, tags]) => window.axe.run(
       c.include ? { include: [[c.include]], exclude: c.exclude ? [[c.exclude]] : [] } : { exclude: c.exclude ? [[c.exclude]] : [] },
-      { runOnly: { type: 'rule', values: r }, resultTypes: ['violations'] },
+      { runOnly: { type: 'tag', values: tags }, rules: r, resultTypes: ['violations'] },
     ).then((res) => res.violations.flatMap((v) => v.nodes.map((n) => ({
       rule: v.id, impact: v.impact, help: v.help, helpUrl: v.helpUrl, target: n.target.join(' '),
       contrast: n.any[0]?.data?.contrastRatio ? `${n.any[0].data.fgColor} on ${n.any[0].data.bgColor} = ${n.any[0].data.contrastRatio}:1` : null,
-    })))), [context, rules]);
-    if (root === EDITOR) return run({ include: EDITOR }, EDITOR_RULES);
-    if (root) return run({ include: root }, RULES);
-    const outside = await run({ exclude: EDITOR }, RULES);
-    return editor ? [...outside, ...await run({ include: EDITOR }, EDITOR_RULES)] : outside;
+    })))), [context, rules, TAGS]);
+    if (root === EDITOR) return run({ include: EDITOR }, disabled(EDITOR_OFF));
+    if (root) return run({ include: root }, {});
+    const outside = await run({ exclude: EDITOR }, {});
+    return editor ? [...outside, ...await run({ include: EDITOR }, disabled(EDITOR_OFF))] : outside;
   };
 
   const effectiveTheme = (page) => page.evaluate(() => document.documentElement.dataset.bsTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
-  const scanRoute = async (state, theme) => {
+  const scanRoute = async (state, theme, cell) => {
     const found = [];
     const failed = [];
     const route = ROUTES[state.route];
-    const add = (name, list) => { for (const v of list) found.push({ ...v, key: keyOf({ route: state.name, state: name, theme, rule: v.rule, target: v.target }) }); };
+    const add = (name, list) => { for (const v of list) found.push({ ...v, key: keyOf({ route: state.name, state: name, theme, cell, rule: v.rule, target: v.target }) }); };
     const fresh = async () => {
-      const page = await open(route.url(ctx, 'desktop'), readyOf(state, 'desktop'), theme, { session: route.session });
-      if (route.setup) await route.setup(page, ctx, 'desktop');
+      const page = await open(route.url(ctx, cell), readyOf(state, cell), theme, { session: route.session, cell });
+      if (route.setup) await route.setup(page, ctx, cell);
       return page;
     };
     let page = await fresh();
@@ -127,9 +128,9 @@ if (s && doors) {
       assert.equal(await effectiveTheme(page), theme, `${state.name} paints the ${theme} theme`);
       if (route.editor) assert.ok(await page.locator(`${EDITOR} >> visible=true`).count() > 0, `${state.name} shows the document editor the scan covers`);
       add('at rest', await axe(page, { editor: await page.locator(EDITOR).count() > 0 }));
-      for (const st of statesOn(state.route, theme)) {
+      for (const st of statesOn(state.route, theme, cell)) {
         try {
-          await st.act(page, ctx, 'desktop');
+          await st.act(page, ctx, cell);
           const root = page.locator(`${st.root} >> visible=true`).first();
           await root.waitFor({ timeout: 8000 });
           await atRest(root);
@@ -145,12 +146,12 @@ if (s && doors) {
     return { found, failed };
   };
 
-  for (const { state, theme } of routes) {
-    test(`${state.name}, ${theme}: axe finds no violation outside test/a11y-baseline.json, and every baseline entry still reproduces`, async (t) => {
-      const { found, failed } = await scanRoute(state, theme);
+  for (const { state, theme, cell } of routes) {
+    test(`${state.name}, ${theme}, ${cell}: axe finds no violation outside test/a11y-baseline.json, and every baseline entry still reproduces`, async (t) => {
+      const { found, failed } = await scanRoute(state, theme, cell);
       assert.deepEqual(failed, [], `an open state could not open: its selectors rotted`);
       const seen = new Map(found.map((f) => [f.key, f]));
-      const mine = Object.keys(BASELINE).filter((k) => { const p = partsOf(k); return p.route === state.name && p.theme === theme; });
+      const mine = Object.keys(BASELINE).filter((k) => { const p = partsOf(k); return p.route === state.name && p.theme === theme && p.cell === cell; });
       const added = [...seen.keys()].filter((k) => !Object.hasOwn(BASELINE, k)).sort();
       const dropped = mine.filter((k) => !seen.has(k)).sort();
       for (const k of added) { const f = seen.get(k); t.diagnostic(`a11y-new ${k} :: ${f.impact} :: ${f.help} :: ${f.contrast ?? ''}`); }
@@ -159,21 +160,54 @@ if (s && doors) {
     });
   }
 
-  test('every baseline entry names a route, a state, a theme, a scanned rule and the Issue row that tracks it', () => {
+  test('every baseline entry names a route, a state, a theme, a width band, a scanned rule and the Issue row that tracks it', () => {
     const names = new Set(routes.map((p) => p.state.name));
+    const bands = new Set(routes.map((p) => p.cell));
     for (const [k, row] of Object.entries(BASELINE)) {
       const p = partsOf(k);
       assert.ok(names.has(p.route), `${k}: unknown route`);
       assert.ok(['light', 'dark'].includes(p.theme), `${k}: unknown theme`);
-      assert.ok(RULES.includes(p.rule), `${k}: rule outside the scanned set`);
+      assert.ok(bands.has(p.cell), `${k}: unknown width band`);
+      assert.ok(p.rule, `${k}: no rule`);
       assert.ok(p.target, `${k}: no target`);
       assert.ok(Number.isInteger(row) && row > 0, `${k}: needs its Issue row number, got ${row}`);
     }
   });
 
+  test('the scan runs every WCAG A and AA rule axe carries, so a rule nobody listed still fails the gate (Issue #1449)', async () => {
+    const page = await open(ROUTES.home.url(ctx, 'desktop'), readyOf({ route: 'home' }, 'desktop'), 'light');
+    try {
+      const ids = await page.evaluate(async (axeSrc) => {
+        if (!window.axe) { const el = document.createElement('script'); el.textContent = axeSrc; document.head.appendChild(el); }
+        return window.axe.getRules(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).map((r) => r.ruleId);
+      }, AXE);
+      assert.ok(ids.length >= 60, `axe carries ${ids.length} WCAG A and AA rules; the scan used to run five of them`);
+      for (const id of ['meta-viewport', 'button-name', 'image-alt', 'link-name', 'html-has-lang', 'frame-title']) {
+        assert.ok(ids.includes(id), `${id} is one of the rules the tag set now runs`);
+      }
+    } finally { await page.close(); }
+  });
+
+  test('a planted unlabelled button fails the scan, so the gate is proven to catch a violation nobody baselined (Issue #1449)', async () => {
+    const page = await open(ROUTES.home.url(ctx, 'desktop'), readyOf({ route: 'home' }, 'desktop'), 'light');
+    try {
+      const clean = await axe(page);
+      assert.deepEqual(clean.filter((v) => v.rule === 'button-name'), [], 'the home route has no unlabelled button of its own');
+      await page.evaluate(() => {
+        const b = document.createElement('button');
+        b.id = 'wv-planted-a11y-failure';
+        document.body.appendChild(b);
+      });
+      const planted = await axe(page);
+      const hit = planted.filter((v) => v.rule === 'button-name');
+      assert.equal(hit.length, 1, `the scan reports the planted button; it reported ${JSON.stringify(planted.map((v) => v.rule))}`);
+      assert.match(hit[0].target, /wv-planted-a11y-failure/);
+      assert.ok(!Object.keys(BASELINE).some((k) => partsOf(k).rule === 'button-name'), 'no baseline entry would have swallowed it');
+    } finally { await page.close(); }
+  });
+
   test('the editor is scanned, with only the rules Vditor\'s own markup trips switched off inside it', () => {
-    assert.deepEqual(Object.keys(EDITOR_OFF).filter((r) => !RULES.includes(r)), [], 'a disabled rule must be one the suite runs');
-    assert.ok(EDITOR_RULES.includes('color-contrast') && EDITOR_RULES.includes('label'), 'contrast and labels still run inside the editor');
+    assert.deepEqual(Object.keys(EDITOR_OFF), [], 'every rule the scan runs outside the editor also runs inside it');
   });
 
   const ringContrast = (page, sel) => page.evaluate((selector) => {
