@@ -53,8 +53,6 @@ const HAND_WRITTEN = [
   ['comment.delete', ['deleteComment'], 'weave_delete_comment', 'comment delete', ['DELETE /api/entities/:ref/comments/:ref']],
   ['search', ['search', 'universalSearch'], 'weave_search', 'search', ['GET /api/search']],
   ['undo', ['undo', 'listUndo'], 'weave_undo', 'undo', ['GET /api/undo', 'POST /api/undo']],
-  ['csv.export', ['exportCSV'], 'weave_export_csv', 'csv', ['GET /api/tables/:ref/export.csv']],
-  ['csv.import', ['importCSV'], 'weave_import_csv', 'csv import', ['POST /api/tables/:ref/import.csv']],
   ['json.export', ['exportJSON'], 'weave_export_json', 'export', ['GET /api/export']],
   ['json.import', ['importJSON'], 'weave_import_json', 'import', ['POST /api/import']],
   ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],

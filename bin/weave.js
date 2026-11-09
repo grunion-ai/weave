@@ -561,7 +561,10 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   const registered = cliCommand(command, args[0]);
-  if (registered) return out(cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8') }));
+  if (registered) {
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8') });
+    return registered.cli.raw ? process.stdout.write(result) : out(result);
+  }
   const miss = cliMiss(command, args[0]);
   if (miss) throw miss;
 
@@ -812,15 +815,6 @@ async function main() {
     }
     case 'search':
       return out(w.search(args.join(' '), { limit: numberFlag('limit', 25) }));
-    case 'csv': {
-      const [sub, ...rest] = args;
-      if (sub === 'import') {
-        const db = rest[0];
-        const text = flags.file ? readFileSync(flags.file, 'utf8') : readFileSync(0, 'utf8');
-        return out(w.importCSV(db, text));
-      }
-      return process.stdout.write(w.exportCSV(sub === 'export' ? rest[0] : sub));
-    }
     case 'export': {
       const dump = JSON.stringify(w.exportJSON(), null, 1);
       if (flags.out) {

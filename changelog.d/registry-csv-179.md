@@ -1,0 +1,1 @@
+- CSV export and import run from the command registry on every door: `weave csv`, `weave_export_csv`, `weave_import_csv` and the `export.csv` and `import.csv` routes dispatch from one entry each. Export still prints raw CSV on the CLI and answers `text/csv` over HTTP (Feature #179).

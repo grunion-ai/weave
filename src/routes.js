@@ -1,7 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
-import { matchRoute, httpRun } from './commands.js';
+import { matchRoute, httpRun, httpHeaders } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -2005,7 +2005,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
-        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams));
+        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams), httpHeaders(registered));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }
@@ -2074,12 +2074,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
           const items = weave.listTrash(m[1], { workspace: member.state.meta.id });
           return out(200, { total: items.length, items });
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/export\.csv$/)) && rx.method === 'GET') {
-          return out(200, weave.exportCSV(m[1]), { 'Content-Type': 'text/csv; charset=utf-8' });
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/import\.csv$/)) && rx.method === 'POST') {
-          return out(200, weave.importCSV(m[1], body.csv ?? ''));
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
