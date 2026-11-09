@@ -101,25 +101,36 @@ if (s) {
     await page.close();
   });
 
-  test('between 600 and 900px the rail stays and the drawer opens beside it', async () => {
-    const page = await open(views['Task record'], { width: 700 });
-    let seen = await shell(page);
-    assert.ok(seen.scrollWidth <= 700, `document scrollWidth is ${seen.scrollWidth}`);
-    assert.equal(seen.rail.width, 52, 'the rail is in the flow');
-    assert.equal(seen.sidebar.width, 0, 'the sidebar is not');
-    await openDrawer(page);
-    seen = await shell(page);
-    assert.equal(seen.sidebar.left, 52, 'the drawer opens beside the rail');
-    await page.mouse.click(680, 500);
-    assert.equal((await shell(page)).open, false, 'a tap outside closes it');
-    assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap: nothing under it opened');
-    await page.close();
+  test('compact widths keep both navigation sections in the drawer (Issue #1513)', async () => {
+    for (const width of [601, 729, 900]) {
+      const page = await open(views['Task record'], { width });
+      try {
+        let seen = await shell(page);
+        assert.ok(seen.scrollWidth <= width, `document scrollWidth is ${seen.scrollWidth}`);
+        assert.equal(seen.rail.width, 0, `${width}px has no orphan workspace rail`);
+        assert.equal(seen.sidebar.width, 0, 'the sidebar is closed too');
+        assert.ok(seen.menu.width >= 32, 'the drawer button remains available');
+        await openDrawer(page);
+        seen = await shell(page);
+        assert.equal(seen.rail.width, 52, 'the workspace selector opens with the drawer');
+        assert.equal(seen.sidebar.left, 52, 'the sidebar opens beside the workspace selector');
+        assert.equal(seen.sidebar.width, 264);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.activeElement === document.querySelector('#main .nav-menu'));
+        assert.equal((await shell(page)).rail.width, 0, 'closing hides the workspace selector again');
+        await openDrawer(page);
+        await page.mouse.click(width - 20, 500);
+        assert.equal((await shell(page)).open, false, 'a tap outside closes both navigation sections');
+        assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap');
+      } finally { await page.close(); }
+    }
   });
 
   test('at desktop width the sidebar is in the flow and the menu button is hidden', async () => {
     const page = await open(views['Task table'], { width: 1280 });
     const seen = await shell(page);
     assert.equal(seen.sidebar.width, 264, 'the sidebar keeps its 264px');
+    assert.equal(seen.rail.width, 52, 'expanded navigation includes the workspace selector');
     assert.equal(seen.menu.width, 0, 'no menu button');
     await page.setViewportSize(phoneProfile().page.viewport);
     await page.click('#main .nav-menu');
