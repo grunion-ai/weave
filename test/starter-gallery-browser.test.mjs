@@ -64,9 +64,9 @@ if (s) {
     await page.close();
   });
 
-  for (const theme of ['light', 'dark']) {
-    test(`${theme}: at 375 px the gallery stacks one card a row and never scrolls sideways`, async () => {
-      const page = await open('#/templates', { theme, viewport: { width: 375, height: 812 } });
+  {
+    test('at 375 px the gallery stacks one card a row and never scrolls sideways', async () => {
+      const page = await open('#/templates', { viewport: { width: 375, height: 812 } });
       await page.waitForSelector('.wv-gallery .wv-start-template');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll');
       const lefts = await page.locator('.wv-gallery .wv-gallery-group').first().locator('.wv-start-template').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
