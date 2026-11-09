@@ -14,7 +14,8 @@ export const GITHUB_HOST_KEY = 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI
 const short = (sha) => String(sha).slice(0, 10);
 const skip = (reason) => ({ action: 'skip', reason });
 
-export const inWindow = (now, everyHours) => now.getUTCHours() % Math.max(1, Math.floor(everyHours) || 1) === 0;
+const batchHours = (everyHours) => Math.max(1, Math.floor(everyHours) || 1);
+export const due = (now, last, everyHours) => !last || now - last >= (batchHours(everyHours) - 0.5) * 3_600_000;
 export const revertsCommit = (message, sha) => String(message).includes(`This reverts commit ${sha}`);
 export const pushArgs = (sha) => ['push', '--porcelain', `git@github.com:${REPO}.git`, `${sha}:refs/heads/${BRANCH}`];
 export const issueName = (sha) => `Error: production rolled back the promotion of ${short(sha)}`;
@@ -32,7 +33,10 @@ export function verdict(health, sha) {
 
 export async function select(io, { paused = false, now = new Date(), event = 'workflow_dispatch', everyHours = 2 } = {}) {
   if (paused) return skip('PROMOTION_PAUSED is true');
-  if (event === 'schedule' && !inWindow(now, everyHours)) return skip(`outside the ${everyHours}-hour batch window`);
+  if (event === 'schedule') {
+    const last = await io.lastPromotion();
+    if (!due(now, last, everyHours)) return skip(`last promotion ${last.toISOString()} is inside the ${batchHours(everyHours)}-hour batch`);
+  }
   const head = await io.production();
   if (!head) throw new Error(`no ${BRANCH} branch to promote from`);
   const { status, commits } = await io.range(head);
@@ -120,6 +124,10 @@ export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
   const sheriff = sheriffIO(env, { cwd });
   return {
     log: (line) => console.log(line),
+    lastPromotion: async () => {
+      const at = api(`${base}/deployments?environment=${BRANCH}&per_page=1`)[0]?.created_at;
+      return at ? new Date(at) : null;
+    },
     production: async () => optional(`${base}/branches/${BRANCH}`)?.commit?.sha ?? null,
     range: async (from, to = 'main') => {
       const first = api(`${base}/compare/${from}...${to}?per_page=100&page=1`);

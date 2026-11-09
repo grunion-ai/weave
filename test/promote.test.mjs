@@ -1,19 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { select, promote, verdict, revertsCommit, inWindow, pushArgs, issueName } from '../scripts/promote.mjs';
+import { select, promote, verdict, revertsCommit, due, pushArgs, issueName } from '../scripts/promote.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 const live = (n, watch = { ok: true }, swap = {}) => ({ ok: true, supervisor: { commit: sha(n), release: `c${sha(n)}`, failed: [], lastSwap: { ok: true, to: `c${sha(n)}`, from: 'cold', ...swap }, watch: { release: `c${sha(n)}`, until: '2026-10-13T10:10:00Z', ...watch } } });
 const at = (hour) => new Date(Date.UTC(2026, 9, 13, hour, 23));
 
-function fake({ head = sha(1), status = 'ahead', commits = [], gates = {}, soaks = {}, health = [live(1)], hook = { action: 'swapped' }, revert = { number: 600, html_url: 'https://github.com/grunion-ai/weave/pull/600' } } = {}) {
+function fake({ promotedAt = null, head = sha(1), status = 'ahead', commits = [], gates = {}, soaks = {}, health = [live(1)], hook = { action: 'swapped' }, revert = { number: 600, html_url: 'https://github.com/grunion-ai/weave/pull/600' } } = {}) {
   const reads = [];
   const writes = [];
   let h = 0;
   const io = {
     log: () => {},
+    lastPromotion: async () => { reads.push('lastPromotion'); return promotedAt; },
     production: async () => { reads.push('production'); return head; },
     range: async (base, tip = 'main') => {
       reads.push(['range', base, tip]);
@@ -75,16 +76,25 @@ test('PROMOTION_PAUSED stops promotion before anything is read', async () => {
   assert.deepEqual(f.reads, []);
 });
 
-test('a scheduled run acts only in its batch window; a dispatch always acts', async () => {
-  assert.equal(inWindow(at(10), 2), true);
-  assert.equal(inWindow(at(11), 2), false);
-  assert.equal(inWindow(at(11), 1), true);
-  assert.equal(inWindow(at(9), 3), true);
-  const f = fake({ commits: [commit(2)], gates: { [sha(2)]: 'success' }, soaks: { [sha(2)]: 'success' } });
-  assert.equal((await select(f.io, opts({ event: 'schedule', now: at(11) }))).action, 'skip');
-  assert.deepEqual(f.reads, []);
-  assert.equal((await select(f.io, opts({ event: 'schedule', now: at(12) }))).action, 'promote');
-  assert.equal((await select(f.io, opts({ event: 'workflow_dispatch', now: at(11) }))).action, 'promote');
+test('a scheduled run acts once the last promotion is a batch old, however late GitHub delivers it; a dispatch always acts', async () => {
+  const hoursAgo = (h, now = at(11)) => new Date(now.getTime() - h * 3_600_000);
+  assert.equal(due(at(11), null, 2), true);
+  assert.equal(due(at(11), hoursAgo(2), 2), true);
+  assert.equal(due(at(11), hoursAgo(1.6), 2), true, 'an hourly cron that drifts a few minutes still lands every batch');
+  assert.equal(due(at(11), hoursAgo(1), 2), false);
+  assert.equal(due(at(11), hoursAgo(0.6), 1), true);
+  assert.equal(due(at(11), hoursAgo(0.2), 1), false);
+  const ready = { commits: [commit(2)], gates: { [sha(2)]: 'success' }, soaks: { [sha(2)]: 'success' } };
+  const recent = fake({ ...ready, promotedAt: hoursAgo(1) });
+  const out = await select(recent.io, opts({ event: 'schedule', now: at(11) }));
+  assert.equal(out.action, 'skip');
+  assert.match(out.reason, /last promotion .* 2-hour batch/);
+  assert.deepEqual(recent.reads, ['lastPromotion']);
+  const late = fake({ ...ready, promotedAt: hoursAgo(9) });
+  assert.equal((await select(late.io, opts({ event: 'schedule', now: at(11) }))).action, 'promote', 'a run GitHub delivered in an odd hour still promotes');
+  const dispatched = fake({ ...ready, promotedAt: hoursAgo(0.1) });
+  assert.equal((await select(dispatched.io, opts({ event: 'workflow_dispatch', now: at(11) }))).action, 'promote');
+  assert.ok(!dispatched.reads.includes('lastPromotion'), 'a dispatch reads no promotion history');
 });
 
 test('while prod does not serve the production head, only a range carrying its revert is promoted', async () => {
