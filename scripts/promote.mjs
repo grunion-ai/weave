@@ -18,6 +18,7 @@ const batchHours = (everyHours) => Math.max(1, Math.floor(everyHours) || 1);
 export const due = (now, last, everyHours) => !last || now - last >= (batchHours(everyHours) - 0.5) * 3_600_000;
 export const revertsCommit = (message, sha) => String(message).includes(`This reverts commit ${sha}`);
 export const pushArgs = (sha) => ['push', '--porcelain', `git@github.com:${REPO}.git`, `${sha}:refs/heads/${BRANCH}`];
+export const lagLine = (c, now, everyHours) => `weave promote: production lags ${short(c.sha)} by ${((now - c.at) / 3_600_000).toFixed(1)} hours, more than the ${batchHours(everyHours)}-hour batch; the tests and dev-soak completion triggers missed it`;
 export const issueName = (sha) => `Error: production rolled back the promotion of ${short(sha)}`;
 
 export function verdict(health, sha) {
@@ -52,7 +53,8 @@ export async function select(io, { paused = false, now = new Date(), event = 'wo
   for (const c of commits.slice(from).reverse()) {
     if (await io.gate(c.sha) !== 'success') continue;
     if (await io.soak(c.sha) !== 'success') continue;
-    return { action: 'promote', sha: c.sha, from: head };
+    const stale = c.at && now - c.at > batchHours(everyHours) * 3_600_000 ? lagLine(c, now, everyHours) : undefined;
+    return { action: 'promote', sha: c.sha, from: head, ...(stale && { stale }) };
   }
   return skip(`no main commit newer than ${short(head)} has CI gate and ${SOAK} success`);
 }
@@ -71,9 +73,10 @@ async function waitLive(io, sha, { deadlineMs, pollMs, sleep }) {
   }
 }
 
-export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pollMs = 15_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), self } = {}) {
+export async function promote(io, { sha, from, stale }, { deadlineMs = 25 * 60_000, pollMs = 15_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), self } = {}) {
   const head = await io.production();
   if (head !== from && head !== sha) throw new Error(`production moved to ${short(head)} since ${short(from)} was selected`);
+  if (stale) await io.alert(stale);
   if (head !== sha) await io.push(sha);
   let hook;
   try { hook = await io.check(); } catch (error) { hook = { error: error.message }; }
@@ -134,7 +137,7 @@ export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
       const commits = [...first.commits];
       for (let page = 2; commits.length < first.total_commits && page <= 20; page++) commits.push(...api(`${base}/compare/${from}...${to}?per_page=100&page=${page}`).commits);
       if (commits.length !== first.total_commits) throw new Error(`compare ${short(from)}...${to} returned ${commits.length} of ${first.total_commits} commits`);
-      return { status: first.status, commits: commits.map((c) => ({ sha: c.sha, message: c.commit.message })) };
+      return { status: first.status, commits: commits.map((c) => ({ sha: c.sha, message: c.commit.message, at: c.commit.committer?.date ? new Date(c.commit.committer.date) : undefined })) };
     },
     gate: async (sha) => {
       let seen = null;
@@ -189,13 +192,13 @@ async function main(env = process.env) {
     const out = await select(io, { paused: env.PROMOTION_PAUSED === 'true', event: env.PROMOTION_EVENT, everyHours: Number(env.PROMOTION_EVERY_HOURS || 2) });
     console.log(JSON.stringify(out));
     const dry = env.PROMOTION_DRY_RUN === 'true';
-    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, reason: out.reason ?? (dry ? 'dry run' : 'promote') });
+    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, reason: out.reason ?? (dry ? 'dry run' : 'promote'), stale: out.stale });
     return;
   }
   if (process.argv[2] === 'promote') {
     if (env.PROMOTION_PAUSED === 'true') { console.log('PROMOTION_PAUSED is true'); return; }
     if (!/^[0-9a-f]{40}$/.test(env.SHA ?? '') || !/^[0-9a-f]{40}$/.test(env.FROM ?? '')) throw new Error('Expected SHA and FROM as full commit SHAs');
-    const out = await promote(io, { sha: env.SHA, from: env.FROM }, { self });
+    const out = await promote(io, { sha: env.SHA, from: env.FROM, stale: env.STALE || undefined }, { self });
     console.log(JSON.stringify({ ...out, health: out.health?.supervisor }));
     output(env, { result: out.action, sha: out.sha, reason: out.reason });
     if (out.action !== 'promoted') process.exitCode = 1;

@@ -1186,9 +1186,6 @@ function crumbIconEl(c) {
   if (c.avatar) return chipElFrom(chipView.avatarHtml(c.avatar, { cls: 'crumb-ic crumb-av' }));
   return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);
 }
-function navIconEl(icon, kind) {
-  return iconEl(icon, 'wv-icon nav-icon') ?? iconEl(CRUMB_ICON_FALLBACK[kind], 'wv-icon nav-icon');
-}
 function crumbInner(c) {
   return [
     crumbIconEl(c),
@@ -1473,7 +1470,7 @@ function renderNav() {
             toggleFold(space.spaceId);
           }
         },
-      }, navIconEl(space.icon, 'space'), space.space),
+      }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
       disclosure('nav-caret', !isFolded, {
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
@@ -1504,7 +1501,7 @@ function renderNav() {
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
         draggable: 'false',
-      }, navIconEl(db.icon, 'table'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
+      }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
@@ -2878,13 +2875,13 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
     const row = mineOnly(result.items).find((r) => r.sysId === subjectId);
     if (!row || !header.isConnected || header.presentationRequest !== request) return;
     const file = boardCore.coverOf(db, row);
-    const sections = [];
+    let lead = header;
     if (file) {
-      const banner = entityCoverEl(file, { size: cover.size, fit: cover.fit });
-      banner.classList.add('registry-cover');
-      sections.push(banner);
+      lead = entityCoverEl(file, { size: cover.size, fit: cover.fit });
+      lead.classList.add('registry-cover');
+      header.after(lead);
     }
-    const intro = sections.length;
+    const sections = [];
     for (const field of intros) {
       const ids = row.raw?.[field.name] ?? [];
       const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
@@ -2894,8 +2891,8 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
         el('details', { class: 'intro-controls' }, el('summary', {}, 'Introduction options'),
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
-    header.after(...sections);
-    for (const section of sections.slice(intro)) showIntroControls(section.querySelector('.intro-controls'));
+    lead.after(...sections);
+    for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
 }
 

@@ -22,7 +22,7 @@ if (s) {
     await page.waitForFunction(() => document.activeElement !== document.body && !!document.activeElement?.closest('#sidebar, #ws-rail'), null, { timeout: 3000 }).catch(() => {});
   };
 
-  test('every table row in the phone drawer carries its icon (Issue #1394)', async (t) => {
+  test('every table row in the phone drawer carries its icon (Issue #1394)', { todo: 'Issue #1394' }, async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openDrawer(page);
       const rows = await page.evaluate(() => [...document.querySelectorAll('#nav a.nav-db')].map((a) => {

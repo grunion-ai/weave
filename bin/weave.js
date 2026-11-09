@@ -565,7 +565,7 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), withHub: (fn) => { const hub = createWorkspaceHub(w); try { return fn(hub); } finally { for (const [, on] of hub.entries()) on.store.close?.(); } }, entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
     return (typeof registered.cli.raw === 'function' ? registered.cli.raw(flags) : registered.cli.raw) ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
@@ -644,29 +644,10 @@ async function main() {
     }
     case 'workspace': {
       const [sub] = args;
-      if (sub === 'logo') {
-        if (flags.clear) { w.deleteWorkspaceLogo(); return out({ logo: false }); }
-        if (flags.out) {
-          const logo = w.getWorkspaceLogo();
-          if (!logo) throw new WeaveError('This workspace has no logo');
-          writeFileSync(flags.out, Buffer.from(logo.bytes));
-          return out({ ok: true, path: flags.out, mime: logo.mime });
-        }
-        if (!flags.path) throw new WeaveError('workspace logo needs --path, --out or --clear');
-        const bytes = readFileSync(flags.path).toString('base64');
-        return out(w.setWorkspaceLogo({ name: flags.path.split('/').pop(), mime: flags.mime ?? 'image/png', bytes }));
-      }
-      if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
       if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
       if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
-      if (sub === 'order' || sub === 'move') {
-        const hub = createWorkspaceHub(w);
-        try {
-          return out(sub === 'order' ? hub.list({ workspace: w }) : hub.move(args[1], Number(flags.position), { workspace: w }));
-        } finally { for (const [, on] of hub.entries()) on.store.close?.(); }
-      }
       if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
-      if (sub === 'get' || !sub) return out(w.getWorkspace());
+      if (!sub) return out(w.getWorkspace());
       throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move, leave`);
     }
     case 'form': {
