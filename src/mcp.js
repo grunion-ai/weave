@@ -4,6 +4,7 @@ import { toolCommand, toolDefinition } from './commands.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
+import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 export const QUERY_PAGE = 200;
@@ -212,8 +213,8 @@ export const TOOLS = [
   toolDefinition('weave_update_space'),
   {
     name: 'weave_template_list',
-    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon. Also starters: the built-in starter workspaces (id, title, blurb, and grows, a note on how one is meant to grow). starter: <id> answers {starter, spec}, a spec dated this month to pass to weave_build.',
+    inputSchema: { type: 'object', properties: { starter: { type: 'string' } } },
   },
   {
     name: 'weave_template_use',
@@ -645,7 +646,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_vocabulary':
       return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_template_list':
-      return { templates: weave.listTemplates() };
+      return args.starter != null ? globalThis.WeaveStarters.forAgent(args.starter) : { templates: weave.listTemplates(), starters: globalThis.WeaveStarters.catalog() };
     case 'weave_template_use':
       if (!caller?.useTemplate) {
         throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');

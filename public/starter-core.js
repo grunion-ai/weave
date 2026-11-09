@@ -45,6 +45,7 @@
       details: 'For anyone keeping a personal budget, month by month.',
       like: 'Like YNAB',
       featured: true,
+      grows: 'Log each purchase as a Transactions row with its Account and Month. Add a Months row, dated the first of its month, before linking to it; Spent, Earned and Net then total themselves. Bills that repeat go in Recurring, linked to the Transactions that paid them; pay goes in Income. Accounts holds each account or card.',
       tables: (m) => [
         {
           name: 'Transactions',
@@ -112,6 +113,7 @@
       details: 'For one person who wants a single to-do list.',
       like: 'Like Todoist',
       featured: true,
+      grows: 'Add a Tasks row per to-do; Status moves it from To do through Doing to Done, and Due and Priority order the list. Grow it with a Projects table linked many-to-one from Tasks, or an Owner field when a second person joins.',
       tables: (m) => [{
         name: 'Tasks',
         icon: 'lucide:square-check',
@@ -141,6 +143,7 @@
       details: 'For a founder or small sales team who wants a simple CRM.',
       like: 'Like HubSpot CRM',
       featured: true,
+      grows: 'Add a Companies row per organization and link each Contacts row to its company; Stage tracks where the relationship stands. Grow it with a Deals table (Amount in USD, Stage, linked many-to-one to Companies) once you track sales.',
       tables: () => [
         {
           name: 'Companies',
@@ -174,6 +177,7 @@
       details: 'For anyone keeping notes, ideas and drafts in one place.',
       like: 'Like Apple Notes',
       featured: true,
+      grows: 'Write each note in the Description document of its Notes row; Topic files it and Date orders the list, newest first. Add a Topics row as a new subject appears. Link a note to a Work or People row with a relation when it belongs to one.',
       tables: (m) => [
         {
           name: 'Notes',
@@ -2145,6 +2149,14 @@
     return [template.title, template.work, template.blurb, template.details, template.like, category, ...tables].filter(Boolean).join(' ').toLowerCase();
   }
 
+  function catalog() {
+    return TEMPLATES.map((t) => ({ id: t.id, title: t.title, blurb: t.blurb, ...(t.grows ? { grows: t.grows } : {}) }));
+  }
+  function forAgent(id, { now } = {}) {
+    const t = TEMPLATES.find((x) => x.id === id);
+    if (!t) throw new Error(`No starter '${id}'. weave_template_list lists them under starters.`);
+    return { starter: catalog().find((x) => x.id === id), spec: spec(t, { now }) };
+  }
   function spec(template, { now } = {}) {
     return { spaces: [{ name: template.space, icon: template.icon, tables: template.tables(month(now)) }] };
   }
@@ -2159,5 +2171,5 @@
       .replace(/^[-_]+/, '').slice(0, 48).replace(/[-_]+$/, '');
   }
 
-  root.WeaveStarters = { userTables, CATEGORIES, TEMPLATES, searchText, spec, firstTable, workspaceName };
+  root.WeaveStarters = { userTables, CATEGORIES, TEMPLATES, searchText, spec, firstTable, workspaceName, catalog, forAgent };
 })(globalThis);
