@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { select, promote, verdict, revertsCommit, due, pushArgs, issueName } from '../scripts/promote.mjs';
+import { select, promote, verdict, revertsCommit, due, pushArgs, issueName, lagLine } from '../scripts/promote.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
@@ -97,6 +97,29 @@ test('a scheduled run acts once the last promotion is a batch old, however late 
   assert.ok(!dispatched.reads.includes('lastPromotion'), 'a dispatch reads no promotion history');
 });
 
+test('a tests or dev-soak completion acts at once like a dispatch, with no batch gate (Issues #1535, #965)', async () => {
+  const ready = { commits: [commit(2)], gates: { [sha(2)]: 'success' }, soaks: { [sha(2)]: 'success' } };
+  const f = fake({ ...ready, promotedAt: new Date(at(11).getTime() - 360_000) });
+  const out = await select(f.io, opts({ event: 'workflow_run', now: at(11) }));
+  assert.equal(out.action, 'promote');
+  assert.equal(out.sha, sha(2));
+  assert.ok(!f.reads.includes('lastPromotion'), 'a completion event reads no promotion history');
+});
+
+test('a pick older than one batch carries a lag line for the alert; a fresh pick carries none (Issue #1535)', async () => {
+  const dated = (n, hoursAgo) => ({ ...commit(n), at: new Date(at(11).getTime() - hoursAgo * 3_600_000) });
+  const checks = { gates: { [sha(2)]: 'success', [sha(3)]: 'success' }, soaks: { [sha(2)]: 'success', [sha(3)]: 'success' } };
+  const old = await select(fake({ commits: [dated(2, 9), dated(3, 2.5)], ...checks }).io, opts({ event: 'schedule', now: at(11) }));
+  assert.equal(old.sha, sha(3));
+  assert.match(old.stale, new RegExp(`production lags ${sha(3).slice(0, 10)} by 2\\.5 hours, more than the 2-hour batch`));
+  const fresh = await select(fake({ commits: [dated(2, 9), dated(3, 0.5)], ...checks }).io, opts({ event: 'workflow_run', now: at(11) }));
+  assert.equal(fresh.sha, sha(3));
+  assert.equal(fresh.stale, undefined);
+  const undated = await select(fake({ commits: [commit(2)], ...checks }).io, opts({ now: at(11) }));
+  assert.equal(undated.stale, undefined);
+  assert.equal(lagLine({ sha: sha(3), at: new Date(at(11).getTime() - 3 * 3_600_000) }, at(11), 1), `weave promote: production lags ${sha(3).slice(0, 10)} by 3.0 hours, more than the 1-hour batch; the tests and dev-soak completion triggers missed it`);
+});
+
 test('while prod does not serve the production head, only a range carrying its revert is promoted', async () => {
   const bad = sha(1);
   const stuck = { ok: true, supervisor: { commit: sha(0), release: `c${sha(0)}`, failed: [bad], lastSwap: { ok: true, from: `c${bad}`, to: `c${sha(0)}`, rollback: 'x' } } };
@@ -180,6 +203,14 @@ test('a timeout or a skipped hook fails visibly without a revert', async () => {
   assert.deepEqual(skipped.kinds(), ['push', 'check', 'issue', 'alert']);
 });
 
+test('a stale pick writes its lag line once before production moves (Issue #1535)', async () => {
+  const f = fake({ commits: [commit(2), commit(3)], health: [live(3)] });
+  const out = await promote(f.io, { sha: sha(3), from: sha(1), stale: 'weave promote: production lags x' }, fast);
+  assert.equal(out.action, 'promoted');
+  assert.deepEqual(f.kinds(), ['alert', 'push', 'check']);
+  assert.equal(f.writes[0][1], 'weave promote: production lags x');
+});
+
 test('production that moved since selection is never pushed', async () => {
   const f = fake({ head: sha(7), commits: [commit(2)] });
   await assert.rejects(promote(f.io, { sha: sha(2), from: sha(1) }, fast), /production moved/);
@@ -203,9 +234,23 @@ test('helpers: verdict, revert detection and a push that can only fast-forward',
   assert.ok(!args.some((a) => /^(-f|--force|--force-with-lease|--mirror|--delete|\+)/.test(a) || a.startsWith('+') || a.startsWith(':')));
 });
 
-test('promote.yml: hourly schedule plus dispatch, one run at a time, read-only token, prod secrets only in the production job', () => {
+test('promote.yml: tests and dev-soak completions on main, hourly schedule as recovery, plus dispatch, one run at a time (Issue #1535)', () => {
   const yml = readFileSync('.github/workflows/promote.yml', 'utf8');
-  assert.match(yml, /^on:\n  schedule:\n    - cron: "\d+ \* \* \* \*"\n  workflow_dispatch:/m);
+  assert.match(yml, /^on:\n  workflow_run: # zizmor: ignore\[dangerous-triggers\]\n    workflows: \[tests, dev-soak\]\n    types: \[completed\]\n    branches: \[main\]\n  schedule:\n    - cron: "\d+ \* \* \* \*"\n  workflow_dispatch:/m);
+  const selectJob = yml.slice(yml.indexOf('  select:'), yml.indexOf('  promote:'));
+  const gate = selectJob.slice(selectJob.indexOf('if:'), selectJob.indexOf('runs-on:'));
+  assert.match(gate, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(gate, /github\.event_name != 'workflow_run' \|\|/);
+  assert.match(gate, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(gate, /github\.event\.workflow_run\.head_branch == 'main'/);
+  assert.match(gate, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
+  assert.doesNotMatch(yml, /workflow_run\.head_sha/, 'select reads main itself and never trusts the event SHA');
+  assert.match(selectJob, /stale: \$\{\{ steps\.select\.outputs\.stale \}\}/);
+  assert.match(yml.slice(yml.indexOf('  promote:')), /STALE: \$\{\{ needs\.select\.outputs\.stale \}\}/);
+});
+
+test('promote.yml: one run at a time, read-only token, prod secrets only in the production job', () => {
+  const yml = readFileSync('.github/workflows/promote.yml', 'utf8');
   assert.match(yml, /group: promotion\n  cancel-in-progress: false/);
   assert.match(yml, /^permissions:\n  contents: read\n/m);
   assert.doesNotMatch(yml, /: write\s*$/m);

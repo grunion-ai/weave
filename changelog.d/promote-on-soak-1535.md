@@ -1,0 +1,1 @@
+- Production promotes as soon as a main commit's `tests` and `dev-soak` runs both succeed, keeps the hourly schedule as recovery, and alerts when a promotion lags its commit by more than one batch (Issues #1535, #965).
