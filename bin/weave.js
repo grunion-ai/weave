@@ -626,6 +626,19 @@ async function main() {
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
     }
+    case 'field': {
+      const [sub, db] = args;
+      if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
+      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete, restore`);
+    }
+    case 'formula': {
+      const [sub] = args;
+      throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
+    }
+    case 'relation': {
+      const [sub] = args;
+      throw new WeaveError(`Unknown relation subcommand '${sub}'`);
+    }
     case 'doc': {
       const [sub, ref] = args;
       const e = resolveEntityRef(w, ref, flags.db);
