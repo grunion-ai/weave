@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { VOCABULARY, ICONS } from '../src/vocabulary.js';
+import { dispatchTool, TOOLS } from '../src/mcp.js';
 
 await import('../public/starter-core.js');
 const S = globalThis.WeaveStarters;
@@ -381,6 +382,38 @@ test('a space the person already made is reused, not created twice', () => {
   assert.equal(r.created.spaces, 0);
   assert.equal(w.listSpaces().filter((s) => s.name === crm.space).length, 1);
   assert.equal(w.userTables().length, 2);
+});
+
+test('every featured starter carries a note for agents on how it is meant to grow', () => {
+  for (const t of S.TEMPLATES.filter((x) => x.featured)) {
+    assert.equal(typeof t.grows, 'string', `${t.id}.grows`);
+    assert.ok(t.grows.length >= 60 && t.grows.length <= 320, `${t.id}: a short paragraph, has ${t.grows.length}`);
+    copyRules(t.grows, `${t.id}.grows`);
+    for (const table of S.spec(t, { now: NOW }).spaces[0].tables) assert.ok(t.grows.includes(table.name), `${t.id}: the note names ${table.name}`);
+  }
+});
+
+test('MCP: weave_template_list lists the starters with their notes, and starter answers a spec weave_build takes', () => {
+  const w = new Weave();
+  const listed = dispatchTool(w, 'weave_template_list', {});
+  assert.deepEqual(listed.templates, [], 'the template spaces still answer');
+  assert.deepEqual(listed.starters.map((s) => s.id), S.TEMPLATES.map((t) => t.id), 'every starter, catalog order');
+  for (const s of listed.starters) {
+    const t = byId(s.id);
+    assert.deepEqual(Object.keys(s).sort(), ['blurb', 'id', 'title', ...(t.grows ? ['grows'] : [])].sort());
+    assert.equal(s.title, t.title);
+  }
+  assert.equal(listed.starters.find((s) => s.id === 'notes').grows, byId('notes').grows);
+  const one = dispatchTool(w, 'weave_template_list', { starter: 'notes' });
+  assert.equal(one.starter.id, 'notes');
+  assert.equal(one.starter.grows, byId('notes').grows);
+  const built = dispatchTool(w, 'weave_build', one.spec);
+  assert.deepEqual(built.errors ?? [], [], 'the spec builds clean');
+  assert.ok(w.findTable('Notes/Notes'), 'and lands the space');
+  assert.throws(() => dispatchTool(w, 'weave_template_list', { starter: 'nope' }), /No starter 'nope'.*starters/);
+  const tool = TOOLS.find((t) => t.name === 'weave_template_list');
+  assert.ok(tool.inputSchema.properties.starter, 'the schema names starter');
+  assert.match(tool.description, /starters/);
 });
 
 test('index.html loads starter-core before app.js', () => {
