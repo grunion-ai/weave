@@ -111,6 +111,28 @@ const VIEWS_TOOL = {
     required: ['action'],
   },
 };
+const SHARES_TOOL = {
+  name: 'weave_shares',
+  description: 'Share beta: architect-managed links. action list (kind?, id?, includeInactive?) | mint (kind entity|entities|table|space|view|workspace, id or ids; mode read|submit|edit|manage; formId for submit; visibility public|private; label; expiry 1h|1d|7d|30d|90d|never or expiresAt ISO; default 30d) | update (share, label?, expiry? or expiresAt?; keeps URL) | regenerate (share, optional expiry; old token stops immediately) | renew (share, 30 more days) | revoke (share). Submit only creates through its form. Public links require no login; private requires an existing signed-in member. Named email/domain audiences are unavailable in beta. Tokens never change scope. Every action requires architect access.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, mode: { type: 'string' },
+      visibility: { type: 'string' }, label: { type: 'string' }, expiresAt: { type: 'string' }, share: { type: 'string' },
+      expiry: { type: 'string' }, formId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } }, includeInactive: { type: 'boolean' },
+    },
+    required: ['action'],
+  },
+};
+const sharePatch = (a) => Object.fromEntries(['label', 'expiry', 'expiresAt'].filter((key) => Object.hasOwn(a, key)).map((key) => [key, a[key]]));
+const sharePatchFlags = (a, flags) => {
+  const patch = {};
+  if (typeof flags.label === 'string') patch.label = flags.label;
+  if (typeof flags.expiry === 'string') patch.expiry = flags.expiry;
+  if (typeof flags.expires === 'string') patch.expiresAt = flags.expires;
+  return { share: a.share, patch };
+};
+const linked = (r, a, ctx) => ctx.shareLink(r);
 const commentAuthor = (w, a, ctx) => (ctx?.caller?.role && !['architect', 'editor'].includes(ctx.caller.role) ? w.actor : a.author ?? 'agent');
 
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
@@ -1169,6 +1191,83 @@ export const COMMANDS = [
     cli: { command: 'view', sub: 'unshare', positional: ['view'] },
     http: { method: 'DELETE', path: '/api/views/:view/share' },
     run: (w, a) => w.unshareView(a.view),
+  },
+  {
+    name: 'share.list',
+    engine: ['listShares'],
+    writes: 'none',
+    tool: SHARES_TOOL,
+    action: 'list',
+    cli: {
+      command: 'share', sub: 'list', default: true,
+      args: (a, flags) => ({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null, includeInactive: Boolean(flags['include-inactive']) }),
+      result: (r) => r.shares,
+    },
+    http: {
+      method: 'GET', path: '/api/shares',
+      args: (a, body, q) => ({ kind: q.get('kind'), id: q.get('id'), includeInactive: q.get('includeInactive') === '1' }),
+      result: (r, a, ctx) => r.shares.map(ctx.shareLink),
+    },
+    run: (w, a) => ({ shares: w.listShares({ kind: a.kind ?? null, id: a.id ?? null, includeInactive: Boolean(a.includeInactive) }) }),
+  },
+  {
+    name: 'share.mint',
+    engine: ['mintShare'],
+    writes: 'entity',
+    tool: SHARES_TOOL,
+    action: 'mint',
+    cli: {
+      command: 'share', sub: 'mint', positional: ['kind', 'id'],
+      args: (a, flags, { json }) => ({
+        input: {
+          scope: a.kind === 'entities' ? { kind: a.kind, ids: json('ids') } : { kind: a.kind, id: a.kind === 'workspace' ? null : a.id }, mode: flags.mode ?? 'read', visibility: flags.private ? 'private' : 'public',
+          formId: flags.form, expiry: flags.expiry,
+          label: typeof flags.label === 'string' ? flags.label : '', expiresAt: typeof flags.expires === 'string' ? flags.expires : null,
+        },
+      }),
+    },
+    http: { method: 'POST', path: '/api/shares', status: 201, args: (a, body) => ({ input: body ?? {} }), result: linked },
+    run: (w, a) => w.mintShare(a.input ?? { scope: a.kind === 'entities' ? { kind: a.kind, ids: a.ids } : { kind: a.kind, id: a.id }, mode: a.mode, visibility: a.visibility, label: a.label, expiry: a.expiry, expiresAt: a.expiresAt, formId: a.formId }),
+  },
+  {
+    name: 'share.renew',
+    engine: ['renewShare'],
+    writes: 'entity',
+    tool: SHARES_TOOL,
+    action: 'renew',
+    cli: { command: 'share', sub: 'renew', positional: ['share'] },
+    http: { method: 'POST', path: '/api/shares/:share/renew', result: linked },
+    run: (w, a) => w.renewShare(a.share),
+  },
+  {
+    name: 'share.revoke',
+    engine: ['revokeShare'],
+    writes: 'entity',
+    tool: SHARES_TOOL,
+    action: 'revoke',
+    cli: { command: 'share', sub: 'revoke', positional: ['share'] },
+    http: { method: 'DELETE', path: '/api/shares/:share', result: linked },
+    run: (w, a) => w.revokeShare(a.share),
+  },
+  {
+    name: 'share.update',
+    engine: ['updateShare'],
+    writes: 'entity',
+    tool: SHARES_TOOL,
+    action: 'update',
+    cli: { command: 'share', sub: 'update', positional: ['share'], args: sharePatchFlags },
+    http: { method: 'PATCH', path: '/api/shares/:share', args: (a, body) => ({ share: a.share, patch: body ?? {} }), result: linked },
+    run: (w, a) => w.updateShare(a.share, a.patch ?? sharePatch(a)),
+  },
+  {
+    name: 'share.regenerate',
+    engine: ['regenerateShare'],
+    writes: 'entity',
+    tool: SHARES_TOOL,
+    action: 'regenerate',
+    cli: { command: 'share', sub: 'regenerate', positional: ['share'], args: sharePatchFlags },
+    http: { method: 'POST', path: '/api/shares/:share/regenerate', args: (a, body) => ({ share: a.share, patch: body ?? {} }), result: linked },
+    run: (w, a) => w.regenerateShare(a.share, a.patch ?? sharePatch(a)),
   },
 ];
 
