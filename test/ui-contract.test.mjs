@@ -389,6 +389,18 @@ test('deleting a table or a space is a hold to the trash, with Undo (Feature #29
   assert.match(fnBody('trashRow'), /hold: true/, 'and both hold');
 });
 
+test('the table and space menus open Trash, and Trash names a line by what it holds (Feature #160)', () => {
+  const rows = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
+  assert.match(APP, /const OPEN_TRASH = \{ label: 'Open trash', run: \(\) => \{ location\.hash = '#\/trash'; \} \};/);
+  assert.match(rows, /trash: db\.system \? null : OPEN_TRASH,/, 'a user table menu opens Trash');
+  assert.match(rows, /trash: space\.system \? null : OPEN_TRASH,/, 'a user space menu opens Trash; the System space keeps no menu');
+  assert.match(fnBody('showTrash', SETTINGS_VIEW), /trashKind\(item\)/, 'the Trash page names each line through trashKind');
+  const kind = fnBody('trashKind', SETTINGS_VIEW);
+  assert.match(kind, /'Space'/);
+  assert.match(kind, /`Table in \$\{item\.fields\.Space\.name\}`/);
+  assert.match(kind, /`Record in \$\{item\.db\}`/);
+});
+
 test('header menus hang off the right edge and fill their rows', () => {
   assert.match(fnBody('kindDots'), /align = 'right'/, 'a kind\'s ⋮ hangs off the right edge by default');
   assert.match(fnBody('menu'), /side === 'right' \? a\.right - w : a\.left/, 'a right-aligned menu ends at its trigger\'s right edge');

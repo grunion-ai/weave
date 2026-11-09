@@ -3089,6 +3089,8 @@ function trashRow({ remove, restore, after = () => null, undone = () => {} }) {
   };
 }
 
+const OPEN_TRASH = { label: 'Open trash', run: () => { location.hash = '#/trash'; } };
+
 const MENU_ROWS = {
   table: (db, { anchor = null } = {}) => ({
     move: db.system ? null : {
@@ -3140,6 +3142,7 @@ const MENU_ROWS = {
       $('#main .view-header')?.editDescription?.();
     } } : null,
     'create-link': db.system ? null : { label: 'Copy create link', run: () => copyText(weavePrefill.link(prefillBase(db), filterSeed(db)), 'Create link copied') },
+    trash: db.system ? null : OPEN_TRASH,
     export: globalThis.menuCore.exportSection({ name: db.name, serves: ['csv'], href: () => `${WS_PREFIX}/api/tables/${db.id}/export.csv` }),
     delete: db.system ? null : trashRow({
       remove: () => api('DELETE', `/tables/${db.id}`),
@@ -3181,6 +3184,7 @@ const MENU_ROWS = {
     }),
   }),
   space: (space) => ({
+    trash: space.system ? null : OPEN_TRASH,
     delete: space.system ? null : trashRow({
       remove: () => api('DELETE', `/spaces/${space.spaceId}`),
       restore: () => api('POST', `/spaces/${space.spaceId}/restore`),
