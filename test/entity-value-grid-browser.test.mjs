@@ -137,12 +137,8 @@ if (s) {
     assert.ok(input, 'the value opens its inline editor on click, it is not a read-only cell');
     await input.fill('Nordic Assembly');
     await input.dispatchEvent('change');
-    await page.waitForFunction(
-      (i) => fetch(`/api/entities/${i}`).then((r) => r.json()).then((e) => e.fields.Vendor === 'Nordic Assembly'),
-      id, { timeout: 4000 },
-    );
-    const saved = await fetch(`${base}/api/entities/${id}`).then((r) => r.json());
-    assert.equal(saved.fields.Vendor, 'Nordic Assembly', 'the edit reached the store');
+    const stored = () => fetch(`${base}/api/entities/${id}`).then((r) => r.json()).then((e) => e.fields.Vendor);
+    assert.equal(await eventually(stored, 'Nordic Assembly'), 'Nordic Assembly', 'the edit reached the store');
     await page.close();
   });
 

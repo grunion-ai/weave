@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 const FIT = { width: 1600, height: 720 };
 
@@ -87,7 +87,7 @@ if (s) {
     assert.equal(at.field, 'Name', 'it is the Name cell');
     assert.ok(at.eid && !known.includes(at.eid), 'it is the new row');
     assert.equal(at.onScreen, true, 'the new row is scrolled into view');
-    assert.equal(nameOf(first), 'task 0!', 'the edit Shift+Enter left behind was committed');
+    assert.equal(await eventually(() => nameOf(first), 'task 0!'), 'task 0!', 'the edit Shift+Enter left behind was committed');
 
     await page.keyboard.type('second');
     await page.keyboard.press('Shift+Enter');
@@ -96,7 +96,7 @@ if (s) {
     const again = await focused(page);
     assert.equal(again.field, 'Name');
     assert.ok(again.eid && again.eid !== at.eid && !known.includes(again.eid), 'a third row, and focus is in it');
-    assert.equal(nameOf(at.eid), 'second');
+    assert.equal(await eventually(() => nameOf(at.eid), 'second'), 'second');
     await page.close();
   });
 

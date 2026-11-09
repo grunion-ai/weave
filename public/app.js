@@ -41,6 +41,7 @@ let leaving = false;
 for (const ev of ['beforeunload', 'pagehide']) {
   window.addEventListener(ev, () => { leaving = true; commitActiveEdit(); });
 }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') commitActiveEdit(); });
 
 let loadedSchemaVersion = null;
 let lastSchemaVersion = null;
@@ -842,7 +843,10 @@ function tableHop(db) {
 }
 
 const dockCoversScreen = matchMedia('(max-width: 600px)');
-const saves = WeaveSaveQueue.createSaveQueue({ send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }) });
+const saves = WeaveSaveQueue.createSaveQueue({
+  send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
+  onFail: (err, j) => toast(j.failText ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true),
+});
 WeaveSaveQueue.bindPageHide(saves);
 WeaveSaveQueue.bindEscape(saves);
 window.weaveSaves = saves;
@@ -3876,7 +3880,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   const patch = async (value, paint = null) => {
     paint?.(value);
     try {
-      const fresh = await api('PATCH', `/entities/${id}`, { values: { [f.name]: value } });
+      const fresh = await saves.push({ entityId: id, field: f.name, value });
       await onSaved(fresh, f.name);
     } catch (err) {
       if (err.code !== 'stale' || !err.entity) {
@@ -10229,6 +10233,7 @@ async function undoGesture(g) {
   g.undoing = true;
   if (lastGesture === g) lastGesture = null;
   try {
+    await saves.flush();
     const ours = await gestureTop(g);
     if (!g.ids.length) return;
     if (ours.length) await api('POST', '/undo', { steps: ours.length });
@@ -10261,6 +10266,7 @@ document.addEventListener('keydown', async (e) => {
   const g = lastGesture;
   lastGesture = null;
   try {
+    await saves.flush();
     const ours = g ? await gestureTop(g) : [];
     const { undone } = await api('POST', '/undo', { steps: ours.length || 1 });
     if (!undone.length) return toast('Nothing to undo');

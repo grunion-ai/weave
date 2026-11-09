@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let tasks, notes, spacesT, tablesT, fieldsT, wfT;
 const s = await launch('system table new row', (weave) => {
@@ -84,7 +84,7 @@ if (s) {
     await page.keyboard.type('Nightly');
     await page.keyboard.press('Enter');
     await page.waitForFunction((id) => document.querySelector(`tr[data-eid="${id}"] td[data-field="Name"] input`)?.value === 'Nightly', at.eid, { timeout: 5000 });
-    assert.equal(weave.entityName(weave.getEntity(at.eid)), 'Nightly');
+    assert.equal(await eventually(() => weave.entityName(weave.getEntity(at.eid)), 'Nightly'), 'Nightly');
     await page.close();
   });
 
