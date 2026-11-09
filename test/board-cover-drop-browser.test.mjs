@@ -81,9 +81,11 @@ if (s) {
     seed();
     const page = await open(list);
     try {
-      const upload = page.waitForResponse((r) => r.request().method() === 'POST' && /\/fields\/Photo\/files$/.test(r.url()));
+      const prepared = page.waitForRequest((r) => r.method() === 'POST' && /\/api\/uploads$/.test(r.url()));
+      const upload = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/api\/uploads$/.test(r.url()));
       await drag(page, tile(ids.desk), ['dragenter', 'dragover', 'drop'], [['desk.png', 'image/png']]);
-      assert.equal((await upload).status(), 201, 'the drop goes through the field files route');
+      assert.equal((await prepared).postDataJSON().field, 'Photo', 'the drop prepared no upload into the cover field');
+      assert.equal((await upload).status(), 201, 'the prepared upload did not land');
       const [fid] = await until(() => (photo(ids.desk).length ? photo(ids.desk) : null));
       assert.ok(fid, 'the row holds the dropped file');
       await page.waitForFunction(({ sel, fid }) => (document.querySelector(`${sel} .tile-cover img`)?.getAttribute('src') ?? '').includes(fid), { sel: tile(ids.desk), fid });
