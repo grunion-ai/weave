@@ -382,6 +382,7 @@
         "src/server.js wraps src/routes.js in node:http",
         "src/minify.js strips whitespace from first-party scripts and styles before src/server.js compresses them",
         "src/store.js keeps one node:sqlite .db per workspace",
+        "src/keystore.js holds credential values: an encrypted file pair, or one macOS keychain item per key",
         "src/server.js answers each workspace at <slug>.WEAVE_BASE_DOMAIN"
       ]
     },

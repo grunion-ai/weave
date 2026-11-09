@@ -12,7 +12,8 @@ import '../public/phone-row.js';
 import '../public/cell-graphics.js';
 import '../public/field-dialog-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
-import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { openKeyStore, keystoreFilePath } from './keystore.js';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -1497,12 +1498,13 @@ export class Weave {
 
   #computing = [];
 
-  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null, localKeyAccess = null } = {}) {
+  constructor({ path = null, actor = 'local', keystorePath = null, store = null, keystoreEnv = null, keyStore = null, revisionWindowMs = DOC_REVISION_WINDOW_MS, name = null, localKeyAccess = null } = {}) {
     this.actor = actor;
     this.localKeyAccess = localKeyAccess;
     this.revisionWindowMs = revisionWindowMs;
-    this.keystorePath = keystorePath ?? process.env.WEAVE_KEYSTORE ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
+    this.keystorePath = keystorePath ?? keystoreFilePath(process.env.WEAVE_KEYSTORE) ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     this.keystoreEnv = keystoreEnv ?? process.env;
+    this.keyStore = keyStore ?? openKeyStore({ path: this.keystorePath, env: this.keystoreEnv });
     this.store = store ?? new Store(path);
     const loaded = this.store.load();
     if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
@@ -3445,7 +3447,7 @@ export class Weave {
     for (const a of Object.values(state.automations ?? {})) a.actions = (a.actions ?? []).filter((x) => x.type !== 'webhook');
     const store = new Store(null);
     store.load = () => state;
-    const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv });
+    const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv, keyStore: this.keyStore });
     copy.#noWebhooks = true;
     return copy;
   }
@@ -3853,59 +3855,6 @@ export class Weave {
     return this.getWorkspace();
   }
 
-  #keystoreKey() {
-    const pass = this.keystoreEnv?.WEAVE_KEYSTORE_PASSPHRASE;
-    if (pass) return scryptSync(String(pass), 'weave-keystore-v2', 32);
-    const keyPath = this.keystorePath.replace(/\.json$/, '') + '.key';
-    try {
-      const b = Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'base64');
-      if (b.length === 32) return b;
-    } catch {}
-    const fresh = randomBytes(32);
-    mkdirSync(dirname(keyPath), { recursive: true });
-    writeFileSync(keyPath, fresh.toString('base64'), { mode: 0o600 });
-    return fresh;
-  }
-
-  #seal(plain) {
-    const iv = randomBytes(12);
-    const c = createCipheriv('aes-256-gcm', this.#keystoreKey(), iv);
-    const ct = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
-    return { iv: iv.toString('base64'), ct: ct.toString('base64'), tag: c.getAuthTag().toString('base64') };
-  }
-
-  #open(entry, name) {
-    try {
-      const d = createDecipheriv('aes-256-gcm', this.#keystoreKey(), Buffer.from(entry.iv, 'base64'), { authTagLength: 16 });
-      d.setAuthTag(Buffer.from(entry.tag, 'base64'));
-      return Buffer.concat([d.update(Buffer.from(entry.ct, 'base64')), d.final()]).toString('utf8');
-    } catch {
-      throw new WeaveError(
-        `Cannot decrypt '${name}' — wrong passphrase, or the keystore was edited outside weave`, 'invalid');
-    }
-  }
-
-  #readKeystore() {
-    let raw;
-    try { raw = JSON.parse(readFileSync(this.keystorePath, 'utf8')); } catch { return { v: 2, keys: {} }; }
-    if (raw && raw.v === 2 && raw.keys) return raw;
-    const keys = {};
-    for (const [name, secret] of Object.entries(raw ?? {})) keys[name] = { legacy: String(secret) };
-    return { v: 2, keys, migrated: true };
-  }
-
-  #writeKeystore(data) {
-    for (const [name, entry] of Object.entries(data.keys)) {
-      if ('legacy' in entry) {
-        const { legacy, ...rest } = entry;
-        data.keys[name] = { ...rest, ...this.#seal(legacy) };
-      }
-    }
-    delete data.migrated;
-    mkdirSync(dirname(this.keystorePath), { recursive: true });
-    writeFileSync(this.keystorePath, JSON.stringify(data, null, 1), { mode: 0o600 });
-  }
-
   credentialConfig(field) {
     return credentialConfig(field);
   }
@@ -3914,40 +3863,40 @@ export class Weave {
     if (!name) throw new WeaveError('Key name is required', 'invalid');
     refuseReserved('key', name);
     refuseIntegrationKey(name);
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     const prior = own(data.keys, name);
     if (prior && !this.#mayGrant(prior)) throw this.#grantRefusal(prior, 'replace', name);
     data.keys[name] = {
-      ...this.#seal(secret ?? ''),
+      value: secret ?? '',
       owner: prior?.owner ?? this.#callerAccount(),
       workspace: prior?.workspace ?? this.state.meta.id,
       shared: prior?.shared ?? false,
       createdAt: prior?.createdAt ?? nowISO(),
       ...(prior ? { rotatedAt: nowISO() } : {}),
     };
-    this.#writeKeystore(data);
+    this.keyStore.write(data);
     this.#audit('key-set', { name });
     return { name, set: true };
   }
 
   deleteKey(name) {
     refuseIntegrationKey(name);
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     if (!Object.hasOwn(data.keys, name)) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(data.keys[name])) throw this.#grantRefusal(data.keys[name], 'delete', name);
     delete data.keys[name];
-    this.#writeKeystore(data);
+    this.keyStore.write(data);
     this.#audit('key-deleted', { name });
     return { name, deleted: true };
   }
 
   hasKey(name) {
-    const entry = own(this.#readKeystore().keys, name);
+    const entry = own(this.keyStore.read().keys, name);
     return !!entry && (this.#keyInWorkspace(entry) || this.#localKeys());
   }
 
   listKeys() {
-    const { keys } = this.#readKeystore();
+    const { keys } = this.keyStore.read();
     return Object.keys(keys).filter(name => !isIntegrationKey(name) && (this.#keyInWorkspace(keys[name]) || this.#localKeys())).sort().map((name) => ({
       name,
       set: true,
@@ -3958,11 +3907,11 @@ export class Weave {
 
   resolveKey(name) {
     refuseIntegrationKey(name);
-    const { keys } = this.#readKeystore();
+    const { keys } = this.keyStore.read();
     const entry = own(keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
     if (!this.#keyInWorkspace(entry) && !this.#localKeys()) throw new WeaveError(`Key '${name}' belongs to another workspace or needs local recovery`, 'forbidden');
-    return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
+    return this.keyStore.value(name, entry);
   }
 
   #localKeys() { return (this.localKeyAccess === true || this.localKeyAccess !== false && !this.listAccounts().length) && !/^account:/.test(String(this.actor ?? '')); }
@@ -3985,18 +3934,18 @@ export class Weave {
 
   revealKey(name, { via = 'show' } = {}) {
     refuseIntegrationKey(name);
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found in the keystore`, 'not-found');
     if (!this.#mayReveal(entry)) {
       throw new WeaveError(`'${name}' is not shared with you — its owner has to grant it`, 'forbidden');
     }
     this.#audit('key-revealed', { name, via });
-    return 'legacy' in entry ? entry.legacy : this.#open(entry, name);
+    return this.keyStore.value(name, entry);
   }
 
   ownsKey(name) {
-    return this.#isKeyHolder(own(this.#readKeystore().keys, name)?.owner);
+    return this.#isKeyHolder(own(this.keyStore.read().keys, name)?.owner);
   }
 
   #callerAccount() {
@@ -4023,7 +3972,7 @@ export class Weave {
   grantKey(name, account) {
     if (!account) throw new WeaveError('Name the account the credential is shared with', 'invalid');
     refuseIntegrationKey(name);
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(entry)) throw this.#grantRefusal(entry, 'share', name);
@@ -4033,26 +3982,26 @@ export class Weave {
     const list = Array.isArray(entry.shared) ? entry.shared : [];
     if (who !== true && !list.includes(who)) list.push(who);
     entry.shared = who === true ? true : list;
-    this.#writeKeystore(data);
+    this.keyStore.write(data);
     this.#audit('key-granted', { name, to: account === true ? 'everyone' : account });
     return { name, shared: this.#namedShared(entry.shared) };
   }
 
   revokeKey(name, account) {
     refuseIntegrationKey(name);
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     const entry = own(data.keys, name);
     if (!entry) throw new WeaveError(`Key '${name}' not found`, 'not-found');
     if (!this.#mayGrant(entry)) throw this.#grantRefusal(entry, 'unshare', name);
     const who = this.#actorFor(account);
     entry.shared = Array.isArray(entry.shared) ? entry.shared.filter((a) => a !== account && a !== who) : false;
-    this.#writeKeystore(data);
+    this.keyStore.write(data);
     this.#audit('key-revoked', { name, from: account });
     return { name, shared: this.#namedShared(entry.shared) };
   }
 
   #renameKeyHolder(from, to) {
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     let moved = 0;
     for (const entry of Object.values(data.keys)) {
       if (entry.owner === from) { entry.owner = to; moved++; }
@@ -4061,7 +4010,7 @@ export class Weave {
         moved++;
       }
     }
-    if (moved) this.#writeKeystore(data);
+    if (moved) this.keyStore.write(data);
   }
 
   credentialLink(field, ref) {
@@ -5762,16 +5711,16 @@ export class Weave {
   }
 
   #integrationEntry(rowId) {
-    const entry = own(this.#readKeystore().keys, integrationKeyName(rowId));
+    const entry = own(this.keyStore.read().keys, integrationKeyName(rowId));
     return entry?.integration === true && entry.workspace === this.state.meta.id ? entry : null;
   }
 
   #sealIntegrationKey(rowId, secret) {
-    const data = this.#readKeystore();
+    const data = this.keyStore.read();
     const name = integrationKeyName(rowId);
     const prior = own(data.keys, name);
     data.keys[name] = {
-      ...this.#seal(secret),
+      value: secret,
       owner: null,
       workspace: this.state.meta.id,
       shared: false,
@@ -5779,16 +5728,16 @@ export class Weave {
       createdAt: prior?.createdAt ?? nowISO(),
       ...(prior ? { rotatedAt: nowISO() } : {}),
     };
-    this.#writeKeystore(data);
+    this.keyStore.write(data);
   }
 
   #dropIntegrationKey(row, reason) {
     const name = integrationKeyName(row.id);
     const had = this.#onReg((reg) => {
-      const data = reg.#readKeystore();
+      const data = reg.keyStore.read();
       if (!Object.hasOwn(data.keys, name)) return false;
       delete data.keys[name];
-      reg.#writeKeystore(data);
+      reg.keyStore.write(data);
       reg.#audit('key-deleted', { name, integration: reg.entityName(row) });
       return true;
     });
@@ -5831,7 +5780,7 @@ export class Weave {
     }
     const refusal = await webhookRefusal(u);
     if (refusal) throw new WeaveError(`Integration '${target.name}': ${target.host} ${refusal}`, 'forbidden');
-    const secret = this.#reg.#open(entry, integrationKeyName(row.id));
+    const secret = this.#reg.keyStore.value(integrationKeyName(row.id), entry);
     sent.set('Authorization', authHeader(target.provider, secret));
     let res = null;
     let failure = null;

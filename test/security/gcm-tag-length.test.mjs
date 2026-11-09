@@ -24,7 +24,7 @@ test('a keystore entry whose tag was cut to 12 bytes is refused instead of decry
 });
 
 test('both AES-GCM decrypt sites pin the 16-byte tag length', () => {
-  for (const file of ['src/backup.js', 'src/engine.js']) {
+  for (const file of ['src/backup.js', 'src/keystore.js']) {
     const sites = [...read(file).matchAll(/createDecipheriv\('aes-256-gcm'[^\n]*/g)].map((m) => m[0]);
     assert.equal(sites.length, 1, `${file} has one AES-GCM decrypt site`);
     assert.match(sites[0], /authTagLength: 16/, `${file}: ${sites[0]}`);
