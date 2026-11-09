@@ -74,6 +74,27 @@ const whereJson = (raw) => {
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error('where must be JSON'), { whereJson: true }); }
 };
 
+const docField = (flags) => (flags.field === true ? null : flags.field ?? null);
+const docWriteArgs = (sub) => (a, flags, { entityRef, file }) => {
+  const entity = entityRef(a.entity, flags.db);
+  const content = flags.file ? file(flags.file) : flags.content;
+  const field = docField(flags);
+  if (content == null || content === true) throw new WeaveError(`doc ${sub} needs its text: --content <markdown> or --file <path>. Use --content '' to clear the document.`, 'invalid');
+  return { entity, markdown: content, field };
+};
+const docWriteBody = (a, body) => {
+  const text = body.doc ?? body.markdown;
+  if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither. Send `{"doc": ""}` to clear the document.', 'invalid');
+  return { entity: a.entity, markdown: text, field: a.field ?? null };
+};
+const docWritten = () => ({ ok: true });
+const SET_DOC_TOOL = {
+  name: 'weave_set_doc',
+  description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default.',
+  inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
+};
+const commentAuthor = (w, a, ctx) => (ctx?.caller?.role && !['architect', 'editor'].includes(ctx.caller.role) ? w.actor : a.author ?? 'agent');
+
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
 const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets ?? a.items });
 
@@ -876,6 +897,112 @@ export const COMMANDS = [
     http: { method: 'POST', path: '/api/bulk' },
     run: (w, a) => { const { ids, op, ...params } = a; return w.bulk(ids, op, params); },
   },
+  {
+    name: 'doc.read',
+    engine: ['getDoc'],
+    writes: 'none',
+    tool: {
+      name: 'weave_get_doc',
+      description: 'Read an entity document as markdown. Entities can carry several document fields; omit field for the default (the table\'s first document field, usually "Description").',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity'] },
+    },
+    cli: { command: 'doc', sub: 'get', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: docField(flags) }) },
+    http: { method: 'GET', path: '/api/entities/:entity/doc', query: ['field'], result: (doc, a) => ({ field: a.field ?? null, doc }) },
+    run: (w, a) => w.getDoc(a.entity, a.field ?? null),
+  },
+  {
+    name: 'doc.set',
+    engine: ['setDoc'],
+    writes: 'entity',
+    tool: SET_DOC_TOOL,
+    action: 'replace',
+    actionArg: 'mode',
+    toolDefault: true,
+    cli: { command: 'doc', sub: 'set', positional: ['entity'], args: docWriteArgs('set'), result: docWritten },
+    http: { method: 'PUT', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody, result: docWritten },
+    run: (w, a) => { w.setDoc(a.entity, a.markdown, a.field ?? null); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
+  },
+  {
+    name: 'doc.append',
+    engine: ['appendDoc'],
+    writes: 'entity',
+    tool: SET_DOC_TOOL,
+    action: 'append',
+    actionArg: 'mode',
+    cli: { command: 'doc', sub: 'append', positional: ['entity'], args: docWriteArgs('append'), result: docWritten },
+    http: { method: 'POST', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody, result: docWritten },
+    run: (w, a) => { w.appendDoc(a.entity, a.markdown, a.field ?? null); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
+  },
+  {
+    name: 'doc.revisions',
+    engine: ['listDocRevisions', 'getDocRevision'],
+    writes: 'none',
+    tool: {
+      name: 'weave_doc_revisions',
+      description: 'A document\'s version history (Feature #225). Without seq: the revisions newest first as {seq, at, actor, len} — one per editing session (writes by one actor inside ten minutes fold into one). With seq: that revision with its text. field picks a document field; omit for the default.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' }, seq: { type: 'number', description: 'A revision seq from the list — returns its text' }, limit: { type: 'number', description: 'How many to list (default 50)' } }, required: ['entity'] },
+    },
+    cli: {
+      command: 'doc-revisions', positional: ['entity'],
+      args: (a, flags, { entityRef }) => {
+        const entity = entityRef(a.entity, flags.db);
+        const field = docField(flags);
+        return flags.seq != null && flags.seq !== true ? { entity, field, seq: Number(flags.seq) } : { entity, field, limit: cliNumber('limit', flags.limit, 50) };
+      },
+    },
+    http: {
+      method: 'GET', path: '/api/entities/:entity/doc/revisions/:seq?',
+      args: (a, body, q) => (a.seq != null ? { entity: a.entity, field: q.get('field') ?? null, seq: a.seq } : { entity: a.entity, field: q.get('field') ?? null, limit: boundedLimit(q.get('limit'), 50) }),
+    },
+    run: (w, a) => (a.seq != null ? w.getDocRevision(a.entity, a.field ?? null, a.seq) : w.listDocRevisions(a.entity, a.field ?? null, { limit: a.limit ?? 50 })),
+  },
+  {
+    name: 'doc.restore',
+    engine: ['restoreDocRevision'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_doc_restore',
+      description: 'Write a past revision back as the document\'s current text (Feature #225). An ordinary write: activity, undo and automations all see it, and the history keeps both the restored text and what it replaced.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, seq: { type: 'number' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity', 'seq'] },
+    },
+    cli: {
+      command: 'doc-restore', positional: ['entity'],
+      args: (a, flags, { entityRef }) => {
+        const entity = entityRef(a.entity, flags.db);
+        const field = docField(flags);
+        if (flags.seq == null || flags.seq === true) throw new WeaveError('--seq is required: a revision from doc-revisions');
+        return { entity, field, seq: Number(flags.seq) };
+      },
+    },
+    http: { method: 'POST', path: '/api/entities/:entity/doc/revisions/:seq/restore' },
+    run: (w, a) => w.restoreDocRevision(a.entity, a.field ?? null, a.seq),
+  },
+  {
+    name: 'comment.add',
+    engine: ['addComment'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_add_comment',
+      description: 'Add a comment to an entity. Comments are their own thread on the entity page and ride the activity feed; delete one with weave_delete_comment.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, text: { type: 'string' }, author: { type: 'string' } }, required: ['entity', 'text'] },
+    },
+    cli: { command: 'comment', positional: ['entity'], rest: 'text', args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), input: { author: flags.author ?? 'cli', text: a.text.join(' ') } }) },
+    http: { method: 'POST', path: '/api/entities/:entity/comments', status: 201, args: (a, body, q, ctx) => ({ entity: a.entity, input: ctx.author !== undefined ? { ...body, author: ctx.author } : body }) },
+    run: (w, a, ctx) => w.addComment(a.entity, a.input ?? { author: commentAuthor(w, a, ctx), text: a.text }),
+  },
+  {
+    name: 'comment.delete',
+    engine: ['deleteComment'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_delete_comment',
+      description: 'Delete one comment from an entity. The comment id comes from weave_get_entity.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, comment: { type: 'string' } }, required: ['entity', 'comment'] },
+    },
+    cli: { command: 'comment', sub: 'delete', positional: ['entity', 'comment'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), comment: a.comment }) },
+    http: { method: 'DELETE', path: '/api/entities/:entity/comments/:comment', result: () => ({ ok: true }) },
+    run: (w, a) => w.deleteComment(a.entity, a.comment),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -903,7 +1030,7 @@ export function toolCommand(name, args = {}) {
   if (single) return single;
   const family = FAMILIES.get(name);
   if (!family) return null;
-  const hit = family.commands.find((c) => c.action === args.action) ?? family.commands.find((c) => c.toolDefault);
+  const hit = family.commands.find((c) => c.action === args[c.actionArg ?? 'action']) ?? family.commands.find((c) => c.toolDefault);
   if (hit?.toolRefusal) throw new Error(hit.toolRefusal);
   if (hit) return hit;
   const offered = family.commands.filter((c) => !c.toolRefusal).map((c) => c.action);
@@ -969,18 +1096,18 @@ export function matchRoute(method, path) {
   return null;
 }
 
-export function httpArgs(hit, body, searchParams) {
+export function httpArgs(hit, body, searchParams, ctx = {}) {
   const a = { ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}) };
   for (const q of hit.cmd.http.query ?? []) if (searchParams.has(q)) a[q] = searchParams.get(q);
   Object.assign(a, hit.params);
-  return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams) : a;
+  return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams, ctx) : a;
 }
 
 export function httpReply(w, hit, body, searchParams, ctx = {}) {
   const headers = hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {};
   let a;
   try {
-    a = httpArgs(hit, body, searchParams);
+    a = httpArgs(hit, body, searchParams, ctx);
     const result = hit.cmd.run(w, a, ctx);
     return { status: hit.cmd.http.status ?? 200, data: hit.cmd.http.result ? hit.cmd.http.result(result, a, ctx, w) : result, headers };
   } catch (err) {

@@ -27,8 +27,9 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
     assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
     if (c.action) {
-      assert.ok(c.tool.inputSchema.properties.action, `${c.name}: its tool takes an action`);
-      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { action: c.action }), c, `${c.tool.name} {action: ${c.action}} is the registry entry`);
+      const key = c.actionArg ?? 'action';
+      assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
+      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
     } else assert.equal(BY_TOOL.get(c.tool.name), c);
     assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
@@ -200,15 +201,20 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   w.deleteEntity(gone);
   w.createAccount({ name: 'arch', role: 'architect' });
   const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
+  w.setDoc(alpha, 'first');
+  const said = w.addComment(alpha, { author: 'ed', text: 'hi' });
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha };
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id };
   const bodies = {
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
     'entity.unlink': { field: 'Owner', targets: ['Pat'] },
     'entity.state': { field: 'Stage', state: 'Doing' },
     'entity.bulk': { ids: [alpha], op: 'set', values: { Points: 1 } },
+    'doc.set': { doc: 'second' },
+    'doc.append': { doc: 'third' },
+    'comment.add': { text: 'more' },
   };
   try {
     for (const c of COMMANDS) {
@@ -584,6 +590,66 @@ test('query, trash, stats and bulk answer the same on CLI, MCP and HTTP, each do
     assert.deepEqual(counted(bulk.cli), counted(bulk.http), 'weave bulk and POST /api/bulk answer alike');
     assert.equal(d.httpWeave.query('Task', { where: [['Points', '=', 9]] }).total, 1, 'the bulk set landed');
     for (const [method, path, name] of [['POST', '/api/tables/x/query', 'entity.query'], ['GET', '/api/trash', 'entity.trash'], ['GET', '/api/tables/x/trash', 'entity.trash'], ['GET', '/api/tables/x/stats', 'table.stats'], ['POST', '/api/bulk', 'entity.bulk']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('documents, their revisions and comments answer the same on CLI, MCP and HTTP, each door with its own envelope (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-docs-');
+  const idOf = (w) => w.query('Task', { where: [['Name', '=', 'Alpha']] }).items[0].id;
+  const page = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['ts', 'at', 'actor', 'author'].includes(k) ? undefined : x)));
+  const ids = { mcp: idOf(d.mcpWeave), http: idOf(d.httpWeave) };
+  try {
+    assert.deepEqual(d.cli(['doc', 'set', 'Task#1', '--content', 'one']), { ok: true });
+    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3 }, 'weave_set_doc still answers the length');
+    assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true });
+    assert.deepEqual(d.cli(['doc', 'append', 'Task#1', '--content', 'two']), { ok: true });
+    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'two', mode: 'append' }).ok, true);
+    assert.deepEqual(await d.http('POST', `/api/entities/${ids.http}/doc`, { markdown: 'two' }), { ok: true });
+    const doc = await d.http('GET', `/api/entities/${ids.http}/doc`);
+    assert.deepEqual(Object.keys(doc), ['field', 'doc']);
+    assert.equal(doc.field, null);
+    const fromMcp = d.call('weave_get_doc', { entity: ids.mcp });
+    assert.equal(unwrapData(fromMcp.content[0].text), doc.doc, 'weave_get_doc answers the bare markdown');
+    assert.equal(d.cli(['doc', 'get', 'Task#1']), `${doc.doc}\n`, 'weave doc get prints the bare markdown');
+    assert.equal((await d.http('GET', `/api/entities/${ids.http}/doc?field=Description`)).field, 'Description');
+    const empty = await d.raw('PUT', `/api/entities/${ids.http}/doc`, { text: 'x' });
+    assert.equal(empty.status, 400, 'a write with no doc or markdown is still a 400');
+    assert.match((await empty.json()).error, /carries its text under `doc` or `markdown`/);
+    const bareSet = d.run(['doc', 'set', 'Task#1']);
+    assert.notEqual(bareSet.status, 0);
+    assert.match(bareSet.stderr, /doc set needs its text: --content <markdown> or --file <path>/);
+    const listed = { cli: d.cli(['doc-revisions', 'Task#1']), mcp: d.mcp('weave_doc_revisions', { entity: ids.mcp }), http: await d.http('GET', `/api/entities/${ids.http}/doc/revisions`) };
+    assert.ok(listed.http.revisions.length >= 1);
+    assert.deepEqual(page(listed.mcp), page(listed.http), 'weave_doc_revisions and GET doc/revisions answer alike');
+    assert.deepEqual(page(listed.cli), page(listed.http), 'weave doc-revisions and GET doc/revisions answer alike');
+    const seq = listed.http.revisions.at(-1).seq;
+    const one = { cli: d.cli(['doc-revisions', 'Task#1', '--seq', String(seq)]), mcp: d.mcp('weave_doc_revisions', { entity: ids.mcp, seq }), http: await d.http('GET', `/api/entities/${ids.http}/doc/revisions/${seq}`) };
+    assert.deepEqual(page(one.mcp), page(one.http), 'weave_doc_revisions {seq} and GET doc/revisions/:seq answer alike');
+    assert.deepEqual(page(one.cli), page(one.http));
+    const back = { cli: d.cli(['doc-restore', 'Task#1', '--seq', String(seq)]), mcp: d.mcp('weave_doc_restore', { entity: ids.mcp, seq }), http: await d.http('POST', `/api/entities/${ids.http}/doc/revisions/${seq}/restore`, {}) };
+    assert.deepEqual(page(back.mcp), page(back.http), 'weave_doc_restore and POST restore answer alike');
+    assert.deepEqual(page(back.cli), page(back.http));
+    const noSeq = d.run(['doc-restore', 'Task#1']);
+    assert.notEqual(noSeq.status, 0);
+    assert.match(noSeq.stderr, /--seq is required: a revision from doc-revisions/);
+    const said = { cli: d.cli(['comment', 'Task#1', 'looks', 'good']), mcp: d.mcp('weave_add_comment', { entity: ids.mcp, text: 'looks good' }), http: await d.http('POST', `/api/entities/${ids.http}/comments`, { text: 'looks good' }) };
+    assert.deepEqual(page(said.mcp), page(said.http), 'weave_add_comment and POST comments answer alike');
+    assert.deepEqual(page(said.cli), page(said.http));
+    assert.equal(said.cli.author, 'cli');
+    assert.equal(said.mcp.author, 'agent');
+    const added = await d.raw('POST', `/api/entities/${ids.http}/comments`, { text: 'again' });
+    assert.equal(added.status, 201);
+    const commentOf = (r) => r.id;
+    const gone = {
+      cli: d.cli(['comment', 'delete', 'Task#1', commentOf(said.cli)]),
+      mcp: d.mcp('weave_delete_comment', { entity: ids.mcp, comment: commentOf(said.mcp) }),
+      http: await d.http('DELETE', `/api/entities/${ids.http}/comments/${commentOf(said.http)}`),
+    };
+    assert.deepEqual(gone.http, { ok: true }, 'DELETE comments still answers ok');
+    assert.deepEqual(page(gone.cli), page(gone.mcp), 'weave comment delete and weave_delete_comment answer alike');
+    for (const [method, path, name] of [['GET', '/api/entities/x/doc', 'doc.read'], ['PUT', '/api/entities/x/doc', 'doc.set'], ['POST', '/api/entities/x/doc', 'doc.append'], ['GET', '/api/entities/x/doc/revisions', 'doc.revisions'], ['GET', '/api/entities/x/doc/revisions/3', 'doc.revisions'], ['POST', '/api/entities/x/doc/revisions/3/restore', 'doc.restore'], ['POST', '/api/entities/x/comments', 'comment.add'], ['DELETE', '/api/entities/x/comments/y', 'comment.delete']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }

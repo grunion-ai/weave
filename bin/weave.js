@@ -697,15 +697,7 @@ async function main() {
     case 'doc': {
       const [sub, ref] = args;
       const e = resolveEntityRef(w, ref, flags.db);
-      const content = flags.file ? readFileSync(flags.file, 'utf8') : flags.content;
       const docField = flags.field === true ? null : flags.field ?? null;
-      if (sub === 'get') return out(w.getDoc(e.id, docField));
-      if (sub === 'set' || sub === 'append') {
-        if (content == null || content === true) throw new WeaveError(`doc ${sub} needs its text: --content <markdown> or --file <path>. Use --content '' to clear the document.`, 'invalid');
-        if (sub === 'set') w.setDoc(e.id, content, docField);
-        else w.appendDoc(e.id, content, docField);
-        return out({ ok: true });
-      }
       if (sub === 'export') {
         const read = w.readEntity(e.id);
         const markdown = w.getDoc(e.id, docField);
@@ -724,27 +716,6 @@ async function main() {
         return out(data);
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
-    }
-    case 'doc-revisions': {
-      const e = resolveEntityRef(w, args[0], flags.db);
-      const docField = flags.field === true ? null : flags.field ?? null;
-      if (flags.seq != null && flags.seq !== true) return out(w.getDocRevision(e.id, docField, Number(flags.seq)));
-      return out(w.listDocRevisions(e.id, docField, { limit: numberFlag('limit', 50) }));
-    }
-    case 'doc-restore': {
-      const e = resolveEntityRef(w, args[0], flags.db);
-      const docField = flags.field === true ? null : flags.field ?? null;
-      if (flags.seq == null || flags.seq === true) throw new WeaveError('--seq is required: a revision from doc-revisions');
-      return out(w.restoreDocRevision(e.id, docField, Number(flags.seq)));
-    }
-    case 'comment': {
-      const [first, ...rest] = args;
-      if (first === 'delete') {
-        const [ref, commentId] = rest;
-        return out(w.deleteComment(resolveEntityRef(w, ref, flags.db).id, commentId));
-      }
-      const e = resolveEntityRef(w, first, flags.db);
-      return out(w.addComment(e.id, { author: flags.author ?? 'cli', text: rest.join(' ') }));
     }
     case 'search':
       return out(w.search(args.join(' '), { limit: numberFlag('limit', 25) }));
