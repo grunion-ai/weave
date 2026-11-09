@@ -923,14 +923,6 @@ async function main() {
       if (sub === 'delete') return out(w.deleteFile(resolveEntityRef(w, ref, flags.db).id, fileId));
       throw new WeaveError(`Unknown file subcommand '${sub}'. Try: attach, read, delete`);
     }
-    case 'registry': {
-      const [sub] = args;
-      if (sub === 'rebuild') return out(w.rebuildRegistry());
-      if (sub === 'report' || !sub) return out(w.registryReport());
-      throw new WeaveError(`Unknown registry subcommand '${sub}'. Try: report, rebuild`);
-    }
-    case 'map':
-      return out(w.relationMapMmd());
     default:
       console.error(`Unknown command '${command}'. Run: weave help`);
       process.exit(1);
