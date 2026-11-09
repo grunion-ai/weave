@@ -187,9 +187,11 @@ test('a webhook that fails after its run turns the newest run to attention', asy
   const server = createServer((req, res) => { res.statusCode = 500; res.end(); });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
+    w.deliveryAttempts = 1;
     const auto = w.createAutomation(deal.id, { name: 'Tell', trigger: { type: 'entity-created' }, actions: [stampNote, { type: 'webhook', url: `http://127.0.0.1:${server.address().port}/` }] });
     w.createEntity(deal.id, { Name: 'A' });
-    for (let i = 0; i < 100 && w.readEntity(auto.id).fields.Health !== 'Failed'; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    await w.automationsSettled();
+    assert.equal(w.readEntity(auto.id).fields.Health, 'Failed');
     const [run] = w.spaceHome(sales.id).runs;
     assert.equal(run.outcome, 'attention');
     assert.match(run.failedStep.error, /HTTP 500/);

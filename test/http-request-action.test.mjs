@@ -189,7 +189,7 @@ test('with no integration the request goes out unauthenticated and the SSRF guar
   } finally { await api.close(); }
 });
 
-test('a non-2xx answer or a timeout stamps Failed with a reason and stops the later steps', async () => {
+test('a 4xx answer stamps Failed with a reason and stops the later steps; a timeout holds them while its retry waits', async () => {
   let mode = '404';
   const api = await remote((req, res) => {
     if (mode === 'hang') return;
@@ -218,7 +218,8 @@ test('a non-2xx answer or a timeout stamps Failed with a reason and stops the la
     mode = 'hang';
     const late = w.createEntity(deal.id, { Name: 'Slow' });
     await w.automationsSettled();
-    assert.match(wf(w, auto.id)['Health Reason'], /did not answer within 0\.2 s/);
+    assert.equal(wf(w, auto.id).Health, 'Warning');
+    assert.match(wf(w, auto.id)['Health Reason'], /did not answer within 0\.2 s; attempt 1 of 8 failed/);
     assert.equal(w.readEntity(late.id).comments.length, 0);
   } finally { await api.close(); }
 });

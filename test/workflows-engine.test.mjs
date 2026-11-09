@@ -316,49 +316,56 @@ function notifier(w, t, url) {
   return w.createAutomation(t.id, { name: 'Notify', trigger: { type: 'state-changed', field: 'Status', toState: 'Done' }, actions: [{ type: 'webhook', url }] });
 }
 
-test('a webhook that answers non-2xx marks its row Failed with the status; a later 2xx run reads Healthy with no reason (Issue #682)', async () => {
+test('a webhook that answers 5xx reads Warning with the status while its retry waits; the retry that lands reads Healthy with no reason (Issue #682, Feature #311)', async () => {
   const statuses = [500, 200];
   const { server, url } = await hook((req, res) => { req.resume(); res.statusCode = statuses.shift() ?? 200; res.end(); });
   try {
     const { w, t } = demo();
+    let clock = Date.parse('2026-11-09T09:00:00Z');
+    w.now = () => new Date(clock);
     const auto = notifier(w, t, url);
     const r1 = w.createEntity(t.id, { Name: 'R1' });
     w.setState(r1.id, 'Status', 'Done');
     assert.equal(read(w, r1.id).fields.Status, 'Done', 'the triggering write lands before the webhook answers');
-    assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
-    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: HTTP 500`);
+    await w.automationsSettled();
+    assert.equal(read(w, auto.id).fields.Health, 'Warning');
+    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: HTTP 500; attempt 1 of 8 failed, next try 2026-11-09 09:01 UTC`);
     assert.equal(read(w, auto.id).fields.On, true, 'a failing webhook never switches the row off');
-    const r2 = w.createEntity(t.id, { Name: 'R2' });
-    w.setState(r2.id, 'Status', 'Done');
-    assert.ok(await until(() => !statuses.length));
-    await new Promise((r) => setTimeout(r, 50));
+    clock += 60_000;
+    w.runDeliveries();
+    await w.automationsSettled();
+    assert.equal(statuses.length, 0);
     const after = read(w, auto.id);
     assert.equal(after.fields.Health, 'Healthy');
     assert.equal(after.fields['Health Reason'] ?? null, null, 'the success clears the reason');
   } finally { server.close(); }
 });
 
-test('a webhook to a host that refuses the connection marks its row Failed with the error code (Issue #682)', async () => {
+test('a webhook to a host that refuses the connection reads the error code and, past the cap, Failed (Issue #682)', async () => {
   const { server, url } = await hook(() => {});
   await new Promise((r) => server.close(r));
   const { w, t } = demo();
+  w.deliveryAttempts = 1;
   const auto = notifier(w, t, url);
   const r1 = w.createEntity(t.id, { Name: 'R1' });
   w.setState(r1.id, 'Status', 'Done');
-  assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
-  assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: ECONNREFUSED`);
+  await w.automationsSettled();
+  assert.equal(read(w, auto.id).fields.Health, 'Failed');
+  assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: ECONNREFUSED; gave up after 1 attempt`);
 });
 
-test('a webhook that never answers times out and marks its row Failed (Issue #682)', async () => {
+test('a webhook that never answers times out and, past the cap, reads Failed (Issue #682)', async () => {
   const { server, url } = await hook((req) => { req.resume(); });
   try {
     const { w, t } = demo();
     w.webhookTimeoutMs = 150;
+    w.deliveryAttempts = 1;
     const auto = notifier(w, t, url);
     const r1 = w.createEntity(t.id, { Name: 'R1' });
     w.setState(r1.id, 'Status', 'Done');
-    assert.ok(await until(() => read(w, auto.id).fields.Health === 'Failed'));
-    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: timed out after 0.15 s`);
+    await w.automationsSettled();
+    assert.equal(read(w, auto.id).fields.Health, 'Failed');
+    assert.equal(read(w, auto.id).fields['Health Reason'], `POST ${new URL(url).host}: timed out after 0.15 s; gave up after 1 attempt`);
   } finally { server.closeAllConnections(); server.close(); }
 });
 

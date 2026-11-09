@@ -132,6 +132,8 @@ const INTERNAL = {
   workspaceHome: 'browser read (Feature #355): the phone workspace launcher draws GET /api/workspace/home; an agent reads the same spaces and tables with weave_schema and the same runs from a row\'s activity',
   automationsSettled: 'test and shutdown plumbing (Feature #310): waits for http-request runs still waiting on an answer; an agent reads the outcome from the record\'s automation-ran activity and the rule\'s Health',
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
+  runDeliveries: 'process plumbing (Feature #311): the minute ticker, through runSchedules, sends every failed delivery whose retry is due; an agent reads the wait from the rule\'s Health and Health Reason',
+  pendingDeliveries: 'test plumbing (Feature #311): the deliveries waiting to be sent again; an agent reads the same wait from the rule\'s Health Reason',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
