@@ -341,16 +341,8 @@ export const TOOLS = [
       required: ['action', 'file'],
     },
   },
-  {
-    name: 'weave_registry',
-    description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
-    inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
-  },
-  {
-    name: 'weave_relation_map',
-    description: 'The workspace relation map as a mermaid diagram: every table, relation and automation.',
-    inputSchema: { type: 'object', properties: {} },
-  },
+  toolDefinition('weave_registry'),
+  toolDefinition('weave_relation_map'),
   {
     name: 'weave_export_json',
     description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply. Attachment bytes are left out unless blobs is true; `weave export` always carries them.',
@@ -777,11 +769,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'delete': return weave.deleteFile(args.entity, args.file);
         default: throw new Error(`Unknown files action '${args.action}' (read, delete)`);
       }
-    case 'weave_registry':
-      if ((args.action ?? 'report') === 'rebuild') return weave.rebuildRegistry();
-      return weave.registryReport();
-    case 'weave_relation_map':
-      return { mermaid: weave.relationMapMmd() };
     case 'weave_export_json':
       return weave.exportJSON({ blobs: args.blobs === true });
     case 'weave_import_json':

@@ -67,8 +67,6 @@ const HAND_WRITTEN = [
   ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
   ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
-  ['registry', ['registryReport', 'rebuildRegistry'], 'weave_registry', 'registry', ['GET /api/registry', 'POST /api/registry/rebuild']],
-  ['relation.map', ['relationMapMmd'], 'weave_relation_map', 'map', ['GET /api/relation-map.mmd']],
 ];
 
 const SURFACE = [...HAND_WRITTEN, ...REGISTERED];

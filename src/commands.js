@@ -47,6 +47,12 @@ function fieldUpdate(w, a) {
   };
 }
 
+const REGISTRY_TOOL = {
+  name: 'weave_registry',
+  description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
+  inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
+};
+
 const AUTOMATIONS_TOOL = {
   name: 'weave_automations',
   description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
@@ -554,6 +560,40 @@ export const COMMANDS = [
     },
     run: (w, a) => ({ events: w.listAudit(defined({ limit: a.limit ?? undefined, since: a.since ?? null, offset: a.offset })) }),
   },
+  {
+    name: 'registry.report',
+    engine: ['registryReport'],
+    writes: 'none',
+    tool: REGISTRY_TOOL,
+    action: 'report',
+    toolDefault: true,
+    cli: { command: 'registry', sub: 'report', default: true },
+    http: { method: 'GET', path: '/api/registry' },
+    run: (w) => w.registryReport(),
+  },
+  {
+    name: 'registry.rebuild',
+    engine: ['rebuildRegistry'],
+    writes: 'schema',
+    tool: REGISTRY_TOOL,
+    action: 'rebuild',
+    cli: { command: 'registry', sub: 'rebuild' },
+    http: { method: 'POST', path: '/api/registry/rebuild' },
+    run: (w) => w.rebuildRegistry(),
+  },
+  {
+    name: 'relation.map',
+    engine: ['relationMapMmd'],
+    writes: 'none',
+    tool: {
+      name: 'weave_relation_map',
+      description: 'The workspace relation map as a mermaid diagram: every table, relation and automation.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    cli: { command: 'map', result: (r) => r.mermaid },
+    http: { method: 'GET', path: '/api/relation-map.mmd', result: (r) => r.mermaid },
+    run: (w) => ({ mermaid: w.relationMapMmd() }),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -581,7 +621,7 @@ export function toolCommand(name, args = {}) {
   if (single) return single;
   const family = FAMILIES.get(name);
   if (!family) return null;
-  const hit = family.commands.find((c) => c.action === args.action);
+  const hit = family.commands.find((c) => c.action === args.action) ?? family.commands.find((c) => c.toolDefault);
   if (hit?.toolRefusal) throw new Error(hit.toolRefusal);
   if (hit) return hit;
   const offered = family.commands.filter((c) => !c.toolRefusal).map((c) => c.action);

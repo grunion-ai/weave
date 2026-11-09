@@ -467,7 +467,7 @@ workspace. Every MCP tool has a command:
 | `weave vocabulary` | `weave table create` / `weave table` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
 | `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` / `weave field restore` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
 | `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |
-| `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
+| `weave registry` / `weave registry report` / `weave registry rebuild` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
 | `weave audit` | `weave view` / `weave share` / `weave automation create` / `weave automation list` / `weave automation describe` / `weave automation update` / `weave automation delete` | `weave csv` / `weave csv export` / `weave csv import` / `weave export` / `weave import` |

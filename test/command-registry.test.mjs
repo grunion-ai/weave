@@ -391,3 +391,37 @@ test('audit and activity answer the same on CLI, MCP and HTTP, each door with it
     assert.equal(matchRoute('GET', '/api/activity')?.cmd.name, 'activity');
   } finally { d.close(); }
 });
+
+test('the registry pair and the relation map answer the same on CLI, MCP and HTTP (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-meta-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const meta = bare;
+  try {
+    const steps = [
+      [['registry'], { action: 'report' }, ['GET', '/api/registry']],
+      [['registry', 'report'], {}, ['GET', '/api/registry']],
+      [['registry', 'rebuild'], { action: 'rebuild' }, ['POST', '/api/registry/rebuild']],
+    ];
+    for (const [c, args, [method, path]] of steps) {
+      const fromHttp = meta(await d.http(method, path, method === 'POST' ? {} : undefined, auth));
+      assert.deepEqual(meta(d.mcp('weave_registry', args)), fromHttp, `weave_registry ${args.action ?? ''} and ${method} ${path} answer alike`);
+      assert.deepEqual(meta(d.cli(c)), fromHttp, `weave ${c.join(' ')} and ${method} ${path} answer alike`);
+    }
+    assert.deepEqual(meta(d.mcp('weave_registry', { action: 'check' })), meta(d.mcp('weave_registry', {})), 'an action weave_registry does not know still reports');
+    const miss = d.run(['registry', 'check']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown registry subcommand 'check'\. Try: report, rebuild/);
+    const res = await d.raw('GET', '/api/relation-map.mmd');
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+    const ids = (s) => s.replace(/\b[A-Z][0-9a-f]{8}\b/g, 'X');
+    const map = ids(await res.text());
+    assert.match(map, /Task/);
+    const fromMcp = d.mcp('weave_relation_map', {});
+    assert.deepEqual(Object.keys(fromMcp), ['mermaid'], 'weave_relation_map answers {mermaid}');
+    assert.equal(ids(fromMcp.mermaid), map);
+    assert.equal(ids(d.cli(['map'])), `${map}\n`, 'weave map prints the diagram');
+    assert.equal(matchRoute('POST', '/api/registry/rebuild')?.cmd.name, 'registry.rebuild');
+    assert.equal(matchRoute('GET', '/api/relation-map.mmd')?.cmd.name, 'relation.map');
+  } finally { d.close(); }
+});

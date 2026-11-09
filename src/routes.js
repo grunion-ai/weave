@@ -802,7 +802,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
-        /^\/api\/(spaces|accounts|invites|registry)/.test(path)
+        /^\/api\/(spaces|accounts|invites)/.test(path)
         || path === '/api/import'
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
@@ -1821,11 +1821,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const r = weave.build(spec ?? bare, { dryRun: !!dryRun, skipExistingRows: !!skipExistingRows });
           return out(r.ok ? 200 : 400, r);
         }
-        if (route === 'GET /api/relation-map.mmd') {
-          return out(200, weave.relationMapMmd());
-        }
-        if (route === 'GET /api/registry') return out(200, weave.registryReport());
-        if (route === 'POST /api/registry/rebuild') return out(200, weave.rebuildRegistry());
         if (route === 'GET /api/share') {
           if (!share) return out(404, { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
           const { token, url, ...grant } = share;
