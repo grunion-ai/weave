@@ -93,7 +93,7 @@ if (app) {
         assert.equal((await response.json()).id, row.id);
       }
       for (const row of denied) {
-        assert.equal((await recipientContext.request.get(`${url}/api/entities/${row.id}`)).status(), 403, `${row.id} is outside scope`);
+        assert.equal((await recipientContext.request.get(`${url}/api/entities/${row.id}`)).status(), 404, `${row.id} is outside scope`);
         assert.equal((await recipient.goto(`${url}/e/${row.id}/entity.html`)).status(), 404, 'the recipient page cannot bypass the scope');
       }
       assert.equal((await recipientContext.request.patch(`${url}/api/entities/${allowed[0].id}`, { data: { Name: 'Not allowed' } })).status(), 403);
