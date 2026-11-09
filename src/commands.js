@@ -93,6 +93,12 @@ const SET_DOC_TOOL = {
   description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default.',
   inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
 };
+const RECORDS = Symbol('records');
+const UNDO_TOOL = {
+  name: 'weave_undo',
+  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
+  inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
+};
 const commentAuthor = (w, a, ctx) => (ctx?.caller?.role && !['architect', 'editor'].includes(ctx.caller.role) ? w.actor : a.author ?? 'agent');
 
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
@@ -1003,16 +1009,55 @@ export const COMMANDS = [
     http: { method: 'DELETE', path: '/api/entities/:entity/comments/:comment', result: () => ({ ok: true }) },
     run: (w, a) => w.deleteComment(a.entity, a.comment),
   },
+  {
+    name: 'search',
+    engine: ['search', 'universalSearch'],
+    writes: 'none',
+    tool: {
+      name: 'weave_search',
+      description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
+      inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
+    },
+    cli: { command: 'search', rest: 'words', args: (a, flags) => ({ query: a.words.join(' '), limit: cliNumber('limit', flags.limit, 25), [RECORDS]: true }) },
+    http: {
+      method: 'GET', path: '/api/search',
+      args: (a, body, q) => defined({ query: q.get('q') ?? '', limit: boundedLimit(q.get('limit'), 25), tables: q.get('tables') == null ? undefined : list(q.get('tables')) }),
+    },
+    run: (w, a) => (a[RECORDS] ? w.search(a.query, { limit: a.limit }) : w.universalSearch(a.query, defined({ limit: a.limit ?? 25, tables: a.tables }))),
+  },
+  {
+    name: 'undo.list',
+    engine: ['listUndo'],
+    writes: 'none',
+    tool: UNDO_TOOL,
+    action: true,
+    actionArg: 'list',
+    cli: { command: 'undo', sub: 'list', args: (a, flags) => ({ limit: cliNumber('limit', flags.limit, 20) }), result: (r) => r.history },
+    http: { method: 'GET', path: '/api/undo', args: (a, body, q) => ({ limit: boundedLimit(q.get('limit'), 20) }), result: (r) => r.history },
+    run: (w, a) => ({ history: w.listUndo({ limit: a.limit == null ? 20 : Number(a.limit) }) }),
+  },
+  {
+    name: 'undo.run',
+    engine: ['undo'],
+    writes: 'entity',
+    tool: UNDO_TOOL,
+    action: false,
+    actionArg: 'list',
+    toolDefault: true,
+    cli: { command: 'undo', use: (flags) => (flags.list ? 'undo.list' : null), args: (a, flags) => ({ steps: flags.steps }) },
+    http: { method: 'POST', path: '/api/undo' },
+    run: (w, a) => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)) }),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
-export const BY_TOOL = new Map(COMMANDS.filter((c) => c.tool && !c.action).map((c) => [c.tool.name, c]));
+export const BY_TOOL = new Map(COMMANDS.filter((c) => c.tool && c.action === undefined).map((c) => [c.tool.name, c]));
 export const BY_CLI = new Map(COMMANDS.filter((c) => c.cli).map((c) => [`${c.cli.command} ${c.cli.sub ?? ''}`.trim(), c]));
 const DEFAULT_CLI = new Map(COMMANDS.filter((c) => c.cli?.default).map((c) => [c.cli.command, c]));
 
 export const FAMILIES = new Map();
-for (const c of COMMANDS.filter((x) => x.action)) {
+for (const c of COMMANDS.filter((x) => x.action !== undefined)) {
   if (!FAMILIES.has(c.tool.name)) FAMILIES.set(c.tool.name, { tool: c.tool, noun: c.tool.name.replace(/^weave_/, ''), commands: [] });
   FAMILIES.get(c.tool.name).commands.push(c);
 }
@@ -1030,7 +1075,8 @@ export function toolCommand(name, args = {}) {
   if (single) return single;
   const family = FAMILIES.get(name);
   if (!family) return null;
-  const hit = family.commands.find((c) => c.action === args[c.actionArg ?? 'action']) ?? family.commands.find((c) => c.toolDefault);
+  const picked = (c) => (typeof c.action === 'boolean' ? Boolean(args[c.actionArg]) : args[c.actionArg ?? 'action']);
+  const hit = family.commands.find((c) => c.action === picked(c)) ?? family.commands.find((c) => c.toolDefault);
   if (hit?.toolRefusal) throw new Error(hit.toolRefusal);
   if (hit) return hit;
   const offered = family.commands.filter((c) => !c.toolRefusal).map((c) => c.action);

@@ -74,11 +74,7 @@ export const TOOLS = [
   toolDefinition('weave_restore_entity'),
   toolDefinition('weave_trash'),
   toolDefinition('weave_stats'),
-  {
-    name: 'weave_undo',
-    description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
-    inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
-  },
+  toolDefinition('weave_undo'),
   toolDefinition('weave_bulk'),
   toolDefinition('weave_set_state'),
   toolDefinition('weave_link'),
@@ -89,11 +85,7 @@ export const TOOLS = [
   toolDefinition('weave_doc_restore'),
   toolDefinition('weave_add_comment'),
   toolDefinition('weave_delete_comment'),
-  {
-    name: 'weave_search',
-    description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
-    inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
-  },
+  toolDefinition('weave_search'),
   toolDefinition('weave_create_space'),
   toolDefinition('weave_create_table'),
   toolDefinition('weave_add_field'),
@@ -503,11 +495,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
-    case 'weave_undo':
-      if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
-      return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
-    case 'weave_search':
-      return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_attach_file': {
       if (args.prepare === true) {
         if (!caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
