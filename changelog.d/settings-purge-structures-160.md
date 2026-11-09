@@ -1,0 +1,1 @@
+- Settings names each trashed line by what it holds (Space, Table in its space, Record in its table) where it used to show the registry table behind it, and its note lists tables and spaces beside records and share pages. Delete forever on a table or a space purges it, a space with every table in it, after the exact name is typed and the hold runs out (Feature #160).
