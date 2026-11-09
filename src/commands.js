@@ -1508,6 +1508,58 @@ export const COMMANDS = [
       return grant;
     },
   },
+  {
+    name: 'template.list',
+    engine: ['listTemplates'],
+    writes: 'none',
+    tool: {
+      name: 'weave_template_list',
+      description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon. Also starters: the built-in starter workspaces (id, title, blurb, and grows, a note on how one is meant to grow). starter: <id> answers {starter, spec}, a spec dated this month to pass to weave_build.',
+      inputSchema: { type: 'object', properties: { starter: { type: 'string' } } },
+    },
+    cli: { command: 'template', sub: 'list', default: true },
+    http: { method: 'GET', path: '/api/templates' },
+    run: (w, a, ctx) => {
+      if (ctx?.door !== 'mcp') return w.listTemplates();
+      return a.starter != null ? globalThis.WeaveStarters.forAgent(a.starter) : { templates: w.listTemplates(), starters: globalThis.WeaveStarters.catalog() };
+    },
+  },
+  {
+    name: 'template.use',
+    engine: ['useTemplate'],
+    writes: 'none',
+    tool: {
+      name: 'weave_template_use',
+      description: 'Copy a template space\'s schema, never its records, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
+      inputSchema: {
+        type: 'object',
+        properties: { space: { type: 'string' }, workspace: { type: 'string' }, name: { type: 'string' } },
+        required: ['space', 'workspace'],
+      },
+    },
+    cli: {
+      command: 'template', sub: 'use', positional: ['space'],
+      args: (a, flags) => {
+        if (!a.space) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
+        if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
+        return { space: a.space, into: String(flags.into), name: flags.name == null || flags.name === true ? undefined : String(flags.name) };
+      },
+    },
+    http: { method: 'POST', path: '/api/spaces/:space/use', status: 201, args: (a, body) => ({ space: a.space, workspace: body?.workspace, name: body?.name }) },
+    run: (w, a, ctx) => {
+      if (a.into !== undefined) {
+        const target = ctx.openInto(a.into);
+        try {
+          return w.useTemplate(a.space, target.weave, { name: a.name });
+        } finally { target.done(); }
+      }
+      const use = ctx?.useTemplate ?? ctx?.caller?.useTemplate;
+      if (!use) {
+        throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
+      }
+      return use({ space: a.space, workspace: a.workspace, name: a.name });
+    },
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());

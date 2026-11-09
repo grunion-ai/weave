@@ -565,7 +565,7 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
     return (typeof registered.cli.raw === 'function' ? registered.cli.raw(flags) : registered.cli.raw) ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
@@ -625,33 +625,6 @@ async function main() {
       if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-    }
-    case 'template': {
-      const [sub, ref] = args;
-      if (sub === 'list' || !sub) return out(w.listTemplates());
-      if (sub === 'use') {
-        if (!ref) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
-        if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
-        const into = String(flags.into);
-        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true });
-        try {
-          return out(w.useTemplate(ref, target, { name: flags.name == null || flags.name === true ? undefined : String(flags.name) }));
-        } finally { if (target !== w) target.store.close?.(); }
-      }
-      throw new WeaveError(`Unknown template subcommand '${sub}'. Try: list, use`);
-    }
-    case 'field': {
-      const [sub, db] = args;
-      if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
-      throw new WeaveError(`Unknown field subcommand '${sub}'. Try: add, list, update, rollback, delete, restore`);
-    }
-    case 'formula': {
-      const [sub] = args;
-      throw new WeaveError(`Unknown formula subcommand '${sub}'. Try: check`);
-    }
-    case 'relation': {
-      const [sub] = args;
-      throw new WeaveError(`Unknown relation subcommand '${sub}'`);
     }
     case 'doc': {
       const [sub, ref] = args;

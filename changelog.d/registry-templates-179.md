@@ -1,0 +1,1 @@
+- Template list and template use run from the command registry: `weave template [list|use]`, `weave_template_list`, `weave_template_use`, `GET /api/templates` and `POST /api/spaces/<space>/use` dispatch from registry entries with the same answers and refusals as before (Feature #179).
