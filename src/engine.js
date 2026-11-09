@@ -621,193 +621,329 @@ function formulaCostume(config) {
 
 function dressDateRange(c, value) { return DG.formatDateRange(value, c); }
 
-function normalizeSelfContainedConfig(type, config = {}, { formula = false, strict = false } = {}) {
-  if (type === 'select' || type === 'multiselect') {
-    return { options: (config.options ?? []).map((o) => normaliseOption(o, { strict })) };
+function numberConfig(config, { formula = false } = {}) {
+  const out = {};
+  if (config.format != null) {
+    if (!['number', 'currency', 'percent', 'compact'].includes(config.format)) {
+      throw new WeaveError(`Invalid number format '${config.format}' (number, currency, percent, compact)`, 'invalid');
+    }
+    if (config.format !== 'number') out.format = config.format;
   }
-  if (type === 'workflow') {
-    const states = (config.states ?? DEFAULT_WORKFLOW_STATES).map((s) => (typeof s === 'string'
-      ? { id: slug(s), name: s, category: 'in-progress', default: false }
-      : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}), ...(hueOf(s, { strict, fallback: null }) ? { hue: hueOf(s, { strict, fallback: null }) } : {}) }));
-    if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
-    let marked = false;
-    for (const s of states) { if (s.default && marked) s.default = false; marked ||= s.default; }
-    for (const s of states) {
-      if (!STATE_CATEGORIES.includes(s.category)) {
-        throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
+  let unit = config.unit != null && String(config.unit).trim() ? String(config.unit).trim() : null;
+  let currency = config.currency != null && String(config.currency).trim() ? String(config.currency).trim().toUpperCase() : null;
+  if (out.format === 'currency' && !currency && unit && /^[A-Za-z]{3}$/.test(unit)) { currency = unit.toUpperCase(); unit = null; }
+  if (currency) {
+    try { new Intl.NumberFormat('en-US', { style: 'currency', currency }); } catch { throw new WeaveError(`'${currency}' is not a currency code (use ISO 4217: USD, EUR, GBP…)`, 'invalid'); }
+    out.currency = currency;
+  }
+  if (unit) out.unit = unit;
+  if (config.decimals != null) {
+    if (!Number.isInteger(config.decimals) || config.decimals < 0 || config.decimals > 6) {
+      throw new WeaveError(`Decimals must be 0..6, got '${config.decimals}'`, 'invalid');
+    }
+    out.decimals = config.decimals;
+  }
+  if (config.separator != null) out.separator = !!config.separator;
+  if (out.format === 'compact' && out.separator) throw new WeaveError('Compact groups on its own; a separator has nothing to add', 'invalid');
+  if (config.accounting) {
+    if (out.format !== 'currency') throw new WeaveError('Accounting negatives need format currency', 'invalid');
+    out.accounting = true;
+  }
+  if (config.display === 'sparkline') {
+    if (!formula) throw new WeaveError('A sparkline draws a list: only a formula can wear it', 'invalid');
+    out.display = 'sparkline';
+    if (config.style != null && !SPARKLINE_STYLES.includes(config.style)) {
+      throw new WeaveError(`Invalid sparkline style '${config.style}' (${SPARKLINE_STYLES.join(', ')})`, 'invalid');
+    }
+    if (config.style != null && config.style !== 'line') out.style = config.style;
+  } else if (config.display != null) {
+    if (!NUMBER_DISPLAYS.includes(config.display)) {
+      throw new WeaveError(`Invalid number display '${config.display}' (${NUMBER_DISPLAYS.join(', ')})`, 'invalid');
+    }
+    if (config.display !== 'text') out.display = config.display;
+  }
+  if (cellColorValue(config.color) !== 'ink') out.color = config.color;
+  if (isGraphicDisplay(out.display) && config.scale != null && config.scale !== 'column') {
+    const scale = config.scale;
+    if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
+      throw new WeaveError("Scale is 'column' or a number above 0", 'invalid');
+    }
+    out.scale = scale;
+  }
+  return out;
+}
+
+function dateConfig(type, config) {
+  const out = {};
+  let grain;
+  try { grain = DG.normalizeGrain(config.grain); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
+  if (grain) out.grain = grain;
+  const time = !!config.time;
+  if (time) out.time = true;
+  const parts = grain ?? DG.PARTS;
+  if (!parts.length && !time) throw new WeaveError('A grain with no date parts must keep a time of day', 'invalid');
+  if (config.format != null) {
+  const problem = DG.formatProblem(parts, config.format);
+  if (problem) throw new WeaveError(problem, 'invalid');
+  if (config.format !== DG.DEFAULT_FORMAT) out.format = config.format;
+  }
+  if (config.clock != null) {
+  if (!DG.CLOCKS.includes(config.clock)) throw new WeaveError(`Invalid clock '${config.clock}' (${DG.CLOCKS.join(', ')})`, 'invalid');
+  if (!time) throw new WeaveError('A clock needs a time of day', 'invalid');
+  if (config.clock !== DG.DEFAULT_CLOCK) out.clock = config.clock;
+  }
+  if (config.zone != null) {
+  if (!DG.ZONES.includes(config.zone)) throw new WeaveError(`Invalid zone '${config.zone}' (${DG.ZONES.join(', ')})`, 'invalid');
+  if (!time) throw new WeaveError('A zone needs a time of day', 'invalid');
+  if (config.zone === 'fixed') {
+    if (!config.zoneName) throw new WeaveError('A fixed zone needs a zoneName (an IANA name: America/Los_Angeles, Europe/Berlin…)', 'invalid');
+    if (!DG.isZone(config.zoneName)) throw new WeaveError(`'${config.zoneName}' is not a time zone`, 'invalid');
+    out.zoneName = String(config.zoneName);
+  }
+  if (config.zone !== 'floating') out.zone = config.zone;
+  }
+  if (config.pad) out.pad = true;
+  if (config.elapsed) {
+  if (type !== 'daterange') throw new WeaveError('elapsed belongs to a range', 'invalid');
+  if (!time) throw new WeaveError('elapsed needs a time of day at both ends', 'invalid');
+  out.elapsed = true;
+  }
+  return out;
+}
+
+const optionName = (options, id) => options.find((o) => o.id === id)?.name ?? null;
+const asBoolean = (raw) => Boolean(raw);
+const asString = (raw) => String(raw);
+const dateType = (type) => ({
+  build: (config) => dateConfig(type, config),
+  merge(config, patch) {
+    const costume = dateConfig(type, { ...config, ...patch });
+    putCostume(config, DATE_COSTUME_KEYS, costume, (k) => k in patch || k in costume);
+  },
+});
+const optionType = {
+  build: (config, { strict = false } = {}) => ({ options: (config.options ?? []).map((o) => normaliseOption(o, { strict })) }),
+  merge(config, patch) {
+    if (!patch.options) return;
+    const stored = new Map(config.options.map((o) => [o.id, o]));
+    config.options = patch.options.map((o) => {
+      const was = typeof o === 'string' ? null : stored.get(o.id);
+      const asStored = was
+        && (o.hue ?? '') === (was.hue ?? '') && (o.color ?? '') === (was.color ?? '');
+      return normaliseOption(o, { strict: !asStored });
+    });
+  },
+};
+
+const FIELD_TYPE_CONFIG = {
+  text: {
+    build: (config) => (config.literal ? { literal: true } : {}),
+    merge(config, patch) {
+      if (!('literal' in patch)) return;
+      if (FIELD_TYPE_CONFIG.text.build(patch).literal) config.literal = true; else delete config.literal;
+    },
+    coerce(raw, { from, was }) {
+      if (from === 'select') return optionName(was.options, raw);
+      if (from === 'toggle') return raw ? was.on : was.off;
+      if (from === 'multiselect') return (Array.isArray(raw) ? raw : [raw]).map((id) => optionName(was.options, id)).filter(Boolean).join(', ');
+      if (from === 'workflow') return was.states.find((s) => s.id === raw)?.name ?? null;
+      return String(raw);
+    },
+  },
+  number: {
+    build: numberConfig,
+    merge(config, patch) {
+      const costume = numberConfig({ ...config, ...patch });
+      putCostume(config, NUMBER_COSTUME_KEYS, costume, (k) => k in patch || k in costume || k in config);
+    },
+    coerce(raw) { const n = Number(raw); return Number.isFinite(n) ? n : null; },
+  },
+  formula: {
+    merge(config, patch) {
+      const switched = 'grain' in patch && (patch.grain == null) !== (config.grain == null);
+      const costume = formulaCostume(switched ? patch : { ...config, ...patch });
+      putCostume(config, FORMULA_COSTUME_KEYS, costume, (k) => k in patch || k in costume || k in config);
+    },
+  },
+  rollup: {
+    merge(config, patch) {
+      if (!ROLLUP_COSTUME_KEYS.some((k) => k in patch)) return;
+      const merged = { ...config, ...patch };
+      for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
+      putCostume(config, ROLLUP_COSTUME_KEYS, rollupCostume(merged));
+    },
+  },
+  rating: {
+    build(config) {
+      const max = config.max ?? RATING_DEFAULTS.max;
+      if (!Number.isInteger(max) || max < 1 || max > RATING_MAX) {
+        throw new WeaveError(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${config.max}'`, 'invalid');
       }
-    }
-    return { states };
-  }
-  if (type === 'number') {
-    const out = {};
-    if (config.format != null) {
-      if (!['number', 'currency', 'percent', 'compact'].includes(config.format)) {
-        throw new WeaveError(`Invalid number format '${config.format}' (number, currency, percent, compact)`, 'invalid');
+      const color = cellColorValue(config.color);
+      return { max, icon: iconValue(config.icon ?? RATING_DEFAULTS.icon) || RATING_DEFAULTS.icon, ...(color !== 'ink' ? { color } : {}) };
+    },
+    merge(config, patch) {
+      if (!('max' in patch || 'icon' in patch || 'color' in patch)) return;
+      const { max, icon, color } = FIELD_TYPE_CONFIG.rating.build({ max: config.max, icon: config.icon, color: config.color, ...patch });
+      config.max = max;
+      config.icon = icon;
+      if (color) config.color = color; else delete config.color;
+      if (typeof config.default === 'number') config.default = ratingValue(config.default, max);
+    },
+    coerce(raw, { next }) { const n = Number(raw); return Number.isFinite(n) ? ratingValue(n, next.max) : null; },
+  },
+  date: {
+    ...dateType('date'),
+    coerce(raw, { next, coerceDate }) { try { return coerceDate(next ?? {}, raw); } catch { return null; } },
+  },
+  daterange: dateType('daterange'),
+  checkbox: { coerce: asBoolean },
+  toggle: {
+    build(config) {
+      const label = (key, fallback) => {
+        if (config[key] == null) return fallback;
+        const v = String(config[key]).trim();
+        if (!v) throw new WeaveError(`A toggle's ${key} label cannot be blank`, 'invalid');
+        return v;
+      };
+      const on = label('on', 'On');
+      const off = label('off', 'Off');
+      if (on.toLowerCase() === off.toLowerCase()) throw new WeaveError(`A toggle needs two different labels, got '${on}' for both`, 'invalid');
+      return { on, off };
+    },
+    merge(config, patch) {
+      if (!('on' in patch || 'off' in patch)) return;
+      const { on, off } = FIELD_TYPE_CONFIG.toggle.build({ ...config, ...patch });
+      config.on = on;
+      config.off = off;
+    },
+    coerce: asBoolean,
+  },
+  url: { coerce: asString },
+  email: { coerce: (raw) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null) },
+  select: {
+    ...optionType,
+    coerce(raw, { from, next, findOption }) {
+      if (from === 'multiselect') return (Array.isArray(raw) ? raw[0] : raw) ?? null;
+      if (from === 'workflow') return raw;
+      return findOption(next.options, String(raw).trim())?.id ?? null;
+    },
+  },
+  multiselect: {
+    ...optionType,
+    coerce(raw, { from, next, findOption }) {
+      if (from === 'select') return [raw];
+      return String(raw).split(',').map((v) => findOption(next.options, v.trim())?.id).filter(Boolean);
+    },
+  },
+  workflow: {
+    build(config, { strict = false } = {}) {
+      const states = (config.states ?? DEFAULT_WORKFLOW_STATES).map((s) => (typeof s === 'string'
+        ? { id: slug(s), name: s, category: 'in-progress', default: false }
+        : { id: s.id ?? slug(s.name), name: s.name, category: RETIRED_STATE_CATEGORIES[s.category] ?? s.category ?? 'in-progress', default: !!s.default, ...(iconValue(s.icon) ? { icon: iconValue(s.icon) } : {}), ...(hueOf(s, { strict, fallback: null }) ? { hue: hueOf(s, { strict, fallback: null }) } : {}) }));
+      if (states.length === 0) throw new WeaveError('Workflow field needs at least one state', 'invalid');
+      let marked = false;
+      for (const s of states) { if (s.default && marked) s.default = false; marked ||= s.default; }
+      for (const s of states) {
+        if (!STATE_CATEGORIES.includes(s.category)) {
+          throw new WeaveError(`Invalid state category '${s.category}' (use ${STATE_CATEGORIES.join(', ')})`, 'invalid');
+        }
       }
-      if (config.format !== 'number') out.format = config.format;
-    }
-    let unit = config.unit != null && String(config.unit).trim() ? String(config.unit).trim() : null;
-    let currency = config.currency != null && String(config.currency).trim() ? String(config.currency).trim().toUpperCase() : null;
-    if (out.format === 'currency' && !currency && unit && /^[A-Za-z]{3}$/.test(unit)) { currency = unit.toUpperCase(); unit = null; }
-    if (currency) {
-      try { new Intl.NumberFormat('en-US', { style: 'currency', currency }); } catch { throw new WeaveError(`'${currency}' is not a currency code (use ISO 4217: USD, EUR, GBP…)`, 'invalid'); }
-      out.currency = currency;
-    }
-    if (unit) out.unit = unit;
-    if (config.decimals != null) {
-      if (!Number.isInteger(config.decimals) || config.decimals < 0 || config.decimals > 6) {
-        throw new WeaveError(`Decimals must be 0..6, got '${config.decimals}'`, 'invalid');
+      return { states };
+    },
+    merge(config, patch) {
+      if (patch.states) config.states = FIELD_TYPE_CONFIG.workflow.build({ states: patch.states }).states;
+    },
+    coerce: (raw, { next }) => (next.states.some((s) => s.id === raw) ? raw : null),
+  },
+  field: {
+    build(config) {
+      const depth = config.depth ?? 1;
+      if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEFINITION_DEPTH) {
+        throw new WeaveError(`Definition depth must be 1..${MAX_DEFINITION_DEPTH}, got '${depth}'`, 'invalid');
       }
-      out.decimals = config.decimals;
-    }
-    if (config.separator != null) out.separator = !!config.separator;
-    if (out.format === 'compact' && out.separator) throw new WeaveError('Compact groups on its own; a separator has nothing to add', 'invalid');
-    if (config.accounting) {
-      if (out.format !== 'currency') throw new WeaveError('Accounting negatives need format currency', 'invalid');
-      out.accounting = true;
-    }
-    if (config.display === 'sparkline') {
-      if (!formula) throw new WeaveError('A sparkline draws a list: only a formula can wear it', 'invalid');
-      out.display = 'sparkline';
-      if (config.style != null && !SPARKLINE_STYLES.includes(config.style)) {
-        throw new WeaveError(`Invalid sparkline style '${config.style}' (${SPARKLINE_STYLES.join(', ')})`, 'invalid');
+      return { types: [...DEFINABLE_TYPES], depth };
+    },
+  },
+  key: {
+    build(config) {
+      const kind = config.kind ?? 'apikey';
+      if (!CREDENTIAL_KINDS.includes(kind)) {
+        throw new WeaveError(`Invalid credential kind '${kind}' (${CREDENTIAL_KINDS.join(', ')})`, 'invalid');
       }
-      if (config.style != null && config.style !== 'line') out.style = config.style;
-    } else if (config.display != null) {
-      if (!NUMBER_DISPLAYS.includes(config.display)) {
-        throw new WeaveError(`Invalid number display '${config.display}' (${NUMBER_DISPLAYS.join(', ')})`, 'invalid');
+      const keystore = config.keystore ?? 'local';
+      if (!KEYSTORES.includes(keystore)) {
+        throw new WeaveError(`Invalid keystore '${keystore}' (${KEYSTORES.join(', ')})`, 'invalid');
       }
-      if (config.display !== 'text') out.display = config.display;
-    }
-    if (cellColorValue(config.color) !== 'ink') out.color = config.color;
-    if (isGraphicDisplay(out.display) && config.scale != null && config.scale !== 'column') {
-      const scale = config.scale;
-      if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) {
-        throw new WeaveError("Scale is 'column' or a number above 0", 'invalid');
+      const out = { kind, keystore };
+      if (kind === 'pair') {
+        const parts = config.parts?.length ? config.parts : DEFAULT_PAIR_PARTS;
+        if (parts.length !== 2) {
+          throw new WeaveError(`A pair names exactly two parts, got ${parts.length}`, 'invalid');
+        }
+        out.parts = parts.map((p) => {
+          const name = typeof p === 'string' ? p : p.name;
+          if (!name) throw new WeaveError('Every part of a pair needs a name', 'invalid');
+          return { name: String(name), secret: typeof p === 'string' ? false : !!p.secret };
+        });
+      } else if (config.parts != null) {
+        throw new WeaveError(`Only a 'pair' credential names parts; '${kind}' holds one value`, 'invalid');
       }
-      out.scale = scale;
-    }
-    return out;
-  }
-  if (type === 'date' || type === 'daterange') {
-    const out = {};
-    let grain;
-    try { grain = DG.normalizeGrain(config.grain); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
-    if (grain) out.grain = grain;
-    const time = !!config.time;
-    if (time) out.time = true;
-    const parts = grain ?? DG.PARTS;
-    if (!parts.length && !time) throw new WeaveError('A grain with no date parts must keep a time of day', 'invalid');
-    if (config.format != null) {
-      const problem = DG.formatProblem(parts, config.format);
-      if (problem) throw new WeaveError(problem, 'invalid');
-      if (config.format !== DG.DEFAULT_FORMAT) out.format = config.format;
-    }
-    if (config.clock != null) {
-      if (!DG.CLOCKS.includes(config.clock)) throw new WeaveError(`Invalid clock '${config.clock}' (${DG.CLOCKS.join(', ')})`, 'invalid');
-      if (!time) throw new WeaveError('A clock needs a time of day', 'invalid');
-      if (config.clock !== DG.DEFAULT_CLOCK) out.clock = config.clock;
-    }
-    if (config.zone != null) {
-      if (!DG.ZONES.includes(config.zone)) throw new WeaveError(`Invalid zone '${config.zone}' (${DG.ZONES.join(', ')})`, 'invalid');
-      if (!time) throw new WeaveError('A zone needs a time of day', 'invalid');
-      if (config.zone === 'fixed') {
-        if (!config.zoneName) throw new WeaveError('A fixed zone needs a zoneName (an IANA name: America/Los_Angeles, Europe/Berlin…)', 'invalid');
-        if (!DG.isZone(config.zoneName)) throw new WeaveError(`'${config.zoneName}' is not a time zone`, 'invalid');
-        out.zoneName = String(config.zoneName);
+      return out;
+    },
+    coerce: asString,
+  },
+  attachments: {
+    build(config) {
+      const multiple = config.multiple == null ? true : !!config.multiple;
+      const out = { multiple };
+      const pick = (key, list, unmarked) => {
+        const v = config[key];
+        if (v == null || v === '' || v === unmarked) return;
+        if (!list.includes(v)) throw new WeaveError(`Invalid attachments ${key} '${v}' (${list.join(', ')})`, 'invalid');
+        out[key] = v;
+      };
+      pick('preview', ATTACHMENT_PREVIEWS, null);
+      pick('size', ATTACHMENT_SIZES, 'medium');
+      pick('fit', ATTACHMENT_FITS, 'trim');
+      if (out.preview === 'cover' && multiple) throw new WeaveError("A cover preview needs a single-file field (multiple: false)", 'invalid');
+      return out;
+    },
+    merge(config, patch) {
+      if (!['multiple', ...ATTACHMENT_LOOK_KEYS].some((k) => k in patch)) return;
+      const next = FIELD_TYPE_CONFIG.attachments.build({ ...config, ...patch });
+      config.multiple = next.multiple;
+      putCostume(config, ATTACHMENT_LOOK_KEYS, next);
+    },
+  },
+  avatar: {
+    build(config) {
+      const shape = config.shape == null || config.shape === '' ? 'round' : config.shape;
+      if (!AVATAR_SHAPES.includes(shape)) throw new WeaveError(`Invalid avatar shape '${shape}' (${AVATAR_SHAPES.join(', ')})`, 'invalid');
+      return { shape };
+    },
+    merge(config, patch) {
+      if ('shape' in patch) config.shape = FIELD_TYPE_CONFIG.avatar.build({ shape: patch.shape }).shape;
+    },
+  },
+  document: {
+    build(config) {
+      if (config.kind != null && config.kind !== 'markdown') {
+        if (!DOCUMENT_KINDS.includes(config.kind)) throw new WeaveError(`Invalid document kind '${config.kind}' (${DOCUMENT_KINDS.join(', ')})`, 'invalid');
+        return { kind: config.kind };
       }
-      if (config.zone !== 'floating') out.zone = config.zone;
-    }
-    if (config.pad) out.pad = true;
-    if (config.elapsed) {
-      if (type !== 'daterange') throw new WeaveError('elapsed belongs to a range', 'invalid');
-      if (!time) throw new WeaveError('elapsed needs a time of day at both ends', 'invalid');
-      out.elapsed = true;
-    }
-    return out;
-  }
-  if (type === 'field') {
-    const depth = config.depth ?? 1;
-    if (!Number.isInteger(depth) || depth < 1 || depth > MAX_DEFINITION_DEPTH) {
-      throw new WeaveError(`Definition depth must be 1..${MAX_DEFINITION_DEPTH}, got '${depth}'`, 'invalid');
-    }
-    return { types: [...DEFINABLE_TYPES], depth };
-  }
-  if (type === 'key') {
-    const kind = config.kind ?? 'apikey';
-    if (!CREDENTIAL_KINDS.includes(kind)) {
-      throw new WeaveError(`Invalid credential kind '${kind}' (${CREDENTIAL_KINDS.join(', ')})`, 'invalid');
-    }
-    const keystore = config.keystore ?? 'local';
-    if (!KEYSTORES.includes(keystore)) {
-      throw new WeaveError(`Invalid keystore '${keystore}' (${KEYSTORES.join(', ')})`, 'invalid');
-    }
-    const out = { kind, keystore };
-    if (kind === 'pair') {
-      const parts = config.parts?.length ? config.parts : DEFAULT_PAIR_PARTS;
-      if (parts.length !== 2) {
-        throw new WeaveError(`A pair names exactly two parts, got ${parts.length}`, 'invalid');
-      }
-      out.parts = parts.map((p) => {
-        const name = typeof p === 'string' ? p : p.name;
-        if (!name) throw new WeaveError('Every part of a pair needs a name', 'invalid');
-        return { name: String(name), secret: typeof p === 'string' ? false : !!p.secret };
-      });
-    } else if (config.parts != null) {
-      throw new WeaveError(`Only a 'pair' credential names parts; '${kind}' holds one value`, 'invalid');
-    }
-    return out;
-  }
-  if (type === 'rating') {
-    const max = config.max ?? RATING_DEFAULTS.max;
-    if (!Number.isInteger(max) || max < 1 || max > RATING_MAX) {
-      throw new WeaveError(`A rating's max is a whole number from 1 to ${RATING_MAX}, got '${config.max}'`, 'invalid');
-    }
-    const color = cellColorValue(config.color);
-    return { max, icon: iconValue(config.icon ?? RATING_DEFAULTS.icon) || RATING_DEFAULTS.icon, ...(color !== 'ink' ? { color } : {}) };
-  }
-  if (type === 'toggle') {
-    const label = (key, fallback) => {
-      if (config[key] == null) return fallback;
-      const v = String(config[key]).trim();
-      if (!v) throw new WeaveError(`A toggle's ${key} label cannot be blank`, 'invalid');
-      return v;
-    };
-    const on = label('on', 'On');
-    const off = label('off', 'Off');
-    if (on.toLowerCase() === off.toLowerCase()) throw new WeaveError(`A toggle needs two different labels, got '${on}' for both`, 'invalid');
-    return { on, off };
-  }
-  if (type === 'avatar') {
-    const shape = config.shape == null || config.shape === '' ? 'round' : config.shape;
-    if (!AVATAR_SHAPES.includes(shape)) throw new WeaveError(`Invalid avatar shape '${shape}' (${AVATAR_SHAPES.join(', ')})`, 'invalid');
-    return { shape };
-  }
-  if (type === 'attachments') {
-    const multiple = config.multiple == null ? true : !!config.multiple;
-    const out = { multiple };
-    const pick = (key, list, unmarked) => {
-      const v = config[key];
-      if (v == null || v === '' || v === unmarked) return;
-      if (!list.includes(v)) throw new WeaveError(`Invalid attachments ${key} '${v}' (${list.join(', ')})`, 'invalid');
-      out[key] = v;
-    };
-    pick('preview', ATTACHMENT_PREVIEWS, null);
-    pick('size', ATTACHMENT_SIZES, 'medium');
-    pick('fit', ATTACHMENT_FITS, 'trim');
-    if (out.preview === 'cover' && multiple) throw new WeaveError("A cover preview needs a single-file field (multiple: false)", 'invalid');
-    return out;
-  }
-  if (type === 'text') return config.literal ? { literal: true } : {};
-  if (type === 'document') {
-    if (config.kind != null && config.kind !== 'markdown') {
-      if (!DOCUMENT_KINDS.includes(config.kind)) throw new WeaveError(`Invalid document kind '${config.kind}' (${DOCUMENT_KINDS.join(', ')})`, 'invalid');
-      return { kind: config.kind };
-    }
-    return {};
-  }
-  return {};
+      return {};
+    },
+    merge(config, patch) {
+      if (!('kind' in patch)) return;
+      const { kind } = FIELD_TYPE_CONFIG.document.build(patch);
+      if (kind) config.kind = kind; else delete config.kind;
+    },
+  },
+};
+
+function normalizeSelfContainedConfig(type, config = {}, options = {}) {
+  return FIELD_TYPE_CONFIG[type]?.build?.(config, options) ?? {};
 }
 
 function normalizeDefinition(raw, depth, { strict = false } = {}) {
@@ -5905,7 +6041,7 @@ export class Weave {
     if (type === 'avatar' && Object.values(db.fields).some((f) => f.type === 'avatar' && !f.deletedAt)) {
       throw new WeaveError(`Table '${db.name}' already has an avatar field; a record has one face`, 'conflict');
     }
-    if (['select', 'multiselect', 'workflow', 'field', 'number', 'rating', 'date', 'daterange', 'attachments', 'avatar', 'document', 'key', 'text', 'toggle'].includes(type)) {
+    if (FIELD_TYPE_CONFIG[type]?.build) {
       field.config = normalizeSelfContainedConfig(type, config, { strict: true });
     } else if (type === 'lookup') {
       field.config = this.#recipe(db, 'lookup', config);
@@ -6156,76 +6292,19 @@ export class Weave {
         const description = fieldDescriptionValue(patch.config.description);
         if (description) field.config.description = description; else delete field.config.description;
       }
-      if (field.type === 'rating' && ('max' in patch.config || 'icon' in patch.config || 'color' in patch.config)) {
-        const { max, icon, color } = normalizeSelfContainedConfig('rating', { max: field.config.max, icon: field.config.icon, color: field.config.color, ...patch.config });
-        field.config.max = max;
-        field.config.icon = icon;
-        if (color) field.config.color = color; else delete field.config.color;
-        if (typeof field.config.default === 'number') field.config.default = ratingValue(field.config.default, max);
-      }
-      if (field.type === 'number' || field.type === 'formula') {
-        const switched = field.type === 'formula' && 'grain' in patch.config && (patch.config.grain == null) !== (field.config.grain == null);
-        const merged = switched ? patch.config : { ...field.config, ...patch.config };
-        const costume = field.type === 'formula' ? formulaCostume(merged) : normalizeSelfContainedConfig('number', merged);
-        putCostume(field.config, COSTUME_KEYS[field.type], costume, (k) => k in patch.config || k in costume || k in field.config);
-      }
       if (nextRecipe) {
         healthBefore = this.#formulaHealth(db, field);
         recipeBefore = this.#ontologyComputed(db, field, () => '');
         Object.assign(field.config, nextRecipe);
       }
-      if (field.type === 'rollup' && ROLLUP_COSTUME_KEYS.some((k) => k in patch.config)) {
-        const merged = { ...field.config, ...patch.config };
-        for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
-        const costume = rollupCostume(merged);
-        putCostume(field.config, ROLLUP_COSTUME_KEYS, costume);
-      }
+      FIELD_TYPE_CONFIG[field.type]?.merge?.(field.config, patch.config);
       if (field.type === 'view') field.config = this.#normalizeViewConfig(db, field, patch.config);
-      if (field.type === 'text' && 'literal' in patch.config) {
-        if (normalizeSelfContainedConfig('text', patch.config).literal) field.config.literal = true; else delete field.config.literal;
-      }
-      if (field.type === 'toggle' && ('on' in patch.config || 'off' in patch.config)) {
-        const { on, off } = normalizeSelfContainedConfig('toggle', { ...field.config, ...patch.config });
-        field.config.on = on;
-        field.config.off = off;
-      }
-      if (field.type === 'attachments' && ['multiple', ...ATTACHMENT_LOOK_KEYS].some((k) => k in patch.config)) {
-        const next = normalizeSelfContainedConfig('attachments', { ...field.config, ...patch.config });
-        field.config.multiple = next.multiple;
-        putCostume(field.config, ATTACHMENT_LOOK_KEYS, next);
-      }
-      if (field.type === 'avatar' && 'shape' in patch.config) field.config.shape = normalizeSelfContainedConfig('avatar', { shape: patch.config.shape }).shape;
-      if (field.type === 'document' && 'kind' in patch.config) {
-        const kind = normalizeSelfContainedConfig('document', patch.config).kind;
-        if (kind) field.config.kind = kind; else delete field.config.kind;
-      }
-      if (field.type === 'date' || field.type === 'daterange') {
-        const costume = normalizeSelfContainedConfig(field.type, { ...field.config, ...patch.config });
-        putCostume(field.config, DATE_COSTUME_KEYS, costume, (k) => k in patch.config || k in costume);
-      }
-      if (field.type === 'select' || field.type === 'multiselect') {
-        if (patch.config.options) {
-          const stored = new Map(field.config.options.map((o) => [o.id, o]));
-          field.config.options = patch.config.options.map((o) => {
-            const was = typeof o === 'string' ? null : stored.get(o.id);
-            const asStored = was
-              && (o.hue ?? '') === (was.hue ?? '') && (o.color ?? '') === (was.color ?? '');
-            return normaliseOption(o, { strict: !asStored });
-          });
-        }
-      } else if (field.type === 'formula') {
-        if (patch.config.expression) {
-          const names = Object.values(db.fields).filter((f) => f.id !== field.id).map((f) => f.name);
-          const checked = checkExpression(patch.config.expression, names);
-          if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
-          this.#refuseFormulaCycle(db, field.id, field.name, patch.config.expression);
-          field.config.expression = patch.config.expression;
-        }
-      } else if (field.type === 'workflow') {
-        if (patch.config.states) {
-          const states = normalizeSelfContainedConfig('workflow', { states: patch.config.states }).states;
-          field.config.states = states;
-        }
+      if (field.type === 'formula' && patch.config.expression) {
+        const names = Object.values(db.fields).filter((f) => f.id !== field.id).map((f) => f.name);
+        const checked = checkExpression(patch.config.expression, names);
+        if (!checked.ok) throw new WeaveError(checked.error, 'invalid');
+        this.#refuseFormulaCycle(db, field.id, field.name, patch.config.expression);
+        field.config.expression = patch.config.expression;
       }
       if ('default' in patch.config) {
         if (patch.config.default === null) delete field.config.default;
@@ -6457,7 +6536,6 @@ export class Weave {
     }
     const from = field.type;
     const rows = this.listEntities(db.id, { includeDeleted: true });
-    const optName = (opts, id) => opts.find((o) => o.id === id)?.name ?? null;
     let nextConfig;
     if (toType === 'select' || toType === 'multiselect') {
       let options;
@@ -6491,38 +6569,13 @@ export class Weave {
       nextConfig = normalizeSelfContainedConfig(toType, config);
     }
     const frozen = from === 'formula' ? new Map(rows.map((e) => { const v = this.#resolve(e, db, field, 0); return [e.id, v == null ? null : String(v)]; })) : null;
+    const convert = FIELD_TYPE_CONFIG[toType]?.coerce;
+    const ctx = { from, was: field.config, next: nextConfig, findOption: (opts, ref) => this.#findOption(opts, ref), coerceDate: (c, raw) => this.#coerceDate(c, raw) };
     const coerce = (raw, e) => {
       if (frozen) return toType === 'text' ? frozen.get(e.id) : null;
       if (toType === 'formula') return null;
       if (raw == null || raw === '') return isBoolType(toType) ? false : null;
-      switch (toType) {
-        case 'checkbox':
-        case 'toggle': return Boolean(raw);
-        case 'text': {
-          if (from === 'select') return optName(field.config.options, raw);
-          if (from === 'toggle') return raw ? field.config.on : field.config.off;
-          if (from === 'multiselect') return (Array.isArray(raw) ? raw : [raw]).map((id) => optName(field.config.options, id)).filter(Boolean).join(', ');
-          if (from === 'workflow') return field.config.states.find((s) => s.id === raw)?.name ?? null;
-          return String(raw);
-        }
-        case 'number': { const n = Number(raw); return Number.isFinite(n) ? n : null; }
-        case 'rating': { const n = Number(raw); return Number.isFinite(n) ? ratingValue(n, nextConfig.max) : null; }
-        case 'date': { try { return this.#coerceDate(nextConfig ?? {}, raw); } catch { return null; } }
-        case 'email': return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null;
-        case 'key':
-        case 'url': return String(raw);
-        case 'select': {
-          if (from === 'multiselect') return (Array.isArray(raw) ? raw[0] : raw) ?? null;
-          if (from === 'workflow') return raw;
-          return this.#findOption(nextConfig.options, String(raw).trim())?.id ?? null;
-        }
-        case 'multiselect': {
-          if (from === 'select') return [raw];
-          return String(raw).split(',').map((v) => this.#findOption(nextConfig.options, v.trim())?.id).filter(Boolean);
-        }
-        case 'workflow': return nextConfig.states.some((s) => s.id === raw) ? raw : null;
-        default: return null;
-      }
+      return convert ? convert(raw, ctx) : null;
     };
     const held = (v) => !(v == null || v === '' || (Array.isArray(v) && !v.length));
     const snapshot = {};
