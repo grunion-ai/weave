@@ -103,12 +103,23 @@ if (s) {
     await page.close();
   });
 
-  test('+ New in the link search creates the row from the typed text and links it', async () => {
+  test('+ New in the link search names the row in the create tray, then links it (Issue #1473)', async () => {
     const { page } = await open();
     await page.locator('.related-section .add-entity-btn', { hasText: 'Link existing' }).click();
     await page.waitForSelector('#cmdk-input');
     await typeIn(page, 'Brand new bug');
     await page.locator('#cmdk-results .result.cmdk-create').click();
+    await page.waitForSelector('#tray input[name="name"]');
+    assert.equal(await page.inputValue('#tray input[name="name"]'), 'Brand new bug', 'the tray opens on the typed name');
+    assert.match(await page.textContent('#tray-title'), /^New /, 'and names the row it will create');
+    assert.equal((await page.textContent('#tray .tray-actions button[type="submit"]')).trim(), 'Create & link');
+    assert.equal(weave.query(issueDb.id, { where: [['Name', '=', 'Brand new bug']] }).items.length, 0, 'nothing is written until Create & link');
+    assert.equal(await page.evaluate(() => {
+      const r = document.querySelector('#tray').getBoundingClientRect();
+      return document.elementFromPoint(r.left + r.width / 2, r.top + 8)?.closest('#tray') ? 'tray' : 'covered';
+    }), 'tray', 'the tray sits above the palette it was opened from');
+    await page.click('#tray .tray-actions button[type="submit"]');
+    await page.waitForSelector('#tray-back', { state: 'detached' });
     await page.waitForFunction(() => [...document.querySelectorAll('#cmdk-results .result[aria-checked="true"]')].some((r) => r.textContent.includes('Brand new bug')));
     await page.keyboard.press('Escape');
     await page.waitForSelector('#cmdk-back', { state: 'detached' });
