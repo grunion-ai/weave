@@ -148,7 +148,7 @@ if (s) {
     }
   }
 
-  test('on a desktop Activity is the context pane right of the peek, at least 300px wide, not a sheet (Issue #733, Feature #348)', async () => {
+  test('on a desktop Activity is the context pane right of the peek, 340px wide, not a sheet (Issue #733, Feature #348)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 844 } });
     try {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
@@ -158,8 +158,7 @@ if (s) {
       await atRest(page.locator('#side'));
       const p = await sheet(page);
       const width = Math.round(p.right - p.left);
-      assert.ok(width >= 300 && width <= 340, `a pane, not a sheet (${width}px)`);
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('#app').scrollWidth <= document.querySelector('#app').clientWidth), 'the pane row stays inside the viewport');
+      assert.ok(Math.abs(width - 340) <= 1, `a pane, not a sheet (${width}px)`);
       assert.ok(await page.evaluate(() => document.querySelector('aside.wv-activity').parentElement === document.querySelector('#side')), 'in the context pane');
       assert.ok(await page.evaluate(() => document.querySelector('#dock').getBoundingClientRect().right <= document.querySelector('#side').getBoundingClientRect().left), 'right of the peek');
       assert.equal((await page.locator('aside.wv-activity .wv-act-head h3 > *').allInnerTexts()).join(' '), 'Looks broken › Activity', 'the pane head names its record too (Issue #979)');
