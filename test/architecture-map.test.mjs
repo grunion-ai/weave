@@ -22,10 +22,12 @@ test('the map is pinned to a commit in this repository', () => {
   const { url, revision } = spec.meta.repository;
   assert.equal(url, 'https://github.com/grunion-ai/weave');
   assert.match(revision, /^[0-9a-f]{40}$/);
-  assert.doesNotThrow(
-    () => execFileSync('git', ['-C', ROOT, 'merge-base', '--is-ancestor', revision, 'HEAD'], { stdio: 'ignore' }),
-    `pinned revision ${revision} is not an ancestor of HEAD`,
-  );
+  for (const ref of ['HEAD', 'origin/main']) {
+    assert.doesNotThrow(
+      () => execFileSync('git', ['-C', ROOT, 'merge-base', '--is-ancestor', revision, ref], { stdio: 'ignore' }),
+      `pinned revision ${revision} is not an ancestor of ${ref}: run git fetch origin main, or re-pin with node scripts/architecture.mjs`,
+    );
+  }
 });
 
 test('every cited source file still exists', () => {

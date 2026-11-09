@@ -15,7 +15,42 @@ if (!existsSync(archify)) {
 }
 
 const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
-const revision = git('rev-parse', '--verify', `${process.argv[2] ?? 'HEAD'}^{commit}`);
+const fail = (message) => {
+  console.error(message);
+  process.exit(1);
+};
+const fetchHint = 'run `git fetch origin main` and retry';
+const resolve = (rev) => {
+  try {
+    return git('rev-parse', '--verify', '--quiet', `${rev}^{commit}`);
+  } catch {
+    return null;
+  }
+};
+const isAncestor = (a, b) => {
+  try {
+    execFileSync('git', ['-C', root, 'merge-base', '--is-ancestor', a, b], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const head = resolve('HEAD') ?? fail('cannot resolve HEAD');
+const main = resolve('origin/main') ?? fail(`origin/main is not available: ${fetchHint}`);
+let revision;
+if (process.argv[2]) {
+  revision = resolve(process.argv[2]) ?? fail(`cannot resolve ${process.argv[2]} to a commit: ${fetchHint}`);
+  if (!isAncestor(revision, head) || !isAncestor(revision, main)) {
+    fail(`${revision} is not an ancestor of both HEAD and origin/main, so a squash merge could lose it: ${fetchHint} or choose a main commit`);
+  }
+} else {
+  try {
+    revision = git('merge-base', head, main);
+  } catch {
+    fail(`no merge-base between HEAD and origin/main: ${fetchHint}`);
+  }
+}
 
 const spec = JSON.parse(readFileSync(specPath, 'utf8'));
 spec.meta.repository.revision = revision;
