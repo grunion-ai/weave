@@ -23,7 +23,7 @@ if (s) {
   }
   const trashRow = (page, name) => page.locator('#main tr', { has: page.locator('td', { hasText: new RegExp(`^${name}$`) }) });
   const navHas = (page, selector, name) => page.waitForFunction(([sel, nm]) => [...document.querySelectorAll(sel)].some((a) => a.textContent.trim() === nm), [selector, name]);
-  const readable = (locator) => locator.evaluate((b) => {
+  const colorsDiffer = (locator) => locator.evaluate((b) => {
     const bg = (e) => { for (let x = e; x; x = x.parentElement) { const c = getComputedStyle(x).backgroundColor; if (!/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return 'rgb(255, 255, 255)'; };
     return getComputedStyle(b).color !== bg(b);
   });
@@ -41,7 +41,7 @@ if (s) {
         assert.equal((await row.locator('.trash-table').textContent()).trim(), 'Table in Product');
         assert.match(await row.locator('.trash-when').textContent(), /\S/, 'the row shows when it was deleted');
         const restore = row.locator('button', { hasText: 'Restore' });
-        assert.ok(await readable(restore), 'Restore reads against its row');
+        assert.ok(await colorsDiffer(restore), 'Restore reads against its row');
         await restore.click();
         assert.equal(await eventually(() => weave.state.tables[db.id]?.deletedAt ?? null, null), null, 'the table is live again');
         await navHas(page, '#nav a.nav-db', name);
@@ -136,7 +136,7 @@ if (s) {
         await restore.scrollIntoViewIfNeeded();
         const box = await restore.boundingBox();
         assert.ok(box && box.x >= 0 && box.x + box.width <= page.viewportSize().width, 'Restore sits on screen');
-        assert.ok(await readable(restore), 'Restore reads against its row');
+        assert.ok(await colorsDiffer(restore), 'Restore reads against its row');
         await restore.click();
         assert.equal(await eventually(() => weave.state.tables[db.id]?.deletedAt ?? null, null), null);
       } finally { await page.close(); }
