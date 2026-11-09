@@ -2,7 +2,7 @@
 
 An automation is a rule bound to one table: something happens, and weave writes. The rule names a trigger and a list of actions, it lives as a row of `System/Workflows`, and it runs inside the engine, so a write from the CLI, the REST API, an MCP client or the grid fires it the same way.
 
-Nothing here reaches outside the workspace except the `webhook` action.
+Nothing here reaches outside the workspace except the `webhook` and `http-request` actions.
 
 ## The Workflows row is the control panel
 
@@ -66,6 +66,7 @@ Actions run in order. A rule needs at least one.
 | `add-comment` | a comment on the firing row |
 | `webhook` | a POST to an http(s) url, signed when the rule names a credential |
 | `upsert-row` | a row of another table, matched on a key |
+| `http-request` | a call to an outside API, with its answer mapped onto the firing row |
 
 `upsert-row` is the one that writes somewhere else:
 
@@ -89,6 +90,7 @@ Each action also yields an output the later ones can read:
 | `add-comment` | `{id, text}` |
 | `upsert-row` | `{id, publicId, name, created}` |
 | `webhook` | `{url, sent}` |
+| `http-request` | `{status, ok, body}`, the body parsed from JSON |
 
 A later action reads them as `{{steps.1.publicId}}` in its text or in a `set-field` string value, and as `steps.1.name` in an `upsert-row` source path. The number is the action's position, counted from 1. A step that has not run yet, or a path it has not got, reads empty.
 
@@ -133,6 +135,48 @@ if (!ok || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return reject();
 
 Refuse a timestamp older than your replay window and remember the `X-Weave-Delivery` ids you have already handled. A rule that names no credential posts exactly what it posted before, with `Content-Type` as its only header. A rule whose credential the keystore does not hold sends nothing and reads `Failed`: weave never falls back to an unsigned delivery.
 
+## Calling an API
+
+An `http-request` action sends one request and reads the answer back onto the row:
+
+```json
+{ "type": "http-request", "method": "POST", "integration": "Slack",
+  "url": "https://slack.com/api/chat.postMessage",
+  "body": { "channel": "C0123456789", "text": "{{Name}} moved to {{Status}}" },
+  "response": { "Slack Ts": "ts" } }
+```
+
+| Key | What it holds |
+| --- | --- |
+| `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH` or `DELETE`; `POST` when left out |
+| `url` | the address, its scheme and host written out; the path and query take placeholders |
+| `headers` | an object of header names and text values, with placeholders |
+| `body` | text with placeholders, or a JSON object or list whose text values take them, sent as `application/json` unless a header says otherwise. `GET` and `HEAD` carry none |
+| `integration` | the Name of a `System/Integrations` record, whose key weave adds as the Authorization header |
+| `response` | each field of the firing row mapped to a path in the JSON answer, such as `id` or `data.items.0.id` |
+
+The key never sits in the rule. The Script, the Workflows row, the run's activity entry, the step output and the `key-used` audit entry hold the integration's name alone, and a key the API echoes back is redacted from the answer. weave refuses a Script that sets an `Authorization`, `Proxy-Authorization` or `Cookie` header, because the key belongs on the Integrations record, set there with Replace.
+
+A rule whose url is plain http, or whose host is not the integration's Host, reads `Setup incomplete` with the reason, and so does a rule whose integration later moves to another Host. Before each send weave checks again, along with the integration's On switch and its key, and a refused request never leaves the box. With no `integration` the request goes out with no key, through the webhook address guard: loopback, link-local, the private ranges and the cloud metadata addresses are refused unless `WEAVE_WEBHOOK_ALLOW_PRIVATE=1`.
+
+The write that fires the rule answers first. The request goes out after it, and the steps after the request wait for the answer: the mapped fields land on the row, and a later step reads `{{steps.1.status}}`, `{{steps.1.ok}}` or any path of the parsed answer, such as `{{steps.1.body.ts}}`. A path that finds nothing or null leaves its field as it was, and an object or list lands as JSON text. An answer over 16 KB still maps its fields, but its step output keeps `body: null` and `truncated: true`.
+
+An answer outside 2xx, a redirect, no answer within 5 seconds (10 with an integration), or a refusal marks the rule `Failed`, and `Health Reason` names the method, host and path, as in `POST slack.com/api/chat.postMessage answered HTTP 404`. The later steps of that run do not run. weave sends each request once and never retries it. A `weave_build` dry run sends nothing.
+
+A worked example: a support ticket that moves to Escalated posts to a Slack channel, keeps the message timestamp and says so in a comment. The `Slack` record in `System/Integrations` has Provider `Generic API key`, Host `slack.com` and a bot token as its key, which weave sends as `Authorization: Bearer <key>`.
+
+```bash
+weave automation create Support/Ticket --name 'Escalate to Slack' \
+  --trigger '{"type":"state-changed","field":"Status","toState":"Escalated"}' \
+  --actions '[{"type":"http-request","method":"POST","integration":"Slack",
+               "url":"https://slack.com/api/chat.postMessage",
+               "body":{"channel":"C0123456789","text":"Escalated: {{Name}} (#{{PublicId}})"},
+               "response":{"Slack Ts":"ts"}},
+              {"type":"add-comment","text":"Posted to Slack, message {{steps.1.body.ts}}"}]'
+```
+
+Slack answers HTTP 200 with `"ok": false` when it refuses a message, so map `ok` to a field, or read `{{steps.1.body.ok}}`, when that matters.
+
 ## A worked example
 
 Two rules on a Request table. The first opens or updates the billing account when a request lands, writes the account reference back, and says so in a comment:
@@ -172,6 +216,6 @@ weave activity --kind automation-ran --limit 20
 | MCP | `weave_create_automation`, and `weave_automations` with `action: list | describe | update | delete` |
 | Grid | a new row of `System/Workflows`, its Script written as JSON |
 
-`weave_create_automation` and `weave_automations` carry the MCP open-world mark: a rule can call a webhook, and no other tool leaves the workspace.
+`weave_create_automation` and `weave_automations` carry the MCP open-world mark: a rule can call a webhook or an API, and no other tool leaves the workspace.
 
 Deleting a rule sends its Workflows row to the trash, where restoring it brings the rule back. Switching `On` off is the reversible way to stop one.
