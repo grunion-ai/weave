@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { handleMcpMessage, TOOLS } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, FAMILIES, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, FAMILIES, cliHelp, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -1150,4 +1150,20 @@ test('no door keeps its own argument reader: pick and pickFlags are gone, the re
   for (const file of ['src/mcp.js', 'bin/weave.js', 'src/routes.js']) {
     assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /\b(?:function|const) (?:pick|pickFlags)\b/, `${file} reads arguments through the registry`);
   }
+});
+
+test('the CLI help is built from the registry: every entry shows in weave help and weave <command> --help (Feature #179)', () => {
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  const overall = run('help').stdout;
+  const lines = cliHelp().split('\n').filter((l) => /^ {2}\S/.test(l));
+  assert.ok(lines.length >= COMMANDS.filter((c) => c.cli && !c.cli.swap).length);
+  for (const l of lines) assert.ok(overall.includes(l), `weave help lists ${l.trim()}`);
+  const commands = new Set(COMMANDS.filter((c) => c.cli && !c.cli.swap).map((c) => c.cli.command));
+  for (const command of commands) {
+    const one = run(command, '--help').stdout;
+    assert.match(one, new RegExp(`^weave ${command}\\n`), `weave ${command} --help names the command`);
+    for (const l of cliHelp(command).split('\n').filter((x) => /^ {2}\S/.test(x))) assert.ok(one.includes(l), `${command} --help lists ${l.trim()}`);
+  }
+  assert.match(run('space', '--help').stdout, /space update <space> \[--name\]/);
+  assert.match(run('help').stdout, /^ {2}serve \[--port 4400\]/m);
 });

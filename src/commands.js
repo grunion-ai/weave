@@ -258,7 +258,7 @@ export const COMMANDS = [
       inputSchema: { type: 'object', properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'name', 'type'] },
     },
     cli: {
-      command: 'field', sub: 'add', positional: ['db', 'name', 'type'],
+      command: 'field', sub: 'add', positional: ['db', 'name', 'type'], helpFlags: ['config', 'description'],
       args: (a, flags, { json }) => {
         const config = json('config') ?? {};
         if (flags.description != null) config.description = String(flags.description);
@@ -278,7 +278,7 @@ export const COMMANDS = [
       inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'field'] },
     },
     cli: {
-      command: 'field', sub: 'update', positional: ['db', 'field'],
+      command: 'field', sub: 'update', positional: ['db', 'field'], helpFlags: ['name', 'type', 'config', 'width', 'description'],
       args: (a, flags, { json }) => {
         const config = json('config') ?? {};
         if (flags.width != null) config.width = nullable(flags.width, Number);
@@ -808,7 +808,7 @@ export const COMMANDS = [
       },
     },
     cli: {
-      command: 'activity', positional: ['id'],
+      command: 'activity', positional: ['id'], note: 'Prints one page of 500 by default; --limit -1 prints the whole log',
       args: (a, flags, { entityRef }) => (a.id ? { id: a.id } : {
         entity: flags.entity ? entityRef(flags.entity, flags.db) : null,
         table: flags.table ?? null,
@@ -1823,7 +1823,7 @@ export const COMMANDS = [
     writes: 'schema',
     tool: ACCOUNTS_TOOL,
     action: 'create',
-    cli: { command: 'account', sub: 'create', positional: ['name'], args: (a, flags) => ({ input: { name: a.name, role: flags.role ?? 'editor' } }) },
+    cli: { command: 'account', sub: 'create', positional: ['name'], helpFlags: ['role'], args: (a, flags) => ({ input: { name: a.name, role: flags.role ?? 'editor' } }) },
     http: { method: 'POST', path: '/api/accounts', status: 201, args: (a, body) => ({ input: body ?? {} }) },
     run: (w, a) => w.createAccount(a.input ?? { name: a.name, role: a.role ?? 'editor', space: a.space ?? null }),
   },
@@ -1833,7 +1833,7 @@ export const COMMANDS = [
     writes: 'schema',
     tool: ACCOUNTS_TOOL,
     action: 'set',
-    cli: { command: 'account', sub: 'set', positional: ['account'], args: (a, flags) => ({ account: a.account, role: flags.role }) },
+    cli: { command: 'account', sub: 'set', positional: ['account'], helpFlags: ['role'], args: (a, flags) => ({ account: a.account, role: flags.role }) },
     http: { method: 'PATCH', path: '/api/accounts/:ref', args: (a, body) => ({ account: a.ref, role: body?.role }), finish: remirrored },
     run: (w, a) => w.setAccountRole(a.account ?? a.name, a.role),
   },
@@ -2089,4 +2089,25 @@ export function httpReply(w, hit, body, searchParams, ctx = {}) {
     if (!failed) throw err;
     return { status: failed[0], data: failed[1], headers };
   }
+}
+
+const kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+const lead = (text) => {
+  const first = String(text ?? '').replace(/\s+/g, ' ').trim().split(/(?<=\.)\s/)[0].replace(/\.$/, '');
+  return first.length > 100 ? `${first.slice(0, 99).trimEnd()}…` : first;
+};
+const toolUses = (c) => COMMANDS.filter((x) => x.cli && !x.cli.swap && x.tool?.name === c.tool?.name).length;
+const cliFlags = (c) => c.cli.helpFlags ?? c.cli.flags
+  ?? (toolUses(c) > 1 ? [] : Object.keys(c.tool?.inputSchema?.properties ?? {}).filter((k) => !['verbose', 'action'].includes(k) && !(c.cli.positional ?? []).includes(k) && k !== c.cli.rest).map(kebab));
+const cliSynopsis = (c) => [
+  c.cli.command, c.cli.sub,
+  ...(c.cli.positional ?? []).map((p) => `<${p}>`),
+  ...(c.cli.rest ? [`<${c.cli.rest}...>`] : []),
+  ...cliFlags(c).map((f) => `[--${f}]`),
+].filter(Boolean).join(' ');
+const cliEntries = (command) => COMMANDS.filter((c) => c.cli && !c.cli.swap && (command == null || c.cli.command === (CLI_ALIASES[command] ?? command)));
+export function cliHelp(command = null) {
+  const rows = cliEntries(command).map((c) => ({ synopsis: cliSynopsis(c), about: [c.cli.note ?? lead(c.tool?.description)].filter(Boolean) }));
+  if (!rows.length) return null;
+  return rows.map((r) => [`  ${r.synopsis}`, ...r.about.map((l) => `      ${l}`)].join('\n')).join('\n');
 }

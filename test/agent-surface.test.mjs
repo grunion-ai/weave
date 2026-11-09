@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliHelp, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -273,7 +273,7 @@ test('every query option reaches every door', () => {
     assert.ok(mcpBlock.includes(`a.${k}`), `weave_query drops ${k}`);
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
-  assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
+  assert.match(cliHelp('query'), /\[--fields\] \[--relations\]/, 'the usage names the two flags');
   assert.match(String(cmd.http.args), /options: \{ \.\.\.body, limit:/, 'POST /api/tables/:ref/query passes its body through');
   assert.match(String(cmd.run), /viewerZone: ctx\?\.viewerZone, workspace: ctx\?\.workspace/, 'the query runs in the caller\'s zone, scoped to the asking workspace (Issue #875)');
   assert.match(ROUTES, /workspace: member\.state\.meta\.id/, 'the HTTP door names the asking workspace (Issue #875)');

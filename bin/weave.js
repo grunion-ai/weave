@@ -11,7 +11,7 @@ import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../sr
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
-import { cliCommand, cliRun, cliMiss } from '../src/commands.js';
+import { cliCommand, cliRun, cliMiss, cliHelp } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { listForms, getForm, submitForm, createForm, updateForm, getFormDefinition } from '../src/forms.js';
@@ -68,9 +68,10 @@ function resolveEntityRef(w, ref, dbFlag) {
   return w.getEntity(ref);
 }
 
-const HELP = `weave — local, open-source, agent-accessible work platform
+const HELP_SERVER = `weave — local, open-source, agent-accessible work platform
 
 Usage: weave <command> [args] [--data path]
+       weave <command> --help
 
 Server
   serve [--port 4400] [--host 127.0.0.1]
@@ -81,173 +82,33 @@ Server
                                       when WEAVE_AUTO_UPDATE=1 (plain serve otherwise)
   mcp [--tools all]                   Start the MCP stdio server (for agents); core tools + weave_call by default
 
-Service (macOS launchd — auto-start on login, restart on crash)
+Service (macOS launchd: auto-start on login, restart on crash)
   service install [--port 4400] [--data path] [--label ai.grunion.weave.<port>]
-                                      Write + load the launch agent; logs to ~/Library/Logs/weave/
-  service uninstall [--label name]    Stop the agent and remove its plist
-  service status [--port 4400]        Plist, launchctl state, live /api/health probe
-  quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
-                                      files (generated mirror; check = report drift)
-  handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook/
-                                      (serve does it once per build; check = report drift)
+  service uninstall [--label name]
+  service status [--port 4400]
+  quality sync|check --data weave.db  Reconcile Quality/Suite + Case rows to the test files
+  handbook sync|check --data weave.db Re-apply the Handbook pages from src/handbook/
 
-Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or any file in it)
+Backup and restore (--data names the data dir or any file in it)
   backup [--out dir|file.tar] [--dest s3://bucket/prefix|weave://host/account] [--workspace name]
          [--passphrase-env NAME] [--now]
-                                      VACUUM INTO every .db + files/ + keystore.json into one
-                                      tar; AES-256-GCM when a passphrase or key file exists
-                                      (keystore.key never leaves); SigV4 upload; 30 kept.
-                                      weave:// sends the sealed archive to a weave cloud
-                                      account with WEAVE_BACKUP_TOKEN (ciphertext only)
   restore <archive|s3://…|https://…> --data <dir> [--passphrase-env NAME] [--force]
   restore --from weave://host/account[/archive] --data <dir>
-                                      Verify the manifest, unpack beside --data; refuses a
-                                      db a server holds open. --from pulls the newest (or the
-                                      named) cloud archive. (restore <ref> is the entity verb)
-  serve with WEAVE_BACKUP_DEST set runs backup daily at 04:00 UTC — audit rows
-  backup-completed / backup-failed, last result on /api/health as "backup"
-
-Schema
-  ontology [--concept T] [--since E]  The schema as a short outline, one table, or what changed
-  schema                              Describe spaces, tables, fields
-  schema export [--out file]          The schema as an editable JSON document
-  schema apply --file doc.json [--dry-run] [--allow-destructive] [--partial]
-                                      Grow the workspace to match the document
-  build <spec.json> [--dry-run] [--skip-existing-rows]
-                                      Spaces, tables, fields, relations and rows in one
-                                      call (spec: weave_build in AGENTS.md); --dry-run
-                                      checks it all and writes nothing
-  vocabulary [section [query]]        Every legal config value and what it looks like
-                                      (icons are lucide:<name>; colors are hex from the palette;
-                                      "vocabulary icons <query>" searches the icon names;
-                                      "vocabulary icons,optionColors" answers several sections)
-  space create <name> [--description] [--icon lucide:briefcase] [--template true]
-  space list | update <ref> [--name] [--description] [--icon lucide:briefcase] [--template true|false]
-              [--position N]          its place in the sidebar, 0 first
-  space delete <ref>
-  template list                       The template spaces (Feature #261)
-  template use <space> --into <other.db> [--name <name>]
-                                      Copy a template space's schema, never its rows,
-                                      into another workspace file
-  table create <space> <name> [--description] [--icon]
-  table list | delete <ref>
-  table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
-              [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
-              [--rollup-row on|off] [--position N]
-  table move <ref> <space> [--position N]
-                                      Another space, last there unless --position says
-  table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--search text] [--density compact]
-              [--layout table|board] [--subtotals all|top|none] [--groups stacked|side] [--picture off|small|medium|large] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
-              [--completed-by Done|none] [--order 3,1,2] [--collapsed '["Completed"]']
-              [--phone-row '{"lead":"Status","chips":["Severity"],"labels":true,"wrap":true}'|none]
-  field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
-  field list <table> | delete <table> <field> [--hard] | restore <table> <field>
-  field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
-               [--description "what it holds"|null]
-  relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name] [--target-dbs 'A,B,C']
-  registry [report|rebuild]           The meta-model rows that mirror the schema
-  map                                 Relation map as mermaid
-
-Entities
-  query <db> [--view name] [--group-by view] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
-        [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
-        [--shape row]                         Lean list rows: id, publicId, name, fields and the raw a renderer reads
-  get <ref> [--db name]               Read one entity ("Task#3" or id)
-  create <db> <name> [--values '{json}'] [--doc 'markdown']
-  update <ref> --values '{json}'
-  delete <ref> [--hard]               Soft by default (recoverable); --hard purges
-  restore <ref>                       Bring a soft-deleted entity back
-  trash [table]                       Deleted entities, one table or all
-  stats <table> [--by F] [--where J]  Every column summarised (sum/avg/median/min/max/stdev, histograms,
-                                      distributions, date spans), the space rollups on the table, groups by F;
-                                      --field F answers for one column and its rollups
-  state <ref> <field> <state>         Move workflow state
-  link <ref> <field> <target...>
-  bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
-  unlink <ref> <field> <target...>
-
-Documents (entities can carry several document fields; --field picks one,
-default is the table's first document field, usually "Description")
-  doc get <ref> [--field Name]
-  doc set <ref> (--content 'md' | --file path) [--field Name]
-  doc append <ref> (--content 'md' | --file path) [--field Name]
-  doc export <ref> --format md|html|pdf [--out path] [--field Name]
-  doc-revisions <ref> [--field Name] [--limit 50]   History newest first: seq, at, actor, len
-  doc-revisions <ref> --seq <n> [--field Name]      One revision with its text
-  doc-restore <ref> --seq <n> [--field Name]        Write that revision back (an ordinary write; undoable)
-
-Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, never in data)
-  key set <name> (--value <secret> | reads stdin)
-  key list                            Names, owners and who each is shared with
-  key reveal <name> [--copy]          Prints the secret — owner or grantee only, always audited
-  key share <name> --with <account>   Open one credential to one account
-  key unshare <name> --with <account>
-  key delete <name>
-  key migrate --to keychain|file      Move every value between keystore.json and the macOS keychain
-Accounts & audit (Feature #14)
-  account create <name> [--role architect|editor|observer]   Default editor; admin|writer|reader are deprecated aliases
-  account set <name> --role architect|editor|observer   Change role without rotating credentials
-  account list
-  account delete <ref>
-  audit [--limit 50]
-Browser sessions (Feature #222)
-  account sessions <name>                             Browser sessions the account holds
-  account revoke-session <name> (--all | --id <id>)  End sessions — the lost-phone verb
-Provider sign-in (Feature #212, door C; Feature #252)
-  account link <name> [--issuer <url>]         Mint a one-time link (7 days); whoever opens it and signs in at the provider is linked
-  account unlink <name> --subject <sub>        Close the account to that provider subject (see account list)
-Invite a new person (Issue #569)
-  invite <email> [--role editor] [--issuer <url>]   A one-time sign-in link that makes the account at that role
-  invite list                                       Pending invites
-  invite revoke <id>                                Cancel one
-Undo (entity mutations only — schema work is not undoable)
-  undo [--steps n]                    Revert the last n entity mutations
-  undo --list [--limit 20]           Show what undo would revert, newest first
-Views & automations
-  view list [--trash] | get <id> | delete <id> [--hard] | restore <id> | share <id> | unshare <id>
-  share list [--kind entity|entities|table|space|view|workspace] [--id <id>] [--include-inactive]
-  share mint <kind> <id> [--ids '["id"]'] [--mode read|submit|edit|manage] [--form ID] [--private] [--label L] [--expiry 1h|1d|7d|30d|90d|never] [--expires ISO]
-  share update <share id> [--label L] [--expiry PRESET | --expires ISO]
-  share regenerate <share id> [--expiry PRESET | --expires ISO]   Replace the public link
-  share renew <share id>              Thirty more days on the same link
-  share revoke <share id>             Ends a link
-  view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
-  automation list [<table>] | describe [<table>] | delete <id>
-  automation create <table> --name N --trigger '{json}' --actions '[json]'
-                                      trigger {"type":"schedule","cron":"0 9 * * 1-5","zone":"UTC","where":[...]} fires on the clock
-  automation update <id> --patch '{json}'
-
-The workspace itself
-  workspace [get]                     Name, description, logo, auth
-  workspace set [--name] [--description]
-  workspace logo (--path file | --out file | --clear)
-  workspace order | move <name> --position N
-                                      The hub's workspaces in rail order (run on the hub root)
-  workspace require-auth [--off]
-  workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
-  workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
   workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
-                                      Create a cloud workspace from a stored archive; the key
-                                      travels once and is never stored
-  form [list] | get <form>            The forms whose table lives here (System/Forms rows)
-  form config <form>                 Editable form definition
-  form create --definition '{json}'  Create a native table form
-  form update <form> --definition '{json}'  Edit or pause; preserve its link
-  form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
-  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n|-1]
-     (prints one page of 500 by default; --limit -1 prints the whole log)
 
-Collaboration & data
-  comment <ref> <text> [--author name]
-  comment delete <ref> <commentId>
-  search <text>
-  csv <db>                            Export a table as CSV
-  csv import <db> [--file path]       Import rows (stdin when --file is absent)
-  file attach <ref> --path file [--field Name] [--mime type]
-  file read <fileId> [--out path]
-  file delete <ref> <fileId>
-  export [--out path]                 Full workspace JSON
-  import --file path
+Forms
+  form [list] | get <form> | config <form>
+  form create --definition '{json}'
+  form update <form> --definition '{json}'
+  form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]
+
+Documents
+  doc export <ref> --format md|html|pdf [--out path] [--field Name]
+
+Registry commands (the same operations the MCP tools and the REST API carry)
+`;
+
+const HELP_FOOT = `
 
 Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --db.
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
@@ -271,8 +132,13 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      attachment types served in place beside images, PDF and plain text; the rest download),
      WEAVE_MAX_ROWS (most rows one API call returns for a named limit; 500)`;
 
+const helpFor = (given) => {
+  const entries = given ? cliHelp(given) : null;
+  return entries ? `weave ${given}\n\n${entries}` : `${HELP_SERVER}${cliHelp()}${HELP_FOOT}`;
+};
+
 async function main() {
-  if (!command || command === 'help' || flags.help) return out(HELP);
+  if (!command || command === 'help' || flags.help) return out(helpFor(command === 'help' ? null : command));
 
   if (command === 'supervise') {
     const { autoUpdateFromEnv, startSupervisor } = await import('../src/supervisor.js');
