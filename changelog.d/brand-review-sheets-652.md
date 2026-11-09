@@ -1,1 +1,0 @@
-- **Finished logo and loader review sheets leave the repo** (Issue #652): the six `brand/docs/round*.html` review pages from August and September and `brand/build-loader-sheet.mjs`, which only wrote the loader sheet, are deleted. The logo and loader both settled; git history keeps every round. 203,771 bytes and 1,511 lines removed.

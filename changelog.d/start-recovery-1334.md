@@ -1,2 +1,0 @@
-- When `/api/start` fails, the start page shows an alert with Try again and a support link instead of a bare error line (Issue #1334).
-- The weave logo during setup reopens the saved draft at `/start?setup=resume`, so the workspace name and choice survive the click (Issue #1340).

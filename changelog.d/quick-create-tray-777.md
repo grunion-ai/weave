@@ -1,1 +1,0 @@
-- **Shift+Enter creates in the tray** (Issue #777): on a view with no inline add row, such as a board, Shift+Enter opened a centered modal titled with the generic row word. It now opens the right-hand create tray, titled with the table's own row name (New task on Tasks). Gate: `test/new-record-focus-browser.test.mjs`.

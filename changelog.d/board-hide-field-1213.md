@@ -1,1 +1,0 @@
-- **Hiding a field on a board keeps the board** (Issue #1213): unticking a field in the View pane's Fields section redrew a board view as a table until the next reload, because the instant repaint drew the grid. The repaint now draws the board without the field. Gate: `test/board-layout-browser.test.mjs`.
