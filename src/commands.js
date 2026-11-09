@@ -48,6 +48,21 @@ function fieldUpdate(w, a) {
   };
 }
 
+const UPLOAD = Symbol('upload');
+export const previewInput = (p) => (p && typeof p === 'object' && (p.contentBase64 ?? p.bytes) != null ? { bytes: p.contentBase64 ?? p.bytes } : null);
+const FILES_TOOL = {
+  name: 'weave_files',
+  description: 'Files already attached to an entity: action read (returns base64 content) | delete. Attach one with weave_attach_file.',
+  inputSchema: {
+    type: 'object',
+    properties: { action: { type: 'string' }, entity: { type: 'string' }, file: { type: 'string' } },
+    required: ['action', 'file'],
+  },
+};
+const mcpUpload = (a) => {
+  if (typeof a.contentBase64 !== 'string') throw new Error('Send contentBase64, or prepare:true and size for a raw upload.');
+  return { name: a.name, mime: a.mime, bytes: a.contentBase64 };
+};
 const REGISTRY_TOOL = {
   name: 'weave_registry',
   description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
@@ -1268,6 +1283,73 @@ export const COMMANDS = [
     cli: { command: 'share', sub: 'regenerate', positional: ['share'], args: sharePatchFlags },
     http: { method: 'POST', path: '/api/shares/:share/regenerate', args: (a, body) => ({ share: a.share, patch: body ?? {} }), result: linked },
     run: (w, a) => w.regenerateShare(a.share, a.patch ?? sharePatch(a)),
+  },
+  {
+    name: 'file.attach',
+    engine: ['attachFile', 'attachToField'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_attach_file',
+      description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
+      inputSchema: {
+        type: 'object',
+        properties: { entity: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, mime: { type: 'string' }, contentBase64: { type: 'string' }, prepare: { type: 'boolean' }, size: { type: 'integer', minimum: 0, maximum: 10485760 } },
+        required: ['entity', 'name'],
+      },
+    },
+    cli: {
+      command: 'file', sub: 'attach', default: true, positional: ['entity'],
+      args: (a, flags, { entityRef, bytes }) => {
+        if (!flags.path) throw new WeaveError('file attach needs --path');
+        return { entity: entityRef(a.entity, flags.db), field: flags.field || null, [UPLOAD]: { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: bytes(flags.path).toString('base64') } };
+      },
+    },
+    http: {
+      method: 'POST', path: '/api/entities/:entity/files', also: ['/api/entities/:entity/fields/:field/files'], status: 201,
+      args: (a, body) => ({ entity: a.entity, field: a.field ?? null, [UPLOAD]: { name: body.name, mime: body.mime, bytes: a.field == null ? body.contentBase64 : body.bytes ?? body.contentBase64, preview: previewInput(body.preview) } }),
+    },
+    run: (w, a, ctx) => {
+      if (a[UPLOAD] === undefined && a.prepare === true) {
+        if (!ctx?.caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
+        return ctx.caller.prepareUpload(a);
+      }
+      const file = a[UPLOAD] ?? mcpUpload(a);
+      return a.field == null ? w.attachFile(a.entity, file) : w.attachToField(a.entity, a.field, file);
+    },
+  },
+  {
+    name: 'file.read',
+    engine: ['readFile'],
+    writes: 'none',
+    tool: FILES_TOOL,
+    action: 'read',
+    cli: {
+      command: 'file', sub: 'read', positional: ['file'], raw: (flags) => !flags.out,
+      result: ({ meta, bytes }, flags, { write }) => {
+        if (!flags.out) return Buffer.from(bytes);
+        write(flags.out, Buffer.from(bytes));
+        return { ...meta, path: flags.out };
+      },
+    },
+    http: { method: 'GET', path: '/api/files/:file', serve: (a, ctx) => ctx.serveFile(a.file) },
+    run: (w, a) => w.readFile(a.file),
+    toolResult: ({ meta, bytes }) => ({ ...meta, contentBase64: Buffer.from(bytes).toString('base64') }),
+  },
+  {
+    name: 'file.delete',
+    engine: ['deleteFile'],
+    writes: 'entity',
+    tool: FILES_TOOL,
+    action: 'delete',
+    cli: { command: 'file', sub: 'delete', positional: ['entity', 'file'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), file: a.file }) },
+    http: {
+      method: 'DELETE', path: '/api/entities/:entity/files/:file',
+      result: (r, a) => {
+        if (!r.deleted) throw new WeaveError(`No file '${a.file}' on this record`, 'not-found');
+        return r;
+      },
+    },
+    run: (w, a) => w.deleteFile(a.entity, a.file),
   },
 ];
 
