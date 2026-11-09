@@ -89,8 +89,11 @@ share. It writes an apt drop-in (twenty-second acquire timeout, three retries, a
 boot-time `apt-get`, Issues #1230, #1141, #1107), installs the browsers from the
 `~/.cache/ms-playwright` cache, and then asks Playwright's own
 `install-deps --dry-run` whether every system package is present. When one is
-missing it installs the `.deb` files kept in `~/.cache/weave-apt` with
-`apt-get install --no-download`, which never reaches an Ubuntu mirror. That
+missing it installs the `.deb` files kept in `~/.cache/weave-apt` with one
+`dpkg -i`, which never reaches an Ubuntu mirror and waits up to 300 seconds
+for a dpkg lock the runner's own `apt-get` holds. `apt-get install
+--no-download` of the same files is the wrong tool: it re-resolved them against
+the image's package lists and asked to fetch (PR run 42654813034). That
 cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the pinned
 `PLAYWRIGHT_VERSION` and the browser set, so a new runner image never installs
 another image's packages. Only when the cache is empty, or leaves a dependency
