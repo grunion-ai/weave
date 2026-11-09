@@ -219,7 +219,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
         assert.equal(json.error, 'This token cannot change the schema');
       } else {
-        assert.equal(res.status, 200, `${c.http.method} ${c.http.path} writes no schema: ${JSON.stringify(json)}`);
+        assert.equal(res.status, c.http.status ?? 200, `${c.http.method} ${c.http.path} writes no schema: ${JSON.stringify(json)}`);
       }
     }
   } finally { server.close(); }
@@ -473,6 +473,56 @@ test('link, unlink, state and restore answer the same on CLI, MCP and HTTP (Feat
     }
     for (const [name, path] of [['entity.link', 'link'], ['entity.unlink', 'unlink'], ['entity.state', 'state'], ['entity.restore', 'restore']]) {
       assert.equal(matchRoute('POST', `/api/entities/x/${path}`)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('record create, read, update and delete answer the same on CLI, MCP and HTTP, each door with its own extras (Feature #179)', async () => {
+  const seeded = (w) => { seed(w); w.addField('Task', { name: 'Points', type: 'number' }); };
+  const d = await threeDoors('weave-registry-crud-', { seeded });
+  const row = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['revision', 'url', 'ts', 'raw', 'modifiedBy', 'createdBy', 'publicId'].includes(k) ? undefined : x)));
+  try {
+    const made = {
+      cli: d.cli(['create', 'Task', 'Beta', '--values', '{"Points":3}']),
+      mcp: d.mcp('weave_create_entity', { db: 'Task', name: 'Beta', values: { Points: 3 }, verbose: true }),
+      http: await d.http('POST', '/api/tables/Task/entities', { name: 'Beta', values: { Points: 3 } }),
+    };
+    assert.deepEqual(row(made.mcp), row(made.http), 'weave_create_entity and POST /api/tables/Task/entities answer alike');
+    assert.deepEqual(row(made.cli), row(made.http), 'weave create and POST /api/tables/Task/entities answer alike');
+    const created = await d.raw('POST', '/api/tables/Task/entities', { name: 'Gamma' });
+    assert.equal(created.status, 201);
+    const read = { cli: d.cli(['get', made.cli.id]), mcp: d.mcp('weave_get_entity', { entity: made.mcp.id, verbose: true }), http: await d.http('GET', `/api/entities/${made.http.id}`) };
+    assert.deepEqual(row(read.mcp), row(read.http));
+    assert.deepEqual(row(read.cli), row(read.http));
+    const updated = {
+      cli: d.cli(['update', made.cli.id, '--values', '{"Points":5}']),
+      mcp: d.mcp('weave_update_entity', { entity: made.mcp.id, values: { Points: 5 }, verbose: true }),
+      http: await d.http('PATCH', `/api/entities/${made.http.id}`, { values: { Points: 5 } }),
+    };
+    assert.ok(Array.isArray(updated.http.affected), 'PATCH still answers affected');
+    const { affected, ...httpRow } = updated.http;
+    assert.equal(updated.mcp.affected, undefined, 'weave_update_entity answers no affected');
+    assert.equal(updated.cli.affected, undefined, 'weave update answers no affected');
+    assert.deepEqual(row(updated.mcp), row(httpRow));
+    assert.deepEqual(row(updated.cli), row(httpRow));
+    const stale = await d.raw('PATCH', `/api/entities/${made.http.id}`, { Points: 7 }, { 'if-match': '"1"' });
+    assert.equal(stale.status, 412, 'a stale If-Match is still a 412');
+    const staleBody = await stale.json();
+    assert.equal(staleBody.code, 'stale');
+    assert.equal(staleBody.entity.id, made.http.id, 'the 412 carries the record as it stands');
+    const refused = d.call('weave_update_entity', { entity: made.mcp.id, Points: 1 });
+    assert.ok(refused.isError, 'weave_update_entity still refuses values outside values');
+    const gone = {
+      cli: d.cli(['delete', made.cli.id]),
+      mcp: d.mcp('weave_delete_entity', { entity: made.mcp.id, verbose: true }),
+      http: await d.http('DELETE', `/api/entities/${made.http.id}`),
+    };
+    assert.equal(gone.http.ok, true, 'DELETE still answers ok: true');
+    const { ok, ...httpGone } = gone.http;
+    assert.deepEqual(row(gone.mcp), row(httpGone));
+    assert.deepEqual(row(gone.cli), row(httpGone));
+    for (const [method, path, name] of [['POST', '/api/tables/Task/entities', 'entity.create'], ['GET', '/api/entities/x', 'entity.read'], ['PATCH', '/api/entities/x', 'entity.update'], ['DELETE', '/api/entities/x', 'entity.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }
 });

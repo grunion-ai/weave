@@ -565,7 +565,7 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
     return registered.cli.raw ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
@@ -711,23 +711,6 @@ async function main() {
         groupBy: flags['group-by'] ? String(flags['group-by']) : null,
       });
       return out(result);
-    }
-    case 'get':
-      return out(w.readEntity(resolveEntityRef(w, args[0], flags.db).id));
-    case 'create': {
-      const [db, name] = args;
-      const e = w.createEntity(db, { name, values: parseJsonFlag('values') ?? {}, doc: flags.doc === true ? '' : flags.doc });
-      const once = w.takeOneTime(e.id);
-      return out({ ...w.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '', once.invite.code) } } : once ?? {}) });
-    }
-    case 'update': {
-      const e = resolveEntityRef(w, args[0], flags.db);
-      w.updateEntity(e.id, parseJsonFlag('values') ?? {});
-      return out(w.readEntity(e.id));
-    }
-    case 'delete': {
-      const e = resolveEntityRef(w, args[0], flags.db);
-      return out(w.deleteEntity(e.id, { hard: Boolean(flags.hard) }));
     }
     case 'trash':
       return out(w.listTrash(args[0] ?? null));

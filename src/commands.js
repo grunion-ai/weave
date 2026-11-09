@@ -1,7 +1,7 @@
 import { WeaveError } from './store.js';
-import { nonNegativeInteger } from './errors.js';
+import { nonNegativeInteger, errorBody } from './errors.js';
+import { ONTOLOGY, inviteUrl } from './engine.js';
 import { guided } from './field-hints.js';
-import { ONTOLOGY } from './engine.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
@@ -52,6 +52,13 @@ const REGISTRY_TOOL = {
   description: 'The meta-model registries (System/Workspaces, Spaces, Tables, Fields) whose records ARE the schema. The registry lives once, at the weave root — the default workspace — and every record carries a Workspace relation naming the workspace it describes; a member workspace reports and rebuilds its own slice. action report (drift between the registry and the structures it mirrors) | rebuild.',
   inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
 };
+
+const zoned = (ctx) => ({ viewerZone: ctx?.viewerZone });
+const withSecret = (w, id, ctx) => {
+  const once = w.takeOneTime(id);
+  return { ...w.readEntity(id, zoned(ctx)), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(ctx?.origin ?? '', once.invite.code) } } : once ?? {}) };
+};
+const withoutAffected = ({ affected, ...row }) => row;
 
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
 const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets ?? a.items });
@@ -660,6 +667,77 @@ export const COMMANDS = [
     http: { method: 'POST', path: '/api/entities/:entity/unlink', args: linkBody },
     run: (w, a, ctx) => { w.unlink(a.entity, a.field, a.targets); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
   },
+  {
+    name: 'entity.create',
+    engine: ['createEntity'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_create_entity',
+      description: 'Create an entity. values maps field names to values; relation fields accept entity names, ids, or "#publicId".',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          db: { type: 'string' },
+          name: { type: 'string' },
+          values: { type: 'object' },
+          doc: { type: 'string', description: 'Initial markdown for the default document field' },
+          docs: { type: 'object', description: 'Initial markdown per document field name, e.g. {"Description": "...", "Spec": "..."}' },
+        },
+        required: ['db'],
+      },
+    },
+    cli: { command: 'create', positional: ['db', 'name'], args: (a, flags, { json }) => ({ db: a.db, input: { name: a.name, values: json('values') ?? {}, doc: flags.doc === true ? '' : flags.doc } }) },
+    http: { method: 'POST', path: '/api/tables/:db/entities', status: 201, args: (a, body) => ({ db: a.db, input: body }) },
+    run: (w, a, ctx) => withSecret(w, w.createEntity(a.db, a.input ?? { name: a.name, values: a.values, doc: a.doc, docs: a.docs }, zoned(ctx)).id, ctx),
+  },
+  {
+    name: 'entity.read',
+    engine: ['readEntity', 'getEntity', 'listEntities'],
+    writes: 'none',
+    tool: {
+      name: 'weave_get_entity',
+      description: 'Read one entity in full: all field values (including computed lookups/rollups/formulas), document markdown, comments, activity.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string', description: 'Entity id or "Table#publicId"' } }, required: ['entity'] },
+    },
+    cli: { command: 'get', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db) }) },
+    http: { method: 'GET', path: '/api/entities/:entity' },
+    run: (w, a, ctx) => w.readEntity(a.entity, zoned(ctx)),
+  },
+  {
+    name: 'entity.update',
+    engine: ['updateEntity', 'touching', 'affectedBy'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_update_entity',
+      description: 'Update entity field values by name (writable fields only; computed fields are read-only).',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, values: { type: 'object' } }, required: ['entity', 'values'] },
+    },
+    toolResult: withoutAffected,
+    cli: { command: 'update', positional: ['entity'], args: (a, flags, { entityRef, json }) => ({ entity: entityRef(a.entity, flags.db), values: json('values') ?? {} }), result: withoutAffected },
+    http: {
+      method: 'PATCH', path: '/api/entities/:entity',
+      args: (a, body) => ({ entity: a.entity, values: body?.values ?? body }),
+      fail: (err, w, a, ctx) => (err?.code === 'stale' ? [412, { ...errorBody(err), entity: w.readEntity(a.entity, zoned(ctx)) }] : null),
+    },
+    run: (w, a, ctx) => {
+      const expectedRevision = ctx?.expectedRevision ?? null;
+      const { touched } = w.touching(() => w.updateEntity(a.entity, a.values, { expectedRevision }));
+      return { ...w.readEntity(a.entity, zoned(ctx)), affected: w.affectedBy(a.entity, touched) };
+    },
+  },
+  {
+    name: 'entity.delete',
+    engine: ['deleteEntity'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_delete_entity',
+      description: 'Delete an entity. Recoverable by default — it moves to the trash keeping its id, public id and links. Pass hard: true to purge it irreversibly (relations are unlinked cleanly).',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, hard: { type: 'boolean' } }, required: ['entity'] },
+    },
+    cli: { command: 'delete', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), hard: Boolean(flags.hard) }) },
+    http: { method: 'DELETE', path: '/api/entities/:entity', query: ['hard'], args: (a) => ({ entity: a.entity, hard: truthy(a.hard) }), result: (r) => ({ ok: true, ...r }) },
+    run: (w, a) => w.deleteEntity(a.entity, { hard: Boolean(a.hard) }),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -726,7 +804,7 @@ export function cliArgs(cmd, positional, flags, helpers) {
 export function cliRun(given, w, args, flags, helpers) {
   const swap = given.cli.use?.(flags);
   const cmd = swap ? COMMANDS.find((c) => c.name === swap) : given;
-  const result = cmd.run(w, cliArgs(cmd, cliRest(given, args), flags, helpers), {});
+  const result = cmd.run(w, cliArgs(cmd, cliRest(given, args), flags, helpers), helpers);
   return cmd.cli.result ? cmd.cli.result(result) : result;
 }
 
@@ -758,10 +836,15 @@ export function httpArgs(hit, body, searchParams) {
   return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams) : a;
 }
 
-export function httpRun(w, hit, body, searchParams, ctx = {}) {
+export function httpReply(w, hit, body, searchParams, ctx = {}) {
   const a = httpArgs(hit, body, searchParams);
-  const result = hit.cmd.run(w, a, ctx);
-  return hit.cmd.http.result ? hit.cmd.http.result(result, a) : result;
+  const headers = hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {};
+  try {
+    const result = hit.cmd.run(w, a, ctx);
+    return { status: hit.cmd.http.status ?? 200, data: hit.cmd.http.result ? hit.cmd.http.result(result, a) : result, headers };
+  } catch (err) {
+    const failed = hit.cmd.http.fail?.(err, w, a, ctx);
+    if (!failed) throw err;
+    return { status: failed[0], data: failed[1], headers };
+  }
 }
-
-export const httpHeaders = (hit) => (hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {});
