@@ -128,11 +128,18 @@ if (s) {
       await drag(page, tile(ids.lamp), ['dragenter', 'dragover', 'drop'], [['lamp.png', 'image/png']]);
       const note = page.locator('.wv-toast', { hasText: 'no picture field' });
       await note.waitFor();
+      let inline = 0;
+      page.on('request', (r) => { if (r.method() === 'POST' && /\/files$/.test(r.url())) inline += 1; });
+      const prepared = page.waitForRequest((r) => r.method() === 'POST' && /\/api\/uploads$/.test(r.url()));
+      const upload = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/api\/uploads$/.test(r.url()));
       await note.locator('.wv-toast-action', { hasText: 'Add a Photo field' }).click();
       const field = await until(() => weave.describeSchema().flatMap((x) => x.tables).find((t) => t.name === 'Wish List')?.fields.find((f) => f.name === 'Photo'));
       assert.equal(field.type, 'attachments');
+      assert.equal((await prepared).postDataJSON().field, 'Photo', 'the new field took no prepared upload');
+      assert.equal((await upload).status(), 201, 'the prepared upload did not land');
       const [fid] = await until(() => (weave.readEntity(ids.lamp).raw.Photo?.length ? weave.readEntity(ids.lamp).raw.Photo : null));
       await page.waitForFunction(({ sel, fid }) => (document.querySelector(`${sel} .tile-cover img`)?.getAttribute('src') ?? '').includes(fid), { sel: tile(ids.lamp), fid });
+      assert.equal(inline, 0, 'the cover was sent as base64 inside JSON');
       assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
   });

@@ -111,7 +111,7 @@ function renderBoard(main, db, items, ctx) {
     try {
       const name = boardCore.photoFieldName(db);
       await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments', config: { multiple: false, preview: 'cover' } });
-      await api('POST', `/entities/${it.id}/fields/${encodeURIComponent(name)}/files`, await uploadBody(file));
+      await streamUpload(`/entities/${it.id}/fields/${encodeURIComponent(name)}/files`, { entity: it.id, field: name, file });
       await loadSchema();
       await reload();
     } catch (err) { toast(err.message, true); } finally { release(); }

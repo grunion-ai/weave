@@ -3584,15 +3584,6 @@ async function streamUpload(path, { entity, field = null, file }, onProgress) {
   return sendUpload(path, file, onProgress, grant);
 }
 
-async function uploadBody(file) {
-  const refusal = fileTooBig(file);
-  if (refusal) throw new Error(refusal);
-  const [bytes, preview] = await Promise.all([fileBase64(file), WeavePreview.make(file)]);
-  return {
-    name: file.name, mime: file.type || 'application/octet-stream', bytes,
-    ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),
-  };
-}
 function fileKind(file) {
   const mime = String(file.mime ?? '').split(';')[0].trim().toLowerCase();
   if (/^image\/(png|jpeg|gif|webp)$/.test(mime)) return 'image';
