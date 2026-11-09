@@ -1,0 +1,1 @@
+- A scheduled `promote` run now acts once the last production promotion is a batch old (`PROMOTION_EVERY_HOURS` less half an hour), counted from the newest `production` deployment. It used to skip any run GitHub delivered in an odd UTC hour, and GitHub delivers the hourly schedule late, so production could lag main by half a day (Issue #1493).
