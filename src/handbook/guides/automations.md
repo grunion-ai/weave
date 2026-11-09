@@ -166,7 +166,7 @@ weave activity --kind automation-ran --limit 20
 | Door | Calls |
 | --- | --- |
 | CLI | `weave automation create <table> --name N --trigger '{json}' --actions '[json]'`, `automation list`, `automation describe`, `automation update <id> --patch '{json}'`, `automation delete <id>` |
-| REST | `POST /api/automations` with `{db, name, trigger, actions, enabled}`, `GET /api/automations?db=<table>`, `PATCH /api/automations/:id`, `DELETE /api/automations/:id` |
+| REST | `POST /api/automations` with `{db, name, trigger, actions, enabled}`, `GET /api/automations?db=<table>` (the rules in prose), `GET /api/automations/list?db=<table>` (the rules as records), `PATCH /api/automations/:id`, `DELETE /api/automations/:id` |
 | MCP | `weave_create_automation`, and `weave_automations` with `action: list | describe | update | delete` |
 | Grid | a new row of `System/Workflows`, its Script written as JSON |
 

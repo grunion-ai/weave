@@ -31,6 +31,16 @@ function fieldUpdate(w, a) {
   };
 }
 
+const AUTOMATIONS_TOOL = {
+  name: 'weave_automations',
+  description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
+  inputSchema: {
+    type: 'object',
+    properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
+    required: ['action'],
+  },
+};
+
 export const COMMANDS = [
   {
     name: 'schema.ontology',
@@ -310,17 +320,101 @@ export const COMMANDS = [
     http: { method: 'POST', path: '/api/tables/:db/restore' },
     run: (w, a) => w.restoreTable(a.db),
   },
+  {
+    name: 'automation.create',
+    engine: ['createAutomation'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_create_automation',
+      description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url, signWith?: the name of a keystore credential, never its value; weave then signs the delivery with an X-Weave-Signature header holding the HMAC-SHA256 of <X-Weave-Timestamp>.<body>, beside an X-Weave-Delivery uuid} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
+      inputSchema: {
+        type: 'object',
+        properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
+        required: ['db', 'trigger', 'actions'],
+      },
+    },
+    cli: {
+      command: 'automation', sub: 'create', positional: ['db'],
+      args: (a, flags, { json }) => ({ db: a.db, name: flags.name, trigger: json('trigger'), actions: json('actions') ?? [], enabled: flags.enabled !== 'false' }),
+    },
+    http: { method: 'POST', path: '/api/automations', status: 201 },
+    run: (w, a) => w.createAutomation(a.db, { name: a.name, trigger: a.trigger, actions: a.actions, enabled: a.enabled }),
+  },
+  {
+    name: 'automation.list',
+    engine: ['listAutomations'],
+    writes: 'none',
+    tool: AUTOMATIONS_TOOL,
+    action: 'list',
+    cli: { command: 'automation', sub: 'list', positional: ['db'], default: true, args: (a, flags) => ({ db: a.db ?? flags.db ?? null }), result: (r) => r.automations },
+    http: { method: 'GET', path: '/api/automations/list', query: ['db'], result: (r) => r.automations },
+    run: (w, a) => ({ automations: w.listAutomations(a.db ?? null) }),
+  },
+  {
+    name: 'automation.describe',
+    engine: ['describeAutomations'],
+    writes: 'none',
+    tool: AUTOMATIONS_TOOL,
+    action: 'describe',
+    cli: { command: 'automation', sub: 'describe', positional: ['db'], args: (a, flags) => ({ db: a.db ?? flags.db ?? null }), result: (r) => r.rules },
+    http: { method: 'GET', path: '/api/automations', query: ['db'], result: (r) => r.rules },
+    run: (w, a) => ({ rules: w.describeAutomations(a.db ?? null) }),
+  },
+  {
+    name: 'automation.update',
+    engine: ['updateAutomation'],
+    writes: 'schema',
+    tool: AUTOMATIONS_TOOL,
+    action: 'update',
+    cli: { command: 'automation', sub: 'update', positional: ['automation'], args: (a, flags, { json }) => ({ automation: a.automation, patch: json('patch') ?? {} }) },
+    http: { method: 'PATCH', path: '/api/automations/:automation', args: (a, body) => ({ automation: a.automation, patch: body }) },
+    run: (w, a) => w.updateAutomation(a.automation, a.patch ?? {}),
+  },
+  {
+    name: 'automation.delete',
+    engine: ['deleteAutomation'],
+    writes: 'schema',
+    tool: AUTOMATIONS_TOOL,
+    action: 'delete',
+    cli: { command: 'automation', sub: 'delete', positional: ['automation'] },
+    http: {
+      method: 'DELETE', path: '/api/automations/:automation',
+      result: (r) => { if (!r.deleted) throw new WeaveError(`No automation '${r.id}'`, 'not-found'); return r; },
+    },
+    run: (w, a) => w.deleteAutomation(a.automation),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
-export const BY_TOOL = new Map(COMMANDS.filter((c) => c.tool).map((c) => [c.tool.name, c]));
+export const BY_TOOL = new Map(COMMANDS.filter((c) => c.tool && !c.action).map((c) => [c.tool.name, c]));
 export const BY_CLI = new Map(COMMANDS.filter((c) => c.cli).map((c) => [`${c.cli.command} ${c.cli.sub ?? ''}`.trim(), c]));
+const DEFAULT_CLI = new Map(COMMANDS.filter((c) => c.cli?.default).map((c) => [c.cli.command, c]));
+
+export const FAMILIES = new Map();
+for (const c of COMMANDS.filter((x) => x.action)) {
+  if (!FAMILIES.has(c.tool.name)) FAMILIES.set(c.tool.name, { tool: c.tool, noun: c.tool.name.replace(/^weave_/, ''), commands: [] });
+  FAMILIES.get(c.tool.name).commands.push(c);
+}
+
+export const registeredTool = (name) => BY_TOOL.has(name) || FAMILIES.has(name);
 
 export function toolDefinition(name) {
-  const c = BY_TOOL.get(name);
-  if (!c) throw new Error(`No registry command for the tool ${name}`);
-  return c.tool;
+  const tool = BY_TOOL.get(name)?.tool ?? FAMILIES.get(name)?.tool;
+  if (!tool) throw new Error(`No registry command for the tool ${name}`);
+  return tool;
+}
+
+export function toolCommand(name, args = {}) {
+  const single = BY_TOOL.get(name);
+  if (single) return single;
+  const family = FAMILIES.get(name);
+  if (!family) return null;
+  const hit = family.commands.find((c) => c.action === args.action);
+  if (hit?.toolRefusal) throw new Error(hit.toolRefusal);
+  if (hit) return hit;
+  const offered = family.commands.filter((c) => !c.toolRefusal).map((c) => c.action);
+  throw new Error(`Unknown ${family.noun} action '${args.action}' (${offered.join(', ')})`);
 }
 
 const CLI_ALIASES = { db: 'table' };
@@ -330,7 +424,15 @@ export function cliCommand(given, sub) {
   const named = sub == null ? null : BY_CLI.get(`${command} ${sub}`);
   if (named) return named;
   const bare = BY_CLI.get(command);
-  return bare && !bare.cli.sub ? bare : null;
+  if (bare && !bare.cli.sub) return bare;
+  return sub == null ? DEFAULT_CLI.get(command) ?? null : null;
+}
+
+export function cliMiss(given, sub) {
+  const command = CLI_ALIASES[given] ?? given;
+  if (!DEFAULT_CLI.has(command)) return null;
+  const subs = COMMANDS.filter((c) => c.cli?.command === command).map((c) => c.cli.sub);
+  return new WeaveError(`Unknown ${command} subcommand '${sub}'. Try: ${subs.join(', ')}`);
 }
 
 export const cliRest = (cmd, args) => (cmd.cli.sub ? args.slice(1) : args);
@@ -340,6 +442,11 @@ export function cliArgs(cmd, positional, flags, helpers) {
   cmd.cli.positional?.forEach((k, i) => { if (positional[i] !== undefined) a[k] = positional[i]; });
   for (const f of cmd.cli.flags ?? []) if (flags[f] !== undefined) a[camel(f)] = flags[f];
   return cmd.cli.args ? cmd.cli.args(a, flags, helpers) : a;
+}
+
+export function cliRun(cmd, w, args, flags, helpers) {
+  const result = cmd.run(w, cliArgs(cmd, cliRest(cmd, args), flags, helpers));
+  return cmd.cli.result ? cmd.cli.result(result) : result;
 }
 
 const ROUTES = COMMANDS.filter((c) => c.http).map((c) => {
@@ -362,5 +469,12 @@ export function matchRoute(method, path) {
 export function httpArgs(hit, body, searchParams) {
   const a = { ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}) };
   for (const q of hit.cmd.http.query ?? []) if (searchParams.has(q)) a[q] = searchParams.get(q);
-  return Object.assign(a, hit.params);
+  Object.assign(a, hit.params);
+  return hit.cmd.http.args ? hit.cmd.http.args(a, body) : a;
+}
+
+export function httpRun(w, hit, body, searchParams) {
+  const a = httpArgs(hit, body, searchParams);
+  const result = hit.cmd.run(w, a);
+  return hit.cmd.http.result ? hit.cmd.http.result(result, a) : result;
 }

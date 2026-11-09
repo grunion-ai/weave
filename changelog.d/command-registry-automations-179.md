@@ -1,0 +1,1 @@
+- Automations run from the command registry on every door: `weave automation`, `weave_create_automation`, `weave_automations` and `/api/automations` dispatch from one entry each, and `GET /api/automations/list?db=<table>` reads the rules as records over HTTP, the way `weave automation list` and `weave_automations {action: "list"}` already did (Feature #179).

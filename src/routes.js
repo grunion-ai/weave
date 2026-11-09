@@ -1,7 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
-import { matchRoute, httpArgs } from './commands.js';
+import { matchRoute, httpRun } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -810,7 +810,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
-        /^\/api\/(spaces|automations|accounts|invites|registry)/.test(path)
+        /^\/api\/(spaces|accounts|invites|registry)/.test(path)
         || path === '/api/import'
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
@@ -2016,7 +2016,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
-        if (registered) return out(registered.cmd.http.status ?? 200, registered.cmd.run(weave, httpArgs(registered, body, rx.searchParams)));
+        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, body, rx.searchParams));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }
@@ -2209,21 +2209,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments\/([^/]+)$/)) && rx.method === 'DELETE') {
           weave.deleteComment(m[1], m[2]);
           return out(200, { ok: true });
-        }
-
-        if (route === 'GET /api/automations') {
-          return out(200, weave.describeAutomations(rx.searchParams.get('db')));
-        }
-        if (route === 'POST /api/automations') {
-          return out(201, weave.createAutomation(body.db, body));
-        }
-        if ((m = path.match(/^\/api\/automations\/([^/]+)$/))) {
-          if (rx.method === 'PATCH') return out(200, weave.updateAutomation(m[1], body));
-          if (rx.method === 'DELETE') {
-            const result = weave.deleteAutomation(m[1]);
-            if (!result.deleted) return notFound({ error: `No automation '${m[1]}'`, code: 'not-found' });
-            return out(200, result);
-          }
         }
 
         if (route === 'GET /api/activity') {

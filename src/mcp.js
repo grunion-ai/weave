@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
-import { BY_TOOL, toolDefinition } from './commands.js';
+import { toolCommand, toolDefinition } from './commands.js';
 import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
@@ -208,15 +208,7 @@ export const TOOLS = [
   toolDefinition('weave_add_field'),
   toolDefinition('weave_check_formula'),
   toolDefinition('weave_add_relation'),
-  {
-    name: 'weave_create_automation',
-    description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run. actions: [{type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url, signWith?: the name of a keystore credential, never its value; weave then signs the delivery with an X-Weave-Signature header holding the HMAC-SHA256 of <X-Weave-Timestamp>.<body>, beside an X-Weave-Delivery uuid} | {type: upsert-row, table, key, fields: {targetField: sourcePath}}] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
-    inputSchema: {
-      type: 'object',
-      properties: { db: { type: 'string' }, name: { type: 'string' }, trigger: { type: 'object' }, actions: { type: 'array' }, enabled: { type: 'boolean' } },
-      required: ['db', 'trigger', 'actions'],
-    },
-  },
+  toolDefinition('weave_create_automation'),
   {
     name: 'weave_export_csv',
     description: 'Export a table as CSV: one record per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
@@ -327,15 +319,7 @@ export const TOOLS = [
       required: ['action'],
     },
   },
-  {
-    name: 'weave_automations',
-    description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
-    inputSchema: {
-      type: 'object',
-      properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
-      required: ['action'],
-    },
-  },
+  toolDefinition('weave_automations'),
   {
     name: 'weave_activity',
     description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
@@ -649,7 +633,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
-  const command = BY_TOOL.get(name);
+  const command = toolCommand(name, args);
   if (command) return command.run(weave, args);
   switch (name) {
     case 'weave_schema':
@@ -718,8 +702,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
-    case 'weave_create_automation':
-      return weave.createAutomation(args.db, { name: args.name, trigger: args.trigger, actions: args.actions, enabled: args.enabled });
     case 'weave_export_csv':
       return weave.exportCSV(args.db);
     case 'weave_import_csv':
@@ -779,14 +761,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         default: throw new Error(`Unknown shares action '${args.action}' (list, mint, renew, revoke, update, regenerate)`);
       }
     }
-    case 'weave_automations':
-      switch (args.action) {
-        case 'list': return { automations: weave.listAutomations(args.db ?? null) };
-        case 'describe': return { rules: weave.describeAutomations(args.db ?? null) };
-        case 'update': return weave.updateAutomation(args.automation, args.patch ?? {});
-        case 'delete': return weave.deleteAutomation(args.automation);
-        default: throw new Error(`Unknown automations action '${args.action}' (list, describe, update, delete)`);
-      }
     case 'weave_activity':
       if (args.id) return weave.getActivity(args.id);
       return weave.activityFeed({
