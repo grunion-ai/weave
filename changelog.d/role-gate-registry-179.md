@@ -1,0 +1,1 @@
+- The editor and observer gate reads each route's `writes` from the command registry for every route the registry serves: the `/api/spaces`, table view, tables query and spaces use patterns are gone. A read-only registry command (the formula check) is now open to an observer, as its `writes: none` says (Feature #179).
