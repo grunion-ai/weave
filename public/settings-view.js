@@ -1,4 +1,11 @@
 'use strict';
+function trashKind(item) {
+  const system = allTables().find((d) => d.id === item.dbId)?.system;
+  if (system === 'spaces') return 'Space';
+  if (system === 'tables') return item.fields?.Space?.name ? `Table in ${item.fields.Space.name}` : 'Table';
+  return `Record in ${item.db}`;
+}
+
 async function showTrash(dbId) {
   const db = dbId ? allTables().find((d) => d.id === dbId) : null;
   if (dbId && !db) return showHome();
@@ -26,7 +33,7 @@ async function showTrash(dbId) {
     rows.append(el('tr', {},
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
-      ...(db ? [] : [el('td', { class: 'trash-table' }, item.db)]),
+      ...(db ? [] : [el('td', { class: 'trash-table' }, trashKind(item))]),
       el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
       el('td', { class: 'trash-acts' },
         el('button', {
@@ -61,7 +68,7 @@ async function showTrash(dbId) {
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
-        ...(db ? [] : [el('th', {}, 'Table')]),
+        ...(db ? [] : [el('th', {}, 'Type')]),
         el('th', {}, 'Deleted'), el('th', {}, ''))),
       rows)));
 }
