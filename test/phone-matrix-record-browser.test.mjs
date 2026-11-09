@@ -12,7 +12,7 @@ if (s) {
   const matrix = await phoneMatrix(browser);
   const transparent = (c) => /,\s*0\)$|transparent/.test(c);
 
-  test('the phone record page starts every field value at one left edge and keeps the Estimate box off its row edges (Issue #1381)', { todo: 'Issue #1381' }, async (t) => {
+  test('the phone record page starts every field value at one left edge and keeps the Estimate box off its row edges (Issue #1381)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t2);
       if (!(await recordCoversScreen(page))) return WIDE;
@@ -34,6 +34,15 @@ if (s) {
       const lefts = v.starts.map((x) => x.left);
       assert.ok(Math.max(...lefts) - Math.min(...lefts) <= 2, `field values start at ${v.starts.map((x) => `${x.field} ${x.left}`).join(', ')} px`);
       assert.ok(v.above >= 4 && v.below >= 4, `the Estimate box sits ${v.above} px under its row's top and ${v.below} px over its divider`);
+      const ring = await page.evaluate(() => {
+        const est = document.querySelector('#dock .fieldrow[data-field="Estimate"]');
+        const input = est.querySelector('input');
+        input.focus();
+        const box = input.getBoundingClientRect();
+        const row = est.getBoundingClientRect();
+        return { above: Math.round(box.top - row.top), below: Math.round(row.bottom - box.bottom) };
+      });
+      assert.ok(ring.above >= 4 && ring.below >= 4, `the focused Estimate box sits ${ring.above} px under its row's top and ${ring.below} px over its divider`);
     });
   });
 
