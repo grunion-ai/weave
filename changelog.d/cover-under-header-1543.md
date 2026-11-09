@@ -1,0 +1,1 @@
+- A record or landing with a cover keeps its breadcrumbs and toolbar above the banner. Once held at the top while you scroll, the header spans the pane edge to edge with its usual top inset, so the banner and introduction no longer show beside the title (Issues #1538, #1543, #1544).

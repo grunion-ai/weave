@@ -2878,12 +2878,13 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
     const row = mineOnly(result.items).find((r) => r.sysId === subjectId);
     if (!row || !header.isConnected || header.presentationRequest !== request) return;
     const file = boardCore.coverOf(db, row);
+    const sections = [];
     if (file) {
       const banner = entityCoverEl(file, { size: cover.size, fit: cover.fit });
       banner.classList.add('registry-cover');
-      header.before(banner);
+      sections.push(banner);
     }
-    const sections = [];
+    const intro = sections.length;
     for (const field of intros) {
       const ids = row.raw?.[field.name] ?? [];
       const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
@@ -2894,7 +2895,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
     header.after(...sections);
-    for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
+    for (const section of sections.slice(intro)) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
 }
 
@@ -9311,7 +9312,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const introHeader = shown.some((f) => f.type === 'attachments' && f.preview === 'intro');
   const placeCover = (file) => {
     const cover = coverEl(file);
-    if (introHeader) mount.querySelector(':scope > .view-header').before(cover);
+    if (introHeader) mount.querySelector(':scope > .view-header').after(cover);
     else left.prepend(cover);
   };
   if (coverFile) placeCover(coverFile);
