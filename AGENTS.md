@@ -306,6 +306,16 @@ exist: `fieldOrder` names the leading columns (the rest keep their order, in the
 schema too), `hidden` names columns to hide, and `sort` is `"Amount desc, Name"`
 or `[{field, dir}]`. A bad name there is an error with its path, like any other.
 
+A table also takes `automations`: a list of rules in the shape the Workflows
+Script holds, `{name, trigger, actions}`, with the table left out and every
+field and state written by name. Each rule is built On after the table's
+records, so seeded records land as the spec wrote them; `on: false` builds one
+Off. A rule that would read Setup incomplete is an error at
+`spaces[i].tables[j].automations[k]` naming the reason, so a dry run catches
+it and nothing is written. A re-run keeps a rule the table already holds under
+the same name and lists it under `existing`. The Work starter ships one: Status
+moving to Done stamps `Done on` with `{{Today:iso}}`.
+
 ### Configuration without a browser
 
 A space and a table are born with everything they need: `weave_create_space`

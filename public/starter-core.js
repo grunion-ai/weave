@@ -125,11 +125,17 @@
           ] },
           { name: 'Due', type: 'date' },
           { name: 'Priority', type: 'select', options: ['High', 'Medium', 'Low'] },
+          { name: 'Done on', type: 'date' },
         ],
         rows: [
           { Name: 'Try weave', Status: 'Doing', Due: m.after(0), Priority: 'High' },
           { Name: 'Invite a teammate', Due: m.after(7), Priority: 'Medium' },
         ],
+        automations: [{
+          name: 'Stamp the done date',
+          trigger: { type: 'state-changed', field: 'Status', toState: 'Done' },
+          actions: [{ type: 'set-field', field: 'Done on', value: '{{Today:iso}}' }],
+        }],
       }],
     },
     {

@@ -4,6 +4,10 @@ An automation is a rule bound to one table: something happens, and weave writes.
 
 Nothing here reaches outside the workspace except the `webhook` and `http-request` actions.
 
+## Rules in a build spec
+
+A table in a `weave_build` spec, `POST /api/build` body or `weave build` file takes `automations`, a list of rules written as `{name, trigger, actions}` with fields and states by name, and `on: false` for a rule that should start Off. The build makes each rule after the table's records. A rule that would read `Setup incomplete` stops the build with the reason at its path, so a dry run shows it before anything is written. The Work starter ships `Stamp the done date`, which sets `Done on` when a task reaches Done.
+
 ## The Workflows row is the control panel
 
 Every rule is a row of `System/Workflows`, and the row is the whole interface to it. The Standard view shows `On`, `Name`, `When`, `Then`, `Health` and `Last Run`, so you can read what each rule does without opening its Script:
