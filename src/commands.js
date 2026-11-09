@@ -155,10 +155,10 @@ const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets 
 
 const AUTOMATIONS_TOOL = {
   name: 'weave_automations',
-  description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
+  description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash) | replay (delivery: a System/Failed Deliveries record; sends its stored request again and runs the steps after it). Create one with weave_create_automation.',
   inputSchema: {
     type: 'object',
-    properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' } },
+    properties: { action: { type: 'string' }, db: { type: 'string' }, automation: { type: 'string' }, patch: { type: 'object' }, delivery: { type: 'string', description: 'For replay: the id, public id or Name of a System/Failed Deliveries record.' } },
     required: ['action'],
   },
 };
@@ -554,6 +554,16 @@ export const COMMANDS = [
       result: (r) => { if (!r.deleted) throw new WeaveError(`No automation '${r.id}'`, 'not-found'); return r; },
     },
     run: (w, a) => w.deleteAutomation(a.automation),
+  },
+  {
+    name: 'automation.replay',
+    engine: ['replayDelivery'],
+    writes: 'entity',
+    tool: AUTOMATIONS_TOOL,
+    action: 'replay',
+    cli: { command: 'automation', sub: 'replay', positional: ['delivery'] },
+    http: { method: 'POST', path: '/api/automations/deliveries/:delivery/replay' },
+    run: (w, a) => w.replayDelivery(a.delivery),
   },
   {
     name: 'key.list',

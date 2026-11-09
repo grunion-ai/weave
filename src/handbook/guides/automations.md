@@ -192,11 +192,36 @@ A `webhook` or `http-request` that fails for a reason that may pass is sent agai
 | 7 | 1 hour |
 | 8 | none: the delivery has failed |
 
-While a delivery waits, the rule reads `Warning` and `Health Reason` names the failure, the attempt and the next try, as in `POST hooks.example.com: HTTP 503; attempt 2 of 8 failed, next try 2026-11-09 14:03 UTC`. The steps after it wait too, and run once a retry lands. A retry that lands returns the rule to `Healthy`. After the eighth attempt the run stops, the rule reads `Failed` and the reason ends `gave up after 8 attempts`.
+While a delivery waits, the rule reads `Warning` and `Health Reason` names the failure, the attempt and the next try, as in `POST hooks.example.com: HTTP 503; attempt 2 of 8 failed, next try 2026-11-09 14:03 UTC`. The steps after it wait too, and run once a retry lands. A retry that lands returns the rule to `Healthy`. After the eighth attempt the run stops, the rule reads `Failed`, the reason ends `gave up after 8 attempts`, and the delivery becomes a record of `System/Failed Deliveries`.
 
 The waiting delivery is stored in the workspace file, so a restart loses nothing: the minute tick that runs schedules sends each retry that is due, the first tick after a restart included. The stored request holds the url, the method, the headers and the body; a credential is held by name and added at each send. A webhook retry carries the same `X-Weave-Delivery` id as its first attempt and a fresh `X-Weave-Timestamp` and signature, so a receiver that remembers delivery ids handles it once.
 
 A rule switched Off keeps sending the deliveries already waiting. Deleting the rule drops them.
+
+### Failed Deliveries
+
+`System/Failed Deliveries` holds one record per delivery that ran out of attempts:
+
+| Column | What it holds |
+| --- | --- |
+| `Name` | the method, host and path, such as `POST hooks.example.com/weave` |
+| `Status` | `Failed`, `Replay` while weave sends it again, or `Delivered` once a replay lands |
+| `Workflow` | the rule that sent it |
+| `Record` | the record that fired the rule, as `Ops/Request #12 Acme` |
+| `Request` | the method, url, headers and body, with `signWith` or `integration` naming the credential; the credential value is never stored |
+| `Attempts` | each attempt's time and outcome, one per line |
+| `Last Error`, `Last Attempt` | the most recent failure and when it happened |
+
+Replay a record to send it again: set its `Status` to `Replay` in the grid, or run one of these. weave sends the stored request, with a fresh signature for a signed webhook, and on success runs the steps after it, so the rule reads `Healthy` and the record `Delivered`. A replay that fails again is retried on the same schedule and returns the same record to `Failed`, its new attempts added. A record already `Delivered` is not sent twice.
+
+| Door | Call |
+| --- | --- |
+| CLI | `weave automation replay <record>` |
+| REST | `POST /api/automations/deliveries/<record>/replay` |
+| MCP | `weave_automations` with `action: replay`, `delivery: <record>` |
+| Grid | set `Status` to `Replay` |
+
+`<record>` is the id, the public id or the Name of the Failed Deliveries record. A replay runs against the rule's current Script: if the rule was deleted, or the step that failed is no longer a webhook or http-request, the replay is refused with the reason.
 
 ## A worked example
 
@@ -234,7 +259,7 @@ weave activity --kind automation-ran --limit 20
 | --- | --- |
 | CLI | `weave automation create <table> --name N --trigger '{json}' --actions '[json]'`, `automation list`, `automation describe`, `automation update <id> --patch '{json}'`, `automation delete <id>` |
 | REST | `POST /api/automations` with `{db, name, trigger, actions, enabled}`, `GET /api/automations?db=<table>` (the rules in prose), `GET /api/automations/list?db=<table>` (the rules as records), `PATCH /api/automations/:id`, `DELETE /api/automations/:id` |
-| MCP | `weave_create_automation`, and `weave_automations` with `action: list | describe | update | delete` |
+| MCP | `weave_create_automation`, and `weave_automations` with `action: list | describe | update | delete | replay` |
 | Grid | a new row of `System/Workflows`, its Script written as JSON |
 
 `weave_create_automation` and `weave_automations` carry the MCP open-world mark: a rule can call a webhook or an API, and no other tool leaves the workspace.
