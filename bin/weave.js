@@ -562,7 +562,7 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8') });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id });
     return registered.cli.raw ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
@@ -623,8 +623,6 @@ async function main() {
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
     }
-    case 'audit':
-      return out(w.listAudit({ limit: numberFlag('limit', 50) }));
     case 'undo': {
       if (flags.list) return out(w.listUndo({ limit: numberFlag('limit', 20) }));
       return out(w.undo({ steps: Math.max(1, Number(flags.steps ?? 1)) }));
@@ -863,17 +861,6 @@ async function main() {
       if (sub === 'renew') return out(w.renewShare(a));
       if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null, includeInactive: Boolean(flags['include-inactive']) }));
       throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, renew, revoke, update, regenerate`);
-    }
-    case 'activity': {
-      const [id] = args;
-      if (id) return out(w.getActivity(id));
-      return out(w.activityFeed({
-        entityId: flags.entity ? resolveEntityRef(w, flags.entity, flags.db).id : null,
-        tableRef: flags.table ?? null,
-        kinds: flags.kinds ? splitList(flags.kinds) : null,
-        since: flags.since ?? null,
-        limit: numberFlag('limit'),
-      }));
     }
     case 'workspace': {
       const [sub] = args;

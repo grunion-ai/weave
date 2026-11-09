@@ -351,3 +351,43 @@ test('the CSV pair answers the same on CLI, MCP and HTTP, and export stays raw t
     assert.equal(matchRoute('POST', '/api/tables/Task/import.csv')?.cmd.name, 'csv.import');
   } finally { d.close(); }
 });
+
+test('audit and activity answer the same on CLI, MCP and HTTP, each door with its own page (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-activity-');
+  const logged = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['ts', 'spaces'].includes(k) ? undefined : x)));
+  try {
+    const audits = [
+      [['audit'], {}, '/api/audit'],
+      [['audit', '--limit', '1'], { limit: 1 }, '/api/audit?limit=1'],
+    ];
+    for (const [c, args, path] of audits) {
+      const fromHttp = logged(await d.http('GET', path));
+      assert.deepEqual(logged(d.mcp('weave_audit', args).events), fromHttp, `weave_audit and GET ${path} answer alike`);
+      assert.deepEqual(logged(d.cli(c)), fromHttp, `weave ${c.join(' ')} and GET ${path} answer alike`);
+    }
+    assert.equal((await d.http('GET', '/api/audit?limit=1')).length, 1);
+    const feeds = [
+      [['activity', '--table', 'Task'], { table: 'Task' }, '/api/activity?table=Task'],
+      [['activity', '--table', 'Task', '--kinds', 'created,updated'], { table: 'Task', kinds: ['created', 'updated'] }, '/api/activity?table=Task&kind=created&kind=updated'],
+      [['activity', '--table', 'Task', '--limit', '1'], { table: 'Task', limit: 1 }, '/api/activity?table=Task&limit=1'],
+    ];
+    for (const [c, args, path] of feeds) {
+      const fromHttp = logged(await d.http('GET', path));
+      assert.deepEqual(logged(d.mcp('weave_activity', args)), fromHttp, `weave_activity and GET ${path} answer alike`);
+      assert.deepEqual(logged(d.cli(c)), fromHttp, `weave ${c.join(' ')} and GET ${path} answer alike`);
+    }
+    const first = {
+      cli: d.cli(['activity', '--table', 'Task']).items[0].id,
+      mcp: d.mcp('weave_activity', { table: 'Task' }).items[0].id,
+      http: (await d.http('GET', '/api/activity?table=Task')).items[0].id,
+    };
+    const one = logged(await d.http('GET', `/api/activity/${encodeURIComponent(first.http)}`));
+    assert.equal(one.kind, 'created');
+    assert.deepEqual(logged(d.mcp('weave_activity', { id: first.mcp })), one, 'weave_activity {id} and GET /api/activity/:id answer alike');
+    assert.deepEqual(logged(d.cli(['activity', first.cli])), one, 'weave activity <id> and GET /api/activity/:id answer alike');
+    assert.equal((await d.raw('GET', '/api/audit?offset=-1')).status, 400, 'a bad audit offset is still a 400');
+    assert.equal(matchRoute('GET', '/api/audit')?.cmd.name, 'audit');
+    assert.equal(matchRoute('GET', `/api/activity/${first.http}`)?.cmd.name, 'activity');
+    assert.equal(matchRoute('GET', '/api/activity')?.cmd.name, 'activity');
+  } finally { d.close(); }
+});

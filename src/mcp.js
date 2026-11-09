@@ -312,23 +312,8 @@ export const TOOLS = [
     },
   },
   toolDefinition('weave_automations'),
-  {
-    name: 'weave_activity',
-    description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' }, entity: { type: 'string' }, table: { type: 'string' },
-        kinds: { type: 'array', items: { type: 'string' } }, since: { type: 'string' },
-        limit: { type: 'number' }, offset: { type: 'number' },
-      },
-    },
-  },
-  {
-    name: 'weave_audit',
-    description: 'The workspace audit log: schema and account events with their actor.',
-    inputSchema: { type: 'object', properties: { limit: { type: 'number' }, since: { type: 'string' } } },
-  },
+  toolDefinition('weave_activity'),
+  toolDefinition('weave_audit'),
   {
     name: 'weave_workspace',
     description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name; type read from the bytes) | clear-logo | order | move (name, position: 0 first).',
@@ -738,15 +723,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         default: throw new Error(`Unknown shares action '${args.action}' (list, mint, renew, revoke, update, regenerate)`);
       }
     }
-    case 'weave_activity':
-      if (args.id) return weave.getActivity(args.id);
-      return weave.activityFeed({
-        entityId: args.entity ?? null,
-        tableRef: args.table ?? null, kinds: args.kinds ?? null, since: args.since ?? null,
-        limit: args.limit ?? null, offset: args.offset ?? 0,
-      });
-    case 'weave_audit':
-      return { events: weave.listAudit({ limit: args.limit ?? undefined, since: args.since ?? null }) };
     case 'weave_forms':
       if (args.action === 'list') return listForms(weave);
       if (args.action === 'get') return getFormDefinition(weave, args.form);
