@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { handleMcpMessage, TOOLS } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, FAMILIES, cliCommand, matchRoute, toolCommand, toolDefinition } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, FAMILIES, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -31,9 +31,11 @@ test('every registry command is well formed and reachable on each door it names 
       if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { action: c.action }), c, `${c.tool.name} {action: ${c.action}} is the registry entry`);
     } else assert.equal(BY_TOOL.get(c.tool.name), c);
     assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
-    assert.equal(matchRoute(c.http.method, c.http.path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${c.http.path} is the registry entry`);
+    for (const path of httpPaths(c)) {
+      assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
+      for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+    }
     for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
-    for (const k of c.http.path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
   }
 });
 
@@ -206,6 +208,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'entity.link': { field: 'Owner', targets: ['Pat'] },
     'entity.unlink': { field: 'Owner', targets: ['Pat'] },
     'entity.state': { field: 'Stage', state: 'Doing' },
+    'entity.bulk': { ids: [alpha], op: 'set', values: { Points: 1 } },
   };
   try {
     for (const c of COMMANDS) {
@@ -522,6 +525,65 @@ test('record create, read, update and delete answer the same on CLI, MCP and HTT
     assert.deepEqual(row(gone.mcp), row(httpGone));
     assert.deepEqual(row(gone.cli), row(httpGone));
     for (const [method, path, name] of [['POST', '/api/tables/Task/entities', 'entity.create'], ['GET', '/api/entities/x', 'entity.read'], ['PATCH', '/api/entities/x', 'entity.update'], ['DELETE', '/api/entities/x', 'entity.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('query, trash, stats and bulk answer the same on CLI, MCP and HTTP, each door with its own page and extras (Feature #179)', async () => {
+  const seeded = (w) => {
+    seed(w);
+    w.addField('Task', { name: 'Points', type: 'number' });
+    w.createEntity('Task', { Name: 'Beta', Points: 4 });
+    w.deleteEntity(w.createEntity('Task', { Name: 'Gone' }).id);
+  };
+  const d = await threeDoors('weave-registry-reads-', { seeded });
+  const row = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['revision', 'url', 'ts', 'raw', 'modifiedBy', 'createdBy'].includes(k) ? undefined : x)));
+  const idOf = (w, name) => w.query('Task', { where: [['Name', '=', name]] }).items[0].id;
+  const where = [['Points', '>', 1]];
+  try {
+    const queried = {
+      cli: d.cli(['query', 'Task', '--where', JSON.stringify(where), '--relations', 'chip']),
+      mcp: d.mcp('weave_query', { db: 'Task', where }),
+      http: await d.http('POST', '/api/tables/Task/query', { where, relations: 'chip' }),
+    };
+    assert.equal(queried.http.items.length, 1);
+    assert.deepEqual(row(queried.mcp), row(queried.http), 'weave_query and POST /api/tables/Task/query answer alike');
+    assert.deepEqual(row(queried.cli), row(queried.http), 'weave query and POST /api/tables/Task/query answer alike');
+    assert.equal((await d.raw('POST', '/api/tables/Task/query', { limit: 'many' })).status, 400, 'a bad HTTP limit is still a 400');
+    const trashed = { cli: d.cli(['trash', 'Task']), mcp: d.mcp('weave_trash', { table: 'Task' }), http: await d.http('GET', '/api/tables/Task/trash') };
+    assert.deepEqual(Object.keys(trashed.http), ['total', 'items']);
+    assert.equal(trashed.http.total, 1);
+    assert.deepEqual(row(trashed.mcp.items), row(trashed.http.items), 'weave_trash and GET /api/tables/Task/trash answer alike');
+    assert.deepEqual(row(trashed.cli), row(trashed.http.items), 'weave trash prints the bare list');
+    const everywhere = await d.http('GET', '/api/trash');
+    assert.deepEqual(Object.keys(everywhere), ['total', 'items', 'views', 'purge'], 'GET /api/trash still carries views and purge');
+    assert.equal(everywhere.purge, true);
+    assert.deepEqual(row(d.mcp('weave_trash', {}).items), row(everywhere.items));
+    assert.deepEqual(row(d.cli(['trash'])), row(everywhere.items));
+    const stats = { cli: d.cli(['stats', 'Task', '--field', 'Points']), mcp: d.mcp('weave_stats', { table: 'Task', field: 'Points' }), http: await d.http('GET', '/api/tables/Task/stats?field=Points') };
+    assert.deepEqual(row(stats.mcp), row(stats.http), 'weave_stats and GET /api/tables/Task/stats answer alike');
+    assert.deepEqual(row(stats.cli), row(stats.http), 'weave stats and GET /api/tables/Task/stats answer alike');
+    const narrowed = encodeURIComponent(JSON.stringify(where));
+    assert.deepEqual(row(d.cli(['stats', 'Task', '--where', JSON.stringify(where)])), row(await d.http('GET', `/api/tables/Task/stats?where=${narrowed}`)));
+    const bad = await d.raw('GET', '/api/tables/Task/stats?where=nope');
+    assert.equal(bad.status, 400);
+    assert.deepEqual(await bad.json(), { error: 'where must be JSON' }, 'a where that is not JSON still answers without a code');
+    const usage = d.run(['stats']);
+    assert.notEqual(usage.status, 0);
+    assert.match(usage.stderr, /Usage: stats <table>/);
+    const values = { Points: 9 };
+    const bulk = {
+      cli: d.cli(['bulk', 'set', 'Task#1', '--values', JSON.stringify(values)]),
+      mcp: d.mcp('weave_bulk', { ids: [idOf(d.mcpWeave, 'Alpha')], op: 'set', values }),
+      http: await d.http('POST', '/api/bulk', { ids: [idOf(d.httpWeave, 'Alpha')], op: 'set', values }),
+    };
+    const counted = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Array.isArray(v) ? v.length : v]));
+    assert.equal(bulk.http.done.length, 1);
+    assert.deepEqual(counted(bulk.mcp), counted(bulk.http), 'weave_bulk and POST /api/bulk answer alike');
+    assert.deepEqual(counted(bulk.cli), counted(bulk.http), 'weave bulk and POST /api/bulk answer alike');
+    assert.equal(d.httpWeave.query('Task', { where: [['Points', '=', 9]] }).total, 1, 'the bulk set landed');
+    for (const [method, path, name] of [['POST', '/api/tables/x/query', 'entity.query'], ['GET', '/api/trash', 'entity.trash'], ['GET', '/api/tables/x/trash', 'entity.trash'], ['GET', '/api/tables/x/stats', 'table.stats'], ['POST', '/api/bulk', 'entity.bulk']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }

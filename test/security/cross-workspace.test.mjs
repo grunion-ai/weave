@@ -12,7 +12,7 @@ test.after(() => rmSync(DIR, { recursive: true, force: true }));
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { client } = await import('../lib/fixtures.mjs');
-const { COMMANDS } = await import('../../src/commands.js');
+const { COMMANDS, httpPaths } = await import('../../src/commands.js');
 
 const ID = '00000000-0000-4000-8000-000000000000';
 const TOKEN = 'nosuchtoken';
@@ -40,7 +40,7 @@ function listRoutes(src = readFileSync(join(ROOT, 'src/routes.js'), 'utf8')) {
     for (const [, p] of line.matchAll(/path === '([^']+)'/g)) add(method, p);
     for (const [, re] of line.matchAll(/path\.match\(\/(\^.+?\$)\/\)/g)) add(method, concretise(re));
   }
-  for (const c of COMMANDS) add(c.http.method, c.http.path.replace(/:[a-z]+\*?/gi, ID));
+  for (const c of COMMANDS) for (const p of httpPaths(c)) add(c.http.method, p.replace(/:[a-z]+\*?/gi, ID));
   return [...seen.values()];
 }
 

@@ -694,39 +694,6 @@ async function main() {
       const [sub] = args;
       throw new WeaveError(`Unknown relation subcommand '${sub}'`);
     }
-    case 'query': {
-      const [db] = args;
-      const result = w.query(db, {
-        where: parseJsonFlag('where') ?? [],
-        select: flags.select ? String(flags.select).split(',').map((s) => s.trim()) : null,
-        fields: flags.fields ? String(flags.fields).split(',').map((s) => s.trim()) : null,
-        relations: flags.relations ? String(flags.relations) : 'full',
-        shape: flags.shape ? String(flags.shape) : 'full',
-        sort: flags.sort ? [String(flags.sort)] : [],
-        limit: numberFlag('limit'),
-        offset: nonNegativeInteger('--offset', flags.offset === true ? 'true' : flags.offset),
-        search: flags.search ? String(flags.search) : '',
-        countAll: Boolean(flags['count-all']),
-        view: flags.view ? String(flags.view) : null,
-        groupBy: flags['group-by'] ? String(flags['group-by']) : null,
-      });
-      return out(result);
-    }
-    case 'trash':
-      return out(w.listTrash(args[0] ?? null));
-    case 'stats': {
-      if (!args[0]) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F]');
-      return out(w.tableStats(args[0], { by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null }));
-    }
-    case 'bulk': {
-      const [op, ...refs] = args;
-      const ids = refs.map((r) => resolveEntityRef(w, r, flags.db).id);
-      const params = pickFlags(['field', 'table', 'name']);
-      const values = parseJsonFlag('values');
-      if (values) params.values = values;
-      if (flags.targets != null) params.targets = splitList(flags.targets);
-      return out(w.bulk(ids, op, params));
-    }
     case 'doc': {
       const [sub, ref] = args;
       const e = resolveEntityRef(w, ref, flags.db);

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -20,7 +20,7 @@ const ROUTES = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
 const AGENTS = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
-const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? [`${c.http.method} ${c.http.path}`] : []]);
+const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
   ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
@@ -33,10 +33,6 @@ const HAND_WRITTEN = [
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
   ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
-  ['entity.query', ['query'], 'weave_query', 'query', ['POST /api/tables/:ref/query']],
-  ['entity.trash', ['listTrash'], 'weave_trash', 'trash', ['GET /api/tables/:ref/trash', 'GET /api/trash']],
-  ['table.stats', ['tableStats', 'tableRollups'], 'weave_stats', 'stats', ['GET /api/tables/:ref/stats']],
-  ['entity.bulk', ['bulk'], 'weave_bulk', 'bulk', ['POST /api/bulk']],
   ['doc.read', ['getDoc'], 'weave_get_doc', 'doc', ['GET /api/entities/:ref/doc']],
   ['doc.write', ['setDoc', 'appendDoc'], 'weave_set_doc', 'doc', ['PUT /api/entities/:ref/doc', 'POST /api/entities/:ref/doc']],
   ['doc.revisions', ['listDocRevisions', 'getDocRevision'], 'weave_doc_revisions', 'doc-revisions', ['GET /api/entities/:ref/doc/revisions', 'GET /api/entities/:ref/doc/revisions/:ref']],
@@ -288,17 +284,21 @@ test('every query option reaches every door', () => {
   const options = sig.split(',').map((p) => p.trim().split(/[=\s]/)[0]).filter(Boolean);
   assert.ok(options.includes('fields') && options.includes('relations'), `the engine takes fields and relations: ${options.join(', ')}`);
   const tool = TOOLS.find((t) => t.name === 'weave_query');
-  const mcpBlock = MCP.slice(MCP.indexOf("case 'weave_query'"), MCP.indexOf("case 'weave_query'") + 600);
-  const cliBlock = CLI.slice(CLI.indexOf("case 'query'"), CLI.indexOf("case 'query'") + 900);
+  const REG = readFileSync(join(ROOT, 'src/commands.js'), 'utf8');
+  const mcpBlock = REG.slice(REG.indexOf('const queryOptions'), REG.indexOf('const queryOptions') + 600);
+  const cmd = COMMANDS.find((c) => c.name === 'entity.query');
+  const cliBlock = String(cmd.cli.args);
   const CLI_EXEMPT = { includeDeleted: 'weave trash', trashCount: 'weave trash' };
   for (const k of options) {
     assert.ok(tool.inputSchema.properties[k], `weave_query schema lacks ${k}`);
-    assert.ok(mcpBlock.includes(`args.${k}`), `weave_query drops ${k}`);
+    assert.ok(mcpBlock.includes(`a.${k}`), `weave_query drops ${k}`);
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
   assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
-  assert.match(ROUTES, /weave\.query\(m\[1\], \{ \.\.\.body, limit, viewerZone, workspace: member\.state\.meta\.id \}\)/, 'POST /api/tables/:ref/query passes its body through, scoped to the asking workspace (Issue #875)');
-  assert.match(ROUTES, /const limit = body\?\.limit == null \? QUERY_PAGE : boundedLimit\(body\.limit\);/, 'a query body that names no limit gets the default page, not the whole table (Issue #1267)');
+  assert.match(String(cmd.http.args), /options: \{ \.\.\.body, limit:/, 'POST /api/tables/:ref/query passes its body through');
+  assert.match(String(cmd.run), /viewerZone: ctx\?\.viewerZone, workspace: ctx\?\.workspace/, 'the query runs in the caller\'s zone, scoped to the asking workspace (Issue #875)');
+  assert.match(ROUTES, /workspace: member\.state\.meta\.id/, 'the HTTP door names the asking workspace (Issue #875)');
+  assert.match(String(cmd.http.args), /body\?\.limit == null \? QUERY_PAGE : boundedLimit\(body\.limit\)/, 'a query body that names no limit gets the default page, not the whole table (Issue #1267)');
 });
 
 test('every door emits the one permalink a row has, and no door builds its own (Feature #203)', async () => {

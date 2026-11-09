@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
+import { COMMANDS, httpPaths } from '../src/commands.js';
 import { ROOT } from './lib/source.mjs';
 
 const SRC = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
@@ -23,6 +24,7 @@ export function listRoutes(src = SRC) {
     .replace(/\(\\\/\.\*\|\$\)/g, '/')
     .replace(/\(([a-z]+)(?:\|[a-z]+)+\)/g, '$1')
     .replace(/\\\//g, '/').replace(/\\\./g, '.');
+  for (const c of COMMANDS) for (const p of httpPaths(c)) add(c.http.method, p.replace(/:[a-z]+\*?\??/gi, ID), 'src/commands.js');
   for (const line of src.split('\n')) {
     const method = line.match(/rx\.method === '([A-Z]+)'/)?.[1] ?? 'GET';
     for (const [, m, p] of line.matchAll(/route === '([A-Z]+) ([^']+)'/g)) add(m, p, line);
