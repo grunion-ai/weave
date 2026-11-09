@@ -64,17 +64,24 @@ of their own.
 | **File** | `entity.files` | A blob stored beside the workspace file, referenced by id from attachments fields. |
 | **Activity** | `entity.activity` | An append-only record of one thing that happened to the entity, carrying `seq` (the commit order) and `ts` (the display time). Ten kinds; last 500 kept, the older ones counted in `entity.activityDropped`. |
 
+### Records of a system table
+
+Kinds that are records of a built-in table, with that table's fields and an
+entity view. Their own verbs read and write the record.
+
+| Kind | Record of | What it is |
+| --- | --- | --- |
+| **Automation** | `System/Workflows` | A rule bound to one table: a trigger, and the actions it fires. The record's On is the switch, When and Then say what it does, and Health says how its last run went. |
+
 ### Machinery around the entities
 
-Real objects with their own verbs, outside the entity levels. Two of them are
-also seen as records: a rule is a `System/Workflows` record and an account a
-`System/Users` record, which gives those two fields and an entity view. The rest
-have neither.
+Real objects with their own verbs, outside the entity levels. One of them is
+also seen as a record: an account is a `System/Users` record, which gives it
+fields and an entity view. The rest have neither.
 
 | Kind | Lives in | What it is |
 | --- | --- | --- |
 | **Saved view** | `state.meta.views` | A saved arrangement of table blocks with filters and layouts, optionally shared by token. Distinct from the entity view every entity has by existing. |
-| **Automation** | a `System/Workflows` record | A rule bound to one table: a trigger, and the actions it fires. Its verbs read and write the record. |
 | **Account** | `state.meta.accounts` | A named token holder with a role — architect, editor, observer. Only the hash is kept. |
 | **Credential** | the keystore, *outside* the workspace | A named secret — API key, token, password, id or pair. A key field stores the NAME; the value never enters the .db, and reading it back is gated by the credential's own access list. |
 | **Audit entry** | `store.audit_log` | A workspace-level record of a structural change. |

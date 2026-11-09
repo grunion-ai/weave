@@ -542,18 +542,21 @@ export const ONTOLOGY = {
     },
   ],
 
+  records: [
+    {
+      key: 'automation', name: 'Automation', isEntity: true, registry: 'System/Workflows', storedIn: 'state.entities',
+      definition: 'A rule bound to one table, held as a record of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the record number: the rules on one trigger fire in that order.',
+      identity: 'uuid',
+      api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
+    },
+  ],
+
   apparatus: [
     {
       key: 'saved-view', name: 'Saved view', storedIn: 'state.meta.views',
       definition: 'A saved arrangement of one or more table blocks, each with its own filter and layout; optionally published read-only through a share token. Not to be confused with the entity view, which every entity has by existing.',
       identity: 'uuid; a share token when shared',
       api: ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'resolveView', 'shareView', 'unshareView'],
-    },
-    {
-      key: 'automation', name: 'Automation', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a record of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the record number: the rules on one trigger fire in that order.',
-      identity: 'uuid',
-      api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
     {
       key: 'account', name: 'Account', storedIn: 'state.meta.accounts',

@@ -13,7 +13,7 @@ function glossaryTerms() {
   assert.ok(start > 0, 'ONTOLOGY.md must have a Glossary section');
   return [...DOC.slice(start).matchAll(/^### (.+)$/gm)].map((m) => m[1].trim());
 }
-const groups = () => [...ONTOLOGY.levels, ...ONTOLOGY.constituents, ...ONTOLOGY.apparatus];
+const groups = () => [...ONTOLOGY.levels, ...ONTOLOGY.constituents, ...ONTOLOGY.records, ...ONTOLOGY.apparatus];
 
 test('the ontology has one core kind, and the entity levels are its levels', () => {
   assert.equal(ONTOLOGY.core.key, 'entity', 'the core kind is the entity');
@@ -186,4 +186,21 @@ test('the glossary Space section carries the approved definition and no containe
   assert.ok(section.includes('The unit of meaning in a workspace: the tables of one area, under one schema version. Its name is the left half of `Space/Table`, as in `CRM/Deal`. Spaces never nest.'),
     'the Space section opens on the glossary wording');
   assert.ok(!/container/i.test(section), 'the Space section no longer calls a space a container');
+});
+
+test('an automation is a record of System/Workflows, listed with the records and not with the machinery (Feature #249)', () => {
+  const auto = ONTOLOGY.records.find((t) => t.key === 'automation');
+  assert.ok(auto, 'the automation sits in the records group');
+  assert.ok(!ONTOLOGY.apparatus.some((t) => t.key === 'automation'), 'and not in the machinery');
+  assert.equal(auto.isEntity, true);
+  const w = new Weave();
+  w.createSpace({ name: 'Ops' });
+  const db = w.createTable({ space: 'Ops', name: 'Request' });
+  assert.equal(w.getTable(auto.registry).system, 'workflows', 'its registry is the Workflows system table');
+  const rule = w.createAutomation(db.id, { name: 'Note it', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'x' }] });
+  assert.equal(w.readEntity(rule.id).db, auto.registry, 'a rule IS a record of that table');
+  const records = DOC.slice(DOC.indexOf('### Records of a system table'), DOC.indexOf('### Machinery around the entities'));
+  assert.match(records, /^\| \*\*Automation\*\* \|/m, 'ONTOLOGY.md lists it with the records');
+  const machinery = DOC.slice(DOC.indexOf('### Machinery around the entities'), DOC.indexOf('\n## ', DOC.indexOf('### Machinery around the entities')));
+  assert.doesNotMatch(machinery, /\*\*Automation\*\*/, 'and not with the machinery');
 });
