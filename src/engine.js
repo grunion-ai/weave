@@ -3468,6 +3468,7 @@ export class Weave {
     store.load = () => state;
     const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv, keyStore: this.#keyStore });
     copy.#noWebhooks = true;
+    copy.#trialHosted = !!this.registryHost;
     return copy;
   }
 
@@ -3533,8 +3534,8 @@ export class Weave {
       }
       listAt(`${at}.tables`, sp.tables).forEach((t, j) => {
         const tAt = `${at}.tables[${j}]`;
-        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, records?, fieldOrder?, hidden?, sort?}', 'invalid'));
-        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'records', 'rows', 'fieldOrder', 'hidden', 'sort']);
+        if (!isObj(t)) return fail(tAt, new WeaveError('A table is an object: {name, icon?, description?, fields?, records?, fieldOrder?, hidden?, sort?, automations?}', 'invalid'));
+        extra(tAt, t, ['name', 'icon', 'description', 'fields', 'records', 'rows', 'fieldOrder', 'hidden', 'sort', 'automations']);
         const tw = cosmetic(tAt, t, 'icon', iconValue);
         let db = t.name ? this.findTable(`${space.name}/${t.name}`) : null;
         if (db) existing.push(`table ${space.name}/${db.name}`);
@@ -3673,6 +3674,29 @@ export class Weave {
           return this.updateTable(tb.db.id, { sort });
         });
       }
+    }
+
+    for (const tb of tables) {
+      const have = new Set(this.listAutomations(tb.db.id).map((a) => String(a.name).toLowerCase()));
+      listAt(`${tb.at}.automations`, tb.spec.automations).forEach((rule, k) => {
+        const at = `${tb.at}.automations[${k}]`;
+        if (!isObj(rule)) return fail(at, new WeaveError('A rule is an object: {name, trigger, actions, on?}', 'invalid'));
+        extra(at, rule, ['name', 'trigger', 'actions', 'on']);
+        const name = String(rule.name ?? '').trim();
+        if (!name) return fail(at, new WeaveError('A rule needs a name', 'invalid'));
+        if (have.has(name.toLowerCase())) { existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`); return undefined; }
+        const made = step(at, () => {
+          try { this.#compileSpec({ table: tb.db.id, trigger: rule.trigger, actions: rule.actions }); } catch (err) {
+            throw new WeaveError(`Rule '${name}' would read Setup incomplete: ${err.message}`, 'invalid');
+          }
+          if (this.#trialHosted && !this.#sysTable('workflows')) return true;
+          return this.createAutomation(tb.db.id, { name, trigger: rule.trigger, actions: rule.actions, enabled: rule.on !== false });
+        });
+        if (!made) return undefined;
+        have.add(name.toLowerCase());
+        created.automations = (created.automations ?? 0) + 1;
+        return undefined;
+      });
     }
 
     if (computedMade.length) {
@@ -9102,6 +9126,7 @@ export class Weave {
   #wfRows = null;
   #wfRules = null;
   #noWebhooks = false;
+  #trialHosted = false;
   webhookTimeoutMs = 5000;
   deliveryAttempts = DELIVERY_ATTEMPTS;
 
