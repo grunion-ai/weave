@@ -611,8 +611,8 @@
        "id": "<field Label.Title>",
        "name": "Title",
        "type": "formula",
-       "role": "name",
-       "expression": "concat(Code, \"!\")"
+       "expression": "concat(Code, \"!\")",
+       "role": "name"
       },
       {
        "id": "<field Label.Description>",
@@ -840,7 +840,8 @@
        "name": "Note",
        "type": "text",
        "width": 220,
-       "description": "Free text"
+       "description": "Free text",
+       "literal": true
       },
       {
        "id": "<field Deal.Amount>",
@@ -914,8 +915,8 @@
        "id": "<field Deal.Live>",
        "name": "Live",
        "type": "toggle",
-       "on": "On",
-       "off": "Off",
+       "on": "Live",
+       "off": "Draft",
        "default": false
       },
       {
@@ -1058,14 +1059,14 @@
        "name": "Token",
        "type": "key",
        "kind": "pair",
-       "keystore": "local",
+       "keystore": "1password",
        "parts": [
         {
-         "name": "id",
+         "name": "user",
          "secret": false
         },
         {
-         "name": "secret",
+         "name": "pass",
          "secret": true
         }
        ]
@@ -1255,8 +1256,8 @@
        "id": "<field Label.Title>",
        "name": "Title",
        "type": "formula",
-       "role": "name",
-       "expression": "concat(Code, \"!\")"
+       "expression": "concat(Code, \"!\")",
+       "role": "name"
       },
       {
        "id": "<field Label.Description>",
@@ -1304,7 +1305,9 @@
    "change": {
     "literal": false
    },
-   "plan": [],
+   "plan": [
+    "update-field Ops/Deal.Note"
+   ],
    "before": {
     "id": "<field Deal.Note>",
     "name": "Note",
@@ -1318,8 +1321,7 @@
     "name": "Note",
     "type": "text",
     "width": 220,
-    "description": "Free text",
-    "literal": true
+    "description": "Free text"
    }
   },
   {
@@ -1474,7 +1476,9 @@
     "color": "accent",
     "icon": "lucide:star"
    },
-   "plan": [],
+   "plan": [
+    "update-field Ops/Deal.Stars"
+   ],
    "before": {
     "id": "<field Deal.Stars>",
     "name": "Stars",
@@ -1489,7 +1493,7 @@
     "type": "rating",
     "max": 5,
     "icon": "lucide:star",
-    "color": "ink"
+    "color": "accent"
    }
   },
   {
@@ -1497,7 +1501,9 @@
    "change": {
     "color": "ink"
    },
-   "plan": [],
+   "plan": [
+    "update-field Ops/Deal.Hearts"
+   ],
    "before": {
     "id": "<field Deal.Hearts>",
     "name": "Hearts",
@@ -1513,7 +1519,7 @@
     "type": "rating",
     "max": 7,
     "icon": "lucide:heart",
-    "color": "icon",
+    "color": "ink",
     "default": 2
    }
   },
@@ -1636,7 +1642,9 @@
     "on": "Up",
     "off": "Down"
    },
-   "plan": [],
+   "plan": [
+    "update-field Ops/Deal.Live"
+   ],
    "before": {
     "id": "<field Deal.Live>",
     "name": "Live",
@@ -1649,8 +1657,8 @@
     "id": "<field Deal.Live>",
     "name": "Live",
     "type": "toggle",
-    "on": "Live",
-    "off": "Draft",
+    "on": "Up",
+    "off": "Down",
     "default": false
    }
   },
@@ -2290,7 +2298,9 @@
    "change": {
     "shape": "round"
    },
-   "plan": [],
+   "plan": [
+    "update-field Ops/Deal.Face"
+   ],
    "before": {
     "id": "<field Deal.Face>",
     "name": "Face",
@@ -2301,7 +2311,7 @@
     "id": "<field Deal.Face>",
     "name": "Face",
     "type": "avatar",
-    "shape": "square"
+    "shape": "round"
    }
   },
   {
