@@ -49,13 +49,13 @@ if (s) {
     };
   });
 
-  test('a narrow dock folds the middle, then the last-but-one: the first crumb and the whole current crumb stay in the box (Issue #765)', async () => {
+  test('a narrow dock wraps its actions so the first crumb and whole current crumb stay in the box (Issues #765, #1513)', async () => {
     const page = await walk();
     const m = await read(page);
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
     assert.equal(m.shown[0], 'Step 0', 'the first crumb stays');
-    assert.deepEqual(m.shown, ['Step 0', 'Step 5'], 'the dock row with Share leaves no room for the last-but-one beside the current crumb\'s floor, so it folds too');
+    assert.deepEqual(m.shown, ['Step 0', 'Step 4', 'Step 5'], 'wrapping the actions preserves room for the previous hop beside the current crumb');
     assert.ok(m.cur.l >= m.path.l - 0.5 && m.cur.r <= m.path.r + 0.5, `the current crumb is inside the path box: ${JSON.stringify(m)}`);
     assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows');
     assert.ok(m.cur.nm.w > 40, `and some of its Name, ending in its own ellipsis: ${m.cur.nm.w}px`);
@@ -65,6 +65,7 @@ if (s) {
 
   test('the "…" menu lists the hidden hops with #id and Name, and choosing one goes there', async () => {
     const page = await walk();
+    await page.waitForSelector('#dock .crumb-more');
     const hidden = await page.$$eval('#dock .crumb-path > .crumb-slot[hidden] .crumb-nm', (ns) => ns.map((n) => n.textContent));
     assert.ok(hidden.length >= 1, 'something is folded');
     await page.click('#dock .crumb-more');
@@ -80,7 +81,7 @@ if (s) {
     assert.equal(await page.getAttribute('#dock .crumb-more', 'aria-expanded'), 'true');
     await page.click('.crumb-fold-menu .crumb-fold-row >> nth=0');
     await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value === n, hidden[0]);
-    assert.equal(await page.locator('.crumb-fold-menu').count(), 0, 'the menu closes');
+    await page.waitForSelector('.crumb-fold-menu', { state: 'detached' });
     await page.close();
   });
 
