@@ -3886,6 +3886,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
   };
 
   if (f.type === 'view') return viewCell(item.raw?.[f.name], f, { compact });
+  const wfCell = db?.system === 'workflows' ? globalThis.workflowCell?.(f, item, patch) : null;
+  if (wfCell) return wfCell;
   const farRel = lookupTargetOf(db, f);
   if (farRel?.type === 'relation' && val != null && (!Array.isArray(val) || val.length)) {
     const all = Array.isArray(val) ? val : [val];
@@ -4686,6 +4688,7 @@ function serverSums(result) {
 }
 async function readAndDrawTable(db, dbId, search, cold = false) {
   if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search);
+  if (db.system === 'workflows') await lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true));
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
@@ -4739,6 +4742,7 @@ function gridFields(db) {
   for (const s of gridSort(db) ?? []) if (db.fields.some((f) => f.name === s.field)) names.add(s.field);
   for (const l of db.view?.group ?? []) if (db.fields.some((f) => f.name === l.field)) names.add(l.field);
   for (const n of db.systemFields ?? []) names.add(n);
+  if (db.system === 'workflows') names.add('State').add('Health Reason');
   return [...names];
 }
 

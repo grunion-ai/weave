@@ -158,11 +158,11 @@ test('every Workflows row carries a system On toggle, worded On / Off, off until
   assert.equal(f(t, 'State').type, 'workflow', 'State stays in place beside it');
 });
 
-test('the On switch leads the row: first after Name, in the schema order and in the standard view', () => {
+test('the On switch leads the row: first after Name in the schema order, first column of the standard view (Feature #249)', () => {
   const w = fresh();
   const t = wfTable(w);
   assert.deepEqual(names(t, t.fieldOrder).slice(0, 3), ['Name', 'On', 'Description']);
-  for (const v of t.tableViews) assert.deepEqual(names(t, v.fields).slice(0, 2), ['Name', 'On'], `view ${v.name}`);
+  for (const v of t.tableViews) assert.deepEqual(names(t, v.fields).slice(0, 2), ['On', 'Name'], `view ${v.name}`);
   const row = w.query('Tables', { where: [['Name', '=', 'Workflows']] }).items[0];
   assert.match(w.readEntity(row.id).raw['Field Order'], /^Name, On, Description/, 'the Tables row names the same order');
 });

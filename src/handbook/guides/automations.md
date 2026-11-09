@@ -6,12 +6,14 @@ Nothing here reaches outside the workspace except the `webhook` action.
 
 ## The Workflows row is the control panel
 
-Every rule is a row of `System/Workflows`, and the row is the whole interface to it:
+Every rule is a row of `System/Workflows`, and the row is the whole interface to it. The Standard view shows `On`, `Name`, `When`, `Then`, `Health` and `Last Run`, so you can read what each rule does without opening its Script:
 
 | Column | What it holds |
 | --- | --- |
 | `Name` | what you call the rule |
 | `On` | the switch. Off means the trigger is ignored |
+| `When` | the table and the trigger in words, such as `Status moves to Approved in Ops/Request`, written by the engine |
+| `Then` | the actions in words, in order, such as `Set Notes to "approved", then Add a comment`, written by the engine |
 | `Script` | the rule itself, as JSON: `{"table", "trigger", "actions"}` |
 | `State` | `Setup incomplete` while the Script does not compile, `Ready` once it does |
 | `Health` | `Healthy`, `Warning`, `Failed`, or `No runs` before the first fire |
