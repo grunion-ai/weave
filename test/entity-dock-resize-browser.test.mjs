@@ -141,6 +141,8 @@ if (s) {
       assert.ok(narrow.overflow <= 0, `narrowed, nothing spills past the window: ${narrow.overflow}px`);
       assert.equal(narrow.stored, '900', 'the narrow window never rewrites the pin');
       await page.setViewportSize({ width: 1600, height: 900 });
+      await page.waitForFunction(() => !document.querySelector('#app').classList.contains('table-yield'));
+      await settled(page.locator('#dock'));
       const back = await geometry(page);
       assert.ok(Math.abs(back.dockW - wide.dockW) <= 2, `widened again, the pinned width returns: ${back.dockW}px`);
       await page.close();
@@ -161,7 +163,7 @@ if (s) {
     });
 
     test('narrow viewports show a usable record and restore the table on close (Issue #1513)', async () => {
-      for (const width of [601, 729, 867, 901, 1000]) {
+      for (const width of [601, 729, 901, 1000]) {
         const page = await openPinned('light', 900, width);
         await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
         const g = await geometry(page);
@@ -184,6 +186,20 @@ if (s) {
     });
 
   }
+
+  test('the split holds both content floors around its boundary (Issue #1513)', async () => {
+    const page = await openPinned('light', 0, 1600);
+    try {
+      for (const width of [865, 866, 867, 868, 869, 900, 901, 1131, 1132, 1133, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await settled(page.locator('#dock'));
+        const g = await geometry(page);
+        assert.ok(g.main === 0 || g.main >= 400, `${width}px table: ${g.main}`);
+        assert.ok(g.dockW >= 400, `${width}px record: ${g.dockW}`);
+        assert.ok(g.overflow <= 0, `${width}px overflow: ${g.overflow}`);
+      }
+    } finally { await page.close(); }
+  });
 
   test('the divider lives in the canvas gap, not inside either panel', async () => {
     const page = await openDocked();
