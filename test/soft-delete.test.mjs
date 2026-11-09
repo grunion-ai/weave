@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
+import { cliCommand } from '../src/commands.js';
 import { withServer } from './lib/fixtures.mjs';
 
 function buildWorkspace() {
@@ -231,7 +232,7 @@ test('MCP exposes the same delete / restore / trash contract', () => {
 test('CLI documents delete --hard, restore and trash', () => {
   const help = readFileSync(new URL('../bin/weave.js', import.meta.url), 'utf8');
   for (const cmd of ['restore', 'trash']) {
-    assert.ok(help.includes(`case '${cmd}'`), `CLI must implement '${cmd}'`);
+    assert.ok(help.includes(`case '${cmd}'`) || cliCommand(cmd), `CLI must implement '${cmd}'`);
   }
   assert.match(help, /delete <ref> \[--hard\]/, 'the help text must document --hard');
 });

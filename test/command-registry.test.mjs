@@ -190,16 +190,29 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const w = new Weave();
   seed(w);
   w.addField('Task', { name: 'Points', type: 'number' });
+  w.addRelation('Task', { name: 'Owner', targetDb: 'Person', cardinality: 'many-to-many' });
+  w.addField('Task', { name: 'Stage', type: 'workflow', config: { states: [{ name: 'Todo', category: 'not-started', default: true }, { name: 'Doing', category: 'in-progress' }] } });
+  w.createEntity('Person', { Name: 'Pat' });
+  const alpha = w.query('Task').items[0].id;
+  const gone = w.createEntity('Task', { Name: 'Gone' }).id;
+  w.deleteEntity(gone);
   w.createAccount({ name: 'arch', role: 'architect' });
   const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops' };
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha };
+  const bodies = {
+    'formula.check': { expression: 'Points * 2' },
+    'entity.link': { field: 'Owner', targets: ['Pat'] },
+    'entity.unlink': { field: 'Owner', targets: ['Pat'] },
+    'entity.state': { field: 'Stage', state: 'Doing' },
+  };
   try {
     for (const c of COMMANDS) {
       if (c.http.method === 'GET' || c.writes === 'keystore') continue;
-      const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(sample[k] ?? 'x'));
-      const body = c.name === 'formula.check' ? { expression: 'Points * 2' } : {};
+      const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
+      const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
+      const body = bodies[c.name] ?? {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
       if (c.writes === 'schema') {
@@ -245,7 +258,7 @@ async function threeDoors(prefix, { env: extra = {}, seeded = seed, local = fals
     assert.ok(res.ok, `${method} ${path}: ${JSON.stringify(json)}`);
     return json;
   };
-  return { run, cli, call, mcp, raw, http, httpWeave, close: () => server.close() };
+  return { run, cli, call, mcp, raw, http, httpWeave, mcpWeave, close: () => server.close() };
 }
 
 const bare = (v) => JSON.parse(JSON.stringify(strip(v), (k, x) => (k.endsWith('Id') ? undefined : x)));
@@ -423,5 +436,36 @@ test('the registry pair and the relation map answer the same on CLI, MCP and HTT
     assert.equal(ids(d.cli(['map'])), `${map}\n`, 'weave map prints the diagram');
     assert.equal(matchRoute('POST', '/api/registry/rebuild')?.cmd.name, 'registry.rebuild');
     assert.equal(matchRoute('GET', '/api/relation-map.mmd')?.cmd.name, 'relation.map');
+  } finally { d.close(); }
+});
+
+test('link, unlink, state and restore answer the same on CLI, MCP and HTTP (Feature #179)', async () => {
+  const seeded = (w) => {
+    seed(w);
+    w.addRelation('Task', { name: 'Owner', targetDb: 'Person', cardinality: 'many-to-many', inverseName: 'Tasks' });
+    w.addField('Task', { name: 'Stage', type: 'workflow', config: { states: [{ name: 'Todo', category: 'not-started', default: true }, { name: 'In Review', category: 'in-progress' }] } });
+    w.createEntity('Person', { Name: 'Pat' });
+    w.createEntity('Person', { Name: 'Sam' });
+    w.deleteEntity(w.createEntity('Task', { Name: 'Gone' }).id);
+  };
+  const d = await threeDoors('weave-registry-rows-', { seeded });
+  const idOf = (w, name) => w.query('Task', { where: [['Name', '=', name]], includeDeleted: true }).items[0].id;
+  const row = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['revision', 'url', 'ts', 'raw', 'modifiedBy', 'createdBy'].includes(k) ? undefined : x)));
+  try {
+    const steps = [
+      [['link', 'Task#1', 'Owner', 'Pat', 'Sam'], ['weave_link', { field: 'Owner', targets: ['Pat', 'Sam'] }], ['POST', 'link', { field: 'Owner', targets: ['Pat', 'Sam'] }]],
+      [['unlink', 'Task#1', 'Owner', 'Sam'], ['weave_unlink', { field: 'Owner', targets: ['Sam'] }], ['POST', 'unlink', { field: 'Owner', items: ['Sam'] }]],
+      [['link', 'Task#1', 'Owner', 'Pat', '--unlink'], ['weave_unlink', { field: 'Owner', targets: ['Pat'] }], ['POST', 'unlink', { field: 'Owner', targets: ['Pat'] }]],
+      [['state', 'Task#1', 'Stage', 'In', 'Review'], ['weave_set_state', { field: 'Stage', state: 'In Review' }], ['POST', 'state', { field: 'Stage', state: 'In Review' }]],
+      [['restore', 'Task#2'], ['weave_restore_entity', {}, 'Gone'], ['POST', 'restore', {}, 'Gone']],
+    ];
+    for (const [c, [tool, args, mcpName = 'Alpha'], [method, tail, body, httpName = 'Alpha']] of steps) {
+      const fromHttp = row(await d.http(method, `/api/entities/${idOf(d.httpWeave, httpName)}/${tail}`, body));
+      assert.deepEqual(row(d.mcp(tool, { entity: idOf(d.mcpWeave, mcpName), ...args, verbose: true })), fromHttp, `${tool} and ${method} ${tail} answer alike`);
+      assert.deepEqual(row(d.cli(c)), fromHttp, `weave ${c.join(' ')} and ${method} ${tail} answer alike`);
+    }
+    for (const [name, path] of [['entity.link', 'link'], ['entity.unlink', 'unlink'], ['entity.state', 'state'], ['entity.restore', 'restore']]) {
+      assert.equal(matchRoute('POST', `/api/entities/x/${path}`)?.cmd.name, name);
+    }
   } finally { d.close(); }
 });

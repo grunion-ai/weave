@@ -120,11 +120,7 @@ export const TOOLS = [
     description: 'Delete an entity. Recoverable by default — it moves to the trash keeping its id, public id and links. Pass hard: true to purge it irreversibly (relations are unlinked cleanly).',
     inputSchema: { type: 'object', properties: { entity: { type: 'string' }, hard: { type: 'boolean' } }, required: ['entity'] },
   },
-  {
-    name: 'weave_restore_entity',
-    description: 'Restore a soft-deleted entity from the trash, links intact.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' } }, required: ['entity'] },
-  },
+  toolDefinition('weave_restore_entity'),
   {
     name: 'weave_trash',
     description: 'List deleted entities — one table, or the whole workspace when table is omitted.',
@@ -153,21 +149,9 @@ export const TOOLS = [
       name: { type: 'string', description: 'rollup: the new parent\'s name' },
     }, required: ['ids', 'op'] },
   },
-  {
-    name: 'weave_set_state',
-    description: 'Move an entity to a workflow state (multistate field).',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, state: { type: 'string' } }, required: ['entity', 'field', 'state'] },
-  },
-  {
-    name: 'weave_link',
-    description: 'Link entities through a relation field (bidirectional; inverse side updates automatically).',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
-  },
-  {
-    name: 'weave_unlink',
-    description: 'Remove entities from a relation field, leaving both entities in place. targets takes ids, names, or "#publicId"; the inverse field on the other table follows.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
-  },
+  toolDefinition('weave_set_state'),
+  toolDefinition('weave_link'),
+  toolDefinition('weave_unlink'),
   {
     name: 'weave_get_doc',
     description: 'Read an entity document as markdown. Entities can carry several document fields; omit field for the default (the table\'s first document field, usually "Description").',
@@ -592,7 +576,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
   const command = toolCommand(name, args);
-  if (command) return command.run(weave, args);
+  if (command) return command.run(weave, args, { caller });
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
@@ -621,8 +605,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_delete_entity':
       refuseUsersWrite(weave, args.entity, caller);
       return weave.deleteEntity(args.entity, { hard: Boolean(args.hard) });
-    case 'weave_restore_entity':
-      return weave.restoreEntity(args.entity);
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
     case 'weave_stats':
@@ -634,15 +616,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       const { ids, op, ...params } = args;
       return weave.bulk(ids, op, params);
     }
-    case 'weave_set_state':
-      weave.setState(args.entity, args.field, args.state);
-      return weave.readEntity(args.entity);
-    case 'weave_link':
-      weave.link(args.entity, args.field, args.targets);
-      return weave.readEntity(args.entity);
-    case 'weave_unlink':
-      weave.unlink(args.entity, args.field, args.targets);
-      return weave.readEntity(args.entity);
     case 'weave_get_doc':
       return weave.getDoc(args.entity, args.field ?? null);
     case 'weave_set_doc':

@@ -1986,7 +1986,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
-        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams), httpHeaders(registered));
+        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, { viewerZone }), httpHeaders(registered));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }
@@ -2074,9 +2074,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, { ok: true, ...weave.deleteEntity(m[1], { hard }) });
           }
         }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreEntity(m[1]));
-        }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
           return out(200, weave.referencesTo(m[1]));
         }
@@ -2098,19 +2095,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const made = newSlideVersion(weave, m[1], { promote });
           return out(201, weave.readEntity(made.id));
         }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/link$/)) && rx.method === 'POST') {
-          weave.link(m[1], body.field, body.targets ?? body.items);
-          return out(200, weave.readEntity(m[1], { viewerZone }));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/unlink$/)) && rx.method === 'POST') {
-          weave.unlink(m[1], body.field, body.targets ?? body.items);
-          return out(200, weave.readEntity(m[1], { viewerZone }));
-        }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/state$/)) && rx.method === 'POST') {
-          weave.setState(m[1], body.field, body.state);
-          return out(200, weave.readEntity(m[1], { viewerZone }));
-        }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions$/)) && rx.method === 'GET') {
           const fieldRef = rx.searchParams.get('field') ?? null;

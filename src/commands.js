@@ -53,6 +53,9 @@ const REGISTRY_TOOL = {
   inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
 };
 
+const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
+const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets ?? a.items });
+
 const AUTOMATIONS_TOOL = {
   name: 'weave_automations',
   description: 'Automations already on a table, read from their System/Workflows records: action list | describe (rules in prose) | update (patch: name, enabled = the record\'s On) | delete (to the trash). Create one with weave_create_automation.',
@@ -594,6 +597,58 @@ export const COMMANDS = [
     http: { method: 'GET', path: '/api/relation-map.mmd', result: (r) => r.mermaid },
     run: (w) => ({ mermaid: w.relationMapMmd() }),
   },
+  {
+    name: 'entity.restore',
+    engine: ['restoreEntity'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_restore_entity',
+      description: 'Restore a soft-deleted entity from the trash, links intact.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' } }, required: ['entity'] },
+    },
+    cli: { command: 'restore', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db) }) },
+    http: { method: 'POST', path: '/api/entities/:entity/restore' },
+    run: (w, a) => w.restoreEntity(a.entity),
+  },
+  {
+    name: 'entity.state',
+    engine: ['setState'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_set_state',
+      description: 'Move an entity to a workflow state (multistate field).',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, state: { type: 'string' } }, required: ['entity', 'field', 'state'] },
+    },
+    cli: { command: 'state', positional: ['entity', 'field'], rest: 'state', args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, state: a.state.join(' ') }) },
+    http: { method: 'POST', path: '/api/entities/:entity/state' },
+    run: (w, a, ctx) => { w.setState(a.entity, a.field, a.state); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+  },
+  {
+    name: 'entity.link',
+    engine: ['link'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_link',
+      description: 'Link entities through a relation field (bidirectional; inverse side updates automatically).',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
+    },
+    cli: { command: 'link', positional: ['entity', 'field'], rest: 'targets', use: (flags) => (flags.unlink ? 'entity.unlink' : null), args: linkArgs },
+    http: { method: 'POST', path: '/api/entities/:entity/link', args: linkBody },
+    run: (w, a, ctx) => { w.link(a.entity, a.field, a.targets); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+  },
+  {
+    name: 'entity.unlink',
+    engine: ['unlink'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_unlink',
+      description: 'Remove entities from a relation field, leaving both entities in place. targets takes ids, names, or "#publicId"; the inverse field on the other table follows.',
+      inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
+    },
+    cli: { command: 'unlink', positional: ['entity', 'field'], rest: 'targets', args: linkArgs },
+    http: { method: 'POST', path: '/api/entities/:entity/unlink', args: linkBody },
+    run: (w, a, ctx) => { w.unlink(a.entity, a.field, a.targets); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -652,12 +707,15 @@ export const cliRest = (cmd, args) => (cmd.cli.sub && args[0] === cmd.cli.sub ? 
 export function cliArgs(cmd, positional, flags, helpers) {
   const a = {};
   cmd.cli.positional?.forEach((k, i) => { if (positional[i] !== undefined) a[k] = positional[i]; });
+  if (cmd.cli.rest) a[cmd.cli.rest] = positional.slice(cmd.cli.positional?.length ?? 0);
   for (const f of cmd.cli.flags ?? []) if (flags[f] !== undefined) a[camel(f)] = flags[f];
   return cmd.cli.args ? cmd.cli.args(a, flags, helpers) : a;
 }
 
-export function cliRun(cmd, w, args, flags, helpers) {
-  const result = cmd.run(w, cliArgs(cmd, cliRest(cmd, args), flags, helpers));
+export function cliRun(given, w, args, flags, helpers) {
+  const swap = given.cli.use?.(flags);
+  const cmd = swap ? COMMANDS.find((c) => c.name === swap) : given;
+  const result = cmd.run(w, cliArgs(cmd, cliRest(given, args), flags, helpers), {});
   return cmd.cli.result ? cmd.cli.result(result) : result;
 }
 
@@ -689,9 +747,9 @@ export function httpArgs(hit, body, searchParams) {
   return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams) : a;
 }
 
-export function httpRun(w, hit, body, searchParams) {
+export function httpRun(w, hit, body, searchParams, ctx = {}) {
   const a = httpArgs(hit, body, searchParams);
-  const result = hit.cmd.run(w, a);
+  const result = hit.cmd.run(w, a, ctx);
   return hit.cmd.http.result ? hit.cmd.http.result(result, a) : result;
 }
 

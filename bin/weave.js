@@ -726,21 +726,11 @@ async function main() {
       const e = resolveEntityRef(w, args[0], flags.db);
       return out(w.deleteEntity(e.id, { hard: Boolean(flags.hard) }));
     }
-    case 'restore': {
-      const e = resolveEntityRef(w, args[0], flags.db);
-      return out(w.restoreEntity(e.id));
-    }
     case 'trash':
       return out(w.listTrash(args[0] ?? null));
     case 'stats': {
       if (!args[0]) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F]');
       return out(w.tableStats(args[0], { by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null }));
-    }
-    case 'state': {
-      const [ref, field, ...stateParts] = args;
-      const e = resolveEntityRef(w, ref, flags.db);
-      w.setState(e.id, field, stateParts.join(' '));
-      return out(w.readEntity(e.id));
     }
     case 'bulk': {
       const [op, ...refs] = args;
@@ -750,14 +740,6 @@ async function main() {
       if (values) params.values = values;
       if (flags.targets != null) params.targets = splitList(flags.targets);
       return out(w.bulk(ids, op, params));
-    }
-    case 'link':
-    case 'unlink': {
-      const [ref, field, ...targets] = args;
-      const e = resolveEntityRef(w, ref, flags.db);
-      if (command === 'unlink' || flags.unlink) w.unlink(e.id, field, targets);
-      else w.link(e.id, field, targets);
-      return out(w.readEntity(e.id));
     }
     case 'doc': {
       const [sub, ref] = args;
