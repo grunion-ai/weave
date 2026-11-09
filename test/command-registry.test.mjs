@@ -984,3 +984,48 @@ test('template list and use answer on CLI, MCP and HTTP, each door with its own 
     assert.match((await res.json()).error, /Name the workspace to build in/);
   } finally { d.close(); }
 });
+
+test('schema describe, apply and build answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-schema-');
+  const plain = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (k === 'url' ? undefined : x)));
+  try {
+    assert.equal(matchRoute('GET', '/api/schema').cmd.name, 'schema.describe');
+    assert.equal(matchRoute('PUT', '/api/schema').cmd.name, 'schema.apply');
+    assert.equal(matchRoute('POST', '/api/build').cmd.name, 'build');
+    const described = await d.http('GET', '/api/schema');
+    assert.deepEqual(plain(d.cli(['schema'])), plain(described), 'weave schema and GET /api/schema answer alike');
+    assert.deepEqual(plain(d.cli(['schema', 'export'])), plain(described), 'weave schema export prints the same document');
+    assert.deepEqual(plain(d.cli(['schema', 'anything'])), plain(described), 'an unknown subcommand still describes');
+    assert.deepEqual(plain(d.mcp('weave_schema', {})), plain(described), 'weave_schema answers the document');
+    const file = join(tempDir('weave-registry-schema-file-'), 'schema.json');
+    assert.deepEqual(d.cli(['schema', 'export', '--out', file]), { ok: true, out: file });
+
+    const doc = JSON.parse(JSON.stringify(described));
+    doc.push({ space: 'Ledger', tables: [{ name: 'Entry', fields: [] }] });
+    writeFileSync(file, JSON.stringify(doc));
+    const planned = await d.http('PUT', '/api/schema', { schema: doc, dryRun: true });
+    assert.deepEqual(plain(d.cli(['schema', 'apply', '--file', file, '--dry-run'])), plain(planned), 'schema apply and PUT /api/schema plan alike');
+    assert.deepEqual(plain(d.mcp('weave_apply_schema', { document: doc, dryRun: true }).plan), plain(planned), 'weave_apply_schema wraps the plan');
+    assert.equal(d.httpWeave.describeSchema().some((s) => s.space === 'Ledger'), false, 'a dry run writes nothing');
+    await d.http('PUT', '/api/schema', doc);
+    assert.equal(d.httpWeave.describeSchema().some((s) => s.space === 'Ledger'), true, 'a bare document body applies');
+
+    const spec = { spaces: [{ name: 'Budget', tables: [{ name: 'Account', records: [{ Name: 'Amex' }] }] }] };
+    const built = await d.http('POST', '/api/build', spec);
+    assert.equal(built.ok, true);
+    const specFile = join(tempDir('weave-registry-build-file-'), 'spec.json');
+    writeFileSync(specFile, JSON.stringify(spec));
+    assert.deepEqual(d.cli(['build', specFile, '--dry-run']).ok, true, 'weave build prints one JSON line');
+    assert.equal(d.run(['build', specFile]).stdout.trim().startsWith('{'), true);
+    assert.equal(d.mcp('weave_build', { spec, dryRun: true }).ok, true, 'weave_build answers a JSON line');
+    assert.equal(d.mcp('weave_build', spec).ok, true, 'a bare spec builds');
+    const bad = { spaces: [{ tables: [] }] };
+    const refused = await d.raw('POST', '/api/build', bad);
+    assert.equal(refused.status, 400, 'a spec with errors answers 400');
+    assert.equal((await refused.json()).ok, false);
+    writeFileSync(specFile, JSON.stringify(bad));
+    const failed = d.run(['build', specFile]);
+    assert.equal(failed.status, 1, 'the CLI exits 1 on a refused spec');
+    assert.equal(JSON.parse(failed.stdout).ok, false);
+  } finally { d.close(); }
+});
