@@ -24,9 +24,9 @@ if (s) {
   };
 
   const picker = (page) => page.locator('.attach-box input[type=file]');
-  const refuse = (page) => page.route(/\/api\/uploads$/, (route) => (route.request().method() === 'PUT' ? route.fulfill({
+  const refuse = (page) => page.route(/\/fields\/Files\/files$/, (route) => route.fulfill({
     status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Internal error (request 1a2b3c4d)', code: 'internal', id: '1a2b3c4d' }),
-  }) : route.continue()));
+  }));
   const pick = (page, name = 'deck.pdf') => picker(page).setInputFiles({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 fake') });
   const stored = (row) => (weave.getEntity(rows[row].id).files ?? []).map((f) => f.name);
 
@@ -43,8 +43,8 @@ if (s) {
         assert.equal(await picker(page).evaluate((n) => n.files.length), 0, 'the input still holds the picked file');
         assert.deepEqual(stored(theme), [], 'the refused file landed');
 
-        await page.unroute(/\/api\/uploads$/);
-        const landed = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/api\/uploads$/.test(r.url()));
+        await page.unroute(/\/fields\/Files\/files$/);
+        const landed = page.waitForResponse((r) => r.request().method() === 'POST' && /\/fields\/Files\/files$/.test(r.url()));
         await tile.getByRole('button', { name: /retry/i }).click();
         assert.equal((await landed).status(), 201, 'Retry did not send the file again');
         await page.locator('.attach-item', { hasText: 'deck.pdf' }).filter({ hasNot: page.locator('.attach-fail-why') }).waitFor();

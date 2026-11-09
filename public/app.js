@@ -67,7 +67,7 @@ const uploadState = (key) => {
 };
 const uploadHostsFor = (key) => [...document.querySelectorAll('[data-upload-key]')].filter((n) => n.dataset.uploadKey === key);
 
-function sendUpload(path, body, onProgress = () => {}, raw = null) {
+function sendUpload(path, body, onProgress = () => {}) {
   warmGets.clear();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -96,18 +96,18 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
       noteSchemaVersion(xhr.getResponseHeader('X-Weave-Schema-Version'), false);
       if (xhr.status >= 200 && xhr.status < 300) {
         noteRevisions('POST', path, data);
-        noteUsage('POST', path, raw ? {} : body, data);
+        noteUsage('POST', path, body, data);
         return end(resolve, data);
       }
       if (data.code === 'seat-required') seatToast(data);
       fail({ status: xhr.status, code: data.code, id: data.id, error: uploadCore.serverError(xhr.status, data.error) ?? undefined, limit: data.limit, shown: data.code === 'seat-required' });
     };
-    xhr.open(raw ? raw.method : 'POST', raw ? raw.url : WS_PREFIX + '/api' + path);
+    xhr.open('POST', WS_PREFIX + '/api' + path);
     xhr.responseType = 'json';
-    for (const [header, value] of Object.entries(raw ? raw.headers : { 'Content-Type': 'application/json' })) xhr.setRequestHeader(header, value);
+    xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('X-Weave-Zone', LOCAL_ZONE);
     wait(UPLOAD_STALL_MS);
-    xhr.send(raw ? body : JSON.stringify(body));
+    xhr.send(JSON.stringify(body));
   });
 }
 
@@ -3573,17 +3573,6 @@ function toggleSwitch(f, val, patch) {
 const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
-async function streamUpload(path, { entity, field = null, file }, onProgress) {
-  const refusal = fileTooBig(file);
-  if (refusal) throw new Error(refusal);
-  const preview = await WeavePreview.make(file);
-  const grant = await api('POST', '/uploads', {
-    entity, field, name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
-    ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),
-  });
-  return sendUpload(path, file, onProgress, grant);
-}
-
 async function uploadBody(file) {
   const refusal = fileTooBig(file);
   if (refusal) throw new Error(refusal);
@@ -4071,7 +4060,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     const upKey = `${id}:${f.name}`;
     const known = new Set((item.files ?? []).map((x) => x.id));
     uploadState(upKey).ctl = {
-      send: (file, progress) => streamUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, { entity: id, field: f.name, file }, progress),
+      send: async (file, progress) => sendUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, await uploadBody(file), progress),
       known: () => new Set(known),
       found: (file, before) => landedFile(id, file, before, f.name),
       landed: (file, meta) => { if (meta?.id) known.add(meta.id); },
@@ -9309,7 +9298,9 @@ async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) 
   const seen = api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id)), () => new Set());
   const mine = new Set();
   uploadState(key).ctl = {
-    send: (f, progress) => streamUpload(`/entities/${entityId}/files`, { entity: entityId, file: f }, progress),
+    send: async (f, progress) => sendUpload(`/entities/${entityId}/files`, {
+      name: f.name, mime: f.type || 'application/octet-stream', contentBase64: await fileBase64(f),
+    }, progress),
     known: () => seen.then((ids) => new Set([...ids, ...mine])),
     found: (f, before) => landedFile(entityId, f, before),
     landed: (f, meta) => {
