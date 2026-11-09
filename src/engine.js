@@ -9355,11 +9355,12 @@ export class Weave {
     this.#stamp(row, () => {
       let moved = this.#setOption(row, F('State'), rule.problem ? 'Setup incomplete' : 'Ready');
       const setReason = (r) => { if ((row.values[reasonF.id] ?? '') === r) return; row.values[reasonF.id] = r || null; moved = true; };
-      if (rule.problem && on) {
-        moved = this.#setOption(row, health, 'Failed') || moved;
+      if (rule.problem) {
+        if (on) moved = this.#setOption(row, health, 'Failed') || moved;
+        else if (!healthName) moved = this.#setOption(row, health, 'No runs') || moved;
         setReason(SETUP + rule.problem);
-      } else if (!rule.problem && healthName === 'Failed' && String(reason).startsWith(SETUP)) {
-        moved = this.#setOption(row, health, lastRun ? 'Healthy' : 'No runs') || moved;
+      } else if (String(reason).startsWith(SETUP)) {
+        if (healthName === 'Failed') moved = this.#setOption(row, health, lastRun ? 'Healthy' : 'No runs') || moved;
         setReason('');
       } else if (!healthName) {
         moved = this.#setOption(row, health, 'No runs') || moved;

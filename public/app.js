@@ -2413,6 +2413,7 @@ function activateCell(cell) {
     case 'rate': return;
     case 'toggle': {
       const box = cell.querySelector('input[type="checkbox"]');
+      if (box?.disabled) return box.closest('label')?.click();
       if (box) { box.checked = !box.checked; box.dispatchEvent(new Event('change')); }
       return;
     }
@@ -7673,6 +7674,7 @@ async function editPhoneField(anchor, db, eid, name) {
   try {
     const f = db.fields.find((x) => x.name === name);
     const e = await api('GET', `/entities/${eid}`);
+    if (db.system === 'workflows' && globalThis.workflowPhoneTap?.(anchor, f, e)) return;
     const was = e.fields?.[f.name] ?? null;
     const raw = e.raw?.[f.name] ?? was;
     const write = async (value, shown) => {

@@ -277,8 +277,8 @@
       "br": 1034
     },
     "/workflows-cells.js": {
-      "gzip": 332,
-      "br": 332
+      "gzip": 673,
+      "br": 546
     }
   },
   "raised": {
@@ -296,6 +296,7 @@
     "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
     "/upload-core.js": "Issue #1413 (upload error causes) added the restarting, storage-full and request-id failures, the retry waits and the generic-call strings: gzip 1,551 to 1,864, br 1,349 to 1,634 served. Budget set 5% above",
     "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above",
-    "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above"
+    "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
+    "/workflows-cells.js": "Feature #249: the On toggle locks with its reason while a row is Setup incomplete and Off, on the grid and on a phone"
   }
 }
