@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.126 (2026-11-09)
+
+- **The link palette's + New opens the create tray** (Issue #1473): choosing + New in the link search wrote a record named from whatever you had typed, with no chance to name it properly or fill another field. It now opens the right-hand create tray on the typed name, with a Create & link button; the record is written when you press it. Gate: `test/link-search-browser.test.mjs`.
+- **The phone + creates in the tray** (Issue #1471): tapping + on a phone opened a bottom sheet whose table chip opened a popover, so starting a row looked nothing like starting one anywhere else. It now opens the right-hand create tray, named for the table's own row word, carrying the Name field, the table's choice chips and, when no table is in context, the table chooser inside the tray. Create still keeps the tray open on a phone for the next row, and the tray now stays above the on-screen keyboard. Gate: `test/phone-new-row-sheet-browser.test.mjs`.
+- **Roll up names its new record in the tray** (Issue #1472): rolling a selection up through a relation opened a small popover over the grid to name the parent. It now opens the right-hand create tray with the same Create & link button, so every create surface looks the same. Gate: `test/row-selection-browser.test.mjs`.
+
 ## v0.4.125 (2026-11-08)
 
 - A `now()` or `today()` date default reads the creator's wall clock: a floating field stamps the time in the zone the creating request names in `X-Weave-Zone` (UTC when it names none), and a fixed field stamps the time in its own zone. A row created at 21:41 UTC from New York now stores 16:41 instead of 21:41 (Issue #1480).
