@@ -1,1 +1,0 @@
-- **Roll up names its new record in the tray** (Issue #1472): rolling a selection up through a relation opened a small popover over the grid to name the parent. It now opens the right-hand create tray with the same Create & link button, so every create surface looks the same. Gate: `test/row-selection-browser.test.mjs`.

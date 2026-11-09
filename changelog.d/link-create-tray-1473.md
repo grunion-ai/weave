@@ -1,1 +1,0 @@
-- **The link palette's + New opens the create tray** (Issue #1473): choosing + New in the link search wrote a record named from whatever you had typed, with no chance to name it properly or fill another field. It now opens the right-hand create tray on the typed name, with a Create & link button; the record is written when you press it. Gate: `test/link-search-browser.test.mjs`.
