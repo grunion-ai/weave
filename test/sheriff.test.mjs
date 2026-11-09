@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, flakeLine, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP, timedOutShards } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, flakeLine, flakeRows, flakeStep, failedStep, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP, timedOutShards } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
@@ -184,6 +184,39 @@ test('the flake ledger line names which of the three verdicts the run reached (I
   assert.match(flakeLine({ at, sha: sha(100), url, outcome: 'stayed-red' }), /failed and stayed red after a rerun; the sheriff escalated instead of reverting: /);
   assert.match(flakeLine({ at, sha: sha(100), url, outcome: 'no-verdict' }), /failed with no retry verdict, because the shard ended before its retry answered; the sheriff escalated instead of convicting a commit: /);
   assert.throws(() => flakeLine({ at, sha: sha(100), url, outcome: 'green' }), /unknown flake outcome green/);
+});
+
+test('the flake ledger line names the step the shard died in, so an install timeout is not read as a test flake (Issue #1353)', () => {
+  const at = '2026-11-09';
+  const url = 'https://github.com/grunion-ai/weave/actions/runs/42082398755';
+  const install = flakeLine({ at, sha: sha(100), url, step: 'Install browsers and system dependencies' });
+  assert.match(install, /at the Install browsers and system dependencies step: /);
+  const shard = flakeLine({ at, sha: sha(100), url, step: 'Run complete shard' });
+  assert.match(shard, /at the Run complete shard step: /);
+  assert.notEqual(install, shard, 'two runs that died in different steps of one shard are told apart by the line');
+  assert.equal(flakeLine({ at, sha: sha(100), url }), `${at} ${sha(100).slice(0, 10)} failed, then passed on rerun: ${url}`);
+});
+
+test('the failing step of a job is read off the steps the jobs API already returns (Issue #1353)', () => {
+  const job = { name: 'pr browser-2', steps: [
+    { name: 'Set up job', conclusion: 'success' },
+    { name: 'Install browsers and system dependencies', conclusion: 'failure' },
+    { name: 'Run fast shard', conclusion: 'skipped' },
+  ] };
+  assert.equal(failedStep(job), 'Install browsers and system dependencies');
+  assert.equal(failedStep({ name: 'tests unit-1', steps: [{ name: 'Set up job', conclusion: 'success' }] }), null);
+  assert.equal(failedStep({ name: 'tests unit-1' }), null);
+  assert.equal(flakeStep([{ step: 'Install Chromium' }, { step: 'Install Chromium' }]), 'Install Chromium');
+  assert.equal(flakeStep([{ step: 'Install Chromium' }, { step: 'Run complete shard' }]), null, 'two different steps name no single step');
+  assert.equal(flakeStep([{ name: 'tests browser-1' }]), null);
+});
+
+test('a shard that died installing its browsers opens one shard-named row and never a per-file one (Issue #1353)', () => {
+  const browser2 = { name: 'pr browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/42082398755/job/127438718126', step: 'Install browsers and system dependencies' };
+  assert.deepEqual(flakeRows({ files: [], jobs: [browser2] }), ['pr browser-2'], 'a job that recorded no ci-results file opens a shard-named row');
+  assert.deepEqual(flakeRows({ files: ['test/grid.test.mjs'], jobs: [browser2] }), ['pr browser-2'], 'an install failure never adds a line to a per-file flake row');
+  assert.deepEqual(flakeRows({ files: ['test/grid.test.mjs'], jobs: [{ name: 'tests browser-2', step: 'Run complete shard' }] }), ['test/grid.test.mjs']);
+  assert.deepEqual(flakeRows({ files: [], jobs: [] }), ['the tests suite']);
 });
 
 test('the Issue and Feature rows a reverted commit names are read off its subject (Issue #1297)', () => {
