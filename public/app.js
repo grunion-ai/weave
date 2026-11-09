@@ -9474,7 +9474,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
     if (!loose.length) return;
     const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
-    const pages = loose.filter((file) => !file.missing && fileKind(file) === 'html').map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
+    const introTable = db.fields.some((f) => f.type === 'attachments' && f.preview === 'intro');
+    const pages = (introTable ? [] : loose.filter((file) => !file.missing && fileKind(file) === 'html')).map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
     const foldFiles = (closed) => {
       for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
       filesCaret.classList.toggle('closed', closed);

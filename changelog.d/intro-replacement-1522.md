@@ -1,0 +1,1 @@
+- Replacing an HTML introduction keeps the previous file accessible in Files without rendering its body a second time. Tables with introduction fields show loose HTML as file chips; other tables keep their existing inline previews (Issue #1522).
