@@ -22,7 +22,7 @@ import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
-import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText } from './delivery.js';
+import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues } from './delivery.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
@@ -9147,7 +9147,8 @@ export class Weave {
       this.#mark(e);
       return;
     }
-    e.activity.push({ ts: ts ?? nowISO(), kind, detail, actor: this.actor, seq: this.#nextSeq() });
+    const workflow = actorWorkflow(this.actor);
+    e.activity.push({ ts: ts ?? nowISO(), kind, detail, actor: this.actor, seq: this.#nextSeq(), ...(workflow ? { origin: { workflow } } : {}) });
     if (e.activity.length > ACTIVITY_CAP) {
       e.activityDropped = (e.activityDropped ?? 0) + e.activity.length - ACTIVITY_CAP;
       e.activity = e.activity.slice(-ACTIVITY_CAP);
@@ -9727,6 +9728,7 @@ export class Weave {
     const job = this.#send(request).then(
       (answer) => {
         this.#dropDelivery(request.delivery);
+        this.#rememberEcho(request, run.ran[r]?.e ?? run.rows[r]);
         if (request.deadLetter) this.#letterLanded(request, answer);
         run.db = own(this.state.tables, run.db.id) ?? run.db;
         unrestricted(() => this.#stepRun(run, r, i, answer));
@@ -9756,6 +9758,30 @@ export class Weave {
   }
 
   #inFlight = new Set();
+
+  claimInbound(source, key, { now = this.now(), windowMs = INBOUND_WINDOW_MS } = {}) {
+    if (typeof source !== 'string' || !source) throw new WeaveError('An inbound delivery names its source', 'invalid');
+    if (key == null || key === '') throw new WeaveError('An inbound delivery needs a delivery key to be acknowledged once', 'invalid');
+    const store = (this.state.meta.inboundKeys ??= {});
+    const out = claimKey(store[source], String(key), now.getTime(), windowMs);
+    store[source] = out.seen;
+    if (!out.duplicate) this.save();
+    return { duplicate: out.duplicate, key: String(key), firstAt: new Date(out.firstAt).toISOString() };
+  }
+
+  isEcho(source, change, { now = this.now(), windowMs = ECHO_WINDOW_MS } = {}) {
+    return matchesEcho(this.state.meta.echoes, { ...change, source }, now.getTime(), windowMs);
+  }
+
+  #rememberEcho(request, e) {
+    const values = request.body === undefined ? null : sentValues(request.body);
+    if (!values) return;
+    const now = this.now().getTime();
+    const source = request.integration ?? new URL(request.url).host;
+    const kept = (this.state.meta.echoes ?? []).filter((x) => now - x.at <= ECHO_WINDOW_MS);
+    kept.push({ source, record: e?.id ?? null, publicId: e?.publicId ?? null, values, at: now });
+    this.state.meta.echoes = kept.slice(-ECHO_KEEP);
+  }
 
   pendingDeliveries() {
     return (this.state.meta.deliveries ?? []).map((d) => ({

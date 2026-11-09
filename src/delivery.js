@@ -53,3 +53,30 @@ export function requestText(request) {
 export function attemptsText(attempts) {
   return attempts.map((a) => `${utcMinute(new Date(a.at))}  ${a.error}`).join('\n');
 }
+
+export const INBOUND_WINDOW_MS = 24 * 60 * MINUTE;
+export const ECHO_WINDOW_MS = 10 * MINUTE;
+export const ECHO_KEEP = 500;
+
+export function claimKey(seen, key, now, windowMs = INBOUND_WINDOW_MS) {
+  const kept = Object.fromEntries(Object.entries(seen ?? {}).filter(([, at]) => now - at <= windowMs));
+  if (key in kept) return { duplicate: true, firstAt: kept[key], seen: kept };
+  return { duplicate: false, firstAt: now, seen: { ...kept, [key]: now } };
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+export function matchesEcho(writes, change, now, windowMs = ECHO_WINDOW_MS) {
+  const keys = Object.keys(change?.values ?? {});
+  if (!keys.length) return false;
+  return (writes ?? []).some((w) => w.source === change.source && now - w.at <= windowMs
+    && (change.record == null || change.record === w.record || change.record === w.publicId)
+    && keys.every((k) => w.values && k in w.values && same(w.values[k], change.values[k])));
+}
+
+export function sentValues(body) {
+  try {
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch { return null; }
+}

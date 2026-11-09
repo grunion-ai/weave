@@ -112,6 +112,8 @@ const INTERNAL = {
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
   runDeliveries: 'process plumbing (Feature #311): the minute ticker, through runSchedules, sends every failed delivery whose retry is due; an agent reads the wait from the rule\'s Health and Health Reason',
   pendingDeliveries: 'test plumbing (Feature #311): the deliveries waiting to be sent again; an agent reads the same wait from the rule\'s Health Reason',
+  claimInbound: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint acknowledges a delivery key it already ran instead of running it again',
+  isEcho: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint drops a change that repeats a write weave just sent to that source',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
