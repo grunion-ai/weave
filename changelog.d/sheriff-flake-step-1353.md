@@ -1,1 +1,0 @@
-- A sheriff flake line now names the step the shard died in, so a browser install timeout is told apart from a test that crashed its shard, and an install failure never adds a line to a per-file flake row (Issue #1353).
