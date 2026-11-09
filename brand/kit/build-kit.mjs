@@ -486,7 +486,10 @@ if (documentationBanners) {
     const body = x6({ W: 1584, H: 396, field, ...palette, box: [300, 48, 984, 300], sealXY: [348, 70], sealSize: 256, wordXY: [650, 222], wordSize: 130, lineSize: 17 });
     writeFileSync(join(OUT, `banner-${name}.svg`), svg(1584, 396, body, `weave documentation, ${name}`) + '\n');
   }
-  console.log(`3 documentation banners -> ${OUT}`);
+  for (const [name, source] of [['contour', 'poster-contour-banner'], ['band', 'poster-banner']]) {
+    writeFileSync(join(OUT, `banner-${name}.svg`), readFileSync(join(HERE, 'svg', `${source}.svg`)));
+  }
+  console.log(`5 documentation banners -> ${OUT}`);
   process.exit(0);
 }
 

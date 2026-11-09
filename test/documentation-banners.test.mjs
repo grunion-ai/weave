@@ -10,7 +10,7 @@ test('compact documentation banners reproduce the canonical full mark without ch
   const dir = tempDir('weave-doc-banners-');
   try {
     execFileSync(process.execPath, [join(ROOT, 'brand/kit/build-kit.mjs'), '--documentation-banners', '--out', dir]);
-    const names = ['banner-blue.svg', 'banner-light.svg', 'banner-topo.svg'];
+    const names = ['banner-band.svg', 'banner-blue.svg', 'banner-contour.svg', 'banner-light.svg', 'banner-topo.svg'];
     assert.deepEqual(readdirSync(dir).sort(), names);
     for (const name of names) {
       const svg = readFileSync(join(dir, name), 'utf8');
@@ -19,7 +19,7 @@ test('compact documentation banners reproduce the canonical full mark without ch
       assert.match(svg, /<mask id="m\d+A"/);
       assert.match(svg, /DATA · AGENTS/);
       assert.match(svg, /SYSTEMS/);
-      assert.match(svg, /x="300" y="48" width="984" height="300"/);
+      if (name !== 'banner-band.svg') assert.match(svg, /x="300" y="48" width="984" height="300"/);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

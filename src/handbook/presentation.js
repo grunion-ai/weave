@@ -1,9 +1,8 @@
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const art = name => new URL(`../../brand/kit/svg/${name}.svg`, import.meta.url);
 const banners = {
-  handbook: art('poster-contour-banner'),
+  handbook: new URL('./banners/banner-contour.svg', import.meta.url),
   showcase: new URL('./banners/banner-blue.svg', import.meta.url),
-  development: art('poster-banner'),
+  development: new URL('./banners/banner-band.svg', import.meta.url),
   quality: new URL('./banners/banner-light.svg', import.meta.url),
   wiki: new URL('./banners/banner-topo.svg', import.meta.url),
 };

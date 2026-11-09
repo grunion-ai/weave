@@ -8,7 +8,7 @@ On server startup, Handbook and Showcase synchronize first. `syncDocumentationPr
 
 Edit the introduction in `src/handbook/presentation.js`. It uses workspace-relative links resolved from actual IDs. HTML is self-contained and runs in the existing file sandbox. The image remains a native cover outside the HTML. Keep the complete mark visible: the documentation banners are 1584 × 396 and use the default uncropped image fit.
 
-Run `node brand/kit/build-kit.mjs --documentation-banners` to regenerate the blue, light and topographic banners under `src/handbook/banners/`. The generator reuses the brand kit's mark, ring, wordmark and patterns. The dark contour and band banners come directly from the kit.
+Run `node brand/kit/build-kit.mjs --documentation-banners` to regenerate the five runtime banners under `src/handbook/banners/`. The generator reuses the brand kit's mark, ring, wordmark and patterns. The dark contour and band banners are exact copies from the kit. All five ship under src because container images exclude the marketing brand directory.
 
 ## Ownership and preservation
 

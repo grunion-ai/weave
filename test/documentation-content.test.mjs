@@ -26,6 +26,7 @@ test('documentation navigation resolves actual workspace identities and retains 
   assert.ok(p.guides.find(x => x.name === 'Connect an agent').html.includes('<details'));
   for (const item of [...p.spaces, ...p.tables, ...p.guides, ...p.releases]) {
     assert.match(readFileSync(item.bannerPath, 'utf8'), /<svg/);
+    assert.ok(item.bannerPath.pathname.includes('/src/handbook/banners/'), 'runtime banners must ship in images that exclude brand/');
     assert.doesNotMatch(item.html, /<img|<iframe|fetch\(|https:\/\/fonts/);
     for (const [, href] of item.html.matchAll(/href="([^"]+)"/g)) assert.match(href, /^\/w\/weave\/(?:#\/(?:table|space)\/[a-f0-9-]+|e\/[a-f0-9-]+|mcp)|^\/docs$/);
   }
