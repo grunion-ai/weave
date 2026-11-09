@@ -40,3 +40,9 @@ test('missing optional showcase records and tables do not produce broken links o
   assert.doesNotMatch(JSON.stringify(p), /undefined|null|Apollo Launch|Task Count/);
   for (const name of ['Quickstart', 'A project and its linked work', 'Connect an agent', 'Reading a release']) assert.ok(w.findEntity('Handbook/Guide', name));
 });
+
+test('the hosted connection walkthrough opens the native docs page and reserves the MCP endpoint for clients', () => {
+  const guide = readFileSync(new URL('../src/handbook/guides/connect-an-agent.md', import.meta.url), 'utf8');
+  assert.ok(guide.includes('https://<host>/w/<workspace>/docs'));
+  assert.doesNotMatch(guide, /Open your workspace's MCP address in a browser/);
+});
