@@ -275,6 +275,10 @@
     "/whiteboard.js": {
       "gzip": 1244,
       "br": 1034
+    },
+    "/workflows-cells.js": {
+      "gzip": 332,
+      "br": 332
     }
   },
   "raised": {

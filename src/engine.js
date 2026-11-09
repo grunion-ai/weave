@@ -398,6 +398,23 @@ const HOME_RUN_ROWS = 50;
 const templated = (v) => typeof v === 'string' && v.includes('{{');
 const scheduleOut = (t) => ({ cron: t.cron, zone: t.zone, ...(t.where != null ? { where: t.where } : {}) });
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
+const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
+function whenWords({ table, trigger: t }) {
+  if (t.type === 'entity-created') return `A record is created in ${table}`;
+  if (t.type === 'field-updated') return `${t.field} changes in ${table}`;
+  if (t.type === 'state-changed') return `${t.field} moves${t.toState ? ` to ${t.toState}` : ''} in ${table}`;
+  return `Schedule ${t.cron} ${t.zone}, ${t.where != null ? 'matching records' : 'every record'} in ${table}`;
+}
+function actionWords(a) {
+  if (a.type === 'set-field') return a.value == null || a.value === '' ? `Clear ${a.field}` : `Set ${a.field} to ${JSON.stringify(a.value)}`;
+  if (a.type === 'append-doc') return a.field ? `Append to ${a.field}` : 'Append to the document';
+  if (a.type === 'add-comment') return 'Add a comment';
+  if (a.type === 'upsert-row') return `Create or update a record in ${a.table} by ${a.key}`;
+  let host = a.url;
+  try { host = new URL(a.url).host; } catch {}
+  return `Post to ${host}${a.signWith ? ', signed' : ''}`;
+}
+const thenWords = (spec) => spec.actions.map(actionWords).join(', then ');
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
 const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
 export function sourcePath(source, path) {
@@ -5371,6 +5388,18 @@ export class Weave {
       field.system = true;
       inverse.system = true;
     }
+    for (const n of ['When', 'Then']) if (!this.#sysField(wfT, n)) this.addField(wfT.id, { name: n, type: 'text' }).system = true;
+    if (!wfT.workflowPanel) {
+      wfT.workflowPanel = true;
+      const ids = WORKFLOW_PANEL.map((n) => this.#sysField(wfT, n)?.id ?? wfT.nameFieldId);
+      const view = wfT.tableViews?.find((v) => v.name === 'Standard') ?? wfT.tableViews?.[0];
+      if (view) {
+        view.fields = ids;
+        view.widths = { ...(view.widths ?? {}), [ids[2]]: 280, [ids[3]]: 320 };
+        view.phoneRow = { lead: ids[4], chips: [ids[0], ids[2], ids[3]], wrap: true };
+      }
+      this.save();
+    }
     ensureFormColumns(this, this.#sysTable('forms') ?? mkTable('Forms', 'forms', FORMS_DESCRIPTION), tablesT);
     this.#syncAll();
     this.#migrateAutomations();
@@ -9330,6 +9359,13 @@ export class Weave {
       if (!rule.problem) {
         const next = { text, dbId: rule.dbId, trigger: rule.trigger, actions: rule.actions };
         if (JSON.stringify(row.rule) !== JSON.stringify(next)) { row.rule = next; moved = true; }
+      }
+      const spec = rule.problem ? null : rule.owner.#renderSpec(rule);
+      for (const [n, words] of [['When', spec && whenWords(spec)], ['Then', spec && thenWords(spec)]]) {
+        const wordsF = F(n);
+        if (!wordsF || (row.values[wordsF.id] ?? null) === (words || null)) continue;
+        row.values[wordsF.id] = words || null;
+        moved = true;
       }
       return moved;
     });
