@@ -850,7 +850,7 @@ const saves = WeaveSaveQueue.createSaveQueue({
 WeaveSaveQueue.bindPageHide(saves);
 WeaveSaveQueue.bindEscape(saves);
 window.weaveSaves = saves;
-const dockHoldsSaveMark = () => dockCoversScreen.matches && !!$('#dock:not([hidden])');
+const dockHoldsSaveMark = () => (dockCoversScreen.matches || $('#app').classList.contains('table-yield')) && !!$('#dock:not([hidden])');
 const saveMark = WeaveSaveQueue.saveGlyph(saves, {
   icon: iconEl,
   place: () => (dockHoldsSaveMark() && $('#dock .view-header .crumb-row')) || $('#main .view-header .crumb-row'),
