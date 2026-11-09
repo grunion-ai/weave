@@ -29,8 +29,6 @@ const HAND_WRITTEN = [
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
   ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
-  ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
-  ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
   ['share.current', [], 'weave_shares', 'share list', ['GET /api/share']],
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],

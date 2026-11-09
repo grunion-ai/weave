@@ -39,7 +39,7 @@ test('every registry command is well formed and reachable on each door it names 
     if (c.cli) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
       assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
-      if (c.tool) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+      if (c.tool && !c.http.args) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
     }
     if (c.tool && c.cli) for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
   }
@@ -892,5 +892,38 @@ test('space list and members answer the same on CLI and HTTP, and a bare space s
     const refused = d.run(['space', 'bogus']);
     assert.notEqual(refused.status, 0);
     assert.match(refused.stderr, /Unknown space subcommand 'bogus'\. Try: create, list, update, members, delete, restore/);
+  } finally { d.close(); }
+});
+
+test('table list and the view family answer the same on CLI, MCP and HTTP, each door with its own list (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-table-view-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const named = (v) => bare(JSON.parse(JSON.stringify(v, (k, x) => (['createdAt', 'updatedAt'].includes(k) ? undefined : x))));
+  try {
+    const listed = await d.http('GET', '/api/tables', undefined, auth);
+    assert.deepEqual(d.cli(['table', 'list']), listed.map((t) => t.qualified), 'the CLI lists qualified names, HTTP the rows');
+    assert.deepEqual(d.cli(['db']), d.cli(['table', 'list']), 'a bare weave db still lists');
+    assert.deepEqual(Object.keys(listed[0]), ['id', 'name', 'qualified', 'spaceId', 'position']);
+    assert.deepEqual((await d.http('GET', '/api/tables?space=Ops', undefined, auth)).map((t) => t.qualified), ['Ops/Task', 'Ops/Person']);
+    assert.deepEqual(named(d.cli(['table', 'view', 'Task'])), named(await d.http('GET', '/api/tables/Task/views', undefined, auth)), 'view list alike');
+    assert.deepEqual(named(d.mcp('weave_table_view', { view: 'Task' })), named(await d.http('GET', '/api/tables/Task/views', undefined, auth)));
+    assert.deepEqual(named(d.cli(['table', 'view', 'Task/blank'])), named(await d.http('GET', '/api/tables/Task/views/blank', undefined, auth)), 'one view alike');
+    const made = [
+      d.cli(['table', 'view', 'Task/Open', '--search', 'a', '--sort', '[{"field":"Name","dir":"asc"}]']),
+      d.mcp('weave_table_view', { view: 'Task/Open', search: 'a', sort: [{ field: 'Name', dir: 'asc' }] }),
+      await d.http('PATCH', '/api/tables/Task/views/Open', { search: 'a', sort: [{ field: 'Name', dir: 'asc' }] }, auth),
+    ].map(named);
+    assert.deepEqual(made[0], made[2], 'CLI and PATCH write alike');
+    assert.deepEqual(made[1], made[2], 'MCP and PATCH write alike');
+    const gone = [
+      d.cli(['table', 'view', 'Task/Open', '--delete']),
+      d.mcp('weave_table_view', { view: 'Task/Open', delete: true }),
+      await d.http('DELETE', '/api/tables/Task/views/Open', undefined, auth),
+    ].map(named);
+    assert.deepEqual(gone[0], gone[2], 'CLI and DELETE remove alike');
+    assert.deepEqual(gone[1], gone[2], 'MCP and DELETE remove alike');
+    const editor = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'ed', role: 'editor' }).token}` };
+    assert.equal((await d.raw('PATCH', '/api/tables/Task/views/Open', {}, editor)).status, 403, 'an editor still cannot write a table view');
+    assert.equal((await d.raw('GET', '/api/tables/Task/views', undefined, editor)).status, 200, 'an editor still reads them');
   } finally { d.close(); }
 });

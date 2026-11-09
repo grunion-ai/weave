@@ -1,0 +1,1 @@
+- Table list and table views run from the command registry: `weave table [list|view]`, `weave_table_view`, `GET /api/tables` and `/api/tables/<table>/views[/<view>]` (read, write, delete) dispatch from registry entries with the same answers as before (Feature #179).
