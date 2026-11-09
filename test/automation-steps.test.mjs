@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { Weave } from '../src/engine.js';
 
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
@@ -67,23 +68,27 @@ test('a step that is not there yet, or a path it has not got, reads empty, and a
   assert.equal(out.fields.Customer, '42', 'a non-string value is written as it was');
 });
 
-test('an append-doc step yields its field and text, and a webhook step yields the url it posted to', async () => {
-  const { w, req } = demo();
-  w.addField(req.id, { name: 'Notes', type: 'document' });
-  w.webhookTimeoutMs = 200;
-  w.createAutomation(req.id, {
-    name: 'Notes and ping',
-    trigger: { type: 'entity-created' },
-    actions: [
-      { type: 'append-doc', field: 'Notes', text: 'Hello {{Name}}' },
-      { type: 'webhook', url: 'http://127.0.0.1:9/hook' },
-      { type: 'add-comment', text: '{{steps.1.field}}: {{steps.1.text}} → {{steps.2.url}}' },
-    ],
-  });
-  const r = w.createEntity(req.id, { Name: 'C' });
-  const out = read(w, r.id);
-  assert.equal(out.comments[0].text, 'Notes: Hello C → http://127.0.0.1:9/hook');
-  await new Promise((res) => setTimeout(res, 300));
+test('an append-doc step yields its field and text, and a webhook step yields the url it posted to once it answers', async () => {
+  const server = createServer((r, res) => { r.resume(); res.end(); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/hook`;
+  try {
+    const { w, req } = demo();
+    w.addField(req.id, { name: 'Notes', type: 'document' });
+    w.createAutomation(req.id, {
+      name: 'Notes and ping',
+      trigger: { type: 'entity-created' },
+      actions: [
+        { type: 'append-doc', field: 'Notes', text: 'Hello {{Name}}' },
+        { type: 'webhook', url },
+        { type: 'add-comment', text: '{{steps.1.field}}: {{steps.1.text}} → {{steps.2.url}}' },
+      ],
+    });
+    const r = w.createEntity(req.id, { Name: 'C' });
+    assert.equal(read(w, r.id).comments.length, 0, 'the step after a webhook waits for its answer');
+    await w.automationsSettled();
+    assert.equal(read(w, r.id).comments[0].text, `Notes: Hello C → ${url}`);
+  } finally { server.closeAllConnections(); server.close(); }
 });
 
 test('the schedule trigger carries steps too: event.type is schedule and step outputs flow between actions', () => {

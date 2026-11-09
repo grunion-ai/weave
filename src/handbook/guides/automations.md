@@ -16,8 +16,8 @@ Every rule is a row of `System/Workflows`, and the row is the whole interface to
 | `Then` | the actions in words, in order, such as `Set Notes to "approved", then Add a comment`, written by the engine |
 | `Script` | the rule itself, as JSON: `{"table", "trigger", "actions"}` |
 | `State` | `Setup incomplete` while the Script does not compile, `Ready` once it does |
-| `Health` | `Healthy`, `Warning`, `Failed`, or `No runs` before the first fire |
-| `Health Reason` | why the last run failed, in the engine's words. The grid shows it when you hover the Health chip, click it, or tap it on a phone |
+| `Health` | `Healthy`, `Warning` while a delivery waits to be sent again, `Failed`, or `No runs` before the first fire |
+| `Health Reason` | why the last run failed or what it waits on, in the engine's words. The grid shows it when you hover the Health chip, click it, or tap it on a phone |
 | `Last Run` | when it last fired, to the minute |
 | `Tables`, `Spaces` | what the rule touches, filled in by the engine |
 | `Diagram` | the rule drawn as mermaid |
@@ -100,7 +100,7 @@ Every run leaves an `automation-ran` entry on each row it touched. The entry hol
 
 A `webhook` action POSTs to an `http(s)` url. The url is validated when the rule compiles; the `url` field type is not, so validate upstream if strictness matters to you.
 
-Before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, and it follows no redirect. A refusal, a non-2xx answer, no answer within 5 seconds, or a connection that cannot be made marks the rule `Failed` with the reason in `Health Reason`. The write that fired it still lands.
+Before each delivery weave resolves the host and refuses loopback, link-local, the private ranges and the cloud metadata addresses, and it follows no redirect. The write that fired the rule lands first; the steps after the webhook wait for its answer. A refusal or a 4xx answer marks the rule `Failed` with the reason in `Health Reason`, and the later steps do not run. A 5xx, 408 or 429 answer, no answer within 5 seconds, or a connection that cannot be made is retried, as [When a delivery fails](#when-a-delivery-fails) describes.
 
 Set `WEAVE_WEBHOOK_ALLOW_PRIVATE=1` on an instance whose webhooks land on its own network, such as a Railway private service or a VPS sidecar, and the private ranges are allowed. A redirect stays refused either way. A `weave_build` dry run drops webhook actions, so a trial never posts.
 
@@ -161,7 +161,7 @@ A rule whose url is plain http, or whose host is not the integration's Host, rea
 
 The write that fires the rule answers first. The request goes out after it, and the steps after the request wait for the answer: the mapped fields land on the row, and a later step reads `{{steps.1.status}}`, `{{steps.1.ok}}` or any path of the parsed answer, such as `{{steps.1.body.ts}}`. A path that finds nothing or null leaves its field as it was, and an object or list lands as JSON text. An answer over 16 KB still maps its fields, but its step output keeps `body: null` and `truncated: true`.
 
-An answer outside 2xx, a redirect, no answer within 5 seconds (10 with an integration), or a refusal marks the rule `Failed`, and `Health Reason` names the method, host and path, as in `POST slack.com/api/chat.postMessage answered HTTP 404`. The later steps of that run do not run. weave sends each request once and never retries it. A `weave_build` dry run sends nothing.
+A 4xx answer, a redirect or a refusal marks the rule `Failed`, and `Health Reason` names the method, host and path, as in `POST slack.com/api/chat.postMessage answered HTTP 404`. The later steps of that run do not run. A 5xx, 408 or 429 answer, no answer within 5 seconds (10 with an integration), or a connection that cannot be made is retried, as [When a delivery fails](#when-a-delivery-fails) describes. A `weave_build` dry run sends nothing.
 
 A worked example: a support ticket that moves to Escalated posts to a Slack channel, keeps the message timestamp and says so in a comment. The `Slack` record in `System/Integrations` has Provider `Generic API key`, Host `slack.com` and a bot token as its key, which weave sends as `Authorization: Bearer <key>`.
 
@@ -176,6 +176,27 @@ weave automation create Support/Ticket --name 'Escalate to Slack' \
 ```
 
 Slack answers HTTP 200 with `"ok": false` when it refuses a message, so map `ok` to a field, or read `{{steps.1.body.ok}}`, when that matters.
+
+## When a delivery fails
+
+A `webhook` or `http-request` that fails for a reason that may pass is sent again: a network error, no answer in time, or an answer of 408, 429 or 5xx. Any other 4xx answer, a redirect and a refusal are not retried, because sending the same request again gets the same answer.
+
+| Attempt | Waits after it fails |
+| --- | --- |
+| 1 | 1 minute |
+| 2 | 2 minutes |
+| 3 | 4 minutes |
+| 4 | 8 minutes |
+| 5 | 16 minutes |
+| 6 | 32 minutes |
+| 7 | 1 hour |
+| 8 | none: the delivery has failed |
+
+While a delivery waits, the rule reads `Warning` and `Health Reason` names the failure, the attempt and the next try, as in `POST hooks.example.com: HTTP 503; attempt 2 of 8 failed, next try 2026-11-09 14:03 UTC`. The steps after it wait too, and run once a retry lands. A retry that lands returns the rule to `Healthy`. After the eighth attempt the run stops, the rule reads `Failed` and the reason ends `gave up after 8 attempts`.
+
+The waiting delivery is stored in the workspace file, so a restart loses nothing: the minute tick that runs schedules sends each retry that is due, the first tick after a restart included. The stored request holds the url, the method, the headers and the body; a credential is held by name and added at each send. A webhook retry carries the same `X-Weave-Delivery` id as its first attempt and a fresh `X-Weave-Timestamp` and signature, so a receiver that remembers delivery ids handles it once.
+
+A rule switched Off keeps sending the deliveries already waiting. Deleting the rule drops them.
 
 ## A worked example
 

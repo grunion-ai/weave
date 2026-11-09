@@ -22,6 +22,7 @@ import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
+import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason } from './delivery.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
@@ -418,6 +419,7 @@ function urlHost(url) {
   try { return new URL(url).host; } catch { return url; }
 }
 const HTTP_STEP_BODY_MAX = 16 * 1024;
+const OUTBOUND = Symbol('outbound');
 const CREDENTIAL_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie']);
 const blankTemplates = (s) => s.replace(/\{\{[^}]*\}\}/g, 'x');
 function fillJson(v, fill) {
@@ -5830,7 +5832,7 @@ export class Weave {
       reg.#audit('key-used', { integration: target.name, host: target.host, method: verb, path: u.pathname, status: res?.status ?? null, ...(failure ? { error: failure } : {}) });
       reg.save();
     });
-    if (failure) throw new WeaveError(`Integration '${target.name}': ${failure}`, 'invalid');
+    if (failure) throw Object.assign(new WeaveError(`Integration '${target.name}': ${failure}`, 'invalid'), { unreachable: true });
     const text = redact(await res.text(), secret);
     return { status: res.status, ok: res.ok, headers: Object.fromEntries([...res.headers].filter(([k]) => k.toLowerCase() !== 'set-cookie')), body: text };
   }
@@ -9099,8 +9101,8 @@ export class Weave {
   #wfRows = null;
   #wfRules = null;
   #noWebhooks = false;
-  #wfRun = new Map();
   webhookTimeoutMs = 5000;
+  deliveryAttempts = DELIVERY_ATTEMPTS;
 
   createAutomation(dbRef, { name, trigger, actions, enabled = true }) {
     const db = this.getTable(dbRef);
@@ -9430,13 +9432,13 @@ export class Weave {
     return rule;
   }
 
-  #stampRun(row, failure, at = nowISO()) {
+  #stampRun(row, failure, at = nowISO(), waiting = null) {
     const health = this.#wfField('Health');
     const reasonF = this.#wfField('Health Reason');
     this.#stamp(row, () => {
       row.values[this.#wfField('Last Run').id] = at;
-      this.#setOption(row, health, failure ? 'Failed' : 'Healthy');
-      row.values[reasonF.id] = failure ?? null;
+      this.#setOption(row, health, failure ? 'Failed' : waiting ? 'Warning' : 'Healthy');
+      row.values[reasonF.id] = failure ?? waiting ?? null;
     });
   }
 
@@ -9606,7 +9608,6 @@ export class Weave {
   #fireRule(rule, db, rows, event, depth, at = nowISO()) {
     const reg = this.#reg;
     const run = { failed: false, rule, db, rows, event, depth, at, name: reg.entityName(rule.row), ran: [], waited: false };
-    reg.#wfRun.set(rule.row.id, run);
     this.#stepRun(run, 0, 0);
   }
 
@@ -9634,11 +9635,12 @@ export class Weave {
           if (answer !== undefined) {
             step.e = this.#liveRow(step.e);
             if (step.e.deletedAt || !own(this.state.entities, step.e.id)) throw new WeaveError('The record was deleted before the answer came back', 'not-found');
-            out = this.#httpLand(rule.actions[i], step.e, run.db, answer, depth);
+            const action = rule.actions[i];
+            out = action.type === 'webhook' ? { url: action.url, sent: true } : this.#httpLand(action, step.e, run.db, answer, depth);
             answer = undefined;
           } else {
             out = this.#runAction(rule, name, rule.actions[i], run.db, step.e, event, depth, run, step.steps) ?? null;
-            if (out instanceof Promise) { this.#awaitStep(run, r, i, out); return; }
+            if (out?.[OUTBOUND]) { this.#awaitStep(run, r, i, out[OUTBOUND]); return; }
           }
           step.steps[String(i + 1)] = out;
           step.outs.push(out);
@@ -9653,36 +9655,112 @@ export class Weave {
     this.#finishRun(run, failure);
   }
 
-  #awaitStep(run, r, i, pending) {
+  #awaitStep(run, r, i, request) {
     run.waited = true;
-    const job = pending.then(
+    this.#inFlight.add(request.delivery);
+    const job = this.#send(request).then(
       (answer) => {
+        this.#dropDelivery(request.delivery);
         run.db = own(this.state.tables, run.db.id) ?? run.db;
         unrestricted(() => this.#stepRun(run, r, i, answer));
       },
-      (err) => {
-        run.failed = true;
-        this.#finishRun(run, err.message);
-      },
-    ).catch(() => {}).finally(() => this.#pendingRuns.delete(job));
+      (err) => unrestricted(() => this.#deliveryFailed(run, r, i, request, err)),
+    ).catch(() => {}).finally(() => {
+      this.#inFlight.delete(request.delivery);
+      this.#pendingRuns.delete(job);
+    });
     this.#pendingRuns.add(job);
   }
 
   #finishRun(run, failure) {
     const reg = this.#reg;
     const { ran, name, rule } = run;
-    ran.forEach(({ e, outs }, i) => this.#logActivity(this.#liveRow(e), 'automation-ran', {
-      name, workflow: rule.row.id, steps: outs,
-      ...(failure != null && i === ran.length - 1 ? { failed: { step: outs.length + 1, error: failure } } : {}),
-    }));
-    reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at);
+    ran.forEach(({ e, outs }, i) => {
+      if (!own(this.state.entities, e.id)) return;
+      this.#logActivity(this.#liveRow(e), 'automation-ran', {
+        name, workflow: rule.row.id, steps: outs,
+        ...(failure != null && i === ran.length - 1 ? { failed: { step: outs.length + 1, error: failure } } : {}),
+      });
+    });
+    const waiting = failure == null ? (this.state.meta.deliveries ?? []).filter((d) => d.workflow === rule.row.id).at(-1)?.reason ?? null : null;
+    reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at, waiting);
     if (run.waited) this.save();
     if (reg !== this) reg.save();
+  }
+
+  #inFlight = new Set();
+
+  pendingDeliveries() {
+    return (this.state.meta.deliveries ?? []).map((d) => ({
+      id: d.request.delivery, workflow: d.workflow, kind: d.request.kind, method: d.request.method, url: d.request.url,
+      attempts: d.request.attempts.length, next: d.next, reason: d.reason,
+    }));
+  }
+
+  #dropDelivery(id) {
+    const list = this.state.meta.deliveries;
+    if (!list?.some((d) => d.request.delivery === id)) return false;
+    const rest = list.filter((d) => d.request.delivery !== id);
+    if (rest.length) this.state.meta.deliveries = rest;
+    else delete this.state.meta.deliveries;
+    return true;
+  }
+
+  #deliveryFailed(run, r, i, request, err) {
+    const reg = this.#reg;
+    const now = this.now();
+    const attempts = [...(request.attempts ?? []), { at: now.toISOString(), status: err?.status ?? null, error: err?.message ?? String(err) }];
+    const cap = this.deliveryAttempts;
+    this.#dropDelivery(request.delivery);
+    if (!err?.retryable || attempts.length >= cap) {
+      run.failed = true;
+      this.#finishRun(run, err?.retryable ? exhaustedReason(err.message, attempts.length) : attempts.at(-1).error);
+      return;
+    }
+    const next = new Date(now.getTime() + retryDelayMs(attempts.length));
+    const reason = waitingReason(err.message, attempts.length, cap, next);
+    const snapshot = JSON.parse(JSON.stringify({
+      workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => e.id), event: run.event, depth: run.depth, at: run.at, r, i,
+      ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs }),
+      request: { ...request, attempts },
+    }));
+    (this.state.meta.deliveries ??= []).push({ ...snapshot, next: next.toISOString(), reason });
+    const row = own(reg.state.entities, run.rule.row.id);
+    if (row && !row.deletedAt) reg.#stampRun(row, null, run.at, reason);
+    this.save();
+    if (reg !== this) reg.save();
+  }
+
+  #reviveRun(d) {
+    const reg = this.#reg;
+    const rule = reg.#allRules().find((x) => x.owner === this && x.row.id === d.workflow);
+    const db = own(this.state.tables, d.dbId);
+    const action = rule?.actions?.[d.i];
+    if (!rule || rule.problem || rule.row.deletedAt || !db || (action?.type !== 'webhook' && action?.type !== 'http-request')) return null;
+    const live = (id) => own(this.state.entities, id);
+    const rows = d.rows.map((id, k) => live(id) ?? (k <= d.r ? { id } : null)).filter(Boolean);
+    const ran = d.ran.map((x) => x && { e: live(x.id) ?? { id: x.id }, steps: x.steps, outs: x.outs });
+    return { failed: false, rule, db, rows, event: d.event, depth: d.depth, at: d.at, name: reg.entityName(rule.row), ran, waited: true };
+  }
+
+  runDeliveries({ now = this.now() } = {}) {
+    let sent = 0;
+    let dropped = false;
+    for (const d of [...(this.state.meta.deliveries ?? [])]) {
+      if (this.#inFlight.has(d.request.delivery) || Date.parse(d.next) > now.getTime()) continue;
+      const run = this.#reviveRun(d);
+      if (!run) { dropped = this.#dropDelivery(d.request.delivery) || dropped; continue; }
+      this.#awaitStep(run, d.r, d.i, d.request);
+      sent++;
+    }
+    if (dropped) this.save();
+    return sent;
   }
 
   #scheduleSince = new Map();
 
   runSchedules({ now = this.now() } = {}) {
+    this.runDeliveries({ now });
     const reg = this.#reg;
     const F = (n) => reg.#wfField(n);
     let fired = 0;
@@ -9743,40 +9821,22 @@ export class Weave {
       return { id: row.id, publicId: row.publicId, name: this.entityName(row), created };
     } else if (action.type === 'webhook') {
       if (this.#noWebhooks) return { url: action.url, sent: false };
-      const payload = {
+      const body = JSON.stringify({
         event: event.type,
         workspace: this.state.meta.name,
         entity: this.#summary(e.id),
         automation: name,
         at: nowISO(),
-      };
-      const reg = this.#reg;
-      const ms = this.webhookTimeoutMs;
-      const url = new URL(action.url);
-      const body = JSON.stringify(payload);
-      const headers = { 'Content-Type': 'application/json', ...this.#webhookHeaders(action.signWith, body) };
-      const failed = (err) => (err?.name === 'TimeoutError' ? `timed out after ${ms / 1000} s` : err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err));
-      webhookRefusal(url).then((refusal) => refusal ?? fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(ms),
-      }).then((res) => {
-        res.body?.cancel().catch(() => {});
-        return res.ok ? null : `HTTP ${res.status}`;
-      }, failed), failed)
-        .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
-        .catch(() => {});
-      return { url: action.url, sent: true };
+      });
+      return { [OUTBOUND]: { kind: 'webhook', method: 'POST', url: action.url, headers: { 'Content-Type': 'application/json' }, body, ...(action.signWith ? { signWith: action.signWith } : {}), delivery: uuid() } };
     } else if (action.type === 'http-request') {
       if (this.#noWebhooks) return { status: null, ok: false, body: null };
-      return this.#httpSend(action, e, db, steps);
+      return { [OUTBOUND]: this.#httpRequest(action, e, db, steps) };
     }
     return null;
   }
 
-  async #httpSend(action, e, db, steps) {
+  #httpRequest(action, e, db, steps) {
     const fill = (text) => this.#template(text, e, db, steps);
     const headers = Object.fromEntries(Object.entries(action.headers ?? {}).map(([k, v]) => [k, fill(v)]));
     let body;
@@ -9788,25 +9848,46 @@ export class Weave {
     const filled = fill(action.url);
     let u;
     try { u = new URL(filled); } catch { throw new WeaveError(`${action.method} ${filled} is not a URL once its templates are filled in`, 'invalid'); }
-    const where = `${action.method} ${u.host}${u.pathname}`;
-    const init = { method: action.method, headers, body };
-    if (action.integration) {
+    return { kind: 'http-request', method: action.method, url: u.href, headers, ...(body !== undefined ? { body } : {}), ...(action.integration ? { integration: action.integration } : {}), delivery: uuid() };
+  }
+
+  async #send(request) {
+    const { kind, method, body, integration, signWith } = request;
+    const u = new URL(request.url);
+    const hook = kind === 'webhook';
+    const where = hook ? `POST ${u.host}` : `${method} ${u.host}${u.pathname}`;
+    const ms = this.webhookTimeoutMs;
+    const said = {
+      status: (s) => (hook ? `${where}: HTTP ${s}` : `${where} answered HTTP ${s}`),
+      timeout: () => (hook ? `${where}: timed out after ${ms / 1000} s` : `${where}: did not answer within ${ms / 1000} s`),
+      network: (code) => (hook ? `${where}: ${code}` : `${where}: could not connect (${code})`),
+    };
+    const code = (err) => err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err);
+    let headers;
+    try { headers = { ...request.headers, ...this.#signedHeaders(signWith, request.delivery, body ?? '') }; } catch (err) { throw new DeliveryError(err.message, { refused: true }); }
+    const init = { method, headers, ...(body !== undefined ? { body } : {}) };
+    if (integration) {
       let res;
-      try { res = await this.integrationFetch(action.integration, u.href, init); } catch (err) { throw new WeaveError(`${where}: ${err.message}`, err.code ?? 'invalid'); }
-      if (!res.ok) throw new WeaveError(`${where} answered HTTP ${res.status}`, 'invalid');
+      try { res = await this.integrationFetch(integration, u.href, init); } catch (err) {
+        throw new DeliveryError(`${where}: ${err.message}`, { network: !(err instanceof WeaveError) || err.unreachable === true, refused: err instanceof WeaveError && err.unreachable !== true });
+      }
+      if (!res.ok) throw new DeliveryError(said.status(res.status), { status: res.status });
       return res;
     }
-    const refusal = await webhookRefusal(u).catch((err) => `could not resolve ${u.hostname} (${err?.code ?? err?.message})`);
-    if (refusal) throw new WeaveError(`${where}: ${refusal}`, 'forbidden');
-    const ms = this.webhookTimeoutMs;
+    let refusal;
+    try { refusal = await webhookRefusal(u); } catch (err) {
+      throw new DeliveryError(hook ? said.network(code(err)) : `${where}: could not resolve ${u.hostname} (${err?.code ?? err?.message})`, { network: true });
+    }
+    if (refusal) throw new DeliveryError(`${where}: ${refusal}`, { refused: true });
     let res;
     try {
       const answer = await fetch(u, { ...init, redirect: 'manual', signal: AbortSignal.timeout(ms) });
-      res = { status: answer.status, ok: answer.ok, body: await answer.text() };
+      if (hook) answer.body?.cancel().catch(() => {});
+      res = { status: answer.status, ok: answer.ok, body: hook ? '' : await answer.text() };
     } catch (err) {
-      throw new WeaveError(`${where}: ${err?.name === 'TimeoutError' ? `did not answer within ${ms / 1000} s` : `could not connect (${err?.cause?.code ?? err?.message})`}`, 'invalid');
+      throw new DeliveryError(err?.name === 'TimeoutError' ? said.timeout() : said.network(code(err)), { network: true });
     }
-    if (!res.ok) throw new WeaveError(`${where} answered HTTP ${res.status}`, 'invalid');
+    if (!res.ok) throw new DeliveryError(said.status(res.status), { status: res.status });
     return res;
   }
 
@@ -9861,27 +9942,15 @@ export class Weave {
     return { e: this.updateEntity(hit.id, values, { depth: depth + 1 }), created: false };
   }
 
-  #webhookHeaders(signWith, body) {
+  #signedHeaders(signWith, delivery, body) {
     if (!signWith) return {};
     const secret = this.resolveKey(signWith);
-    const timestamp = String(Math.floor(Date.now() / 1000));
+    const timestamp = String(Math.floor(this.now().getTime() / 1000));
     return {
       'X-Weave-Timestamp': timestamp,
-      'X-Weave-Delivery': uuid(),
+      'X-Weave-Delivery': delivery,
       'X-Weave-Signature': `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`,
     };
-  }
-
-  #webhookFailed(id, run, reason) {
-    if (this.#wfRun.get(id) !== run || run.failed) return;
-    run.failed = true;
-    const row = own(this.state.entities, id);
-    if (!row || row.deletedAt) return;
-    this.#stamp(row, () => {
-      this.#setOption(row, this.#wfField('Health'), 'Failed');
-      row.values[this.#wfField('Health Reason').id] = reason;
-    });
-    this.save();
   }
 
   #template(text, e, db, steps = {}) {
