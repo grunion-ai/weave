@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, eventually } from './lib/browser.mjs';
 
 let orders, bare, order, bareRow;
 
@@ -85,8 +85,8 @@ if (s) {
       const shown = document.querySelector('.entity-values-summary:not(.hidden) .wv-sum[data-field="Vendor"] :is(.text-dressed, input)');
       return (shown?.value ?? shown?.textContent) === 'Nordic Semi';
     }, null, { timeout: 5000 });
-    const saved = await page.evaluate(async (id) => (await fetch(`api/entities/${id}`).then((r) => r.json())).fields.Vendor, order.id);
-    assert.equal(saved, 'Nordic Semi', 'the edit reached the engine');
+    const saved = () => page.evaluate(async (id) => (await fetch(`api/entities/${id}`).then((r) => r.json())).fields.Vendor, order.id);
+    assert.equal(await eventually(saved, 'Nordic Semi'), 'Nordic Semi', 'the edit reached the engine');
     await page.close();
   });
 
