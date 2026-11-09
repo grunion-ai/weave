@@ -101,16 +101,15 @@ if (s) {
     await page.close();
   });
 
-  test('between 600 and 900px the menu button stands alone and the drawer brings the rail back beside it (Issue #1457)', async () => {
+  test('between 600 and 900px the rail stays and the drawer opens beside it', async () => {
     const page = await open(views['Task record'], { width: 700 });
     let seen = await shell(page);
     assert.ok(seen.scrollWidth <= 700, `document scrollWidth is ${seen.scrollWidth}`);
-    assert.equal(seen.rail.width, 0, 'the rail leaves the flow, so it never stands beside the menu button');
-    assert.equal(seen.sidebar.width, 0, 'and the sidebar is out of the flow too');
+    assert.equal(seen.rail.width, 52, 'the rail is in the flow');
+    assert.equal(seen.sidebar.width, 0, 'the sidebar is not');
     await openDrawer(page);
     seen = await shell(page);
-    assert.equal(seen.rail.width, 52, 'the drawer brings the rail back');
-    assert.equal(seen.sidebar.left, 52, 'and opens beside it');
+    assert.equal(seen.sidebar.left, 52, 'the drawer opens beside the rail');
     await page.mouse.click(680, 500);
     assert.equal((await shell(page)).open, false, 'a tap outside closes it');
     assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap: nothing under it opened');

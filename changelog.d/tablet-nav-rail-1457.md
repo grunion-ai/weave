@@ -1,1 +1,0 @@
-- Between 601px and 900px the workspace rail leaves the shell, so the menu button is the only way into navigation and the peek drawer brings the rail back beside it (Issue #1457).
