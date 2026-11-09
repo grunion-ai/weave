@@ -23,20 +23,25 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(['schema', 'entity', 'keystore', 'none'].includes(c.writes), `${c.name} says what it writes`);
     assert.equal(typeof c.run, 'function', `${c.name} runs`);
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
-    assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
-    assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
-    assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
-    if (c.action !== undefined) {
-      const key = c.actionArg ?? 'action';
-      assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
-      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
-    } else assert.equal(BY_TOOL.get(c.tool.name), c);
-    assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
+    assert.ok(c.http, `${c.name} has an HTTP door`);
+    for (const door of ['tool', 'cli']) assert.ok(c[door] || c.via?.[door], `${c.name} has a ${door} door or names the one that carries it`);
+    if (c.via?.tool) assert.ok(TOOLS.some((t) => t.name === c.via.tool), `${c.name}: ${c.via.tool} is in tools/list`);
+    if (c.via?.cli) assert.ok(COMMANDS.some((x) => x.name === c.via.cli && x.cli), `${c.name}: ${c.via.cli} carries the CLI door`);
+    if (c.tool) {
+      assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
+      assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
+      if (c.action !== undefined) {
+        const key = c.actionArg ?? 'action';
+        assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
+        if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
+      } else assert.equal(BY_TOOL.get(c.tool.name), c);
+    }
+    if (c.cli) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
       assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
-      for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+      if (c.tool) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
     }
-    for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
+    if (c.tool && c.cli) for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
   }
 });
 
@@ -222,7 +227,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli.command === 'share') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -869,4 +874,21 @@ test('file attach, read and delete answer the same on CLI, MCP and HTTP, and eac
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('space list and members answer the same on CLI and HTTP, and a bare space still lists (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-space-members-', { seeded: (w) => { seed(w); w.createAccount({ name: 'ann', role: 'editor' }); } });
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  try {
+    assert.deepEqual(bare(d.cli(['space', 'list'])), bare(await d.http('GET', '/api/spaces', undefined, auth)), 'space list and GET /api/spaces answer alike');
+    assert.deepEqual(bare(d.cli(['space'])), bare(d.cli(['space', 'list'])), 'a bare weave space lists');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops'])), bare(await d.http('GET', '/api/spaces/Ops/members', undefined, auth)), 'members read alike');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--role', 'observer'])), bare(await d.http('PUT', '/api/spaces/Ops/members/ann', { role: 'observer' }, auth)), 'a member set answers alike');
+    assert.equal(d.cli(['space', 'members', 'Ops']).find((m) => m.name === 'ann').role, 'observer');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--remove'])), bare(await d.http('DELETE', '/api/spaces/Ops/members/ann', undefined, auth)), 'a member removal answers alike');
+    assert.deepEqual(d.cli(['space', 'members', 'Ops']), []);
+    const refused = d.run(['space', 'bogus']);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /Unknown space subcommand 'bogus'\. Try: create, list, update, members, delete, restore/);
+  } finally { d.close(); }
 });

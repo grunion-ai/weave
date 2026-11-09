@@ -626,17 +626,6 @@ async function main() {
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
     }
-    case 'space': {
-      const [sub, name] = args;
-      if (sub === 'list' || !sub) return out(w.listSpaces());
-      if (sub === 'members') {
-        const [, , account] = args;
-        if (account && flags.remove) return out(w.removeSpaceMember(name, account));
-        if (account) return out(w.setSpaceMember(name, account, { role: flags.role ?? null }));
-        return out(w.spaceMembers(name));
-      }
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, members, delete, restore`);
-    }
     case 'template': {
       const [sub, ref] = args;
       if (sub === 'list' || !sub) return out(w.listTemplates());
