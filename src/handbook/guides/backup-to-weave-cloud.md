@@ -9,7 +9,7 @@ A self-hosted weave can send its nightly archive to an account on a weave cloud 
 | --- | --- |
 | `WEAVE_BACKUP_DEST` | `weave://<host>/<account>`, for example `weave://weave.grunion.ai/alice` |
 | `WEAVE_BACKUP_TOKEN` | the `wv_` token from step 1 |
-| `WEAVE_BACKUP_PASSPHRASE` | the passphrase that seals the archive (or `WEAVE_KEYSTORE_PASSPHRASE`, or `keystore.key` beside the data) |
+| `WEAVE_BACKUP_PASSPHRASE` | the passphrase that seals the archive (or `WEAVE_KEYSTORE_PASSPHRASE`, or `keystore.key` beside the data; under the keychain store there is no `keystore.key`, so set a variable) |
 
 The nightly run at 04:00 UTC then builds the archive, seals it and sends it with `PUT /api/backups/<archive>`. `/api/health` shows the run under `backup`, with `kind: "weave"` beside the destination. A one-off run is `weave backup --dest weave://weave.grunion.ai/alice`. A destination with no passphrase is refused before anything is built, because the cloud keeps encrypted archives only.
 

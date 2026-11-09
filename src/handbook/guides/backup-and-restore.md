@@ -1,6 +1,6 @@
 # Backup and restore
 
-A weave instance is one directory: a `.db` per workspace (yours, plus the `weave.db` docs workspace), one `files/` directory of attachment blobs shared by all of them, `keystore.json`, and on a laptop `keystore.key` beside it. `weave backup` turns that directory into one archive; `weave restore` turns the archive back into a directory. Built in phase 3 of Feature #222 (Feature #209 asked for it; Issue #250 shaped the orphan report). No SQLite tooling, no tar, no cloud SDK: `node:sqlite`, `node:crypto` and `fetch`.
+A weave instance is one directory: a `.db` per workspace (yours, plus the `weave.db` docs workspace), one `files/` directory of attachment blobs shared by all of them, `keystore.json`, and on a laptop `keystore.key` beside it. A Mac whose credentials live in the keychain has neither file: the values stay in the keychain (the key field guide, Key store). `weave backup` turns that directory into one archive; `weave restore` turns the archive back into a directory. Built in phase 3 of Feature #222 (Feature #209 asked for it; Issue #250 shaped the orphan report). No SQLite tooling, no tar, no cloud SDK: `node:sqlite`, `node:crypto` and `fetch`.
 
 ## What a backup holds
 
@@ -8,10 +8,11 @@ A weave instance is one directory: a `.db` per workspace (yours, plus the `weave
 | --- | --- | --- |
 | `<workspace>.db`, one per workspace | `VACUUM INTO` a temp file from a throwaway connection | Safe while the server is writing: a read transaction in WAL mode, the WAL folded in, compacted, no `-wal`/`-shm` sidecars. A plain copy of a live database is a torn file. |
 | `files/<id>` | Every blob in `files/` (a single-workspace backup takes only the blobs that workspace references) | Attachments live outside the `.db`; an export without them restores to dead links. |
-| `keystore.json` | Copied as is | Sealed by its own key, so it is useless alone. |
+| `keystore.json` | Copied as is, under the file store | Sealed by its own key, so it is useless alone. |
+| `keys.json` | Under the keychain store: the key names, sorted | The values stay in the keychain, so the archive holds no secret material at all. |
 | `manifest.json`, last | Written after everything else | Entry names and sizes, a sha256 per entry, entity counts per workspace, the weave version, and the orphan report. |
 
-`keystore.key` **never** goes into the archive. It decrypts `keystore.json`, and the pair in one place is exactly the leak the keystore exists to survive. Instead the key material seals the archive (below), and the restore side needs it from your hand.
+`keystore.key` **never** goes into the archive. It decrypts `keystore.json`, and the pair in one place is exactly the leak the keystore exists to survive. Instead the key material seals the archive (below), and the restore side needs it from your hand. Under the keychain store there is no `keystore.key`, so an encrypted or `weave://` backup needs `WEAVE_BACKUP_PASSPHRASE`, `WEAVE_KEYSTORE_PASSPHRASE` or `--passphrase-env`.
 
 The archive is a plain POSIX tar: `tar -tf weave-backup-all-2026-09-12T04-00-00Z.tar` lists it, and any tar reads it. Names carry the scope (`all`, or one workspace) and the UTC instant, so they sort chronologically.
 
@@ -82,7 +83,7 @@ node bin/weave.js restore weave-backup-all-2026-09-12T04-00-00Z.tar.enc --data /
 node bin/weave.js restore s3://weave-backups/nightly/weave-backup-all-2026-09-12T04-00-00Z.tar.enc --data /var/lib/weave-restored
 ```
 
-The source is a local path, an `s3://` key (fetched with the same signer and variables), or an `https://` URL. Restore decrypts with the same passphrase rule as backup, reads `manifest.json`, checks every entry's sha256 against it and refuses on the first mismatch, then unpacks the `.db` files, `files/` and `keystore.json` into `--data`.
+The source is a local path, an `s3://` key (fetched with the same signer and variables), or an `https://` URL. Restore decrypts with the same passphrase rule as backup, reads `manifest.json`, checks every entry's sha256 against it and refuses on the first mismatch, then unpacks the `.db` files, `files/` and `keystore.json` into `--data`. A keychain backup has no `keystore.json`: restore reads `keys.json` and names every credential whose value this machine's key store does not hold, and `weave key set <name>` puts each one back.
 
 It refuses to overwrite a database a server holds open. Two readings, either one refuses: a `-wal` or `-shm` sidecar beside the target (SQLite removes both when the last connection closes cleanly, so their presence means an open connection or a crash mid-write), or a `BEGIN IMMEDIATE` that cannot take the lock (a writer inside a transaction right now). A target that merely exists is refused too. `--force` overrides all three and deletes stale sidecars first; stop the server before you use it.
 
@@ -91,6 +92,8 @@ Then start `weave serve --data /var/lib/weave-restored/<your workspace>.db`. The
 ### keystore.key and passphrases
 
 `keystore.json` lands; the key that opens it does not, by design. On a laptop, copy `keystore.key` back beside it (Kyle's is in the login Keychain; yours is wherever you put it — a password manager is the right place). On a hosted instance set `WEAVE_KEYSTORE_PASSPHRASE` to the value the original had. Without either, every credential reads as undecryptable and must be re-entered; everything else — workspaces, records, documents, attachments — is whole.
+
+Under the keychain store nothing lands: the values are in the keychain of the Mac that took the backup. Restoring on the same Mac reports nothing missing; on another machine, set each named credential again, or run `weave key migrate --to file` on the original Mac first and back up the key file instead.
 
 The backup passphrase and the keystore passphrase are separate things that default into each other. Keep whichever you set somewhere that is not the server and not the bucket.
 
