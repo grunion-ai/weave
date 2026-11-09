@@ -598,7 +598,6 @@ const { dressNumber } = globalThis.weaveNumberCore;
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
-const COSTUME_KEYS = { number: NUMBER_COSTUME_KEYS, formula: FORMULA_COSTUME_KEYS, rollup: ROLLUP_COSTUME_KEYS, date: DATE_COSTUME_KEYS, daterange: DATE_COSTUME_KEYS, attachments: ATTACHMENT_LOOK_KEYS };
 export function pickCostume(from, keys, into = {}) {
   for (const k of keys) if (from[k] != null) into[k] = from[k];
   return into;
@@ -715,10 +714,35 @@ function dateConfig(type, config) {
 }
 
 const optionName = (options, id) => options.find((o) => o.id === id)?.name ?? null;
+function credentialConfig(field) {
+  const c = field?.config ?? {};
+  const kind = CREDENTIAL_KINDS.includes(c.kind) ? c.kind : 'apikey';
+  const keystore = KEYSTORES.includes(c.keystore) ? c.keystore : 'local';
+  return { kind, keystore, ...(kind === 'pair' ? { parts: c.parts ?? DEFAULT_PAIR_PARTS } : {}) };
+}
+function costumeFromDescriptor(f, config) {
+  pickCostume(f, FORMULA_COSTUME_KEYS, config);
+  for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
+}
+function recipeFromDescriptor(f, config) {
+  if (f.via) config.relationField = f.via;
+  if (f.viaTable) config.via = f.viaTable;
+  if (f.where) config.where = f.where;
+  if (f.targetField) config.targetField = f.targetField;
+  if (f.aggregate) config.aggregate = f.aggregate;
+}
+function numberDescriptor(keys) {
+  return (config, out) => {
+    pickCostume(config, keys, out);
+    if (config.display) out.color = config.color ?? 'ink';
+  };
+}
 const asBoolean = (raw) => Boolean(raw);
 const asString = (raw) => String(raw);
 const dateType = (type) => ({
   build: (config) => dateConfig(type, config),
+  toDescriptor: (config, out) => pickCostume(config, DATE_COSTUME_KEYS, out),
+  fromDescriptor: costumeFromDescriptor,
   merge(config, patch) {
     const costume = dateConfig(type, { ...config, ...patch });
     putCostume(config, DATE_COSTUME_KEYS, costume, (k) => k in patch || k in costume);
@@ -736,6 +760,25 @@ const optionType = {
       return normaliseOption(o, { strict: !asStored });
     });
   },
+  toDescriptor(config, out) {
+    out.options = config.options.map((o) => o.name);
+    out.optionsFull = config.options.map((o) => ({
+      id: o.id, name: o.name, hue: hueOf(o), icon: o.icon ?? '', color: o.color ?? '',
+    }));
+  },
+  fromDescriptor(f, config, existing) {
+    if (!f.options) return;
+    const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
+    const kept = new Map((existing?.options ?? []).map((o) => [o.name, o.color ?? '']));
+    const icons = new Map([
+      ...(existing?.options ?? []).map((o) => [o.name, o.icon ?? '']),
+      ...(f.optionsFull ?? []).filter((o) => 'icon' in o).map((o) => [o.name, o.icon ?? '']),
+    ]);
+    config.options = f.options.map((name) => normaliseOption(
+      { name, color: named.get(name) ?? kept.get(name) ?? '', icon: icons.get(name) ?? '' },
+      { strict: named.has(name) && named.get(name) !== kept.get(name) },
+    ));
+  },
 };
 
 const FIELD_TYPE_CONFIG = {
@@ -752,6 +795,7 @@ const FIELD_TYPE_CONFIG = {
       if (from === 'workflow') return was.states.find((s) => s.id === raw)?.name ?? null;
       return String(raw);
     },
+    toDescriptor(config, out) { if (config.literal) out.literal = true; },
   },
   number: {
     build: numberConfig,
@@ -760,6 +804,8 @@ const FIELD_TYPE_CONFIG = {
       putCostume(config, NUMBER_COSTUME_KEYS, costume, (k) => k in patch || k in costume || k in config);
     },
     coerce(raw) { const n = Number(raw); return Number.isFinite(n) ? n : null; },
+    toDescriptor: numberDescriptor(NUMBER_COSTUME_KEYS),
+    fromDescriptor: costumeFromDescriptor,
   },
   formula: {
     merge(config, patch) {
@@ -767,13 +813,27 @@ const FIELD_TYPE_CONFIG = {
       const costume = formulaCostume(switched ? patch : { ...config, ...patch });
       putCostume(config, FORMULA_COSTUME_KEYS, costume, (k) => k in patch || k in costume || k in config);
     },
+    toDescriptor(config, out) {
+      numberDescriptor(FORMULA_COSTUME_KEYS)(config, out);
+      out.expression = config.expression;
+    },
+    fromDescriptor(f, config) {
+      if (f.expression) config.expression = f.expression;
+      costumeFromDescriptor(f, config);
+    },
   },
+  lookup: { fromDescriptor: recipeFromDescriptor },
   rollup: {
     merge(config, patch) {
       if (!ROLLUP_COSTUME_KEYS.some((k) => k in patch)) return;
       const merged = { ...config, ...patch };
       for (const k of ROLLUP_COSTUME_KEYS) if (merged[k] === null) delete merged[k];
       putCostume(config, ROLLUP_COSTUME_KEYS, rollupCostume(merged));
+    },
+    toDescriptor: (config, out) => pickCostume(config, ROLLUP_COSTUME_KEYS, out),
+    fromDescriptor(f, config) {
+      recipeFromDescriptor(f, config);
+      costumeFromDescriptor(f, config);
     },
   },
   rating: {
@@ -794,6 +854,13 @@ const FIELD_TYPE_CONFIG = {
       if (typeof config.default === 'number') config.default = ratingValue(config.default, max);
     },
     coerce(raw, { next }) { const n = Number(raw); return Number.isFinite(n) ? ratingValue(n, next.max) : null; },
+    toDescriptor(config, out) { out.max = config.max; out.icon = config.icon; out.color = config.color ?? 'ink'; },
+    fromDescriptor(f, config) {
+      costumeFromDescriptor(f, config);
+      if (f.max != null) config.max = f.max;
+      if (f.icon != null) config.icon = f.icon;
+      if (f.color != null) config.color = f.color;
+    },
   },
   date: {
     ...dateType('date'),
@@ -821,6 +888,7 @@ const FIELD_TYPE_CONFIG = {
       config.off = off;
     },
     coerce: asBoolean,
+    toDescriptor(config, out) { out.on = config.on; out.off = config.off; },
   },
   url: { coerce: asString },
   email: { coerce: (raw) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null) },
@@ -858,6 +926,10 @@ const FIELD_TYPE_CONFIG = {
       if (patch.states) config.states = FIELD_TYPE_CONFIG.workflow.build({ states: patch.states }).states;
     },
     coerce: (raw, { next }) => (next.states.some((s) => s.id === raw) ? raw : null),
+    toDescriptor(config, out) {
+      out.states = config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}) }));
+    },
+    fromDescriptor(f, config) { if (f.states) config.states = f.states; },
   },
   field: {
     build(config) {
@@ -866,6 +938,11 @@ const FIELD_TYPE_CONFIG = {
         throw new WeaveError(`Definition depth must be 1..${MAX_DEFINITION_DEPTH}, got '${depth}'`, 'invalid');
       }
       return { types: [...DEFINABLE_TYPES], depth };
+    },
+    toDescriptor(config, out) { out.types = [...config.types]; out.depth = config.depth; },
+    fromDescriptor(f, config) {
+      if (f.types) config.types = f.types;
+      if (f.depth != null) config.depth = f.depth;
     },
   },
   key: {
@@ -895,6 +972,8 @@ const FIELD_TYPE_CONFIG = {
       return out;
     },
     coerce: asString,
+    toDescriptor: (config, out) => Object.assign(out, credentialConfig({ config })),
+    fromDescriptor(f, config) { if (f.kind != null) config.kind = f.kind; },
   },
   attachments: {
     build(config) {
@@ -918,6 +997,14 @@ const FIELD_TYPE_CONFIG = {
       config.multiple = next.multiple;
       putCostume(config, ATTACHMENT_LOOK_KEYS, next);
     },
+    toDescriptor(config, out) {
+      out.multiple = config.multiple !== false;
+      pickCostume(config, ATTACHMENT_LOOK_KEYS, out);
+    },
+    fromDescriptor(f, config) {
+      if (f.multiple != null) config.multiple = f.multiple;
+      pickCostume(f, ATTACHMENT_LOOK_KEYS, config);
+    },
   },
   avatar: {
     build(config) {
@@ -928,6 +1015,8 @@ const FIELD_TYPE_CONFIG = {
     merge(config, patch) {
       if ('shape' in patch) config.shape = FIELD_TYPE_CONFIG.avatar.build({ shape: patch.shape }).shape;
     },
+    toDescriptor(config, out) { out.shape = config.shape ?? 'round'; },
+    fromDescriptor(f, config) { if (f.shape != null) config.shape = f.shape; },
   },
   document: {
     build(config) {
@@ -941,6 +1030,22 @@ const FIELD_TYPE_CONFIG = {
       if (!('kind' in patch)) return;
       const { kind } = FIELD_TYPE_CONFIG.document.build(patch);
       if (kind) config.kind = kind; else delete config.kind;
+    },
+    toDescriptor(config, out) { if (config.kind) out.kind = config.kind; },
+    fromDescriptor(f, config) { if (f.kind != null) config.kind = f.kind; },
+  },
+  view: {
+    toDescriptor(config, out, { fieldName }) {
+      out.role = config.shape;
+      out.shape = config.shape;
+      out.link = config.link;
+      out.state = config.state;
+      out.description = config.description;
+      out.fields = config.fields == null ? null : config.fields.map(fieldName).filter(Boolean);
+    },
+    fromDescriptor(f, config) {
+      for (const k of ['link', 'state', 'description']) if (f[k] !== undefined) config[k] = f[k];
+      if (f.fields !== undefined) config.fields = f.fields;
     },
   },
 };
@@ -2986,44 +3091,13 @@ export class Weave {
       plan.push({ action, subject });
       if (!dryRun) fn();
     };
-    const configFromDescriptor = (f, existing = null) => {
+    const configFromDescriptor = (f, existing = null, as = f.type ?? existing?.type) => {
       const config = existing ? { ...existing.config } : {};
-      if (f.options) {
-        const named = new Map((f.optionsFull ?? []).map((o) => [o.name, o.color ?? '']));
-        const kept = new Map((existing?.config.options ?? []).map((o) => [o.name, o.color ?? '']));
-        const icons = new Map([
-          ...(existing?.config.options ?? []).map((o) => [o.name, o.icon ?? '']),
-          ...(f.optionsFull ?? []).filter((o) => 'icon' in o).map((o) => [o.name, o.icon ?? '']),
-        ]);
-        config.options = f.options.map((name) => normaliseOption(
-          { name, color: named.get(name) ?? kept.get(name) ?? '', icon: icons.get(name) ?? '' },
-          { strict: named.has(name) && named.get(name) !== kept.get(name) },
-        ));
-      }
-      if (f.states) config.states = f.states;
-      if (f.expression) config.expression = f.expression;
-      if (f.via) config.relationField = f.via;
-      if (f.viaTable) config.via = f.viaTable;
-      if (f.where) config.where = f.where;
-      if (f.targetField) config.targetField = f.targetField;
-      if (f.aggregate) config.aggregate = f.aggregate;
+      FIELD_TYPE_CONFIG[as]?.fromDescriptor?.(f, config, existing?.config);
       if (f.default !== undefined) config.default = f.default;
-      if (f.types) config.types = f.types;
-      if (f.depth != null) config.depth = f.depth;
       if (f.width != null) config.width = f.width;
       if (f.type !== 'view' && f.description != null) config.description = f.description;
-      pickCostume(f, FORMULA_COSTUME_KEYS, config);
-      for (const k of DATE_COSTUME_KEYS) if (k !== 'format' && f[k] != null) config[k] = f[k];
-      if (f.kind != null) config.kind = f.kind;
-      if (f.multiple != null) config.multiple = f.multiple;
-      if (f.type === 'attachments') pickCostume(f, ATTACHMENT_LOOK_KEYS, config);
-      if (f.type === 'avatar' && f.shape != null) config.shape = f.shape;
       if (f.term != null) config.term = f.term;
-      if (f.type === 'rating') { if (f.max != null) config.max = f.max; if (f.icon != null) config.icon = f.icon; if (f.color != null) config.color = f.color; }
-      if (f.type === 'view') {
-        for (const k of ['link', 'state', 'description']) if (f[k] !== undefined) config[k] = f[k];
-        if (f.fields !== undefined) config.fields = f.fields;
-      }
       return config;
     };
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
@@ -3088,7 +3162,7 @@ export class Weave {
               ?? (tDoc.fields ?? []).find((f) => f.type === 'document' && f.name === 'Description');
             if (described) {
               if (described.name !== 'Description') this.updateField(db.id, db.descriptionFieldId, { name: described.name });
-              const cfg = configFromDescriptor(described);
+              const cfg = configFromDescriptor(described, null, 'document');
               if (cfg && Object.keys(cfg).length) this.updateField(db.id, db.descriptionFieldId, { config: cfg });
             } else {
               this.deleteField(db.id, db.descriptionFieldId);
@@ -3808,10 +3882,7 @@ export class Weave {
   }
 
   credentialConfig(field) {
-    const c = field?.config ?? {};
-    const kind = CREDENTIAL_KINDS.includes(c.kind) ? c.kind : 'apikey';
-    const keystore = KEYSTORES.includes(c.keystore) ? c.keystore : 'local';
-    return { kind, keystore, ...(kind === 'pair' ? { parts: c.parts ?? DEFAULT_PAIR_PARTS } : {}) };
+    return credentialConfig(field);
   }
 
   setKey(name, secret) {
@@ -10270,17 +10341,11 @@ export class Weave {
         maxPublicId: db.publicIdCounter ?? 0,
         fields: db.fieldOrder.map((fid) => {
           const f = db.fields[fid];
+          const describing = { fieldName: (id) => db.fields[id]?.name };
           const out = { id: f.id, name: f.name, type: f.type };
           if (f.config.width) out.width = f.config.width;
           if (f.type !== 'view' && f.config.description) out.description = f.config.description;
           if (f.id === db.nameFieldId && f.config.term) out.term = { ...f.config.term };
-          if (f.type === 'select' || f.type === 'multiselect') {
-            out.options = f.config.options.map((o) => o.name);
-            out.optionsFull = f.config.options.map((o) => ({
-              id: o.id, name: o.name, hue: hueOf(o), icon: o.icon ?? '', color: o.color ?? '',
-            }));
-          }
-          if (f.type === 'workflow') out.states = f.config.states.map((s) => ({ id: s.id, name: s.name, category: s.category, default: !!s.default, ...(s.icon ? { icon: s.icon } : {}), ...(s.hue ? { hue: s.hue } : {}) }));
           if (f.type === 'relation' && f.config.targetDbs) {
             const members = f.config.targetDbs.map((tid) => this.state.tables[tid]).filter(Boolean);
             out.targetDbs = members.map((t) => (this.#tableHidden(t) ? LOCKED_NAME : this.qualifiedName(t)));
@@ -10313,44 +10378,17 @@ export class Weave {
             }
             if (f.type === 'rollup') out.aggregate = f.config.aggregate;
           }
+          FIELD_TYPE_CONFIG[f.type]?.toDescriptor?.(f.config, out, describing);
           if (f.type === 'rollup') {
-            pickCostume(f.config, ROLLUP_COSTUME_KEYS, out);
             const nd = this.#numberDisplay(db, f);
             if (nd) { out.display = nd.display; if (typeof nd.scale === 'number') out.scale = nd.scale; out.color = nd.color; }
           }
-          if (f.type === 'number' || f.type === 'formula') {
-            pickCostume(f.config, COSTUME_KEYS[f.type], out);
-            if (f.config.display) out.color = f.config.color ?? 'ink';
-          }
-          if (f.type === 'attachments') {
-            out.multiple = f.config.multiple !== false;
-            pickCostume(f.config, ATTACHMENT_LOOK_KEYS, out);
-          }
-          if (f.type === 'avatar') out.shape = f.config.shape ?? 'round';
-          if (f.type === 'toggle') { out.on = f.config.on; out.off = f.config.off; }
-          if (f.type === 'rating') { out.max = f.config.max; out.icon = f.config.icon; out.color = f.config.color ?? 'ink'; }
           if (f.type === 'lookup' || f.type === 'rollup') {
             const rt = this.#ratingOf(db, f);
             if (rt) out.rating = rt;
           }
-          if (f.type === 'document' && f.config.kind) out.kind = f.config.kind;
           if (f.id === db.descriptionFieldId) out.role = 'description';
           if (f.id === db.nameFieldId) out.role = 'name';
-          if (f.type === 'view') {
-            out.role = f.config.shape;
-            out.shape = f.config.shape;
-            out.link = f.config.link;
-            out.state = f.config.state;
-            out.description = f.config.description;
-            out.fields = f.config.fields == null ? null : f.config.fields.map((id) => db.fields[id]?.name).filter(Boolean);
-          }
-          if (f.type === 'key') Object.assign(out, this.credentialConfig(f));
-          if (f.type === 'date' || f.type === 'daterange') {
-            pickCostume(f.config, DATE_COSTUME_KEYS, out);
-          }
-          if (f.type === 'formula') out.expression = f.config.expression;
-          if (f.type === 'field') { out.types = [...f.config.types]; out.depth = f.config.depth; }
-          if (f.type === 'text' && f.config.literal) out.literal = true;
           if (f.config?.default !== undefined) out.default = f.config.default;
           return out;
         }),
