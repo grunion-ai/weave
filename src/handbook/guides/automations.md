@@ -108,23 +108,25 @@ Before each delivery weave resolves the host and refuses loopback, link-local, t
 
 Set `WEAVE_WEBHOOK_ALLOW_PRIVATE=1` on an instance whose webhooks land on its own network, such as a Railway private service or a VPS sidecar, and the private ranges are allowed. A redirect stays refused either way. A `weave_build` dry run drops webhook actions, so a trial never posts.
 
-### Signing a delivery
+## Signed deliveries
 
-Add `signWith` to the action and the delivery is signed, so a receiver can tell weave from anyone else:
+Add `signWith` to a `webhook` or `http-request` action and every delivery it sends is signed, so a receiver can tell weave from anyone else:
 
 ```json
 { "type": "webhook", "url": "https://hooks.example.com/weave", "signWith": "hooks-example" }
 ```
 
-`signWith` is the NAME of a credential in the keystore (`weave key set hooks-example`), never the value: the Script, the Workflows row, the export and the backup hold the name alone. Three headers ride along:
+`signWith` is the NAME of a credential in the keystore (`weave key set hooks-example`), never the value: the Script, the Workflows row, the export, the backup and a Failed Deliveries record hold the name alone. Three headers ride along:
 
 | Header | Value |
 | --- | --- |
-| `X-Weave-Timestamp` | the delivery clock, unix seconds |
-| `X-Weave-Delivery` | a uuid, new for each delivery |
+| `X-Weave-Timestamp` | the clock of this attempt, unix seconds |
+| `X-Weave-Delivery` | a uuid for the delivery, the same on every retry and replay of it |
 | `X-Weave-Signature` | `sha256=` and the hex HMAC-SHA256 of `<timestamp>.<raw body>` under the credential |
 
-The receiver recomputes it over the bytes it read, before any JSON parse, and compares in constant time:
+An `http-request` through an integration always carries `X-Weave-Timestamp` and `X-Weave-Delivery` beside its key; it carries `X-Weave-Signature` too when it also names `signWith`.
+
+The receiver recomputes the signature over the bytes it read, before any JSON parse, and compares in constant time:
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -137,7 +139,9 @@ const ok = mine.length === theirs.length && timingSafeEqual(mine, theirs);
 if (!ok || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return reject();
 ```
 
-Refuse a timestamp older than your replay window and remember the `X-Weave-Delivery` ids you have already handled. A rule that names no credential posts exactly what it posted before, with `Content-Type` as its only header. A rule whose credential the keystore does not hold sends nothing and reads `Failed`: weave never falls back to an unsigned delivery.
+Replay protection takes two checks on the receiver's side. Refuse a timestamp more than five minutes from your clock, so a captured request cannot be sent again later; each retry is signed afresh, so a late retry still passes. Remember each `X-Weave-Delivery` id you have handled for at least that window and answer a repeat with 2xx without acting on it: a retry, or a replay from Failed Deliveries, sends the same `X-Weave-Delivery`, so a delivery you already handled is handled once.
+
+A rule that names no credential sends no `X-Weave-` headers; a webhook then posts with `Content-Type` as its only header. A rule whose credential the keystore does not hold sends nothing and reads `Failed`, and it is not retried: weave never falls back to an unsigned delivery.
 
 ## Calling an API
 
@@ -157,6 +161,7 @@ An `http-request` action sends one request and reads the answer back onto the ro
 | `headers` | an object of header names and text values, with placeholders |
 | `body` | text with placeholders, or a JSON object or list whose text values take them, sent as `application/json` unless a header says otherwise. `GET` and `HEAD` carry none |
 | `integration` | the Name of a `System/Integrations` record, whose key weave adds as the Authorization header |
+| `signWith` | the name of a keystore credential; the request is signed as in [Signed deliveries](#signed-deliveries) |
 | `response` | each field of the firing row mapped to a path in the JSON answer, such as `id` or `data.items.0.id` |
 
 The key never sits in the rule. The Script, the Workflows row, the run's activity entry, the step output and the `key-used` audit entry hold the integration's name alone, and a key the API echoes back is redacted from the answer. weave refuses a Script that sets an `Authorization`, `Proxy-Authorization` or `Cookie` header, because the key belongs on the Integrations record, set there with Replace.
