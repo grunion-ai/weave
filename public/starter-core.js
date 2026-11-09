@@ -162,6 +162,42 @@
       ],
     },
     {
+      id: 'notes',
+      title: 'Notes',
+      blurb: 'Notes filed by topic, newest first',
+      space: 'Notes',
+      icon: 'lucide:file-text',
+      work: 'Notes and writing',
+      category: 'learning',
+      details: 'For anyone keeping notes, ideas and drafts in one place.',
+      like: 'Like Apple Notes',
+      featured: true,
+      tables: (m) => [
+        {
+          name: 'Notes',
+          icon: 'lucide:file-text',
+          fields: [
+            { name: 'Topic', type: 'relation', to: 'Topics', cardinality: 'many-to-one', inverseName: 'Notes' },
+            { name: 'Date', type: 'date' },
+          ],
+          sort: 'Date desc',
+          rows: [
+            { Name: 'Ideas for the weekend', Topic: 'Personal', Date: m.after(0) },
+            { Name: 'Meeting with Ada', Topic: 'Work', Date: m.after(-1) },
+            { Name: 'Books to read', Topic: 'Personal', Date: m.after(-3) },
+          ],
+        },
+        {
+          name: 'Topics',
+          icon: 'lucide:hash',
+          fields: [
+            { name: 'Count', type: 'rollup', relationField: 'Notes', aggregate: 'count' },
+          ],
+          rows: [{ Name: 'Personal' }, { Name: 'Work' }],
+        },
+      ],
+    },
+    {
       id: 'basic',
       title: 'Basic',
       blurb: 'One table of items with a status, owner and due date',

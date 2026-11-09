@@ -86,8 +86,8 @@ if (s) {
     await page.keyboard.press('Enter');
     await step(page, 3);
     assert.equal(await heading(page), 'Your first space');
-    assert.deepEqual(await page.locator('.wv-onboard .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
-    assert.equal(await page.locator('.wv-onboard .wv-start-template').count(), 3, 'exactly three cards');
+    assert.deepEqual(await page.locator('.wv-onboard .wv-start-title').allTextContents(), ['Money', 'Work', 'People', 'Notes']);
+    assert.equal(await page.locator('.wv-onboard .wv-start-template').count(), 4, 'exactly four cards');
     await page.click('.wv-onboard .wv-start-template[data-template="tasks"]');
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     await page.waitForSelector('.view-header');
