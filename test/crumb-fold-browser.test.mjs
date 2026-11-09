@@ -63,6 +63,13 @@ if (s) {
     await page.close();
   });
 
+  test('a long dock trail keeps the phone breadcrumb basis (Issue #1513)', async () => {
+    const page = await walk({ width: 390 });
+    try {
+      assert.equal(await page.locator('#dock .crumb-path').evaluate((path) => getComputedStyle(path).flexBasis), '0px');
+    } finally { await page.close(); }
+  });
+
   test('the "…" menu lists the hidden hops with #id and Name, and choosing one goes there', async () => {
     const page = await walk();
     await page.waitForSelector('#dock .crumb-more');
