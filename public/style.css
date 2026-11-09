@@ -824,6 +824,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wv-start-template:hover, .wv-start-template:focus-visible { border-color: var(--tblr-primary); background: var(--tblr-active-bg); }
 .wv-start-title { font-weight: 600; }
 .wv-start-blurb { font-size: var(--fs-secondary); color: var(--tblr-secondary); }
+.wv-gallery-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+a.wv-start-template { text-decoration: none; }
+.wv-gallery-locked { cursor: default; }
+.wv-gallery-note { font-size: var(--fs-meta); color: var(--tblr-primary); }
 .list-row.list-row-add { cursor: default; }
 .list-row.list-row-add:hover { background: none; }
 .list-rows > .card-title { margin: 0; padding: 12px 14px 4px; }

@@ -248,6 +248,10 @@
       "gzip": 17235,
       "br": 14384
     },
+    "/starter-gallery.js": {
+      "gzip": 876,
+      "br": 723
+    },
     "/status.css": {
       "gzip": 2036,
       "br": 1711

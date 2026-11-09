@@ -1501,7 +1501,8 @@ function renderNav() {
         await api('POST', '/spaces', { name });
         await loadSchema();
       })),
-    }, '+ New space'));
+    }, '+ New space'),
+    el('a', { class: 'btn btn-sm btn-ghost-secondary wv-gallery-link', href: '#/templates' }, 'Templates'));
   const systemFolded = folded.has(SYSTEM_FOLD_KEY);
   const wf = registryTable('workflows');
   const wfHref = wf ? `#/table/${wf.id}` : '/';
@@ -10614,6 +10615,7 @@ function dispatchRoute() {
   let m;
   if (hash === '#/trash') return openTrash(null);
   if (hash === '#/settings') return openSettings();
+  if (hash === '#/templates') return lazyScript('/starter-gallery.js').then(() => showStarterGallery());
   if ((m = hash.match(/^#\/trash\/([^/?]+)/))) return openTrash(m[1]);
   if ((m = hash.match(/^#\/(?:table|db)\/([^/?]+)\/new(?:\?(.*))?$/))) {
     const [, id, query] = m;
