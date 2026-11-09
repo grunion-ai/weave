@@ -7286,6 +7286,12 @@ export class Weave {
       : `Your role in '${sp.name}' is ${role}: it reads and comments, nothing else`, 'forbidden');
   }
 
+  #readOnlyFor(db) {
+    const v = viewerOf(this);
+    if (!v || !this.#guarded(db)) return false;
+    const role = spaceRole(this, v, this.state.spaces[db.spaceId]);
+    return role != null && RANK[role] < RANK.editor;
+  }
   #guarded(db) {
     return !!viewerOf(this) && !db.system && !this.state.spaces[db.spaceId]?.system;
   }
@@ -8532,6 +8538,7 @@ export class Weave {
         ...(face ? { avatar: face } : {}),
         ...(Object.keys(scales).length ? { scales } : {}),
         ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
+        ...(this.#readOnlyFor(db) ? { readOnly: true } : {}),
       };
     }
     return {
@@ -8559,6 +8566,7 @@ export class Weave {
       url: this.permalink('entity', e.id),
       ...(Object.keys(scales).length ? { scales } : {}),
       ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
+      ...(this.#readOnlyFor(db) ? { readOnly: true } : {}),
     };
   }
 

@@ -401,7 +401,7 @@ function skipCaretOnlyUndo(vditor) {
   };
 }
 
-function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId }) {
+function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, entityId, readOnly = false }) {
   guardMathRender();
   const t = vditorTheme();
   let handed = null;
@@ -485,7 +485,8 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
       attachToolbarBubble(host);
       attachFileTools(host, editor, onInput);
       watchCommandMarkers(host, editor, onInput);
-      if (autoFocus) editor.focus();
+      if (readOnly) editor.disabled();
+      else if (autoFocus) editor.focus();
     },
     ...(onBlur ? { blur: () => onBlur() } : {}),
     input: (v) => {
