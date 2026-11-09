@@ -98,7 +98,7 @@ Each action also yields an output the later ones can read:
 
 A later action reads them as `{{steps.1.publicId}}` in its text or in a `set-field` string value, and as `steps.1.name` in an `upsert-row` source path. The number is the action's position, counted from 1. A step that has not run yet, or a path it has not got, reads empty.
 
-Every run leaves an `automation-ran` entry on each row it touched. The entry holds the outputs under `steps`, in action order. A run that stops on a failing action adds `failed: {step, error}` to the entry of the row it stopped on, and the rule's `Health Reason` carries the same message.
+Every write a rule makes carries `origin: {workflow}` in its activity entry, naming the rule, so a write weave made is told apart from a person's. Every run leaves an `automation-ran` entry on each row it touched. The entry holds the outputs under `steps`, in action order. A run that stops on a failing action adds `failed: {step, error}` to the entry of the row it stopped on, and the rule's `Health Reason` carries the same message.
 
 ## Webhooks
 
