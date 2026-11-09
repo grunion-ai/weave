@@ -1248,7 +1248,7 @@ test('spaces and tables wear Lucide icons that move, picked beside their name (F
     'the icon picker speaks the one dialect, titled Icon (Issue #799)');
   assert.match(fnBody('iconButton'), /grid: true/, 'the table gate opens the grid');
   assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
-  assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
+  assert.ok(app.includes("navIconEl(space.icon, 'space')") && app.includes("navIconEl(db.icon, 'table')"), 'nav renders both, with the breadcrumb default when none is set (Issue #1394)');
   const icons = (await import('../public/vendor/lucide-moving.js'), globalThis.LUCIDE_MOVING);
   assert.ok(Object.keys(icons).length >= 120, 'the inventory rides along');
   await import('../public/field-dialog-core.js');
