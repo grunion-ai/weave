@@ -6,24 +6,29 @@ import { seed, percentile } from '../scripts/bench-query.mjs';
 const ROWS = 50000;
 const RUNS = 20;
 const WARMUPS = 2;
-export const LOOKUP_SORT_P95_BUDGET_MS = 15;
+export const LOOKUP_SORT_RATIO_CEILING = 4;
 
-test(`the first page of a ${ROWS}-row table sorted by a lookup answers under ${LOOKUP_SORT_P95_BUDGET_MS} ms at p95 (Issue #1093)`, (t) => {
+test(`the first page of a ${ROWS}-row table sorted by a lookup costs at most ${LOOKUP_SORT_RATIO_CEILING}x the unsorted first page (Issues #1093, #1511)`, (t) => {
   const w = new Weave();
   const { row } = seed(w, { rows: ROWS, owners: 1000 });
-  const page = () => w.query(row.id, { limit: 50, sort: [{ field: 'Owner name', dir: 'asc' }] });
-  for (let i = 0; i < WARMUPS; i++) page();
-  const times = [];
+  const sorted = () => w.query(row.id, { limit: 50, sort: [{ field: 'Owner name', dir: 'asc' }] });
+  const unsorted = () => w.query(row.id, { limit: 50 });
+  for (let i = 0; i < WARMUPS; i++) { sorted(); unsorted(); }
+  const times = { sorted: [], unsorted: [] };
   for (let i = 0; i < RUNS; i++) {
-    const t0 = performance.now();
-    const out = page();
-    times.push(performance.now() - t0);
-    assert.equal(out.items.length, 50);
-    assert.equal(out.total, ROWS);
+    for (const [name, page] of [['sorted', sorted], ['unsorted', unsorted]]) {
+      const t0 = performance.now();
+      const out = page();
+      times[name].push(performance.now() - t0);
+      assert.equal(out.items.length, 50);
+      assert.equal(out.total, ROWS);
+    }
   }
-  times.sort((a, b) => a - b);
-  const p95 = percentile(times, 0.95);
-  const p50 = percentile(times, 0.5);
-  t.diagnostic(`query-volume lookup sort p95 ${p95.toFixed(1)} ms (p50 ${p50.toFixed(1)} ms), budget ${LOOKUP_SORT_P95_BUDGET_MS} ms`);
-  assert.ok(p95 < LOOKUP_SORT_P95_BUDGET_MS, `p95 ${p95.toFixed(1)} ms (p50 ${p50.toFixed(1)} ms), budget ${LOOKUP_SORT_P95_BUDGET_MS} ms: a GitHub runner figure (worst observed unit-shard reading plus 50 percent), not a laptop one`);
+  for (const list of Object.values(times)) list.sort((a, b) => a - b);
+  const sortedP50 = percentile(times.sorted, 0.5);
+  const unsortedP50 = percentile(times.unsorted, 0.5);
+  const ratio = sortedP50 / unsortedP50;
+  t.diagnostic(`query-volume lookup sort p50 ${sortedP50.toFixed(1)} ms (p95 ${percentile(times.sorted, 0.95).toFixed(1)} ms), unsorted p50 ${unsortedP50.toFixed(1)} ms, ratio ${ratio.toFixed(2)}x, ceiling ${LOOKUP_SORT_RATIO_CEILING}x`);
+  assert.ok(ratio <= LOOKUP_SORT_RATIO_CEILING,
+    `the lookup-sorted first page reads ${sortedP50.toFixed(1)} ms at p50 against ${unsortedP50.toFixed(1)} ms unsorted (${ratio.toFixed(1)}x): the sort is walking every row again instead of reusing its cached keys and order`);
 });
