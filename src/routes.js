@@ -2012,7 +2012,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'POST') {
-            const e = weave.createEntity(m[1], body);
+            const e = weave.createEntity(m[1], body, { viewerZone });
             const once = weave.takeOneTime(e.id);
             const secret = once?.invite ? { invite: { ...once.invite, url: inviteUrl(`${originFor(rx)}${wsPrefix}`, once.invite.code) } } : once ?? {};
             return out(201, { ...weave.readEntity(e.id, { viewerZone }), ...secret });
