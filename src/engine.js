@@ -1031,7 +1031,7 @@ const FIELD_TYPE_CONFIG = {
       pick('preview', ATTACHMENT_PREVIEWS, null);
       pick('size', ATTACHMENT_SIZES, 'medium');
       pick('fit', ATTACHMENT_FITS, 'trim');
-      if (['cover', 'intro'].includes(out.preview) && multiple) throw new WeaveError("This preview needs a single-file field (multiple: false)", 'invalid');
+      if (['cover', 'intro'].includes(out.preview) && multiple) throw new WeaveError(out.preview === 'cover' ? "A cover preview needs a single-file field (multiple: false)" : "An introduction preview needs a single-file field (multiple: false)", 'invalid');
       return out;
     },
     merge(config, patch) {
