@@ -1701,6 +1701,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-iconly { display: inline-flex; align-items: center; gap: 8px; }
 
 #tray-back { position: fixed; inset: 0; background: rgba(0,0,0,.22); z-index: 1040; }
+body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: wv-tray-in .18s ease-out; }
 @keyframes wv-tray-in { from { transform: translateX(var(--wv-tray-from, 24px)); } }
 @media (prefers-reduced-motion: reduce) { #tray { animation: none; } }

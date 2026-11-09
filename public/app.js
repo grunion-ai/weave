@@ -11213,10 +11213,13 @@ function linkSearch(f, { linked = [], commit }) {
       const noun = (t.term ?? termOfTable(t.id)).singular;
       return {
         label: targets.length > 1 ? `+ New ${noun} in ${t.qualified}` : `+ New ${noun}`,
-        run: async (q) => {
-          const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: q || `New ${t.name}` } });
-          return { kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `/e/${made.id}` };
-        },
+        run: (q) => new Promise((resolve) => {
+          tray(`New ${noun}`, [el('input', { name: 'name', placeholder: 'Name', class: 'form-control', value: q || '' })], async (fd) => {
+            const name = (fd.get('name') ?? '').trim() || q || `New ${t.name}`;
+            const made = await api('POST', `/tables/${t.id}/entities`, { values: { Name: name } });
+            resolve({ kind: 'entity', id: made.id, publicId: made.publicId, name: made.name, db: made.db ?? t.qualified, url: `/e/${made.id}` });
+          }, 'Create & link');
+        }),
       };
     }),
     onPick: (hit) => { if (!before.includes(hit.id)) run([hit.id], []); },
