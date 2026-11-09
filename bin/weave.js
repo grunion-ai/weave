@@ -62,15 +62,6 @@ function pickFlags(names) {
   return patch;
 }
 
-const splitList = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
-function viewRowFlags(flags) {
-  const on = (v) => ['on', 'true', 'yes', '1', true].includes(v);
-  const out = {};
-  if (flags.deleted != null) out.deleted = on(flags.deleted);
-  if (flags.rollups != null) out.rollups = flags.rollups === 'table' ? null : on(flags.rollups);
-  return out;
-}
-
 function resolveEntityRef(w, ref, dbFlag) {
   const m = String(ref).match(/^(.+)#(\d+)$/);
   if (m) {
@@ -649,32 +640,6 @@ async function main() {
         } finally { if (target !== w) target.store.close?.(); }
       }
       throw new WeaveError(`Unknown template subcommand '${sub}'. Try: list, use`);
-    }
-    case 'table':
-    case 'db': {
-      const [sub, space] = args;
-      if (sub === 'view') {
-        const patch = {};
-        for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
-        if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
-        for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
-        if (flags.frozen != null) patch.frozen = Number(flags.frozen);
-        for (const k of ['density', 'layout', 'subtotals', 'groups', 'picture', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
-        if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
-        if (flags['completed-by'] != null) patch.completedBy = flags['completed-by'] === 'none' ? null : flags['completed-by'];
-        if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
-        if (flags.order != null) patch.order = splitList(flags.order);
-        if (flags['phone-row'] != null) patch.phoneRow = flags['phone-row'] === 'none' ? null : parseJsonFlag('phone-row');
-        Object.assign(patch, viewRowFlags(flags));
-        if (flags.name != null) patch.name = flags.name;
-        if (flags.from != null) patch.from = flags.from;
-        if (flags.position != null) patch.position = Number(flags.position);
-        if (flags.default) patch.default = true;
-        if (flags.delete) patch.delete = true;
-        return out(w.tableView(space, Object.keys(patch).length ? patch : null));
-      }
-      if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
-      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
     }
     case 'field': {
       const [sub, db] = args;

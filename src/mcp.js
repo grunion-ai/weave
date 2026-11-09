@@ -118,21 +118,7 @@ export const TOOLS = [
   toolDefinition('weave_delete_space'),
   toolDefinition('weave_restore_space'),
   toolDefinition('weave_update_table'),
-  {
-    name: 'weave_table_view',
-    description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. collapsed: paths. hideEmpty: no empty groups. order: #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
-        move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
-        position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
-        widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
-        layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
-      },
-      required: ['view'],
-    },
-  },
+  toolDefinition('weave_table_view'),
   toolDefinition('weave_move_table'),
   toolDefinition('weave_duplicate_table'),
   toolDefinition('weave_delete_table'),
@@ -460,10 +446,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
       }
       return caller.useTemplate({ space: args.space, workspace: args.workspace, name: args.name });
-    case 'weave_table_view': {
-      const { view, ...patch } = args;
-      return weave.tableView(view, Object.keys(patch).length ? patch : null);
-    }
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {

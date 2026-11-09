@@ -1984,11 +1984,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
 
-        if (route === 'GET /api/tables') {
-          const space = rx.searchParams.get('space');
-          const dbs = weave.listTables(space ? weave.getSpace(space).id : null);
-          return out(200, dbs.map((db) => ({ id: db.id, name: db.name, qualified: weave.qualifiedName(db), spaceId: db.spaceId, position: db.position })));
-        }
         if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
           if (rx.method === 'GET') {
             const db = weave.getTable(m[1]);
@@ -1996,16 +1991,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return out(200, schema ?? { id: db.id, name: db.name, spaceId: db.spaceId, deletedAt: db.deletedAt ?? null });
           }
         }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/views$/)) && rx.method === 'GET') {
-          return out(200, weave.tableView(decodeURIComponent(m[1])));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/views\/([^/]+)$/))) {
-          const ref = `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`;
-          if (rx.method === 'GET') return out(200, weave.tableView(ref));
-          if (rx.method === 'PATCH') return out(200, weave.tableView(ref, body ?? {}));
-          if (rx.method === 'DELETE') return out(200, weave.tableView(ref, { delete: true }));
-        }
-
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
           if (rx.method === 'GET') {

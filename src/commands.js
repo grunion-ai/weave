@@ -48,6 +48,28 @@ function fieldUpdate(w, a) {
   };
 }
 
+const onFlag = (v) => ['on', 'true', 'yes', '1', true].includes(v);
+function viewPatch(flags, json) {
+  const patch = {};
+  for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = list(flags[k]);
+  if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
+  for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = json(k);
+  if (flags.frozen != null) patch.frozen = Number(flags.frozen);
+  for (const k of ['density', 'layout', 'subtotals', 'groups', 'picture', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
+  if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? json('group') : String(flags.group);
+  if (flags['completed-by'] != null) patch.completedBy = flags['completed-by'] === 'none' ? null : flags['completed-by'];
+  if (flags.collapsed != null) patch.collapsed = json('collapsed');
+  if (flags.order != null) patch.order = list(flags.order);
+  if (flags['phone-row'] != null) patch.phoneRow = flags['phone-row'] === 'none' ? null : json('phone-row');
+  if (flags.deleted != null) patch.deleted = onFlag(flags.deleted);
+  if (flags.rollups != null) patch.rollups = flags.rollups === 'table' ? null : onFlag(flags.rollups);
+  if (flags.name != null) patch.name = flags.name;
+  if (flags.from != null) patch.from = flags.from;
+  if (flags.position != null) patch.position = Number(flags.position);
+  if (flags.default) patch.default = true;
+  if (flags.delete) patch.delete = true;
+  return patch;
+}
 const UPLOAD = Symbol('upload');
 export const previewInput = (p) => (p && typeof p === 'object' && (p.contentBase64 ?? p.bytes) != null ? { bytes: p.contentBase64 ?? p.bytes } : null);
 const FILES_TOOL = {
@@ -417,6 +439,15 @@ export const COMMANDS = [
     run: (w, a) => guided(w, 'table', w.createTable({ space: a.space, name: a.name, description: a.description ?? '', icon: a.icon ?? '' })),
   },
   {
+    name: 'table.list',
+    engine: ['listTables'],
+    writes: 'none',
+    via: { tool: 'weave_schema' },
+    cli: { command: 'table', sub: 'list', default: true, result: (r) => r.map((t) => t.qualified) },
+    http: { method: 'GET', path: '/api/tables', args: (a, body, q) => ({ space: q.get('space') }) },
+    run: (w, a) => w.listTables(a.space ? w.getSpace(a.space).id : null).map((db) => ({ id: db.id, name: db.name, qualified: w.qualifiedName(db), spaceId: db.spaceId, position: db.position })),
+  },
+  {
     name: 'table.update',
     engine: ['updateTable'],
     writes: 'schema',
@@ -439,6 +470,48 @@ export const COMMANDS = [
     cli: { command: 'table', sub: 'update', positional: ['db'], flags: ['name', 'description', 'icon', 'noun', 'position'], args: (a, flags) => ({ ...a, ...(a.position != null ? { position: Number(a.position) } : {}), hiddenFields: list(flags.hidden), systemFields: list(flags.system), fieldOrder: list(flags.order), ...(flags['rollup-row'] != null ? { hideRollups: !['on', 'true', 'yes', '1', true].includes(flags['rollup-row']) } : {}) }) },
     http: { method: 'PATCH', path: '/api/tables/:db' },
     run: (w, a) => { const { db, ...patch } = a; return w.updateTable(db, defined(patch)); },
+  },
+  {
+    name: 'table.view',
+    engine: ['tableView'],
+    writes: 'none',
+    tool: {
+      name: 'weave_table_view',
+      description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. collapsed: paths. hideEmpty: no empty groups. order: #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
+          move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
+          position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
+          widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
+          layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
+        },
+        required: ['view'],
+      },
+    },
+    cli: { command: 'table', sub: 'view', positional: ['view'], args: (a, flags, { json }) => ({ view: a.view, ...viewPatch(flags, json) }) },
+    http: { method: 'GET', path: '/api/tables/:db/views', also: ['/api/tables/:db/views/:name'], args: (a) => ({ view: a.name === undefined ? a.db : `${a.db}/${a.name}` }) },
+    run: (w, a) => {
+      const { view, ...patch } = a;
+      return w.tableView(view, Object.keys(patch).length ? patch : null);
+    },
+  },
+  {
+    name: 'table.view.set',
+    engine: ['tableView'],
+    writes: 'schema',
+    via: { tool: 'weave_table_view', cli: 'table.view' },
+    http: { method: 'PATCH', path: '/api/tables/:db/views/:name', args: (a, body) => ({ view: `${a.db}/${a.name}`, patch: body ?? {} }) },
+    run: (w, a) => w.tableView(a.view, a.patch),
+  },
+  {
+    name: 'table.view.delete',
+    engine: ['tableView'],
+    writes: 'schema',
+    via: { tool: 'weave_table_view', cli: 'table.view' },
+    http: { method: 'DELETE', path: '/api/tables/:db/views/:name', args: (a) => ({ view: `${a.db}/${a.name}` }) },
+    run: (w, a) => w.tableView(a.view, { delete: true }),
   },
   {
     name: 'table.move',
