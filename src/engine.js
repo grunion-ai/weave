@@ -13,7 +13,7 @@ import '../public/cell-graphics.js';
 import '../public/field-dialog-core.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { openKeyStore, keystoreFilePath } from './keystore.js';
+import { openKeyStore, keystoreFilePath, keystoreKind, migrateKeys } from './keystore.js';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
@@ -1519,7 +1519,8 @@ export class Weave {
     this.revisionWindowMs = revisionWindowMs;
     this.keystorePath = keystorePath ?? keystoreFilePath(process.env.WEAVE_KEYSTORE) ?? join(process.env.HOME ?? '.', '.weave', 'keystore.json');
     this.keystoreEnv = keystoreEnv ?? process.env;
-    this.keyStore = keyStore ?? openKeyStore({ path: this.keystorePath, env: this.keystoreEnv });
+    this.#keyStore = keyStore;
+    Object.defineProperty(this, 'keyStore', { get: () => this.#keyStore ?? openKeyStore({ path: this.keystorePath, env: this.keystoreEnv }) });
     this.store = store ?? new Store(path);
     const loaded = this.store.load();
     if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
@@ -3462,7 +3463,7 @@ export class Weave {
     for (const a of Object.values(state.automations ?? {})) a.actions = (a.actions ?? []).filter((x) => x.type !== 'webhook');
     const store = new Store(null);
     store.load = () => state;
-    const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv, keyStore: this.keyStore });
+    const copy = new Weave({ store, actor: this.actor, keystorePath: this.keystorePath, keystoreEnv: this.keystoreEnv, keyStore: this.#keyStore });
     copy.#noWebhooks = true;
     return copy;
   }
@@ -3868,6 +3869,24 @@ export class Weave {
     this.save();
     this.#syncWorkspaceRow();
     return this.getWorkspace();
+  }
+
+  #keyStore = null;
+
+  migrateKeys(to) {
+    if (!['file', 'keychain'].includes(to)) throw new WeaveError(`Name the store to move the keys to: --to keychain or --to file`, 'invalid');
+    if (!this.#localKeys()) throw new WeaveError('Moving the key store is a local operator act: run weave key migrate on the machine that holds it', 'forbidden');
+    const env = this.keystoreEnv ?? process.env;
+    const from = this.#keyStore ?? openKeyStore({ path: this.keystorePath, env, kind: to === 'keychain' ? 'file' : 'keychain' });
+    const target = openKeyStore({ path: this.keystorePath, env, kind: to });
+    if (!this.#keyStore) {
+      const after = keystoreKind({ path: this.keystorePath, pick: env.WEAVE_KEYSTORE ?? process.env.WEAVE_KEYSTORE, exists: to === 'file' });
+      if (after !== to) throw new WeaveError(`After the move weave would still read the ${after} store for ${this.keystorePath}: set WEAVE_KEYSTORE=${to} for this move and for every weave that reads these keys`, 'invalid');
+    }
+    const moved = migrateKeys(from, target);
+    if (this.#keyStore) this.#keyStore = target;
+    this.#audit('keys-migrated', { from: moved.from, to: moved.to, count: moved.moved.length });
+    return moved;
   }
 
   credentialConfig(field) {

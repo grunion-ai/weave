@@ -199,6 +199,7 @@ Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, nev
   key share <name> --with <account>   Open one credential to one account
   key unshare <name> --with <account>
   key delete <name>
+  key migrate --to keychain|file      Move every value between keystore.json and the macOS keychain
 Accounts & audit (Feature #14)
   account create <name> [--role architect|editor|observer]   Default editor; admin|writer|reader are deprecated aliases
   account set <name> --role architect|editor|observer   Change role without rotating credentials
