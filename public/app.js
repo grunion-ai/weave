@@ -9131,10 +9131,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const locked = !!entity.readOnly;
   const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
     rows: '1', 'aria-label': 'Name',
-    readonly: computed || locked ? '' : undefined,
+    readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
+  if (locked) nameInput.readOnly = true;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
@@ -9227,7 +9228,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
       kindContext(el('div', { class: 'doc-section-head' },
-        locked ? el('span', { class: 'opt-grip', 'aria-hidden': 'true' }) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        locked ? restingGrip() : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         nameEl,
         el('button', {
@@ -9334,7 +9335,9 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   if (coverFile) placeCover(coverFile);
   const blocks = new Map();
 
-  const anchor = (what) => (locked ? el('span', { class: 'opt-grip', 'aria-hidden': 'true' }) : el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon')));
+  const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const restingGrip = () => el('span', { class: 'opt-grip', 'aria-hidden': 'true' });
+  const handle = (what) => (locked ? restingGrip() : anchor(what));
   const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
@@ -9381,10 +9384,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     }
     const note = fieldDescription(f) ? el('div', { class: 'fieldrow-note' }, el('div', { class: 'desc-clamp clamped' }, fieldDescription(f))) : null;
     const sheetKind = SHEET_FIELD_TYPES.has(f.type);
+    const labelKids = [fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null];
     const node = el('div', { class: 'fieldrow' },
-      f.type === 'attachments' || locked ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-      el('label', { class: 'fieldrow-label', title: locked ? null : 'Edit field', onclick: locked ? null : () => editFieldDialog(db, f) },
-        fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
+      f.type === 'attachments' || locked ? handle(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+      locked ? el('label', { class: 'fieldrow-label' }, ...labelKids)
+        : el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, ...labelKids),
       streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
@@ -9445,14 +9449,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       },
     });
     const valuesHead = el('div', { class: 'block-head' },
-      anchor('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
+      handle('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
     if (docSectionCollapse(id, VALUES_BLOCK)) setFolded(true);
     fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
 
   for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
-    const grip = anchor(f.name);
+    const grip = handle(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
     const drawRelated = () => relatedGrid(entity, f, refresh)
       .then((grid) => {
@@ -9552,7 +9556,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       } catch (err) { toast(err.message, true); }
     };
     const filesHead = el('div', { class: 'block-head' },
-      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
+      handle('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
       locked ? null : el('button', {
         type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
         title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
