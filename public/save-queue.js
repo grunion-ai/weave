@@ -75,7 +75,8 @@
     }
 
     function pump() {
-      pumping ??= (async () => {
+      if (pumping || !line.length) return pumping ?? Promise.resolve();
+      pumping = (async () => {
         while (line.length) await sendEntry(line.shift());
         pumping = null;
         settle();
@@ -148,5 +149,42 @@
     win.addEventListener('pagehide', go);
   }
 
-  root.WeaveSaveQueue = { createSaveQueue, bindPageHide, retryable, DEBOUNCE_MS, TICK_MS };
+  function bindEscape(queue, doc = root.document) {
+    doc.addEventListener('keydown', (e) => { if (e.key === 'Escape' && queue.pending) queue.flush(); }, true);
+  }
+
+  const changes = (n) => `${n} ${n === 1 ? 'change' : 'changes'}`;
+  const GLYPH = {
+    pending: { icon: 'lucide:clock', label: (n) => `Saving ${changes(n)}. Save now` },
+    saved: { icon: 'lucide:check', label: () => 'All changes saved' },
+    failed: { icon: 'lucide:circle-alert', label: (n) => `${changes(n)} not saved. Try again` },
+  };
+
+  function saveGlyph(queue, { icon, place = () => null, doc = root.document } = {}) {
+    const btn = doc.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-ghost-secondary save-glyph';
+    btn.hidden = true;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); queue.flush(); });
+    let shown = null;
+    const paint = ({ state, pending }) => {
+      btn.dataset.state = state;
+      btn.hidden = state === 'idle';
+      if (state === 'idle') return;
+      const g = GLYPH[state];
+      const label = g.label(pending);
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      if (shown !== g.icon) { btn.replaceChildren(icon(g.icon, 'wv-icon')); shown = g.icon; }
+      const home = place();
+      if (home && btn.parentNode !== home) home.append(btn);
+      else if (!home && !btn.isConnected) { btn.classList.add('save-glyph-float'); doc.body.append(btn); }
+      if (home) btn.classList.remove('save-glyph-float');
+    };
+    queue.subscribe(paint);
+    paint({ state: queue.state, pending: queue.pending });
+    return btn;
+  }
+
+  root.WeaveSaveQueue = { createSaveQueue, bindPageHide, bindEscape, saveGlyph, retryable, DEBOUNCE_MS, TICK_MS };
 })(globalThis);

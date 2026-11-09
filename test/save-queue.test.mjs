@@ -194,6 +194,12 @@ test('save queue: flush on an idle queue answers at once and changes nothing (Fe
   await q.flush();
   assert.equal(q.state, 'idle');
   assert.deepEqual(srv.sent, []);
+  q.push(job('e1', 'Note', 'after'));
+  await t.advance(DEBOUNCE_MS);
+  assert.deepEqual(landed(srv), ['e1.Note=after'], 'and the queue still sends what comes next');
+  q.push(job('e1', 'Note', 'flushed'));
+  await q.flush();
+  assert.deepEqual(landed(srv), ['e1.Note=after', 'e1.Note=flushed'], 'by its timer or by a flush');
 });
 
 test('save queue: a leaving flush starts every write at once, last value per key (Feature #217)', async () => {
