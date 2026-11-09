@@ -205,7 +205,8 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const said = w.addComment(alpha, { author: 'ed', text: 'hi' });
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id };
+  const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen };
   const bodies = {
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
@@ -215,10 +216,11 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'doc.set': { doc: 'second' },
     'doc.append': { doc: 'third' },
     'comment.add': { text: 'more' },
+    'view.create': { name: 'Gate', blocks: [{ table: 'Task' }] },
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name)) continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -716,6 +718,52 @@ test('JSON export and import answer the same on CLI, MCP and HTTP, each door wit
     const refused = await d.raw('POST', '/api/import', state, { authorization: `Bearer ${editor}` });
     assert.equal(refused.status, 403, 'an editor still cannot replace the workspace');
     for (const [method, path, name] of [['GET', '/api/export', 'json.export'], ['POST', '/api/import', 'json.import']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('the view family answers the same on CLI, MCP and HTTP, and sharing still takes an architect (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-views-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const editor = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'ed', role: 'editor' }).token}` };
+  const view = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['token', 'url', 'expiresAt', 'mintedAt', 'shareId', 'share', 'shares', 'createdBy', 'by', 'revision', 'ts', 'modifiedBy'].includes(k) ? undefined : x)));
+  const blocks = [{ table: 'Task' }];
+  try {
+    const made = {
+      cli: d.cli(['view', 'create', 'Board', '--blocks', JSON.stringify(blocks)]),
+      mcp: d.mcp('weave_views', { action: 'create', name: 'Board', blocks }),
+      http: await d.http('POST', '/api/views', { name: 'Board', blocks }, auth),
+    };
+    assert.deepEqual(view(made.mcp), view(made.http), 'weave_views create and POST /api/views answer alike');
+    assert.deepEqual(view(made.cli), view(made.http), 'weave view create and POST /api/views answer alike');
+    assert.equal((await d.raw('POST', '/api/views', { name: 'Other', blocks }, auth)).status, 201);
+    d.mcp('weave_views', { action: 'create', name: 'Other', blocks });
+    d.cli(['view', 'create', 'Other', '--blocks', JSON.stringify(blocks)]);
+    const steps = [
+      [['view', 'list'], ['list', {}, 'views'], ['GET', '/api/views']],
+      [['view'], ['list', {}, 'views'], ['GET', '/api/views']],
+      [['view', 'get', ':id'], ['get', {}], ['GET', '/api/views/:id']],
+      [['view', 'share', ':id'], ['share', {}], ['POST', '/api/views/:id/share']],
+      [['view', 'unshare', ':id'], ['unshare', {}], ['DELETE', '/api/views/:id/share']],
+      [['view', 'delete', ':id'], ['delete', {}], ['DELETE', '/api/views/:id']],
+      [['view', 'list', '--trash'], ['list', { trash: true }, 'views'], ['GET', '/api/views?trash=1']],
+      [['view', 'restore', ':id'], ['restore', {}], ['POST', '/api/views/:id/restore']],
+    ];
+    for (const [c, [action, args, wrap], [method, path]] of steps) {
+      const fromHttp = view(await d.http(method, path.replace(':id', made.http.id), method === 'POST' ? {} : undefined, auth));
+      const fromMcp = d.mcp('weave_views', { action, view: made.mcp.id, ...args });
+      assert.deepEqual(view(wrap ? fromMcp[wrap] : fromMcp), fromHttp, `weave_views ${action} and ${method} ${path} answer alike`);
+      assert.deepEqual(view(d.cli(c.map((x) => (x === ':id' ? made.cli.id : x)))), fromHttp, `weave ${c.join(' ')} and ${method} ${path} answer alike`);
+    }
+    const refused = await d.raw('POST', `/api/views/${made.http.id}/share`, {}, editor);
+    assert.equal(refused.status, 403, 'an editor still cannot share a view');
+    assert.match((await refused.json()).error, /needs an architect/);
+    assert.equal(d.call('weave_views', { action: 'zap' }).content[0].text, "Error: Unknown views action 'zap' (list, get, create, delete, restore, share, unshare)");
+    const miss = d.run(['view', 'zap']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown view subcommand 'zap'\. Try: list, get, create, delete, restore, share, unshare/);
+    for (const [method, path, name] of [['GET', '/api/views', 'view.list'], ['POST', '/api/views', 'view.create'], ['GET', '/api/views/x', 'view.get'], ['DELETE', '/api/views/x', 'view.delete'], ['POST', '/api/views/x/restore', 'view.restore'], ['POST', '/api/views/x/share', 'view.share'], ['DELETE', '/api/views/x/share', 'view.unshare']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }

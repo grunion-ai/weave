@@ -718,17 +718,6 @@ async function main() {
       try { return out(vocabularyView(section, query.join(' '))); }
       catch (e) { throw new WeaveError(e.message, 'invalid'); }
     }
-    case 'view': {
-      const [sub, ref] = args;
-      if (sub === 'create') return out(w.createView({ name: ref, blocks: parseJsonFlag('blocks') ?? [] }));
-      if (sub === 'get') return out(w.resolveView(ref));
-      if (sub === 'delete') return out(w.deleteView(ref, { hard: Boolean(flags.hard) }));
-      if (sub === 'restore') return out(w.restoreView(ref));
-      if (sub === 'share') return out(w.shareView(ref));
-      if (sub === 'unshare') return out(w.unshareView(ref));
-      if (sub === 'list' || !sub) return out(w.listViews({ trash: Boolean(flags.trash) }));
-      throw new WeaveError(`Unknown view subcommand '${sub}'. Try: create, list, get, delete, restore, share, unshare`);
-    }
     case 'share': {
       const [sub, a, b] = args;
       if (sub === 'mint') {
