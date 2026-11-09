@@ -1,0 +1,1 @@
+- **Workflows Health reads as a coloured state with its reason** (Feature #249): the Health cell is the engine's own read-only chip, green Healthy, red Failed, slate No runs, and a Failed row shows its Health Reason on hover, on click and on a tap on a phone, where Health leads the row. Gate: `test/workflows-health-browser.test.mjs`.
