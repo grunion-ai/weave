@@ -20,7 +20,7 @@
     const f = coverField(db);
     if (!f) return null;
     const ids = entity?.raw?.[f.name] ?? [];
-    return (entity?.files ?? []).find((x) => ids.includes(x.id) && !x.missing && isPicture(x)) ?? null;
+    return (entity?.files ?? []).find((x) => ids.includes(x.id) && !x.missing && (isPicture(x) || String(x.mime ?? '').split(';')[0].trim().toLowerCase() === 'image/svg+xml')) ?? null;
   }
 
   function coverDrop(db, files) {

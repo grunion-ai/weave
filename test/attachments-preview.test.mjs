@@ -97,7 +97,7 @@ test('fileHeaders: ?view shows an HTML upload under HTML_VIEW_POLICY and changes
   assert.doesNotMatch(HTML_VIEW_POLICY, /allow-same-origin/, 'the page never shares the workspace origin');
   assert.match(HTML_VIEW_POLICY, /^sandbox allow-scripts/, 'its scripts run');
   assert.match(HTML_VIEW_POLICY, /default-src 'none'/, 'it loads nothing remote');
-  for (const [name, mime, bytes] of [['a.png', 'image/png', PNG], ['a.pdf', 'application/pdf', Buffer.from('%PDF-1.4')], ['a.svg', 'image/svg+xml', Buffer.from('<svg/>')], ['a.bin', undefined, HTML]]) {
+  for (const [name, mime, bytes] of [['a.png', 'image/png', PNG], ['a.pdf', 'application/pdf', Buffer.from('%PDF-1.4')], ['a.bin', undefined, HTML]]) {
     assert.deepEqual(fileHeaders({ name, mime }, bytes, { view: true }), fileHeaders({ name, mime }, bytes), `${name}: ?view is ignored for a non-HTML file`);
   }
 });

@@ -216,7 +216,8 @@ export function fileHeaders(meta, bytes, { view = false } = {}) {
   const image = claimed.startsWith('image/') ? sniffImage(bytes) : null;
   const extra = String(process.env.WEAVE_INLINE_FILE_TYPES ?? '').toLowerCase().split(',').map((t) => t.trim());
   const html = view && HTML_FILE_TYPES.has(claimed);
-  const inline = image === claimed ? image
+  const svg = view && claimed === 'image/svg+xml' && logoType(bytes) === claimed;
+  const inline = svg ? claimed : image === claimed ? image
     : html ? 'text/html; charset=utf-8'
       : INLINE_FILE_TYPES.has(claimed) || (claimed && extra.includes(claimed)) ? claimed : null;
   const name = String(meta.name ?? 'file');
@@ -226,11 +227,11 @@ export function fileHeaders(meta, bytes, { view = false } = {}) {
     'Content-Type': inline ?? 'application/octet-stream',
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${utf8}`,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': html ? HTML_VIEW_POLICY : "sandbox; default-src 'none'",
+    'Content-Security-Policy': html ? HTML_VIEW_POLICY : svg ? "sandbox; default-src 'none'; style-src 'unsafe-inline'" : "sandbox; default-src 'none'",
   };
 }
 
-export const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover'];
+export const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover', 'intro'];
 export const ATTACHMENT_SIZES = ['small', 'medium', 'large'];
 export const ATTACHMENT_FITS = ['fill', 'trim'];
 const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
@@ -1030,7 +1031,7 @@ const FIELD_TYPE_CONFIG = {
       pick('preview', ATTACHMENT_PREVIEWS, null);
       pick('size', ATTACHMENT_SIZES, 'medium');
       pick('fit', ATTACHMENT_FITS, 'trim');
-      if (out.preview === 'cover' && multiple) throw new WeaveError("A cover preview needs a single-file field (multiple: false)", 'invalid');
+      if (['cover', 'intro'].includes(out.preview) && multiple) throw new WeaveError("This preview needs a single-file field (multiple: false)", 'invalid');
       return out;
     },
     merge(config, patch) {

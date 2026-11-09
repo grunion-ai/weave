@@ -825,16 +825,17 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined,
-            onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && files.preview === 'cover') files.preview = ''; changed(); drawCfg(); } }),
+            onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && ['cover', 'intro'].includes(files.preview)) files.preview = ''; changed(); drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
         const previews = segCtl([
           { id: '', label: 'Unset', title: state.multiple !== false ? 'auto: pictures in a sheet, the rest as chips' : 'inline: the file in its viewer' },
           ...fieldDialogCore.ATTACHMENT_PREVIEWS.map((id) => ({ id, label: id })),
         ], files.preview, (id) => { files.preview = id; changed(); });
         if (state.multiple !== false) {
-          const cover = previews.lastElementChild;
-          cover.disabled = true;
-          cover.title = 'Only a single-file field has a cover';
+          for (const option of [...previews.children].slice(-2)) {
+            option.disabled = true;
+            option.title = 'Only a single-file field supports this presentation';
+          }
         }
         kids.push(dsection('Show as', previews),
           dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; changed(); })),

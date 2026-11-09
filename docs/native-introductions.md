@@ -1,0 +1,13 @@
+# Native documentation presentation
+
+Single-file attachment fields accept `config: { multiple: false, preview: "intro" }` through the existing field API, CLI, MCP and field dialog. Attach a self-contained HTML file to the field. Its reader view uses the existing sandbox and automatic frame sizing. Introduction options exposes replacement, source download and field settings to editors. Unsupported file types retain their ordinary inline presentation.
+
+Use the table's existing `bodyOrder` setting, for example `["Introduction", "@values", "Description", "Header"]`, to place the introduction before fields. The order applies to every record in that table. Existing tables keep their presentation until explicitly configured. Introduction fields and covers are not repeated in the loose Files block.
+
+A single-file attachment with `preview: "cover"` remains the native cover mechanism. `fit: "trim"` preserves the full image; `fit: "fill"` crops it. An introduction-enabled record places its cover above the native title. Other records retain their existing cover position. SVG covers use the explicit `?view` image response with scripts and external resources blocked. Raw SVG file requests remain downloads.
+
+For actual table and space landing pages, configure cover and introduction attachment fields on the existing System/Tables or System/Spaces registry table, then attach files to the registry record whose `sysId` identifies the destination. Only that record's configured files appear on the landing page. Existing schema access rules apply; this presentation does not grant access to private registry records. The registry record remains the editing surface.
+
+HTML links use the existing file viewer's new-tab behavior. Keep setup authorization and template application in native weave screens. Interactive disclosures can run inside the sandbox, but have no access to the parent document. Authors can use `prefers-color-scheme` CSS for light and dark appearances; weave supplies the selected color scheme on introduction frames.
+
+Schema exports preserve introduction configuration and body ordering. Workspace exports preserve field, record and file references. Template application copies the schema only; it does not copy sample records or attached banner/introduction files. Renaming a field uses the existing field and body-order update paths. No publication or generated documentation sync is part of this feature.

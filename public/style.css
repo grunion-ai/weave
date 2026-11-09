@@ -2954,3 +2954,16 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
     .wv-act-list { padding-right: 0; }
   }
 }
+
+.entity-body > .attachment-intro:has(.intro-content) { display: block; padding: 0; }
+.attachment-intro .intro-content .file-viewer, .registry-intro .file-viewer { border: 0; border-radius: 0; background: transparent; }
+.attachment-intro .intro-content { display: grid; width: 100%; }
+.intro-controls { margin: 8px 0; color: var(--tblr-secondary); font-size: var(--fs-meta); }
+.intro-controls > summary { cursor: pointer; width: fit-content; }
+.intro-controls[open] { display: block; }
+.intro-controls > :not(summary) { margin: 6px; }
+.registry-cover { flex: none; }
+.registry-intro { flex: none; min-width: 0; margin-bottom: 16px; }
+.attachment-intro:has(.intro-content) > .fieldrow-label, .attachment-intro:has(.intro-content) > .opt-grip { display: none; }
+.attachment-intro iframe { color-scheme: light; }
+[data-bs-theme="dark"] .attachment-intro iframe { color-scheme: dark; }

@@ -2850,6 +2850,48 @@ function registryTable(kind) {
   return null;
 }
 
+function showIntroControls(controls) {
+  controls.hidden = true;
+  api('GET', '/auth/me').catch(() => null)
+    .then(async (me) => { controls.hidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; })
+    .catch(() => {});
+}
+
+async function appendRegistryPresentation(header, kind, subjectId, name) {
+  const request = Symbol();
+  header.presentationRequest = request;
+  const db = registryTable(kind);
+  const hidden = new Set(db?.hiddenFields ?? []);
+  const order = new Map((db?.bodyBlocks ?? []).map((name, i) => [name, i]));
+  const intros = (db?.fields ?? []).filter((f) => f.type === 'attachments' && f.preview === 'intro' && !hidden.has(f.name))
+    .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
+  const cover = boardCore.coverField(db);
+  if (!db || (!cover && !intros.length)) return;
+  try {
+    const result = await api('POST', `/tables/${db.id}/query`, { where: [['Name', '=', name]], limit: -1, fields: [cover?.name, ...intros.map((f) => f.name)].filter(Boolean) });
+    const row = mineOnly(result.items).find((r) => r.sysId === subjectId);
+    if (!row || !header.isConnected || header.presentationRequest !== request) return;
+    const file = boardCore.coverOf(db, row);
+    if (file) {
+      const banner = entityCoverEl(file, { size: cover.size, fit: cover.fit });
+      banner.classList.add('registry-cover');
+      header.before(banner);
+    }
+    const sections = [];
+    for (const field of intros) {
+      const ids = row.raw?.[field.name] ?? [];
+      const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
+      if (!page) continue;
+      sections.push(el('section', { class: 'registry-intro attachment-intro', 'aria-label': field.name },
+        fileViewerEl(page, { chrome: false }),
+        el('details', { class: 'intro-controls' }, el('summary', {}, 'Introduction options'),
+          el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
+    }
+    header.after(...sections);
+    for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
+  } catch (err) { toast(err.message, true); }
+}
+
 function registryHref(db, item) {
   if (db.system === 'workspaces' && item.sysId) return item.sysId === state.wsId ? '#/' : `/w/${item.sysId}/`;
   const here = !item.sysWorkspaceId || !state.wsId || item.sysWorkspaceId === state.wsId;
@@ -3715,20 +3757,20 @@ const PAGE_STORAGE_SAVE_MS = 400;
   });
   addEventListener('pagehide', flush);
 })();
-function fileViewerEl(file, { size = 'medium' } = {}) {
+function fileViewerEl(file, { size = 'medium', chrome = true } = {}) {
   const kind = fileKind(file);
   const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
   if (!body) return null;
   return el('div', { class: `file-viewer size-${size} kind-${kind}` + (kind === 'html' ? ' fit-content' : '') },
-    el('div', { class: 'file-viewer-bar' },
+    chrome ? el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),
       el('span', { class: 'file-viewer-name' }, file.name),
       el('span', { class: 'file-viewer-size' }, fileSizeText(file.size)),
-      el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: fileViewUrl(file), target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))),
+      el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: fileViewUrl(file), target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))) : null,
     body);
 }
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
-  const full = fileUrl(file);
+  const full = fileUrl(file) + (String(file.mime ?? '').split(';')[0].trim().toLowerCase() === 'image/svg+xml' ? '?view' : '');
   const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
   img.addEventListener('load', () => {
     if (img.getAttribute('src') !== full && img.clientWidth * devicePixelRatio > img.naturalWidth) img.src = full;
@@ -4116,10 +4158,11 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
-    const mode = f.preview || (f.multiple === false ? 'inline' : 'auto');
-    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim' };
+    const mode = f.preview === 'intro' && files.length && !files.some((file) => fileKind(file) === 'html')
+      ? 'inline' : f.preview || (f.multiple === false ? 'inline' : 'auto');
+    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim', chrome: mode !== 'intro' };
     const present = files.filter((x) => !x.missing);
-    const pages = mode === 'inline' || mode === 'auto' ? present.filter((x) => fileKind(x) === 'html') : [];
+    const pages = ['inline', 'auto', 'intro'].includes(mode) ? present.filter((x) => fileKind(x) === 'html') : [];
     const sheet = mode === 'inline' && f.multiple !== false ? present.filter((x) => !pages.includes(x))
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
@@ -4128,7 +4171,15 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
-    box.append(chips);
+    if (mode === 'intro') {
+      box.classList.add('intro-content');
+      const controls = el('details', { class: 'intro-controls' },
+        el('summary', {}, 'Introduction options'),
+        el('button', { type: 'button', class: 'btn btn-sm', onclick: () => editFieldDialog(db, f) }, 'Field settings'),
+        ...files.map((file) => el('a', { href: fileUrl(file), download: file.name }, 'Download source')), chips);
+      showIntroControls(controls);
+      box.append(controls);
+    } else box.append(chips);
     const input = el('input', { type: 'file', multiple: f.multiple === false ? null : '', style: 'display:none' });
     input.addEventListener('change', () => {
       const picked = [...(input.files ?? [])];
@@ -5692,6 +5743,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       if (caret) searchInput.setSelectionRange(...caret);
     }
   }
+  appendRegistryPresentation(chrome.header, 'tables', db.id, db.name);
   if (tableSearch.focus) {
     tableSearch.focus = false;
     const searchInput = main.querySelector('.table-search-input');
@@ -8529,6 +8581,7 @@ async function showSpace(spaceId) {
       ],
     }),
   );
+  await appendRegistryPresentation(main.querySelector('.view-header'), 'spaces', spaceId, space.space);
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
   if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showSpaceLauncher(main, space);
   if (!dockCoversScreen.matches) {
@@ -9249,7 +9302,13 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const coverF = boardCore.coverField(db);
   const coverFile = boardCore.coverOf(db, entity);
   const coverEl = (file) => entityCoverEl(file, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' });
-  if (coverFile) left.prepend(coverEl(coverFile));
+  const introHeader = shown.some((f) => f.type === 'attachments' && f.preview === 'intro');
+  const placeCover = (file) => {
+    const cover = coverEl(file);
+    if (introHeader) mount.querySelector(':scope > .view-header').before(cover);
+    else left.prepend(cover);
+  };
+  if (coverFile) placeCover(coverFile);
   const blocks = new Map();
 
   const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
@@ -9307,6 +9366,11 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
+      if (f.preview === 'intro') {
+        node.classList.add('attachment-intro');
+        const controls = node.querySelector('.intro-controls');
+        if (controls) controls.append(node.querySelector('.opt-grip'), node.querySelector('.fieldrow-label'));
+      }
       wireBlock(f.name, node, [node.querySelector('.opt-grip')]);
       continue;
     }
@@ -9494,7 +9558,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     if (coverF && !coverFile) fills.push(() => {
       const file = boardCore.coverOf(db, entity);
       if (!file) return;
-      if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
+      if (introHeader) placeCover(file);
+      else if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
     });
   }
 

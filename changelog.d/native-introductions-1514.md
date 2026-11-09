@@ -1,0 +1,3 @@
+- Single-file attachment fields can use `preview: "intro"` to show a sandboxed HTML introduction without the file bar or a repeated field heading. Source download, replacement and field settings sit in Introduction options. The existing table body order places it before fields (Issue #1514).
+- Tables and spaces can display covers and introductions from their System registry records. Covers remain native elements outside the HTML. Existing record layouts stay unchanged unless a table opts into introduction presentation (Feature #287).
+- SVG covers retain their original masks and full artwork. Their explicit image view permits styles while keeping scripts, external resources and same-origin access blocked; the raw file still downloads (Issue #1515).
