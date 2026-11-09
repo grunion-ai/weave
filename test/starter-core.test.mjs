@@ -54,12 +54,12 @@ function build(w, template, now = NOW) {
 const byId = (id) => S.TEMPLATES.find((t) => t.id === id);
 const rows = (w, ref) => w.listEntities(w.getTable(ref).id).map((e) => { const r = w.readEntity(e.id); return { id: r.id, name: r.raw.Name, fields: r.raw }; });
 
-test('three featured templates: personal finance, tasks and a CRM, in that order', () => {
+test('four featured templates: personal finance, tasks, a CRM and notes, in that order', () => {
   const featured = S.TEMPLATES.filter((t) => t.featured);
-  assert.deepEqual(featured.map((t) => t.id), ['finance', 'tasks', 'crm']);
-  assert.deepEqual(featured.map((t) => t.title), ['Money', 'Work', 'People']);
-  assert.deepEqual(S.TEMPLATES.slice(0, 3), featured, 'the featured three lead the catalog');
-  for (const t of S.TEMPLATES.slice(3)) assert.equal(t.featured, false, `${t.id} is in the catalog only`);
+  assert.deepEqual(featured.map((t) => t.id), ['finance', 'tasks', 'crm', 'notes']);
+  assert.deepEqual(featured.map((t) => t.title), ['Money', 'Work', 'People', 'Notes']);
+  assert.deepEqual(S.TEMPLATES.slice(0, 4), featured, 'the featured four lead the catalog');
+  for (const t of S.TEMPLATES.slice(4)) assert.equal(t.featured, false, `${t.id} is in the catalog only`);
 });
 
 test('the catalog covers about forty kinds of work, each with one id, one space and one answer', () => {
@@ -131,7 +131,7 @@ test('every template sits in one category, every topic category holds three or f
   assert.ok(topical >= 36 && topical <= 48, `${topical} topic templates`);
 });
 
-test('basic is one general table with status, owner, due date and notes, kept out of the featured three', () => {
+test('basic is one general table with status, owner, due date and notes, kept out of the featured four', () => {
   const basic = byId('basic');
   assert.ok(basic, 'basic is in the catalog');
   assert.equal(basic.featured, false);
@@ -160,7 +160,7 @@ const SEARCHES = {
   social: ['social'], event: ['events'], investor: ['fundraising'], inventory: ['inventory'], equipment: ['assets'],
   'purchase order': ['vendors'], appointment: ['bookings'], tenant: ['rentals'], landlord: ['rentals'], donor: ['nonprofit'],
   grant: ['nonprofit'], volunteer: ['volunteers'], club: ['members'], chore: ['home'], habit: ['habits'], workout: ['workouts'],
-  recipe: ['recipes'], 'meal plan': ['recipes'], homework: ['courses'], book: ['reading'], notes: ['research', 'basic'],
+  recipe: ['recipes'], 'meal plan': ['recipes'], homework: ['courses'], book: ['reading'], notes: ['notes', 'research', 'basic'],
   'to-do': ['tasks', 'basic'],
 };
 test('common searches find the template people mean', () => {
@@ -348,6 +348,21 @@ test('Tasks carries a workflow with a default state', () => {
   assert.equal(status.type, 'workflow');
   const e = w.createEntity(`${byId('tasks').space}/Tasks`, { name: 'First' });
   assert.equal(w.readEntity(e.id).fields.Status, 'To do');
+});
+
+test('Notes files each sample note under a topic, and a topic counts its notes', () => {
+  const w = new Weave();
+  const notes = byId('notes');
+  build(w, notes);
+  assert.equal(S.firstTable(notes), 'Notes', 'a build opens on the notes');
+  const all = rows(w, 'Notes/Notes');
+  assert.ok(all.length >= 2, 'a few sample notes');
+  for (const n of all) assert.equal((n.fields.Topic ?? []).length, 1, `${n.name} sits under a topic`);
+  assert.equal(w.findField(w.getTable('Notes/Notes'), 'Date')?.type, 'date');
+  const topics = rows(w, 'Notes/Topics');
+  assert.equal(topics.reduce((sum, t) => sum + t.fields.Count, 0), all.length, 'the counts add up to every note');
+  const [view] = w.tableView(w.getTable('Notes/Notes').id).views;
+  assert.deepEqual(view.sort.map((s) => [s.field, s.dir]), [['Date', 'desc']], 'the newest note leads');
 });
 
 test('CRM links each sample contact to its company', () => {

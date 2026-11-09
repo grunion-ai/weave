@@ -22,11 +22,11 @@ async function open(s, hash, theme = 'light', { schemaOpen = false } = {}) {
 
 if (empty) {
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: an empty workspace opens on New table and three templates, not the registry grid`, async () => {
+    test(`${theme}: an empty workspace opens on New table and four templates, not the registry grid`, async () => {
       const page = await open(empty, '#/', theme);
       await page.waitForSelector('.wv-start');
       assert.equal((await page.locator('.wv-start .wv-start-new').textContent()).trim(), '+ New table');
-      assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Money', 'Work', 'People']);
+      assert.deepEqual(await page.locator('.wv-start-template .wv-start-title').allTextContents(), ['Money', 'Work', 'People', 'Notes']);
       const lead = await page.locator('.wv-start-lead').textContent();
       assert.match(lead, /\brecords\b/);
       assert.doesNotMatch(lead, /\brows?\b/, 'record, never row');
