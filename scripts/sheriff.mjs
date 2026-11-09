@@ -48,10 +48,25 @@ const FLAKE_OUTCOMES = {
   'no-verdict': 'failed with no retry verdict, because the shard ended before its retry answered; the sheriff escalated instead of convicting a commit',
 };
 
-export function flakeLine({ at, sha, url, outcome = 'rerun-green' }) {
+export const INSTALL_STEP = /^Install (?:browsers and system dependencies|Chromium)$/;
+
+export const failedStep = (job = {}) => (job.steps ?? []).find((s) => s.conclusion === 'failure')?.name ?? null;
+
+export const flakeStep = (jobs = []) => {
+  const steps = [...new Set(jobs.map((j) => j.step).filter(Boolean))];
+  return steps.length === 1 ? steps[0] : null;
+};
+
+export const flakeRows = ({ files = [], jobs = [] }) => {
+  const install = jobs.length > 0 && jobs.every((j) => j.step && INSTALL_STEP.test(j.step));
+  const names = install || !files.length ? jobs.map((j) => j.name) : files;
+  return names.length ? names : ['the tests suite'];
+};
+
+export function flakeLine({ at, sha, url, outcome = 'rerun-green', step = null }) {
   const what = FLAKE_OUTCOMES[outcome];
   if (!what) throw new Error(`unknown flake outcome ${outcome}`);
-  return `${at} ${short(sha)} ${what}: ${url}`;
+  return `${at} ${short(sha)} ${what}${step ? ` at the ${step} step` : ''}: ${url}`;
 }
 
 export const REOPEN = { Issue: { from: 'Fixed', to: 'Open' }, Feature: { from: 'Shipped', to: 'Building' } };
@@ -444,7 +459,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
     },
     failures: async (r) => {
       const all = api(`${base}/actions/runs/${r.id}/attempts/1/jobs?per_page=100`).jobs.filter((j) => j.name !== 'CI gate');
-      const jobs = all.filter((j) => j.conclusion === 'failure').map((j) => ({ name: j.name, html_url: j.html_url }));
+      const jobs = all.filter((j) => j.conclusion === 'failure').map((j) => ({ name: j.name, html_url: j.html_url, step: failedStep(j) }));
       const cancelled = all.filter((j) => j.conclusion === 'cancelled').map((j) => j.name);
       const results = shardResults(r.id);
       return { jobs, cancelled, files: failingFiles(results), unresolved: unresolvedFiles(results), timedOut: timedOutShards(results) };
@@ -524,9 +539,8 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       return found;
     },
     logFlake: async ({ run: r, files, jobs, outcome = 'rerun-green' }) => {
-      const names = files.length ? files : jobs.map((j) => j.name);
-      const line = flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome });
-      for (const name of names.length ? names : ['the tests suite']) {
+      const line = flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome, step: flakeStep(jobs) });
+      for (const name of flakeRows({ files, jobs })) {
         await upsertIssue({ name: flakeName(name), severity: 'Low', line, description: `Flake log kept by the sheriff. Each line is a main run whose failed jobs passed on one rerun.\n\n${line}` });
       }
     },

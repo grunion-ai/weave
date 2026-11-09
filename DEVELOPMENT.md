@@ -82,23 +82,35 @@ which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
 app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
-the running one. A browser job bounds each
-`playwright install --with-deps` attempt at five minutes with `timeout` and
-runs a second one after `dpkg --configure -a`, since a trickling apt mirror
-held that step for fifteen minutes three times on 2026-10-23 and took the gate
-down with it. The bound lives in the shell, not in `timeout-minutes`: a step
-the runner kills on its own timeout cancels the whole job, so `continue-on-error`
-never reaches the retry (measured on PR #430, 2026-10-23). The step also writes
-an apt drop-in with a twenty-second acquire timeout and three retries, so one
-stalled connection no longer costs minutes, and a `DPkg::Lock::Timeout` of 180
-seconds, so an attempt waits for the dpkg frontend lock instead of failing on
-it. The runner image's own boot-time `apt-get` holds that lock past the first
-attempt, and without the wait the retry died in under a second with 299 of its
-300 seconds unspent (Issues #1230, #1141). The wait is sized to fit inside one
-`timeout 5m` attempt, since the bound would otherwise kill the wait it is meant
-to outlast. The `tests` shard job and the dev
-soak carry the same bound, after the mirror held their install for thirty
-minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
+the running one. A browser job gives
+`playwright install --with-deps` three attempts and runs `dpkg --configure -a`
+between them, reading its result rather than swallowing it, since a trickling
+apt mirror held that step for fifteen minutes three times on 2026-10-23 and
+took the gate down with it. The only deadline over those attempts is the step's
+own `timeout-minutes`, 12 on the `pr` workflow and 14 on the `tests` shard job
+and the dev soak. An inner per-attempt `timeout` used to cap each attempt at
+five minutes and was removed on 2026-11-04: on run 41948575597 it killed
+attempt one mid-download and attempt two then spent 178 seconds waiting for the
+frontend lock held by the runner's own boot-time `apt-get` (pid 3074), so the
+step burned 8 minutes 7 seconds of its 11 and never made a third attempt
+(Issue #1347). Do not put that cap back without raising the step budget with
+it: three bounded attempts plus the 300-second `DPkg::Lock::Timeout` the step
+writes do not fit inside a twelve-minute step, and `test/ci-test.test.mjs` and
+`test/security/workflows.test.mjs` hold that arithmetic. The step also writes an
+apt drop-in with a twenty-second acquire timeout and three retries, so one
+stalled connection no longer costs minutes, and the lock wait lets an attempt
+outlast the runner's own `apt-get` instead of dying in under a second with 299
+of its 300 seconds unspent (Issues #1230, #1141, #1107). What is left is the
+apt mirror itself, which is why a slow mirror day can still spend a shard's
+whole budget in attempt one; the durable fix, the pinned Playwright image or an
+apt archive cache, is Issue #1438.
+
+When a shard dies before any test records a result, the sheriff has no file to
+name, so it opens or appends to a row named after the shard. That line names the
+step the job died in, so an install timeout and a shard that crashed in its test
+step no longer read the same, and an install failure never adds a line to a
+per-file flake row (Issue #1353). The step name comes off the `steps` the jobs
+API already returns with each job, so it costs no extra call.
 
 The `security scan` check downloads gitleaks, actionlint and hadolint from the
 GitHub release CDN, and the release workflow downloads the MCP publisher the
