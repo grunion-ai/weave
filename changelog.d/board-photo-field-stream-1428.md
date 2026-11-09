@@ -1,0 +1,1 @@
+- A picture dropped on a board card whose table has no cover field now uploads through the prepared raw upload once Add a Photo field creates the field, so the last browser upload path no longer sends the file as base64 inside JSON (Issue #1428).
