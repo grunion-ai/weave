@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
@@ -206,7 +206,8 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
   const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen };
+  const filed = w.attachFile(alpha, { name: 'gate.txt', mime: 'text/plain', bytes: Buffer.from('gate').toString('base64') }).id;
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen, file: filed };
   const bodies = {
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
@@ -216,6 +217,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'doc.set': { doc: 'second' },
     'doc.append': { doc: 'third' },
     'comment.add': { text: 'more' },
+    'file.attach': { name: 'more.txt', mime: 'text/plain', contentBase64: Buffer.from('more').toString('base64') },
     'view.create': { name: 'Gate', blocks: [{ table: 'Task' }] },
   };
   try {
@@ -809,4 +811,62 @@ test('the share family answers the same on CLI, MCP and HTTP, and HTTP still add
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }
+});
+
+test('file attach, read and delete answer the same on CLI, MCP and HTTP, and each door keeps its own bytes (Feature #179)', async () => {
+  const withFiles = (w) => { seed(w); w.addField('Task', { name: 'Papers', type: 'attachments' }); };
+  const d = await threeDoors('weave-registry-files-', { seeded: withFiles });
+  const dir = tempDir('weave-registry-files-src-');
+  const src = join(dir, 'note.txt');
+  writeFileSync(src, 'hello files');
+  const b64 = Buffer.from('hello files').toString('base64');
+  const file = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['entity', 'path', 'hash', 'sha256', 'url'].includes(k) ? undefined : x)));
+  try {
+    const alpha = { cli: d.cli(['query', 'Task']).items[0].id, mcp: d.mcpWeave.query('Task').items[0].id, http: d.httpWeave.query('Task').items[0].id };
+    for (const field of [null, 'Papers']) {
+      const made = {
+        cli: d.cli(['file', 'attach', alpha.cli, '--path', src, '--mime', 'text/plain', ...(field ? ['--field', field] : [])]),
+        mcp: d.mcp('weave_attach_file', { entity: alpha.mcp, name: 'note.txt', mime: 'text/plain', contentBase64: b64, ...(field ? { field } : {}) }),
+        http: await d.http('POST', `/api/entities/${alpha.http}${field ? `/fields/${field}` : ''}/files`, { name: 'note.txt', mime: 'text/plain', contentBase64: b64 }),
+      };
+      assert.deepEqual(file(made.mcp), file(made.http), `weave_attach_file and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      assert.deepEqual(file(made.cli), file(made.http), `weave file attach and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      const fromHttp = await d.raw('GET', `/api/files/${made.http.id}`);
+      assert.equal(fromHttp.status, 200);
+      assert.ok(fromHttp.headers.get('etag'), 'GET /api/files/:id still sends its ETag');
+      assert.equal(await fromHttp.text(), 'hello files');
+      assert.equal((await d.raw('GET', `/api/files/${made.http.id}`, undefined, { 'if-none-match': fromHttp.headers.get('etag') })).status, 304, 'GET /api/files/:id still answers 304');
+      const read = d.mcp('weave_files', { action: 'read', file: made.mcp.id });
+      assert.equal(Buffer.from(read.contentBase64, 'base64').toString(), 'hello files', 'weave_files read still answers base64');
+      assert.equal(read.name, 'note.txt');
+      const out = d.run(['file', 'read', made.cli.id]);
+      assert.equal(out.stdout, 'hello files', 'weave file read still writes the bytes, no newline');
+      const saved = join(dir, 'out.txt');
+      const meta = d.cli(['file', 'read', made.cli.id, '--out', saved]);
+      assert.equal(meta.path, saved);
+      assert.equal(meta.name, 'note.txt');
+      const gone = {
+        cli: d.cli(['file', 'delete', alpha.cli, made.cli.id]),
+        mcp: d.mcp('weave_files', { action: 'delete', entity: alpha.mcp, file: made.mcp.id }),
+        http: await d.http('DELETE', `/api/entities/${alpha.http}/files/${made.http.id}`),
+      };
+      assert.deepEqual(file(gone.mcp), file(gone.http), 'weave_files delete and DELETE files answer alike');
+      assert.deepEqual(file(gone.cli), file(gone.http), 'weave file delete and DELETE files answer alike');
+    }
+    const missing = await d.raw('DELETE', `/api/entities/${alpha.http}/files/00000000-0000-4000-8000-000000000000`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: "No file '00000000-0000-4000-8000-000000000000' on this record", code: 'not-found' });
+    assert.equal(d.call('weave_files', { action: 'zap', file: 'x' }).content[0].text, "Error: Unknown files action 'zap' (read, delete)");
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt' }).content[0].text, /Send contentBase64, or prepare:true and size/);
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt', prepare: true, size: 3 }).content[0].text, /Prepare uploads over the authenticated HTTP MCP endpoint/);
+    const noPath = d.run(['file', 'attach', alpha.cli]);
+    assert.notEqual(noPath.status, 0);
+    assert.match(noPath.stderr, /file attach needs --path/);
+    const miss = d.run(['file', 'zap']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown file subcommand 'zap'\. Try: attach, read, delete/);
+    for (const [method, path, name] of [['POST', '/api/entities/x/files', 'file.attach'], ['POST', '/api/entities/x/fields/y/files', 'file.attach'], ['GET', '/api/files/x', 'file.read'], ['DELETE', '/api/entities/x/files/y', 'file.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); rmSync(dir, { recursive: true, force: true }); }
 });

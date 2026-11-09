@@ -1,7 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
-import { matchRoute, httpReply, boundedLimit } from './commands.js';
+import { matchRoute, httpReply, boundedLimit, previewInput } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -73,7 +73,6 @@ const wallPageHtml =(authHref) => `<!doctype html><meta charset="utf-8"><meta na
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
-const previewInput = (p) => (p && typeof p === 'object' && (p.contentBase64 ?? p.bytes) != null ? { bytes: p.contentBase64 ?? p.bytes } : null);
 const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const metaAttr = (s) => escapeHtml(s).replace(/\r?\n/g, '&#10;');
 const PREFILL_SKIP = new Set(['lookup', 'rollup', 'formula', 'view', 'attachments', 'avatar', 'field']);
@@ -1956,6 +1955,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
+        if (registered?.cmd.http.serve) {
+          const serveFile = (id) => {
+            const preview = rx.searchParams?.has('preview') ?? false;
+            const view = rx.searchParams?.has('view') ?? false;
+            const known = weave.readFileMeta(id);
+            if (!view || !isHtmlFile(known)) {
+              const etag = `"${id}${preview ? '-preview' : ''}"`;
+              const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
+              if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
+              const { meta, bytes } = weave.readFile(id, { preview });
+              return out(200, bytes, { ...fileHeaders(meta, bytes, { view }), ...cache });
+            }
+            const { meta, bytes } = weave.readFile(id, { preview });
+            if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
+            const page = viewHtml(bytes, frameLinkBase(bytes) + frameStorageScript(weave.readFileStorage(id).items) + FRAME_HEIGHT_SCRIPT);
+            return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
+          };
+          return registered.cmd.http.serve(registered.params, { serveFile });
+        }
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
             viewerZone, workspace: member.state.meta.id, cap, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
@@ -2029,33 +2047,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
 
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/fields\/([^/]+)\/files$/)) && rx.method === 'POST') {
-          return out(201, weave.attachToField(m[1], decodeURIComponent(m[2]), { name: body.name, mime: body.mime, bytes: body.bytes ?? body.contentBase64, preview: previewInput(body.preview) }));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/files$/)) && rx.method === 'POST') {
-          return out(201, weave.attachFile(m[1], { name: body.name, mime: body.mime, bytes: body.contentBase64, preview: previewInput(body.preview) }));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/files\/([^/]+)$/)) && rx.method === 'DELETE') {
-          const result = weave.deleteFile(m[1], m[2]);
-          if (!result.deleted) return notFound({ error: `No file '${m[2]}' on this record`, code: 'not-found' });
-          return out(200, result);
-        }
-        if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && rx.method === 'GET') {
-          const preview = rx.searchParams?.has('preview') ?? false;
-          const view = rx.searchParams?.has('view') ?? false;
-          const known = weave.readFileMeta(m[1]);
-          if (!view || !isHtmlFile(known)) {
-            const etag = `"${m[1]}${preview ? '-preview' : ''}"`;
-            const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
-            if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
-            const { meta, bytes } = weave.readFile(m[1], { preview });
-            return out(200, bytes, { ...fileHeaders(meta, bytes, { view }), ...cache });
-          }
-          const { meta, bytes } = weave.readFile(m[1], { preview });
-          if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
-          const page = viewHtml(bytes, frameLinkBase(bytes) + frameStorageScript(weave.readFileStorage(m[1]).items) + FRAME_HEIGHT_SCRIPT);
-          return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
-        }
         if ((m = path.match(/^\/api\/files\/([^/]+)\/storage$/))) {
           if (rx.method === 'GET') return out(200, weave.readFileStorage(m[1]));
           if (rx.method === 'PUT') return out(200, weave.writeFileStorage(m[1], body.items));
