@@ -1,0 +1,1 @@
+- The vocabulary lookup runs from the command registry: `weave vocabulary`, `weave_vocabulary` and `GET /api/vocabulary` dispatch from one entry with the same answers and the same refusal of an unknown section (Feature #179).

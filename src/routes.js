@@ -1540,10 +1540,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}), ...(auth ? { auth } : {}) });
         }
         if (route === 'GET /api/schema') return out(200, weave.describeSchema());
-        if (route === 'GET /api/vocabulary') {
-          try { return out(200, vocabularyView(rx.searchParams?.get('section'), rx.searchParams?.get('query'))); }
-          catch (e) { throw new WeaveError(e.message, 'invalid'); }
-        }
 
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
         const useTemplateInto = ({ space, workspace, name } = {}) => {
