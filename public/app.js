@@ -9223,10 +9223,10 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
+    noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
-        noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
         const ed = mountDocEditor(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
@@ -9247,7 +9247,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
-      noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
       sourceBox = ta;
