@@ -13,6 +13,9 @@ const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 const HELD = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'touch-held.json'), 'utf8')).offenders;
 const heldKey = (surface, theme) => `${surface} | ${theme}`;
+const fingerprint = (c) => (c.over
+  ? `${c.label} is covered by ${c.over}`
+  : `${c.label} misses the ${MIN}px minimum ${[c.left + c.right < SPAN ? 'across' : null, c.up + c.down < SPAN ? 'down' : null].filter(Boolean).join(' and ')}`);
 const PLANT = (root) => {
   const b = document.createElement('button');
   b.textContent = 'planted';
@@ -149,7 +152,8 @@ if (s) {
       const offenders = small.map((c) => (c.over
         ? `${c.label} is covered by ${c.over}`
         : `${c.label} taps ${c.left + c.right}x${c.up + c.down} of the ${MIN}px minimum`));
-      return { seen, offenders };
+      const fingerprints = small.map(fingerprint);
+      return { seen, offenders, fingerprints };
     } finally { await page.close(); }
   };
 
@@ -160,6 +164,9 @@ if (s) {
       assert.ok(row, `${key} is held in test/lib/states.mjs with no entry in test/touch-held.json`);
       assert.ok(hold.includes(row.issue), `${key}: test/touch-held.json names Issue #${row.issue}, the hold names #${hold.join(', #')}`);
       assert.ok(Array.isArray(row.offenders) && row.offenders.length, `${key}: a held state records at least one offender`);
+      for (const o of row.offenders) {
+        assert.doesNotMatch(o, /\d+(\.\d+)?x\d+(\.\d+)?/, `${key}: "${o}" records a measurement. A fingerprint names the control and the axis that misses, never its pixels: the same control swept 32x43.5 on macOS and 33x43.5 on the Linux runner, and a pinned measurement turned the gate red for one pixel of font metrics (Issue #1450).`);
+      }
     }
     for (const key of Object.keys(HELD)) {
       assert.ok(holds.has(key), `${key} is recorded in test/touch-held.json but nothing holds it any more: drop the entry`);
@@ -179,22 +186,22 @@ if (s) {
       const surface = surfaceOf(state);
       const ledger = HELD[heldKey(surface.name, theme)];
       test(`on a phone the ${surface.name} misses exactly the ${MIN}px hit areas test/touch-held.json records for Issue #${hold.join(', #')} (${engine}, ${theme}, Issues #1119, #1450)`, async (t) => {
-        const { seen, offenders } = await measure(b, profile, theme, surface);
+        const { seen, offenders, fingerprints } = await measure(b, profile, theme, surface);
         t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
         assert.ok(ledger, `${heldKey(surface.name, theme)} is held but test/touch-held.json records no offenders for it`);
-        assert.ok(offenders.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs and its test/touch-held.json entry so the gate walks it`);
-        assert.deepEqual(offenders.slice().sort(), ledger.offenders.slice().sort(),
-          `the held offenders on the ${surface.name} moved: test/touch-held.json only shrinks, so a new one is a regression and a fixed one leaves the file in the same change`);
+        assert.ok(fingerprints.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs and its test/touch-held.json entry so the gate walks it`);
+        assert.deepEqual(fingerprints.slice().sort(), ledger.offenders.slice().sort(),
+          `the held offenders on the ${surface.name} moved: test/touch-held.json only shrinks, so a new one is a regression and a fixed one leaves the file in the same change. Measured:\n${offenders.join('\n')}`);
       });
 
       test(`on a phone one more undersized control on the held ${surface.name} fails the gate (${engine}, ${theme}, Issue #1450)`, async () => {
-        const { offenders } = await measure(b, profile, theme, surface, { plant: PLANT });
-        const planted = offenders.filter((o) => o.includes('planted'));
+        const { offenders, fingerprints } = await measure(b, profile, theme, surface, { plant: PLANT });
+        const planted = fingerprints.filter((o) => o.includes('planted'));
         assert.equal(planted.length, 1, `the sweep sees the planted control; it saw ${JSON.stringify(offenders)}`);
-        assert.notDeepEqual(offenders.slice().sort(), ledger.offenders.slice().sort(),
+        assert.notDeepEqual(fingerprints.slice().sort(), ledger.offenders.slice().sort(),
           'a grown offender list has to differ from test/touch-held.json, which is what the held assertion now compares');
-        assert.ok(offenders.length > ledger.offenders.length,
-          `the count ceiling is exceeded: ${offenders.length} offenders against the ${ledger.offenders.length} recorded, and a bare offenders.length check passed both`);
+        assert.ok(fingerprints.length > ledger.offenders.length,
+          `the count ceiling is exceeded: ${fingerprints.length} offenders against the ${ledger.offenders.length} recorded, and a bare offenders.length check passed both`);
       });
     }
     for (const { state, theme } of plan('touch').filter((p) => themesOn(engine).includes(p.theme))) {
