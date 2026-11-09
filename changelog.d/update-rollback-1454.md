@@ -1,0 +1,1 @@
+- A record update or create that is refused partway, such as a relation change into a private space, now leaves every field, linked record, document and activity entry as it was, and its automations and document revisions run only once every value has been written (Issue #1454).
