@@ -1870,9 +1870,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
         }
-        if (route === 'GET /api/undo') {
-          return out(200, weave.listUndo({ limit: boundedLimit(rx.searchParams.get('limit'), 20) }));
-        }
         if (route === 'POST /api/bulk' && role === 'editor') {
           const { ids, op, ...params } = body ?? {};
           const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
@@ -1885,9 +1882,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             || into.some((t) => weave.state.tables[t]?.system)) {
             return deny(403, 'This token cannot change the schema');
           }
-        }
-        if (route === 'POST /api/undo') {
-          return out(200, weave.undo({ steps: Math.max(1, Number(body?.steps ?? 1)) }));
         }
         if (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {})) {
           weave.setRequireAuth(!!body.requireAuth);
@@ -2089,15 +2083,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
 
-        if (route === 'GET /api/search') {
-          const q = rx.searchParams.get('q') ?? '';
-          const limit = boundedLimit(rx.searchParams.get('limit'), 25);
-          const tables = rx.searchParams.get('tables');
-          if (tables != null) {
-            return out(200, weave.universalSearch(q, { limit, tables: tables.split(',').map((t) => t.trim()).filter(Boolean) }));
-          }
-          return out(200, weave.universalSearch(q, { limit }));
-        }
         if (route === 'GET /api/export') return out(200, weave.exportJSON());
         if (route === 'POST /api/import') {
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');

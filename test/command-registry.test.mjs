@@ -26,7 +26,7 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
     assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
     assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
-    if (c.action) {
+    if (c.action !== undefined) {
       const key = c.actionArg ?? 'action';
       assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
       if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
@@ -650,6 +650,39 @@ test('documents, their revisions and comments answer the same on CLI, MCP and HT
     assert.deepEqual(gone.http, { ok: true }, 'DELETE comments still answers ok');
     assert.deepEqual(page(gone.cli), page(gone.mcp), 'weave comment delete and weave_delete_comment answer alike');
     for (const [method, path, name] of [['GET', '/api/entities/x/doc', 'doc.read'], ['PUT', '/api/entities/x/doc', 'doc.set'], ['POST', '/api/entities/x/doc', 'doc.append'], ['GET', '/api/entities/x/doc/revisions', 'doc.revisions'], ['GET', '/api/entities/x/doc/revisions/3', 'doc.revisions'], ['POST', '/api/entities/x/doc/revisions/3/restore', 'doc.restore'], ['POST', '/api/entities/x/comments', 'comment.add'], ['DELETE', '/api/entities/x/comments/y', 'comment.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('search and undo answer the same on CLI, MCP and HTTP, each door with its own engine call and envelope (Feature #179)', async () => {
+  const seeded = (w) => { seed(w); w.addField('Task', { name: 'Points', type: 'number' }); w.createEntity('Task', { Name: 'Zebrafinch' }); };
+  const d = await threeDoors('weave-registry-search-', { seeded });
+  const hit = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['url', 'score', 'ts', 'at'].includes(k) ? undefined : x)));
+  const idOf = (w) => w.query('Task', { where: [['Name', '=', 'Alpha']] }).items[0].id;
+  try {
+    const found = { mcp: d.mcp('weave_search', { query: 'zebrafinch' }), http: await d.http('GET', '/api/search?q=zebrafinch') };
+    assert.ok(found.http.some((h) => h.kind === 'entity'));
+    assert.deepEqual(hit(found.mcp), hit(found.http), 'weave_search and GET /api/search answer alike');
+    const scoped = await d.http('GET', '/api/search?q=zebrafinch&tables=Person');
+    assert.equal(scoped.filter((h) => h.kind === 'entity').length, 0, 'tables still narrows the HTTP search');
+    const cliFound = d.cli(['search', 'zebra', 'finch', '--limit', '5']);
+    const engine = new Weave({ path: join(tempDir('weave-registry-search-copy-'), 'x.db') });
+    seeded(engine);
+    assert.deepEqual(hit(cliFound), hit(engine.search('zebra finch', { limit: 5 })), 'weave search still runs the record search');
+    d.cli(['update', 'Task#1', '--values', '{"Points":2}']);
+    d.mcp('weave_update_entity', { entity: idOf(d.mcpWeave), values: { Points: 2 } });
+    await d.http('PATCH', `/api/entities/${idOf(d.httpWeave)}`, { values: { Points: 2 } });
+    const history = { cli: d.cli(['undo', '--list']), mcp: d.mcp('weave_undo', { list: true }), http: await d.http('GET', '/api/undo') };
+    assert.ok(history.http.length >= 1);
+    assert.deepEqual(hit(history.mcp.history), hit(history.http), 'weave_undo {list} and GET /api/undo answer alike');
+    assert.deepEqual(hit(history.cli), hit(history.http), 'weave undo --list and GET /api/undo answer alike');
+    assert.deepEqual(hit(d.cli(['undo', 'list'])), hit(history.http), 'weave undo list lists too');
+    assert.equal((await d.http('GET', '/api/undo?limit=1')).length, 1);
+    const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}) };
+    assert.deepEqual(hit(undone.mcp), hit(undone.http), 'weave_undo and POST /api/undo answer alike');
+    assert.deepEqual(hit(undone.cli), hit(undone.http), 'weave undo and POST /api/undo answer alike');
+    for (const [method, path, name] of [['GET', '/api/search', 'search'], ['GET', '/api/undo', 'undo.list'], ['POST', '/api/undo', 'undo.run']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }

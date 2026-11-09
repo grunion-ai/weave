@@ -33,8 +33,6 @@ const HAND_WRITTEN = [
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
   ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
-  ['search', ['search', 'universalSearch'], 'weave_search', 'search', ['GET /api/search']],
-  ['undo', ['undo', 'listUndo'], 'weave_undo', 'undo', ['GET /api/undo', 'POST /api/undo']],
   ['json.export', ['exportJSON'], 'weave_export_json', 'export', ['GET /api/export']],
   ['json.import', ['importJSON'], 'weave_import_json', 'import', ['POST /api/import']],
   ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],

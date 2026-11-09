@@ -626,10 +626,6 @@ async function main() {
       const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
       return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
     }
-    case 'undo': {
-      if (flags.list) return out(w.listUndo({ limit: numberFlag('limit', 20) }));
-      return out(w.undo({ steps: Math.max(1, Number(flags.steps ?? 1)) }));
-    }
     case 'space': {
       const [sub, name] = args;
       if (sub === 'list' || !sub) return out(w.listSpaces());
@@ -717,8 +713,6 @@ async function main() {
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
     }
-    case 'search':
-      return out(w.search(args.join(' '), { limit: numberFlag('limit', 25) }));
     case 'export': {
       const dump = JSON.stringify(w.exportJSON(), null, 1);
       if (flags.out) {
