@@ -20,7 +20,9 @@ export const INTEGRATION_COLUMNS = [
   ['Health Reason', 'text', {}],
   ['Last Checked', 'date', { time: true }],
   ['Last Used', 'date', { time: true }],
+  ['Poll Budget', 'number', {}],
 ];
+export const POLL_BUDGET_DEFAULT = 60;
 export const INTEGRATION_KEPT = ['Credential', 'Key Hint', 'State', 'Connected As', 'Health Reason', 'Last Checked', 'Last Used'];
 export const INTEGRATION_KEY_PREFIX = 'integration:';
 export const integrationKeyName = (rowId) => `${INTEGRATION_KEY_PREFIX}${rowId}`;

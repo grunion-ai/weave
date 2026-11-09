@@ -21,8 +21,8 @@ import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
-import { parseCron, dueBetween } from './schedule.js';
-import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues } from './delivery.js';
+import { parseCron, dueBetween, nextEvery, diffItems, retryAfterMs, pollPrune, POLL_SLOWEST_DEFAULT, POLL_SLOWEST_MAX } from './schedule.js';
+import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute } from './delivery.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
@@ -31,7 +31,7 @@ import { aggregate as aggregateValues, describeNumbers, histogram, distribution,
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
 import { TRIAL_STAGES } from './mail.js';
-import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, authHeader, INTEGRATION_METHODS, CHECK_TIMEOUT_MS } from './integrations.js';
+import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, integrationHost, integrationKeyName, isIntegrationKey, refuseIntegrationKey, cleanSecret, keyHint, redact, checkRequest, readCheck, unreachable, authHeader, INTEGRATION_METHODS, CHECK_TIMEOUT_MS, POLL_BUDGET_DEFAULT } from './integrations.js';
 
 function iconValue(v) {
   const s = String(v ?? '').trim();
@@ -400,12 +400,23 @@ const HOME_RUNS = 20;
 const HOME_RUN_ROWS = 50;
 const templated = (v) => typeof v === 'string' && v.includes('{{');
 const scheduleOut = (t) => ({ cron: t.cron, zone: t.zone, ...(t.where != null ? { where: t.where } : {}) });
+const listenerOut = (t) => ({
+  integration: t.integration, url: t.url, method: t.method,
+  ...(t.headers ? { headers: t.headers } : {}), ...(t.cursor ? { cursor: t.cursor } : {}),
+  ...(t.items != null ? { items: t.items } : {}), key: t.key, maxInterval: t.maxInterval,
+});
+const triggerOut = (t) => (t.type === 'schedule' ? scheduleOut(t) : t.type === 'listener-changed' ? listenerOut(t) : {});
+const LISTENER_ACTIONS = ['upsert-row', 'http-request'];
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
 function whenWords({ table, trigger: t }) {
   if (t.type === 'entity-created') return `A record is created in ${table}`;
   if (t.type === 'field-updated') return `${t.field} changes in ${table}`;
   if (t.type === 'state-changed') return `${t.field} moves${t.toState ? ` to ${t.toState}` : ''} in ${table}`;
+  if (t.type === 'listener-changed') {
+    const u = new URL(t.url);
+    return `An item changes at ${u.host}${u.pathname} through ${t.integration}`;
+  }
   return `Schedule ${t.cron} ${t.zone}, ${t.where != null ? 'matching records' : 'every record'} in ${table}`;
 }
 function actionWords(a) {
@@ -420,6 +431,7 @@ function urlHost(url) {
   try { return new URL(url).host; } catch { return url; }
 }
 const HTTP_STEP_BODY_MAX = 16 * 1024;
+const itemRow = (key, item) => ({ id: `item:${key}`, key, item, publicId: null, values: {}, docs: {}, comments: [] });
 const OUTBOUND = Symbol('outbound');
 const CREDENTIAL_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie']);
 const blankTemplates = (s) => s.replace(/\{\{[^}]*\}\}/g, 'x');
@@ -9239,7 +9251,7 @@ export class Weave {
     if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
     const db = this.getTable(spec.table);
     const { trigger, actions } = spec;
-    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule'].includes(trigger.type)) {
+    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule', 'listener-changed'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
     const t = { type: trigger.type };
@@ -9254,6 +9266,8 @@ export class Weave {
         this.query(db.id, { where: trigger.where, limit: 1, relations: 'chip' });
         t.where = trigger.where;
       }
+    } else if (trigger.type === 'listener-changed') {
+      Object.assign(t, this.#compileListener(trigger));
     } else if (trigger.type !== 'entity-created') {
       const f = this.getField(db.id, trigger.field);
       t.fieldId = f.id;
@@ -9288,7 +9302,48 @@ export class Weave {
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
+    if (t.type === 'listener-changed' && acts.some((a) => !LISTENER_ACTIONS.includes(a.type) || a.response)) {
+      throw new WeaveError('A listener-changed rule runs on items from the source, not on a record: its actions are upsert-row or http-request, with no response map', 'invalid');
+    }
     return { dbId: db.id, trigger: t, actions: acts };
+  }
+
+  #compileListener(trigger) {
+    if (typeof trigger.integration !== 'string' || !trigger.integration) throw new WeaveError('A listener-changed trigger names the System/Integrations record whose key reads the source, as integration', 'invalid');
+    const method = String(trigger.method ?? 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'POST') throw new WeaveError(`A listener-changed trigger reads with GET or POST, not '${trigger.method}'`, 'invalid');
+    let u;
+    try { u = new URL(String(trigger.url ?? '')); } catch { throw new WeaveError('A listener-changed trigger needs the https url of a list endpoint', 'invalid'); }
+    const target = this.#integrationTarget(this.#integrationRow(trigger.integration));
+    if (!target.host) throw new WeaveError(`Integration '${target.name}' has no Host yet`, 'invalid');
+    if (u.protocol !== 'https:' || u.host !== target.host) throw new WeaveError(`Integration '${target.name}' only reaches https://${target.host}: refused ${u.protocol}//${u.host}`, 'invalid');
+    const t = { integration: target.name, url: u.href, method };
+    if (trigger.headers != null) {
+      if (typeof trigger.headers !== 'object' || Array.isArray(trigger.headers)) throw new WeaveError('The listener-changed headers are an object of name: value strings', 'invalid');
+      for (const [k, v] of Object.entries(trigger.headers)) {
+        if (typeof v !== 'string') throw new WeaveError(`The listener-changed header '${k}' takes a string value`, 'invalid');
+        if (CREDENTIAL_HEADERS.has(k.toLowerCase())) throw new WeaveError(`A Script never carries a '${k}' header: weave sets Authorization from the integration key`, 'invalid');
+        try { new Headers([[k, v]]); } catch { throw new WeaveError(`'${k}' is not a valid header`, 'invalid'); }
+      }
+      t.headers = { ...trigger.headers };
+    }
+    if (trigger.cursor != null) {
+      const c = trigger.cursor;
+      if (!c || typeof c !== 'object' || typeof c.param !== 'string' || !c.param || typeof c.path !== 'string' || !c.path) {
+        throw new WeaveError('A listener-changed cursor is {param, path}: the query parameter weave sends, and the path in the answer that holds the next cursor', 'invalid');
+      }
+      t.cursor = { param: c.param, path: c.path };
+    }
+    if (trigger.items != null && trigger.items !== '') {
+      if (typeof trigger.items !== 'string') throw new WeaveError('The listener-changed items is the path in the JSON answer that holds the list, such as data', 'invalid');
+      t.items = trigger.items.trim();
+    }
+    if (typeof trigger.key !== 'string' || !trigger.key.trim()) throw new WeaveError('A listener-changed trigger needs a key: the path in each item that names it, such as id', 'invalid');
+    t.key = trigger.key.trim();
+    const slowest = trigger.maxInterval ?? POLL_SLOWEST_DEFAULT;
+    if (!Number.isInteger(slowest) || slowest < 1 || slowest > POLL_SLOWEST_MAX) throw new WeaveError(`The listener-changed maxInterval is a whole number of minutes from 1 to ${POLL_SLOWEST_MAX}`, 'invalid');
+    t.maxInterval = slowest;
+    return t;
   }
 
   #compileUpsert(a) {
@@ -9377,7 +9432,7 @@ export class Weave {
     };
     try {
       const trigger = { type: c.trigger.type };
-      if (c.trigger.type === 'schedule') Object.assign(trigger, scheduleOut(c.trigger));
+      Object.assign(trigger, triggerOut(c.trigger));
       if (c.trigger.fieldId) trigger.field = fname(c.trigger.fieldId);
       if (c.trigger.toStateId) {
         const st = db.fields[c.trigger.fieldId].config.states?.find((s) => s.id === c.trigger.toStateId);
@@ -9441,7 +9496,10 @@ export class Weave {
       try { spec = JSON.parse(src); } catch (err) { throw new WeaveError(`The Script is not JSON: ${err.message}`, 'invalid'); }
       let w = owner;
       if (spec?.table != null && !owner.findTable(spec.table)) w = this.#engines().find((x) => x.findTable(spec.table)) ?? owner;
-      return { row, owner: w, ...w.#compileSpec(spec), problem: null };
+      const compiled = w.#compileSpec(spec);
+      const heard = compiled.trigger.type === 'listener-changed' ? w.state.meta.listeners?.[row.id] : null;
+      const problem = heard?.problem && heard.sig === JSON.stringify(compiled.trigger) ? heard.problem : null;
+      return { row, owner: w, ...compiled, problem };
     } catch (err) {
       return { row, owner, dbId: null, trigger: null, actions: [], problem: err.message };
     }
@@ -9546,13 +9604,22 @@ export class Weave {
     return rule;
   }
 
-  #stampRun(row, failure, at = nowISO(), waiting = null) {
+  #stampRun(row, failure, at = nowISO(), waiting = null, note = null) {
     const health = this.#wfField('Health');
     const reasonF = this.#wfField('Health Reason');
     this.#stamp(row, () => {
       row.values[this.#wfField('Last Run').id] = at;
       this.#setOption(row, health, failure ? 'Failed' : waiting ? 'Warning' : 'Healthy');
-      row.values[reasonF.id] = failure ?? waiting ?? null;
+      row.values[reasonF.id] = failure ?? waiting ?? note ?? null;
+    });
+  }
+
+  #stampPoll(row, health, reason) {
+    const reasonF = this.#wfField('Health Reason');
+    this.#stamp(row, () => {
+      let moved = this.#setOption(row, this.#wfField('Health'), health);
+      if ((row.values[reasonF.id] ?? null) !== reason) { row.values[reasonF.id] = reason; moved = true; }
+      return moved;
     });
   }
 
@@ -9604,7 +9671,7 @@ export class Weave {
       const db = auto.dbId ? this.state.tables[auto.dbId] : null;
       const fieldName = (fid) => db?.fields[fid]?.name ?? null;
       const trigger = auto.trigger ? { type: auto.trigger.type } : null;
-      if (auto.trigger?.type === 'schedule') Object.assign(trigger, scheduleOut(auto.trigger));
+      if (auto.trigger) Object.assign(trigger, triggerOut(auto.trigger));
       if (auto.trigger?.fieldId) trigger.field = fieldName(auto.trigger.fieldId);
       if (auto.trigger?.toStateId && auto.trigger.fieldId) {
         trigger.toState = db.fields[auto.trigger.fieldId]?.config.states
@@ -9748,7 +9815,7 @@ export class Weave {
           let out;
           if (answer !== undefined) {
             step.e = this.#liveRow(step.e);
-            if (step.e.deletedAt || !own(this.state.entities, step.e.id)) throw new WeaveError('The record was deleted before the answer came back', 'not-found');
+            if (step.e.item === undefined && (step.e.deletedAt || !own(this.state.entities, step.e.id))) throw new WeaveError('The record was deleted before the answer came back', 'not-found');
             const action = rule.actions[i];
             out = action.type === 'webhook' ? { url: action.url, sent: true } : this.#httpLand(action, step.e, run.db, answer, depth);
             answer = undefined;
@@ -9799,7 +9866,8 @@ export class Weave {
       });
     });
     const waiting = failure == null ? (this.state.meta.deliveries ?? []).filter((d) => d.workflow === rule.row.id).at(-1)?.reason ?? null : null;
-    reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at, waiting);
+    const note = rule.trigger?.type === 'listener-changed' ? this.#pollWords(rule.row.id) : null;
+    reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at, waiting, note);
     if (run.waited) this.save();
     if (reg !== this) reg.save();
   }
@@ -9869,8 +9937,8 @@ export class Weave {
 
   #runSnapshot(run, r, i, request) {
     return JSON.parse(JSON.stringify({
-      workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => e.id), event: run.event, depth: run.depth, at: run.at, r, i,
-      ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs }),
+      workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => (e.item !== undefined ? { id: e.id, key: e.key, item: e.item } : e.id)), event: run.event, depth: run.depth, at: run.at, r, i,
+      ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs, ...(x.e.item !== undefined ? { key: x.e.key, item: x.e.item } : {}) }),
       request,
     }));
   }
@@ -9899,7 +9967,7 @@ export class Weave {
       name: deliveryName(request),
       values: {
         Status: 'Failed', Workflow: run.rule.row.id, 'Last Error': last.error, 'Last Attempt': last.at,
-        Record: `${this.qualifiedName(run.db)} #${e.publicId} ${this.entityName(e)}`,
+        Record: e.item !== undefined ? `${run.rule.trigger.integration} item ${e.key}` : `${this.qualifiedName(run.db)} #${e.publicId} ${this.entityName(e)}`,
         ...(reg.#sysRow('workspaces', this.state.meta.id) ? { Workspace: reg.#sysRow('workspaces', this.state.meta.id).id } : {}),
       },
       docs: { Request: requestText(request), Attempts: attemptsText(attempts) },
@@ -9968,8 +10036,8 @@ export class Weave {
     const action = rule?.actions?.[d.i];
     if (!rule || rule.problem || rule.row.deletedAt || !db || (action?.type !== 'webhook' && action?.type !== 'http-request')) return null;
     const live = (id) => own(this.state.entities, id);
-    const rows = d.rows.map((id, k) => live(id) ?? (k <= d.r ? { id } : null)).filter(Boolean);
-    const ran = d.ran.map((x) => x && { e: live(x.id) ?? { id: x.id }, steps: x.steps, outs: x.outs });
+    const rows = d.rows.map((id, k) => (typeof id === 'object' ? itemRow(id.key, id.item) : live(id) ?? (k <= d.r ? { id } : null))).filter(Boolean);
+    const ran = d.ran.map((x) => x && { e: x.item !== undefined ? itemRow(x.key, x.item) : live(x.id) ?? { id: x.id }, steps: x.steps, outs: x.outs });
     return { failed: false, rule, db, rows, event: d.event, depth: d.depth, at: d.at, name: reg.entityName(rule.row), ran, waited: true };
   }
 
@@ -10013,7 +10081,128 @@ export class Weave {
       fired++;
     }
     if (fired) this.save();
+    this.#runListeners(now);
     return fired;
+  }
+
+  #polling = new Set();
+
+  #pollState(rule) {
+    const store = (this.state.meta.listeners ??= {});
+    const sig = JSON.stringify(rule.trigger);
+    if (store[rule.row.id]?.sig !== sig) store[rule.row.id] = { sig, snapshot: null, every: 1, next: 0, failures: 0 };
+    return store[rule.row.id];
+  }
+
+  #pollBudget(name) {
+    const reg = this.#reg;
+    const t = reg.#sysTable('integrations');
+    const row = t && reg.findEntity(t.id, name);
+    const v = row ? row.values[reg.#sysField(t, 'Poll Budget')?.id] : null;
+    return Number.isFinite(v) && v >= 1 ? Math.floor(v) : POLL_BUDGET_DEFAULT;
+  }
+
+  #runListeners(now) {
+    const reg = this.#reg;
+    const on = reg.#wfField('On');
+    const ms = now.getTime();
+    const logs = this.state.meta.pollLog ?? {};
+    for (const rule of reg.#allRules()) {
+      if (rule.owner !== this || rule.trigger?.type !== 'listener-changed' || rule.problem) continue;
+      if (rule.row.deletedAt || rule.row.values[on.id] !== true || this.#polling.has(rule.row.id)) continue;
+      const state = this.#pollState(rule);
+      if (state.next > ms) continue;
+      const name = rule.trigger.integration;
+      const log = pollPrune(logs[name], ms);
+      if (log.length >= this.#pollBudget(name)) { logs[name] = log; continue; }
+      logs[name] = [...log, ms];
+      this.state.meta.pollLog = logs;
+      this.#polling.add(rule.row.id);
+      const job = this.#poll(rule, state, now)
+        .then((answer) => unrestricted(() => this.#pollLanded(rule.row.id, state.sig, now, answer)))
+        .catch((err) => console.error(`weave: poll for '${reg.entityName(rule.row)}' failed: ${err?.message ?? err}`))
+        .finally(() => { this.#polling.delete(rule.row.id); this.#pendingRuns.delete(job); });
+      this.#pendingRuns.add(job);
+    }
+  }
+
+  async #poll(rule, state, now) {
+    const t = rule.trigger;
+    const u = new URL(t.url);
+    if (t.cursor && state.cursor != null) u.searchParams.set(t.cursor.param, String(state.cursor));
+    const headers = { ...(t.headers ?? {}), ...(state.etag ? { 'If-None-Match': state.etag } : {}) };
+    const where = `${t.method} ${u.host}${u.pathname}`;
+    try {
+      return { where, res: await this.integrationFetch(t.integration, u.href, { method: t.method, headers }) };
+    } catch (err) {
+      return { where, error: err, at: now };
+    }
+  }
+
+  #pollWords(rowId) {
+    const s = this.state.meta.listeners?.[rowId];
+    if (!s?.last) return null;
+    const n = Object.keys(s.snapshot ?? {}).length;
+    return `Last poll ${utcMinute(new Date(s.last))}, next ${utcMinute(new Date(s.next))}, ${n} item${n === 1 ? '' : 's'} seen`;
+  }
+
+  #pollLanded(rowId, sig, now, { where, res, error }) {
+    const reg = this.#reg;
+    const rule = reg.#allRules().find((r) => r.owner === this && r.row.id === rowId);
+    const state = this.state.meta.listeners?.[rowId];
+    if (!rule || rule.problem || !state || state.sig !== sig) return;
+    const row = own(reg.state.entities, rowId) ?? rule.row;
+    const t = rule.trigger;
+    const ms = now.getTime();
+    state.last = ms;
+    const backOff = (wait, health, reason) => {
+      state.failures = (state.failures ?? 0) + 1;
+      state.next = ms + (wait ?? retryDelayMs(state.failures));
+      reg.#stampPoll(row, health, `${reason}; next poll ${utcMinute(new Date(state.next))}`);
+    };
+    const done = () => { this.save(); if (reg !== this) reg.save(); };
+    if (error) {
+      backOff(null, error.unreachable ? 'Warning' : 'Failed', `${where}: ${error.message}`);
+      return done();
+    }
+    let changed = false;
+    if (res.status !== 304) {
+      if (!res.ok) {
+        const wait = retryAfterMs(res.headers?.['retry-after'], ms);
+        backOff(wait, res.status === 408 || res.status === 429 || res.status >= 500 ? 'Warning' : 'Failed', `${where} answered HTTP ${res.status}`);
+        return done();
+      }
+      let parsed;
+      try { parsed = JSON.parse(res.body); } catch { parsed = undefined; }
+      const list = t.items ? sourcePath(parsed, t.items) : parsed;
+      if (!Array.isArray(list)) {
+        state.problem = t.items ? `the items path '${t.items}' finds no list in the answer from ${where}` : `the answer from ${where} is not a JSON list: name the path to the list in items`;
+        reg.#settleWorkflows();
+        return done();
+      }
+      const first = state.snapshot == null;
+      const { changes, seen } = diffItems(state.snapshot, list, (item) => sourcePath(item, t.key));
+      state.snapshot = t.cursor && !first ? { ...state.snapshot, ...seen } : seen;
+      if (t.cursor) {
+        const next = sourcePath(parsed, t.cursor.path);
+        if (next != null && typeof next !== 'object') state.cursor = next;
+      }
+      state.etag = res.headers?.etag ?? null;
+      changed = first || changes.length > 0;
+      state.every = nextEvery(state.every ?? 1, changed, t.maxInterval);
+      state.next = ms + state.every * 60_000;
+      state.failures = 0;
+      const fire = changes.filter((c) => !this.isEcho(t.integration, { values: c.values }, { now }));
+      const db = own(this.state.tables, rule.dbId);
+      if (db) for (const c of fire) this.#fireRule(rule, db, [itemRow(c.key, c.item)], { type: 'listener-changed' }, 0, now.toISOString());
+      if (fire.length) return done();
+    } else {
+      state.every = nextEvery(state.every ?? 1, false, t.maxInterval);
+      state.next = ms + state.every * 60_000;
+      state.failures = 0;
+    }
+    reg.#stampPoll(row, 'Healthy', this.#pollWords(rowId));
+    return done();
   }
 
   #runAction(rule, name, action, db, e, event, depth, run, steps = {}) {
@@ -10140,6 +10329,7 @@ export class Weave {
   }
 
   #upsertSource(e, db, event, steps = {}) {
+    if (e.item !== undefined) return { row: {}, event: { type: event.type }, trigger: { item: e.item }, steps };
     const row = { PublicId: e.publicId };
     for (const [name, v] of Object.entries(this.#readEntityIn(e.id).fields)) {
       const chip = (x) => (x && typeof x === 'object' && 'publicId' in x ? x.name : x);
@@ -10188,6 +10378,10 @@ export class Weave {
       const key = name.trim();
       if (key.startsWith('steps.')) {
         const v = sourcePath({ steps }, key);
+        return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+      }
+      if (key.startsWith('trigger.')) {
+        const v = e.item === undefined ? undefined : sourcePath({ trigger: { item: e.item } }, key);
         return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
       }
       if (key === 'PublicId') return String(e.publicId);

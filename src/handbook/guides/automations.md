@@ -32,7 +32,7 @@ A rule's own writes can fire other rules, three deep at most, so a pair of rules
 
 ## Triggers
 
-Four trigger types, and a rule has one:
+Five trigger types, and a rule has one:
 
 | Trigger | Fires when |
 | --- | --- |
@@ -40,6 +40,7 @@ Four trigger types, and a rule has one:
 | `field-updated` | a named field on a row changes |
 | `state-changed` | a workflow field moves, optionally only into one named state |
 | `schedule` | the clock reaches a cron minute |
+| `listener-changed` | an item in a list another tool serves is new or changed |
 
 `field-updated` and `state-changed` take `field`; `state-changed` also takes `toState` to narrow it to one landing state.
 
@@ -58,6 +59,48 @@ A `schedule` trigger fires on a timer instead of a row change:
 `cron` is the five-field expression: minute, hour, day, month, weekday, with `*`, lists, ranges and `*/n` steps. It is read on the wall clock of `zone`, an IANA name, UTC when you leave it out. At each due minute the rule runs its actions on every live row of its table, or on the rows its `where` clause admits, written in the query filter syntax. `{{Today}}` reads the clock of the run and `event.type` is `schedule`.
 
 The server checks every minute, and a due minute fires once. A box that slept through several due minutes does one catch-up pass when it wakes, reaching back seven days at most. A new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one.
+
+## When a polled source changes
+
+A `listener-changed` trigger watches a tool that sends no webhooks. On the minute tick weave reads a list endpoint with an integration's key, compares the answer with what it saw last time, and runs the rule once for each item that is new or changed:
+
+```json
+{ "type": "listener-changed", "integration": "Acme API",
+  "url": "https://api.acme.com/v1/tasks", "items": "data", "key": "id",
+  "cursor": { "param": "since", "path": "next" }, "maxInterval": 30 }
+```
+
+| Key | What it holds |
+| --- | --- |
+| `integration` | the Name of a `System/Integrations` record; weave adds its key as the Authorization header, as in [Calling an API](#calling-an-api) |
+| `url` | the list endpoint, on the integration's Host over https |
+| `method` | `GET`, or `POST` for an API that searches with one; `GET` when left out |
+| `headers` | an object of header names and text values; never `Authorization`, `Proxy-Authorization` or `Cookie` |
+| `items` | the path in the JSON answer that holds the list, such as `data`; leave it out when the answer is the list |
+| `key` | the path in each item that names it, such as `id` |
+| `cursor` | `{param, path}`: weave reads the next cursor at `path` in the answer and sends it back as the `param` query parameter |
+| `maxInterval` | the longest wait between polls, in minutes, from 1 to 1440; 60 when left out |
+
+The first poll records what the source holds and fires nothing, so switching a rule On never replays the whole list. From the second poll on, the rule runs once per new or changed item, and the item is the input: an upsert-row source path reads `trigger.item.id`, and a placeholder reads `{{trigger.item.title}}`. An item that left the list fires nothing. With a `cursor` the answer is taken to hold changes only, so items it leaves out keep their last value. When the source sends an ETag, weave sends it back as `If-None-Match`, and a 304 answer counts as unchanged.
+
+A change that weave itself just sent to the source does not fire. When an `http-request` rule sends a JSON body through the same integration, and within ten minutes the poll sees an item whose changed fields hold exactly the values sent, weave treats that item as its own echo.
+
+A listener rule runs on items, not on a record of the table, so its actions are `upsert-row` and `http-request`, with no `response` map.
+
+A source that answers with changes is polled every minute. Each poll that finds nothing new doubles the wait, up to `maxInterval`, and the first change brings it back to every minute. A laptop that slept polls once when it wakes. Every rule on one integration shares its `Poll Budget`, the number of polls an hour, 60 when the field is blank; a rule that would go over waits for the hour to roll on. A 429 or 503 answer waits for its `Retry-After`, other failures wait 1, 2, 4 and up to 60 minutes, and while it waits the rule reads `Warning`, or `Failed` for a 4xx answer, with the reason and the next poll in Health Reason, as in `GET api.acme.com/v1/tasks answered HTTP 429; next poll 2026-11-09 12:06 UTC`. A rule whose url is not on the integration's Host reads `Setup incomplete` when it is saved, and so does a rule whose `items` path finds no list in an answer; it stops polling until its Script changes.
+
+Between runs Health Reason shows the poll: `Last poll 2026-11-09 12:03 UTC, next 2026-11-09 12:07 UTC, 42 items seen`. What weave saw, the cursor and the ETag are stored in the workspace, so a restart picks up where it stopped. The key is never stored with them.
+
+A worked example: mirror the tasks of a tool with no webhooks into `Ops/Task`, keyed on its id.
+
+```bash
+weave automation create Ops/Task --name 'Mirror Acme tasks' \
+  --trigger '{"type":"listener-changed","integration":"Acme API",
+              "url":"https://api.acme.com/v1/tasks","items":"data","key":"id"}' \
+  --actions '[{"type":"upsert-row","table":"Ops/Task","key":"Remote Id",
+               "fields":{"Remote Id":"trigger.item.id","Name":"trigger.item.title",
+                         "Status":"trigger.item.status"}}]'
+```
 
 ## Actions
 
