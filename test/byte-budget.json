@@ -200,6 +200,10 @@
       "gzip": 561,
       "br": 561
     },
+    "/save-queue.js": {
+      "gzip": 1559,
+      "br": 1420
+    },
     "/selection-core.js": {
       "gzip": 1018,
       "br": 888
