@@ -170,19 +170,7 @@ export const TOOLS = [
     },
   },
   toolDefinition('weave_views'),
-  {
-    name: 'weave_shares',
-    description: 'Share beta: architect-managed links. action list (kind?, id?, includeInactive?) | mint (kind entity|entities|table|space|view|workspace, id or ids; mode read|submit|edit|manage; formId for submit; visibility public|private; label; expiry 1h|1d|7d|30d|90d|never or expiresAt ISO; default 30d) | update (share, label?, expiry? or expiresAt?; keeps URL) | regenerate (share, optional expiry; old token stops immediately) | renew (share, 30 more days) | revoke (share). Submit only creates through its form. Public links require no login; private requires an existing signed-in member. Named email/domain audiences are unavailable in beta. Tokens never change scope. Every action requires architect access.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, mode: { type: 'string' },
-        visibility: { type: 'string' }, label: { type: 'string' }, expiresAt: { type: 'string' }, share: { type: 'string' },
-        expiry: { type: 'string' }, formId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } }, includeInactive: { type: 'boolean' },
-      },
-      required: ['action'],
-    },
-  },
+  toolDefinition('weave_shares'),
   toolDefinition('weave_automations'),
   toolDefinition('weave_activity'),
   toolDefinition('weave_audit'),
@@ -506,20 +494,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_build': {
       const { spec, dryRun, skipExistingRows, ...bare } = args;
       return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
-    }
-    case 'weave_shares': {
-      switch (args.action) {
-        case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null, includeInactive: Boolean(args.includeInactive) }) };
-        case 'mint': return weave.mintShare({ scope: args.kind === 'entities' ? { kind: args.kind, ids: args.ids } : { kind: args.kind, id: args.id }, mode: args.mode, visibility: args.visibility, label: args.label, expiry: args.expiry, expiresAt: args.expiresAt, formId: args.formId });
-        case 'update':
-        case 'regenerate': {
-          const patch = Object.fromEntries(['label', 'expiry', 'expiresAt'].filter((key) => Object.hasOwn(args, key)).map((key) => [key, args[key]]));
-          return args.action === 'update' ? weave.updateShare(args.share, patch) : weave.regenerateShare(args.share, patch);
-        }
-        case 'renew': return weave.renewShare(args.share);
-        case 'revoke': return weave.revokeShare(args.share);
-        default: throw new Error(`Unknown shares action '${args.action}' (list, mint, renew, revoke, update, regenerate)`);
-      }
     }
     case 'weave_forms':
       if (args.action === 'list') return listForms(weave);
