@@ -410,9 +410,24 @@ function actionWords(a) {
   if (a.type === 'append-doc') return a.field ? `Append to ${a.field}` : 'Append to the document';
   if (a.type === 'add-comment') return 'Add a comment';
   if (a.type === 'upsert-row') return `Create or update a record in ${a.table} by ${a.key}`;
-  let host = a.url;
-  try { host = new URL(a.url).host; } catch {}
-  return `Post to ${host}${a.signWith ? ', signed' : ''}`;
+  if (a.type === 'http-request') return `Send a ${a.method} request to ${urlHost(a.url)}${a.integration ? ` with ${a.integration}` : ''}`;
+  return `Post to ${urlHost(a.url)}${a.signWith ? ', signed' : ''}`;
+}
+function urlHost(url) {
+  try { return new URL(url).host; } catch { return url; }
+}
+const HTTP_STEP_BODY_MAX = 16 * 1024;
+const CREDENTIAL_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie']);
+const blankTemplates = (s) => s.replace(/\{\{[^}]*\}\}/g, 'x');
+function fillJson(v, fill) {
+  if (typeof v === 'string') return fill(v);
+  if (Array.isArray(v)) return v.map((x) => fillJson(x, fill));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fillJson(x, fill)]));
+  return v;
+}
+function stepBody(text) {
+  if (text === '') return null;
+  try { return JSON.parse(text); } catch { return text; }
 }
 const thenWords = (spec) => spec.actions.map(actionWords).join(', then ');
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
@@ -562,7 +577,7 @@ export const ONTOLOGY = {
   records: [
     {
       key: 'automation', name: 'Automation', isEntity: true, registry: 'System/Workflows', storedIn: 'state.entities',
-      definition: 'A rule bound to one table, held as a record of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the record number: the rules on one trigger fire in that order.',
+      definition: 'A rule bound to one table, held as a record of System/Workflows (Feature #249): its Script is the rule as JSON — the table, a trigger (entity-created, field-updated, state-changed, or schedule: a cron expression, a zone and an optional where clause, Feature #312) and the actions it fires (set-field, append-doc, add-comment, webhook, upsert-row, http-request) — and its On toggle is the user\'s switch. The engine computes State (Setup incomplete, Ready) and stamps Health and Last Run on every fire. seq is the record number: the rules on one trigger fire in that order.',
       identity: 'uuid',
       api: ['createAutomation', 'listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'],
     },
@@ -9190,6 +9205,7 @@ export class Weave {
         return { type: 'webhook', url: a.url, signWith: a.signWith };
       }
       if (a?.type === 'upsert-row') return this.#compileUpsert(a);
+      if (a?.type === 'http-request') return this.#compileHttpRequest(db, a);
       throw new WeaveError(`Unknown automation action '${a?.type}'`, 'invalid');
     });
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
@@ -9211,6 +9227,50 @@ export class Weave {
     });
     if (!fields.some(([fid]) => fid === key.id)) throw new WeaveError(`The upsert-row fields map no source path to the key field '${key.name}'`, 'invalid');
     return { type: 'upsert-row', dbId: target.id, keyFieldId: key.id, fields };
+  }
+
+  #compileHttpRequest(db, a) {
+    const method = String(a.method ?? 'POST').toUpperCase();
+    if (!INTEGRATION_METHODS.includes(method)) throw new WeaveError(`The http-request method '${a.method}' is not one of ${INTEGRATION_METHODS.join(', ')}`, 'invalid');
+    const url = typeof a.url === 'string' ? a.url.trim() : '';
+    const origin = /^(https?):\/\/([^/?#]*)/i.exec(url);
+    if (!origin) throw new WeaveError('The http-request action needs an http(s) url', 'invalid');
+    if (origin[2].includes('{{')) throw new WeaveError('The scheme and host of an http-request url are written out, so weave can check them when the rule is saved: templates go in the path, the query, the headers or the body', 'invalid');
+    try { new URL(blankTemplates(url)); } catch { throw new WeaveError(`'${url}' is not a URL`, 'invalid'); }
+    const act = { type: 'http-request', method, url };
+    if (a.integration != null && a.integration !== '') {
+      if (typeof a.integration !== 'string') throw new WeaveError('An http-request integration is the Name of a System/Integrations record, as a string', 'invalid');
+      const target = this.#integrationTarget(this.#integrationRow(a.integration));
+      if (!target.host) throw new WeaveError(`Integration '${target.name}' has no Host yet`, 'invalid');
+      if (origin[1].toLowerCase() !== 'https' || origin[2].toLowerCase() !== target.host) {
+        throw new WeaveError(`Integration '${target.name}' only reaches https://${target.host}: refused ${origin[1]}://${origin[2]}`, 'invalid');
+      }
+      act.integration = target.name;
+    }
+    if (a.headers != null) {
+      if (typeof a.headers !== 'object' || Array.isArray(a.headers)) throw new WeaveError('The http-request headers are an object of name: value strings', 'invalid');
+      for (const [k, v] of Object.entries(a.headers)) {
+        if (typeof v !== 'string') throw new WeaveError(`The http-request header '${k}' takes a string value`, 'invalid');
+        if (CREDENTIAL_HEADERS.has(k.toLowerCase())) throw new WeaveError(`A Script never carries a '${k}' header: put the key on a System/Integrations record and name it in integration`, 'invalid');
+        try { new Headers([[k, blankTemplates(v)]]); } catch { throw new WeaveError(`'${k}' is not a valid http-request header`, 'invalid'); }
+      }
+      act.headers = { ...a.headers };
+    }
+    if (a.body !== undefined && a.body !== null) {
+      if (typeof a.body !== 'string' && typeof a.body !== 'object') throw new WeaveError('The http-request body is a text template or a JSON object or list', 'invalid');
+      if (method === 'GET' || method === 'HEAD') throw new WeaveError(`A ${method} request carries no body`, 'invalid');
+      act.body = a.body;
+    }
+    if (a.response != null) {
+      if (typeof a.response !== 'object' || Array.isArray(a.response)) throw new WeaveError('The http-request response maps each field of the record to a path in the JSON answer, as an object', 'invalid');
+      act.response = Object.entries(a.response).map(([name, path]) => {
+        const f = this.getField(db.id, name);
+        if (COMPUTED_TYPES.includes(f.type) || f.type === 'document') throw new WeaveError(`Field '${f.name}' is a ${f.type} field and cannot take a value from the answer`, 'invalid');
+        if (typeof path !== 'string' || !path.trim()) throw new WeaveError(`Field '${f.name}' needs a path in the answer, such as id or data.id`, 'invalid');
+        return [f.id, path.trim()];
+      });
+    }
+    return act;
   }
 
   #checkFits(f, value) {
@@ -9253,6 +9313,15 @@ export class Weave {
             return target.fields[fid].name;
           };
           return { type: a.type, table: this.qualifiedName(target), key: tname(a.keyFieldId), fields: Object.fromEntries(a.fields.map(([fid, path]) => [tname(fid), path])) };
+        }
+        if (a.type === 'http-request') {
+          return {
+            type: a.type, method: a.method, url: a.url,
+            ...(a.integration ? { integration: a.integration } : {}),
+            ...(a.headers ? { headers: a.headers } : {}),
+            ...(a.body !== undefined ? { body: a.body } : {}),
+            ...(a.response ? { response: Object.fromEntries(a.response.map(([fid, path]) => [fname(fid), path])) } : {}),
+          };
         }
         return { type: a.type, url: a.url, ...(a.signWith ? { signWith: a.signWith } : {}) };
       });
@@ -9471,6 +9540,7 @@ export class Weave {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
           if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
           if (a.type === 'webhook') return { type: a.type, url: a.url };
+          if (a.type === 'http-request') return { type: a.type, method: a.method, url: a.url, ...(a.integration ? { integration: a.integration } : {}) };
           if (a.type === 'upsert-row') {
             const target = this.state.tables[a.dbId];
             return { type: a.type, table: target ? this.qualifiedName(target) : null, key: target?.fields[a.keyFieldId]?.name ?? null };
@@ -9567,22 +9637,43 @@ export class Weave {
 
   #fireRule(rule, db, rows, event, depth, at = nowISO()) {
     const reg = this.#reg;
-    const name = reg.entityName(rule.row);
-    let failure = null;
-    const run = { failed: false };
+    const run = { failed: false, rule, db, rows, event, depth, at, name: reg.entityName(rule.row), ran: [], waited: false };
     reg.#wfRun.set(rule.row.id, run);
+    this.#stepRun(run, 0, 0);
+  }
+
+  #pendingRuns = new Set();
+
+  async automationsSettled() {
+    while (this.#pendingRuns.size) await Promise.all([...this.#pendingRuns]);
+  }
+
+  #liveRow(e) {
+    return own(this.state.entities, e.id) ?? e;
+  }
+
+  #stepRun(run, r, i, answer) {
+    const { rule, event, depth, name } = run;
+    let failure = null;
     const person = this.actor;
     this.actor = workflowActor(rule.row.id);
-    const ran = [];
     try {
-      for (const e of rows) {
-        const steps = {};
-        const outs = [];
-        ran.push({ e, outs });
-        for (const [i, action] of rule.actions.entries()) {
-          const out = this.#runAction(rule, name, action, db, e, event, depth, run, steps) ?? null;
-          steps[String(i + 1)] = out;
-          outs.push(out);
+      for (; r < run.rows.length; r++, i = 0) {
+        run.ran[r] ??= { e: this.#liveRow(run.rows[r]), steps: {}, outs: [] };
+        const step = run.ran[r];
+        for (; i < rule.actions.length; i++) {
+          let out;
+          if (answer !== undefined) {
+            step.e = this.#liveRow(step.e);
+            if (step.e.deletedAt || !own(this.state.entities, step.e.id)) throw new WeaveError('The record was deleted before the answer came back', 'not-found');
+            out = this.#httpLand(rule.actions[i], step.e, run.db, answer, depth);
+            answer = undefined;
+          } else {
+            out = this.#runAction(rule, name, rule.actions[i], run.db, step.e, event, depth, run, step.steps) ?? null;
+            if (out instanceof Promise) { this.#awaitStep(run, r, i, out); return; }
+          }
+          step.steps[String(i + 1)] = out;
+          step.outs.push(out);
         }
       }
     } catch (err) {
@@ -9591,11 +9682,33 @@ export class Weave {
     } finally {
       this.actor = person;
     }
-    ran.forEach(({ e, outs }, i) => this.#logActivity(e, 'automation-ran', {
+    this.#finishRun(run, failure);
+  }
+
+  #awaitStep(run, r, i, pending) {
+    run.waited = true;
+    const job = pending.then(
+      (answer) => {
+        run.db = own(this.state.tables, run.db.id) ?? run.db;
+        unrestricted(() => this.#stepRun(run, r, i, answer));
+      },
+      (err) => {
+        run.failed = true;
+        this.#finishRun(run, err.message);
+      },
+    ).catch(() => {}).finally(() => this.#pendingRuns.delete(job));
+    this.#pendingRuns.add(job);
+  }
+
+  #finishRun(run, failure) {
+    const reg = this.#reg;
+    const { ran, name, rule } = run;
+    ran.forEach(({ e, outs }, i) => this.#logActivity(this.#liveRow(e), 'automation-ran', {
       name, workflow: rule.row.id, steps: outs,
       ...(failure != null && i === ran.length - 1 ? { failed: { step: outs.length + 1, error: failure } } : {}),
     }));
-    reg.#stampRun(rule.row, failure, at);
+    reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at);
+    if (run.waited) this.save();
     if (reg !== this) reg.save();
   }
 
@@ -9688,8 +9801,63 @@ export class Weave {
         .then((why) => { if (why) reg.#webhookFailed(rule.row.id, run, `POST ${url.host}: ${why}`); })
         .catch(() => {});
       return { url: action.url, sent: true };
+    } else if (action.type === 'http-request') {
+      if (this.#noWebhooks) return { status: null, ok: false, body: null };
+      return this.#httpSend(action, e, db, steps);
     }
     return null;
+  }
+
+  async #httpSend(action, e, db, steps) {
+    const fill = (text) => this.#template(text, e, db, steps);
+    const headers = Object.fromEntries(Object.entries(action.headers ?? {}).map(([k, v]) => [k, fill(v)]));
+    let body;
+    if (typeof action.body === 'string') body = fill(action.body);
+    else if (action.body !== undefined) {
+      body = JSON.stringify(fillJson(action.body, fill));
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json';
+    }
+    const filled = fill(action.url);
+    let u;
+    try { u = new URL(filled); } catch { throw new WeaveError(`${action.method} ${filled} is not a URL once its templates are filled in`, 'invalid'); }
+    const where = `${action.method} ${u.host}${u.pathname}`;
+    const init = { method: action.method, headers, body };
+    if (action.integration) {
+      let res;
+      try { res = await this.integrationFetch(action.integration, u.href, init); } catch (err) { throw new WeaveError(`${where}: ${err.message}`, err.code ?? 'invalid'); }
+      if (!res.ok) throw new WeaveError(`${where} answered HTTP ${res.status}`, 'invalid');
+      return res;
+    }
+    const refusal = await webhookRefusal(u).catch((err) => `could not resolve ${u.hostname} (${err?.code ?? err?.message})`);
+    if (refusal) throw new WeaveError(`${where}: ${refusal}`, 'forbidden');
+    const ms = this.webhookTimeoutMs;
+    let res;
+    try {
+      const answer = await fetch(u, { ...init, redirect: 'manual', signal: AbortSignal.timeout(ms) });
+      res = { status: answer.status, ok: answer.ok, body: await answer.text() };
+    } catch (err) {
+      throw new WeaveError(`${where}: ${err?.name === 'TimeoutError' ? `did not answer within ${ms / 1000} s` : `could not connect (${err?.cause?.code ?? err?.message})`}`, 'invalid');
+    }
+    if (!res.ok) throw new WeaveError(`${where} answered HTTP ${res.status}`, 'invalid');
+    return res;
+  }
+
+  #httpLand(action, e, db, res, depth) {
+    const parsed = stepBody(res.body);
+    const values = {};
+    for (const [fid, path] of action.response ?? []) {
+      const f = db.fields[fid];
+      const v = f ? sourcePath(parsed, path) : undefined;
+      if (v === undefined || v === null) continue;
+      values[f.name] = typeof v === 'object' ? JSON.stringify(v) : v;
+    }
+    if (Object.keys(values).length) {
+      const before = this.#undoBefore(e, db, Object.keys(values));
+      this.#applyValues(e, db, values, { depth: depth + 1 });
+      if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
+    }
+    const kept = JSON.stringify(parsed).length <= HTTP_STEP_BODY_MAX ? { body: parsed } : { body: null, truncated: true };
+    return { status: res.status, ok: res.ok, ...kept };
   }
 
   #upsertSource(e, db, event, steps = {}) {
