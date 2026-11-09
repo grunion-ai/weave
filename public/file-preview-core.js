@@ -8,7 +8,7 @@
     if (!(long > max)) return null;
     return { width: Math.max(1, Math.round((width * max) / long)), height: Math.max(1, Math.round((height * max) / long)) };
   };
-  const src = (file, base = '') => `${base}/api/files/${file.id}${file.preview ? '?preview' : ''}`;
+  const src = (file, base = '') => `${base}/api/files/${file.id}${String(file.mime ?? '').split(';')[0].trim().toLowerCase() === 'image/svg+xml' ? '?view' : file.preview ? '?preview' : ''}`;
   const encode = (canvas, type) => new Promise((res) => canvas.toBlob((b) => res(b?.type === type ? b : null), type, 0.8));
 
   async function make(file, doc = root.document) {

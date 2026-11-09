@@ -297,7 +297,7 @@
   const DG = () => root.weaveDateGrain;
   const legalFormats = (grain) => DG().legalFormats(grain);
   const DOCUMENT_KINDS = ['markdown', 'html', 'code'];
-  const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover'];
+  const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover', 'intro'];
   const ATTACHMENT_SIZES = ['small', 'medium', 'large'];
   const ATTACHMENT_FITS = ['fill', 'trim'];
   const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
