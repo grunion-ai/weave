@@ -314,6 +314,15 @@ export const COMMANDS = [
     run: (w, a) => guided(w, 'space', w.createSpace({ name: a.name, description: a.description ?? '', icon: a.icon ?? '', template: truthy(a.template) })),
   },
   {
+    name: 'space.list',
+    engine: ['listSpaces'],
+    writes: 'none',
+    via: { tool: 'weave_schema' },
+    cli: { command: 'space', sub: 'list', default: true },
+    http: { method: 'GET', path: '/api/spaces' },
+    run: (w) => w.listSpaces(),
+  },
+  {
     name: 'space.update',
     engine: ['updateSpace', 'spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
     writes: 'schema',
@@ -335,6 +344,34 @@ export const COMMANDS = [
     cli: { command: 'space', sub: 'update', positional: ['space'], flags: ['name', 'description', 'icon', 'position', 'access', 'template'], args: (a) => ({ ...a, ...(a.template != null ? { template: truthy(a.template) } : {}), ...(a.position != null ? { position: Number(a.position) } : {}) }) },
     http: { method: 'PATCH', path: '/api/spaces/:space' },
     run: spaceUpdate,
+  },
+  {
+    name: 'space.members',
+    engine: ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
+    writes: 'none',
+    via: { tool: 'weave_update_space' },
+    cli: { command: 'space', sub: 'members', positional: ['space', 'account'], flags: ['role', 'remove'] },
+    http: { method: 'GET', path: '/api/spaces/:space/members', args: (a) => ({ space: a.space }) },
+    run: (w, a) => {
+      if (a.account === undefined) return w.spaceMembers(a.space);
+      return a.remove ? w.removeSpaceMember(a.space, a.account) : w.setSpaceMember(a.space, a.account, { role: a.role ?? null });
+    },
+  },
+  {
+    name: 'space.member.set',
+    engine: ['setSpaceMember'],
+    writes: 'schema',
+    via: { tool: 'weave_update_space', cli: 'space.members' },
+    http: { method: 'PUT', path: '/api/spaces/:space/members/:account', args: (a, body) => ({ space: a.space, account: a.account, role: body?.role ?? null }) },
+    run: (w, a) => w.setSpaceMember(a.space, a.account, { role: a.role }),
+  },
+  {
+    name: 'space.member.remove',
+    engine: ['removeSpaceMember'],
+    writes: 'schema',
+    via: { tool: 'weave_update_space', cli: 'space.members' },
+    http: { method: 'DELETE', path: '/api/spaces/:space/members/:account' },
+    run: (w, a) => w.removeSpaceMember(a.space, a.account),
   },
   {
     name: 'space.delete',

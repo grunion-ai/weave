@@ -27,8 +27,6 @@ const HAND_WRITTEN = [
   ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
   ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
-  ['space.list', ['listSpaces'], 'weave_schema', 'space', ['GET /api/spaces']],
-  ['space.members', ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'], 'weave_update_space', 'space members', ['GET /api/spaces/:ref/members', 'PUT /api/spaces/:ref/members/:ref', 'DELETE /api/spaces/:ref/members/:ref']],
   ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
   ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
   ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
@@ -138,6 +136,7 @@ test('every capability has an MCP tool that exists and dispatches', () => {
 
 test('every capability has a CLI command that exists', () => {
   for (const [capability, , , cli] of SURFACE) {
+    if (!cli) continue;
     const [command, sub] = cli.split(' ');
     if (cliCommand(command, sub)) continue;
     assert.match(CLI, new RegExp(`case '${command}'`), `${capability}: no CLI command '${command}'`);
@@ -169,7 +168,7 @@ test('every capability has an HTTP route that exists', () => {
 });
 
 test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else has drifted', () => {
-  const keys = COMMANDS.filter((c) => c.cli.command === 'key');
+  const keys = COMMANDS.filter((c) => c.cli?.command === 'key');
   const offered = keys.filter((c) => !c.toolRefusal).map((c) => c.action);
   assert.deepEqual(offered, keys.map((c) => c.cli.sub).filter((a) => a !== 'reveal' && a !== 'migrate'), 'reveal (Feature #143) and migrate (Feature #213) are the only sanctioned differences');
   assert.match(keys.find((c) => c.action === 'migrate').toolRefusal, /not an agent action/);
@@ -218,7 +217,7 @@ test('the docs that count the MCP tools count them right', () => {
 });
 
 test('every CLI command is documented in AGENTS.md', () => {
-  const commands = [...new Set(SURFACE.map(([, , , cli]) => cli))];
+  const commands = [...new Set(SURFACE.map(([, , , cli]) => cli).filter(Boolean))];
   const undocumented = commands.filter((c) => !AGENTS.includes(`weave ${c}`));
   assert.deepEqual(undocumented, [], `CLI commands missing from AGENTS.md: ${undocumented.join(', ')}`);
 });

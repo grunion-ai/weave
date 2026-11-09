@@ -1949,7 +1949,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'DELETE') { weave.deleteWorkspaceLogo(); return out(200, { ok: true }); }
         }
 
-        if (route === 'GET /api/spaces') return out(200, weave.listSpaces());
         if (route === 'GET /api/templates') return out(200, weave.listTemplates());
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/use$/)) && rx.method === 'POST') {
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
@@ -1984,11 +1983,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members$/)) && rx.method === 'GET') return out(200, weave.spaceMembers(m[1]));
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/members\/([^/]+)$/))) {
-          if (rx.method === 'PUT') return out(200, weave.setSpaceMember(m[1], m[2], { role: body?.role ?? null }));
-          if (rx.method === 'DELETE') return out(200, weave.removeSpaceMember(m[1], m[2]));
-        }
 
         if (route === 'GET /api/tables') {
           const space = rx.searchParams.get('space');

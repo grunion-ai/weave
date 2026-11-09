@@ -1,0 +1,1 @@
+- Space list and space members run from the command registry: `weave space [list|members]`, `GET /api/spaces` and `/api/spaces/<space>/members` (read, set, remove) dispatch from registry entries with the same answers as before (Feature #179).
