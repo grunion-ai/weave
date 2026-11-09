@@ -1,0 +1,1 @@
+- CLAUDE.md now says production follows the production branch through the promote workflow and that releases do not move it (Issue #1536).
