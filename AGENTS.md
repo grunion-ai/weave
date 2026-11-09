@@ -470,7 +470,7 @@ workspace. Every MCP tool has a command:
 | `weave registry` | `weave relation add` / `weave formula check` | `weave doc` / `weave comment` / `weave comment delete` |
 | `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` |
 | `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
-| `weave audit` | `weave view` / `weave share` / `weave automation` / `weave automation create` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
+| `weave audit` | `weave view` / `weave share` / `weave automation create` / `weave automation list` / `weave automation describe` / `weave automation update` / `weave automation delete` | `weave csv` / `weave csv import` / `weave export` / `weave import` |
 | `weave workspace` / `weave workspace order` | `weave workspace logo` / `weave workspace move <name> --position N` / `weave account` / `weave key` | `weave file attach` / `weave file read` / `weave file delete` |
 | `weave form` / `weave form get` | `weave form create` / `weave form update` / `weave form config` / `weave workspace leave` | `weave form submit <form> --values '{json}'` |
 | `weave audit` | `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | `weave invite <email>` / `weave invite list` / `weave invite revoke` |

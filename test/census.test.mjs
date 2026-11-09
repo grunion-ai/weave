@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS } from '../src/mcp.js';
+import { COMMANDS as REGISTRY } from '../src/commands.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
@@ -135,8 +136,11 @@ export function commandCallers(name, sources = SOURCES) {
   return sources.filter(({ text }) => /weave\.js/.test(text) && re.test(text)).map((s) => s.file);
 }
 
-const ROUTES = [...listRoutes('src/routes.js'), ...listRoutes('src/applet.js')];
-const COMMANDS = listCommands();
+const registryRoutes = () => REGISTRY.filter((c) => c.http).map((c) => ({
+  method: c.http.method, path: c.http.path.replace(/:[a-z]+/gi, ':id'), source: escape(c.http.path).replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
+}));
+const ROUTES = [...new Map([...listRoutes('src/routes.js'), ...listRoutes('src/applet.js'), ...registryRoutes()].map((r) => [`${r.method} ${r.path}`, r])).values()];
+const COMMANDS = [...new Set([...listCommands(), ...REGISTRY.filter((c) => c.cli).map((c) => c.cli.command)])].sort();
 const census = () => [
   ...ROUTES.map((r) => ({ key: `${r.method} ${r.path}`, callers: routeCallers(r) })),
   ...TOOLS.map((t) => ({ key: `mcp ${t.name}`, callers: toolCallers(t.name) })),

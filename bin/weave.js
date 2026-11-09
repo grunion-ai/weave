@@ -11,7 +11,7 @@ import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } 
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
-import { cliCommand, cliArgs, cliRest } from '../src/commands.js';
+import { cliCommand, cliRun, cliMiss } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { vocabularyView } from '../src/vocabulary.js';
@@ -561,7 +561,9 @@ async function main() {
   const w = new Weave({ path: dataPath, actor: CLI_ACTOR, localKeyAccess: true });
 
   const registered = cliCommand(command, args[0]);
-  if (registered) return out(registered.run(w, cliArgs(registered, cliRest(registered, args), flags, { json: parseJsonFlag })));
+  if (registered) return out(cliRun(registered, w, args, flags, { json: parseJsonFlag }));
+  const miss = cliMiss(command, args[0]);
+  if (miss) throw miss;
 
   switch (command) {
     case 'schema': {
@@ -883,20 +885,6 @@ async function main() {
       if (sub === 'renew') return out(w.renewShare(a));
       if (sub === 'list' || !sub) return out(w.listShares({ kind: typeof flags.kind === 'string' ? flags.kind : null, id: typeof flags.id === 'string' ? flags.id : null, includeInactive: Boolean(flags['include-inactive']) }));
       throw new WeaveError(`Unknown share subcommand '${sub}'. Try: list, mint, renew, revoke, update, regenerate`);
-    }
-    case 'automation': {
-      const [sub, ref] = args;
-      if (sub === 'create') {
-        return out(w.createAutomation(ref, {
-          name: flags.name, trigger: parseJsonFlag('trigger'), actions: parseJsonFlag('actions') ?? [],
-          enabled: flags.enabled !== 'false',
-        }));
-      }
-      if (sub === 'describe') return out(w.describeAutomations(ref ?? flags.db ?? null));
-      if (sub === 'update') return out(w.updateAutomation(ref, parseJsonFlag('patch') ?? {}));
-      if (sub === 'delete') return out(w.deleteAutomation(ref));
-      if (sub === 'list' || !sub) return out(w.listAutomations(ref ?? flags.db ?? null));
-      throw new WeaveError(`Unknown automation subcommand '${sub}'. Try: create, list, describe, update, delete`);
     }
     case 'activity': {
       const [id] = args;

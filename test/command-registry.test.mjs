@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { handleMcpMessage, TOOLS } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute, toolDefinition } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, FAMILIES, cliCommand, matchRoute, toolCommand, toolDefinition } from '../src/commands.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -25,7 +25,10 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
     assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
     assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
-    assert.equal(BY_TOOL.get(c.tool.name), c);
+    if (c.action) {
+      assert.ok(c.tool.inputSchema.properties.action, `${c.name}: its tool takes an action`);
+      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { action: c.action }), c, `${c.tool.name} {action: ${c.action}} is the registry entry`);
+    } else assert.equal(BY_TOOL.get(c.tool.name), c);
     assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     assert.equal(matchRoute(c.http.method, c.http.path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${c.http.path} is the registry entry`);
     for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
@@ -206,4 +209,77 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
       }
     }
   } finally { server.close(); }
+});
+
+async function threeDoors(prefix, { env: extra = {}, seeded = seed } = {}) {
+  const dir = tempDir(prefix);
+  const data = join(dir, 'ws.db');
+  const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry', ...extra };
+  const run = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+  const cli = (args) => {
+    const r = run(args);
+    assert.equal(r.status, 0, `weave ${args.join(' ')}: ${r.stderr}`);
+    try { return JSON.parse(r.stdout); } catch { return r.stdout; }
+  };
+  const cliWeave = new Weave({ path: data, actor: 'registry' });
+  seeded(cliWeave);
+  cliWeave.store.close?.();
+  const mcpWeave = new Weave();
+  seeded(mcpWeave);
+  const call = (name, args) => handleMcpMessage(mcpWeave, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, { tools: 'all' }).result;
+  const mcp = (name, args) => {
+    const res = call(name, args);
+    assert.ok(!res.isError, `${name}: ${res.content[0].text}`);
+    return JSON.parse(unwrapData(res.content[0].text));
+  };
+  const httpWeave = new Weave();
+  seeded(httpWeave);
+  const { server } = await startServer(httpWeave, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const raw = (method, path, body, headers = {}) => fetch(base + path, { method, headers: { 'content-type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
+  const http = async (method, path, body, headers) => {
+    const res = await raw(method, path, body, headers);
+    const json = await res.json();
+    assert.ok(res.ok, `${method} ${path}: ${JSON.stringify(json)}`);
+    return json;
+  };
+  return { run, cli, call, mcp, raw, http, httpWeave, close: () => server.close() };
+}
+
+const bare = (v) => JSON.parse(JSON.stringify(strip(v), (k, x) => (k.endsWith('Id') ? undefined : x)));
+
+test('the automation family answers the same on CLI, MCP and HTTP, and a miss names what there is (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-automation-');
+  const trigger = { type: 'entity-created' };
+  const actions = [{ type: 'add-comment', text: 'Seen' }];
+  try {
+    const made = {
+      cli: d.cli(['automation', 'create', 'Task', '--name', 'Stamp', '--trigger', JSON.stringify(trigger), '--actions', JSON.stringify(actions)]),
+      mcp: d.mcp('weave_create_automation', { db: 'Task', name: 'Stamp', trigger, actions }),
+      http: await d.http('POST', '/api/automations', { db: 'Task', name: 'Stamp', trigger, actions }),
+    };
+    assert.deepEqual(bare(made.mcp), bare(made.http), 'weave_create_automation and POST /api/automations answer alike');
+    assert.deepEqual(bare(made.cli), bare(made.http), 'weave automation create and POST /api/automations answer alike');
+    const steps = [
+      [['automation', 'describe', 'Task'], ['describe', {}, 'rules'], ['GET', '/api/automations?db=Task']],
+      [['automation', 'list', 'Task'], ['list', {}, 'automations'], ['GET', '/api/automations/list?db=Task']],
+      [['automation', 'update', ':id', '--patch', '{"enabled":false}'], ['update', { patch: { enabled: false } }], ['PATCH', '/api/automations/:id', { enabled: false }]],
+      [['automation', 'delete', ':id'], ['delete', {}], ['DELETE', '/api/automations/:id']],
+    ];
+    for (const [c, [action, args, wrap], [method, path, body]] of steps) {
+      const fromHttp = bare(await d.http(method, path.replace(':id', made.http.id), body));
+      const fromMcp = d.mcp('weave_automations', { action, db: 'Task', automation: made.mcp.id, ...args });
+      assert.deepEqual(bare(wrap ? fromMcp[wrap] : fromMcp), fromHttp, `weave_automations ${action} and ${method} ${path} answer alike`);
+      assert.deepEqual(bare(d.cli(c.map((x) => (x === ':id' ? made.cli.id : x)))), fromHttp, `weave ${c.slice(0, 2).join(' ')} and ${method} ${path} answer alike`);
+    }
+    assert.deepEqual(d.cli(['automation']), [], 'weave automation alone lists');
+    const again = await d.raw('DELETE', `/api/automations/${made.http.id}`);
+    assert.equal(again.status, 404, 'deleting a deleted automation over HTTP is a 404');
+    assert.deepEqual(await again.json(), { error: `No automation '${made.http.id}'`, code: 'not-found' });
+    assert.deepEqual(d.mcp('weave_automations', { action: 'delete', automation: made.mcp.id }), { id: made.mcp.id, deleted: false }, 'MCP answers deleted: false');
+    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete)");
+    const miss = d.run(['automation', 'run']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown automation subcommand 'run'\. Try: create, list, describe, update, delete/);
+  } finally { d.close(); }
 });

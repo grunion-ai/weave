@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -62,8 +62,6 @@ const HAND_WRITTEN = [
   ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
   ['view', ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/restore', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
   ['share', ['mintShare', 'listShares', 'renewShare', 'revokeShare', 'updateShare', 'regenerateShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'POST /api/shares/:ref/renew', 'PATCH /api/shares/:ref', 'POST /api/shares/:ref/regenerate', 'DELETE /api/shares/:ref', 'GET /api/share']],
-  ['automation.create', ['createAutomation'], 'weave_create_automation', 'automation create', ['POST /api/automations']],
-  ['automation.manage', ['listAutomations', 'describeAutomations', 'updateAutomation', 'deleteAutomation'], 'weave_automations', 'automation', ['GET /api/automations', 'PATCH /api/automations/:ref', 'DELETE /api/automations/:ref']],
   ['activity', ['activityFeed', 'getActivity'], 'weave_activity', 'activity', ['GET /api/activity', 'GET /api/activity/:rest']],
   ['audit', ['listAudit'], 'weave_audit', 'audit', ['GET /api/audit']],
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
@@ -165,7 +163,7 @@ test('every capability has an MCP tool that exists and dispatches', () => {
   for (const [capability, , tool] of SURFACE) {
     if (!tool) continue;
     assert.ok(toolNames.has(tool), `${capability} names a tool that is not in TOOLS: ${tool}`);
-    if (!BY_TOOL.has(tool)) assert.match(MCP, new RegExp(`case '${tool}'`), `${tool} is listed but never dispatched`);
+    if (!registeredTool(tool)) assert.match(MCP, new RegExp(`case '${tool}'`), `${tool} is listed but never dispatched`);
   }
 });
 
