@@ -8790,8 +8790,30 @@ export class Weave {
     return stripEmptyEmbeds(markdown);
   }
 
-  setDoc(entityId, markdown, fieldRef = null) {
+  setDoc(entityId, markdown, fieldRef = null, { base = null } = {}) {
+    if (base != null) return this.#setDocAtBase(entityId, markdown, fieldRef, base);
     return this.#writeDoc(entityId, markdown, fieldRef, 'write', 'doc-updated', (before, text) => text);
+  }
+
+  docBase(entityId, fieldRef = null) {
+    const e = this.getEntity(entityId);
+    const f = this.#resolveDocField(this.state.tables[e.dbId], fieldRef);
+    return createHash('sha256').update(e.docs?.[f.id] ?? '').digest('hex');
+  }
+
+  #setDocAtBase(entityId, markdown, fieldRef, base) {
+    let attempted = false;
+    try {
+      return this.store.batch(() => {
+        this.maybeRefresh();
+        if (this.docBase(entityId, fieldRef) !== base) throw new WeaveError('This document changed since you opened it; nothing was written', 'stale');
+        attempted = true;
+        return this.setDoc(entityId, markdown, fieldRef);
+      });
+    } catch (err) {
+      if (attempted) this.#adoptRolledBack();
+      throw err;
+    }
   }
 
   appendDoc(entityId, markdown, fieldRef = null) {

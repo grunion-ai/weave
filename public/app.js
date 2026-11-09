@@ -326,7 +326,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
   }
   if (!res.ok) {
     const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method, data.id);
-    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity });
+    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity, base: data.base });
   }
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
@@ -846,7 +846,7 @@ const dockCoversScreen = matchMedia('(max-width: 600px)');
 const saves = WeaveSaveQueue.createSaveQueue({
   delay: globalThis.__weaveSaveDelay ?? WeaveSaveQueue.DEBOUNCE_MS,
   send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
-  onFail: (err, j) => toast(j.failText?.(err) ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true),
+  onFail: (err, j) => (j.onFail ? j.onFail(err) : toast(j.failText?.(err) ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true)),
 });
 WeaveSaveQueue.bindPageHide(saves);
 WeaveSaveQueue.bindEscape(saves);
@@ -8919,13 +8919,40 @@ function retheme() {
   }
 }
 
+const docBases = new Map();
+const docBaseOf = (text) => (globalThis.crypto?.subtle
+  ? crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then((b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''), () => null)
+  : Promise.resolve(null));
+function noteDocBase(entityId, field, text) {
+  const key = `${entityId}::${field}`;
+  if (pendingDocSaves.has(key)) return;
+  const at = { text };
+  docBases.set(key, at);
+  docBaseOf(text).then((hash) => { if (docBases.get(key) === at) at.hash = hash; });
+}
+function sendDoc(key, entityId, field, value) {
+  const put = (base) => api('PUT', `/entities/${entityId}/doc`, { field, doc: value, ...(base ? { base } : {}) }).then((res) => {
+    if (res?.base) docBases.set(key, { hash: res.base });
+    return res;
+  });
+  const at = docBases.get(key);
+  if (!at || at.hash !== undefined) return put(at?.hash);
+  return docBaseOf(at.text).then(put);
+}
+function docConflict(key, entityId, field, err) {
+  if (err.code !== 'stale' || !err.base) return toast(`${err.message}. Your draft is kept: try again from the save mark.`, true);
+  toast(`${err.entity?.modifiedBy ?? 'Someone'} changed ${field} since you opened it, so your draft was not saved`, true,
+    { label: 'Use mine', run: () => { docBases.set(key, { hash: err.base }); saves.flush(); } }, { key: `stale-doc:${key}` });
+}
+
 function scheduleDocSave(entityId, field, value, onSaved = null) {
   const key = `${entityId}::${field}`;
   const kept = (err) => `${err.message}. Your draft is kept and saves on your next edit or when you leave.`;
   pendingDocSaves.set(key, { value, write: () => saves.flush() });
   saves.push({
-    key: `doc:${key}`, entityId, field, value, failText: kept,
-    send: () => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }),
+    key: `doc:${key}`, entityId, field, value, failText: kept, keep: true,
+    onFail: (err) => (err.status ? docConflict(key, entityId, field, err) : toast(kept(err), true)),
+    send: () => sendDoc(key, entityId, field, value),
   }).then(() => {
     if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
     onSaved?.();
@@ -9199,6 +9226,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
+        noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
         const ed = mountDocEditor(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
@@ -9219,6 +9247,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     };
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
+      noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
       sourceBox = ta;

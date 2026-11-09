@@ -39,6 +39,8 @@
       onFail(err, e.job);
     };
 
+    const refuse = (e, err) => (e.job.keep ? keep(e, err) : answer(e, 'reject', err));
+
     async function sendEntry(e) {
       inFlight++;
       emit();
@@ -47,11 +49,11 @@
         let result;
         try { result = await attempt(e); }
         catch (err) {
-          if (!retry(err)) { answer(e, 'reject', err); return false; }
+          if (!retry(err)) { refuse(e, err); return false; }
           try { result = await attempt(e); }
           catch (again) {
             if (retry(again)) keep(e, again);
-            else answer(e, 'reject', again);
+            else refuse(e, again);
             return false;
           }
         }
