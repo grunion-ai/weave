@@ -220,7 +220,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name)) continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -764,6 +764,48 @@ test('the view family answers the same on CLI, MCP and HTTP, and sharing still t
     assert.notEqual(miss.status, 0);
     assert.match(miss.stderr, /Unknown view subcommand 'zap'\. Try: list, get, create, delete, restore, share, unshare/);
     for (const [method, path, name] of [['GET', '/api/views', 'view.list'], ['POST', '/api/views', 'view.create'], ['GET', '/api/views/x', 'view.get'], ['DELETE', '/api/views/x', 'view.delete'], ['POST', '/api/views/x/restore', 'view.restore'], ['POST', '/api/views/x/share', 'view.share'], ['DELETE', '/api/views/x/share', 'view.unshare']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
+
+test('the share family answers the same on CLI, MCP and HTTP, and HTTP still adds the link (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-shares-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const grant = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['token', 'url', 'expiresAt', 'mintedAt', 'renewedAt', 'revokedAt', 'by', 'createdBy', 'scope', 'tokenHint', 'hint', 'title', 'regeneratedAt'].includes(k) ? undefined : x)));
+  try {
+    const made = {
+      cli: d.cli(['share', 'mint', 'workspace', '--label', 'Board']),
+      mcp: d.mcp('weave_shares', { action: 'mint', kind: 'workspace', mode: 'read', visibility: 'public', label: 'Board' }),
+      http: await d.http('POST', '/api/shares', { scope: { kind: 'workspace', id: null }, mode: 'read', visibility: 'public', label: 'Board' }, auth),
+    };
+    assert.match(made.http.url, /\/s\//, 'POST /api/shares still answers the link');
+    assert.equal(made.mcp.url ?? null, made.mcp.url ?? null);
+    assert.deepEqual(grant(made.mcp), grant(made.http), 'weave_shares mint and POST /api/shares answer alike');
+    assert.deepEqual(grant(made.cli), grant(made.http), 'weave share mint and POST /api/shares answer alike');
+    const steps = [
+      [['share', 'list'], ['list', {}, 'shares'], ['GET', '/api/shares']],
+      [['share'], ['list', {}, 'shares'], ['GET', '/api/shares']],
+      [['share', 'update', ':id', '--label', 'Wall'], ['update', { label: 'Wall' }], ['PATCH', '/api/shares/:id', { label: 'Wall' }]],
+      [['share', 'renew', ':id'], ['renew', {}], ['POST', '/api/shares/:id/renew', {}]],
+      [['share', 'regenerate', ':id'], ['regenerate', {}], ['POST', '/api/shares/:id/regenerate', {}]],
+      [['share', 'revoke', ':id'], ['revoke', {}], ['DELETE', '/api/shares/:id']],
+    ];
+    for (const [c, [action, args, wrap], [method, path, body]] of steps) {
+      const raw = await d.http(method, path.replace(':id', made.http.id), body, auth);
+      for (const g of [].concat(raw)) assert.match(g.url, /\/s\//, `${method} ${path} still adds the link`);
+      const fromHttp = grant(raw);
+      const fromMcp = d.mcp('weave_shares', { action, share: made.mcp.id, ...args });
+      assert.deepEqual(grant(wrap ? fromMcp[wrap] : fromMcp), fromHttp, `weave_shares ${action} and ${method} ${path} answer alike`);
+      assert.deepEqual(grant(d.cli(c.map((x) => (x === ':id' ? made.cli.id : x)))), fromHttp, `weave ${c.join(' ')} and ${method} ${path} answer alike`);
+    }
+    const editor = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'ed', role: 'editor' }).token}` };
+    assert.equal((await d.raw('GET', '/api/shares', undefined, editor)).status, 403, 'only an architect still lists shares');
+    assert.equal(d.call('weave_shares', { action: 'zap' }).content[0].text, "Error: Unknown shares action 'zap' (list, mint, renew, revoke, update, regenerate)");
+    const miss = d.run(['share', 'zap']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown share subcommand 'zap'\. Try: list, mint, renew, revoke, update, regenerate/);
+    for (const [method, path, name] of [['GET', '/api/shares', 'share.list'], ['POST', '/api/shares', 'share.mint'], ['POST', '/api/shares/x/renew', 'share.renew'], ['DELETE', '/api/shares/x', 'share.revoke'], ['PATCH', '/api/shares/x', 'share.update'], ['POST', '/api/shares/x/regenerate', 'share.regenerate']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }

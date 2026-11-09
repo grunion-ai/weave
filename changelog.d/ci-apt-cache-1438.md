@@ -1,0 +1,1 @@
+- CI browser jobs install Playwright's system packages from a cache of `.deb` files keyed on the runner image and the pinned Playwright version, so a slow Ubuntu mirror no longer times out the browser install step. The mirror is reached only when the cache is empty or incomplete, and a missing browser or package still fails the step (Issue #1438).

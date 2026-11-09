@@ -82,28 +82,33 @@ which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
 app in a browser. `PR gate` succeeds only
 when every shard succeeded and `pr-aggregate` finds executed evidence for every
 planned file at the exact commit. A newer push to the same pull request cancels
-the running one. A browser job gives
-`playwright install --with-deps` three attempts and runs `dpkg --configure -a`
-between them, reading its result rather than swallowing it, since a trickling
-apt mirror held that step for fifteen minutes three times on 2026-10-23 and
-took the gate down with it. The only deadline over those attempts is the step's
-own `timeout-minutes`, 12 on the `pr` workflow and 14 on the `tests` shard job
-and the dev soak. An inner per-attempt `timeout` used to cap each attempt at
-five minutes and was removed on 2026-11-04: on run 41948575597 it killed
-attempt one mid-download and attempt two then spent 178 seconds waiting for the
-frontend lock held by the runner's own boot-time `apt-get` (pid 3074), so the
-step burned 8 minutes 7 seconds of its 11 and never made a third attempt
-(Issue #1347). Do not put that cap back without raising the step budget with
-it: three bounded attempts plus the 300-second `DPkg::Lock::Timeout` the step
-writes do not fit inside a twelve-minute step, and `test/ci-test.test.mjs` and
-`test/security/workflows.test.mjs` hold that arithmetic. The step also writes an
-apt drop-in with a twenty-second acquire timeout and three retries, so one
-stalled connection no longer costs minutes, and the lock wait lets an attempt
-outlast the runner's own `apt-get` instead of dying in under a second with 299
-of its 300 seconds unspent (Issues #1230, #1141, #1107). What is left is the
-apt mirror itself, which is why a slow mirror day can still spend a shard's
-whole budget in attempt one; the durable fix, the pinned Playwright image or an
-apt archive cache, is Issue #1438.
+the running one. Every browser job installs through `node scripts/ci/install-browsers.mjs
+<browser...>`, the one copy the `pr`, `tests`, `budgets` and dev soak workflows
+share. It writes an apt drop-in (twenty-second acquire timeout, three retries, a
+300-second `DPkg::Lock::Timeout` so an attempt outlasts the runner's own
+boot-time `apt-get`, Issues #1230, #1141, #1107), installs the browsers from the
+`~/.cache/ms-playwright` cache, and then asks Playwright's own
+`install-deps --dry-run` whether every system package is present. When one is
+missing it installs the `.deb` files kept in `~/.cache/weave-apt` with one
+`dpkg -i`, which never reaches an Ubuntu mirror and waits up to 300 seconds
+for a dpkg lock the runner's own `apt-get` holds. `apt-get install
+--no-download` of the same files is the wrong tool: it re-resolved them against
+the image's package lists and asked to fetch (PR run 42654813034). That
+cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the pinned
+`PLAYWRIGHT_VERSION` and the browser set, so a new runner image never installs
+another image's packages. Only when the cache is empty, or leaves a dependency
+missing, does the script run `playwright install --with-deps` against the
+mirror: three attempts with `dpkg --configure -a` between them, reading its
+result, after which it copies the downloaded packages into the cache for the
+next run. Before Issue #1438 every browser job took that mirror path, and a slow
+mirror hour timed the step out at 14 minutes on main 13 times between
+2026-11-05 and 2026-11-09. Every path ends on the `install-deps --dry-run`
+check, so a browser or system package that is still absent fails the step
+loudly, and the log line says no test ran. The only deadline is the step's own
+`timeout-minutes`, 12 on the `pr` workflow and 14 elsewhere; an inner
+per-attempt `timeout` was removed on 2026-11-04 because it killed attempt one
+mid-download (Issue #1347). `test/ci-install-browsers.test.mjs` and
+`test/ci-test.test.mjs` hold these rules.
 
 When a shard dies before any test records a result, the sheriff has no file to
 name, so it opens or appends to a row named after the shard. That line names the
