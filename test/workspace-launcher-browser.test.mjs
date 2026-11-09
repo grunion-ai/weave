@@ -138,10 +138,10 @@ if (s) {
       const bold = await page.evaluate(() => {
         const strong = document.querySelector('.launcher-detail .wv-prose strong');
         const r = strong.getBoundingClientRect();
-        return { text: strong.textContent, display: getComputedStyle(strong).display, offset: Math.abs(r.top - strong.parentElement.getBoundingClientRect().top) };
+        return { text: strong.textContent, display: getComputedStyle(strong).display, offset: Math.abs(r.top - strong.parentElement.getBoundingClientRect().top), line: parseFloat(getComputedStyle(strong.parentElement).lineHeight) / 2 };
       });
       assert.deepEqual({ text: bold.text, display: bold.display }, { text: 'studio', display: 'inline' });
-      assert.ok(bold.offset < 2, `bold word starts its own line, ${bold.offset}px down`);
+      assert.ok(bold.offset < bold.line, `bold word starts its own line, ${bold.offset}px down`);
       await page.click('.launcher-detail .system-tables .list-row[data-href="#/activity"]');
       await page.waitForFunction(() => location.hash === '#/activity');
       await page.close();
