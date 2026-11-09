@@ -1,0 +1,1 @@
+- A test pins that a file id from a sibling workspace answers 404 and that an observer's PUT to an HTML file's storage answers 403 (Issue #1434).
