@@ -95,21 +95,19 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Runner image
+        id: image
+        if: matrix.lane == 'browser'
+        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - if: matrix.lane == 'browser'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ~/.cache/weave-apt
+          key: apt-${{ steps.image.outputs.version }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium-webkit
       - name: Install browsers and system dependencies
         if: matrix.lane == 'browser'
         timeout-minutes: 14
-        run: |
-          printf 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\nDPkg::Lock::Timeout "300";\n' | sudo tee /etc/apt/apt.conf.d/99weave-apt > /dev/null
-          for attempt in 1 2 3; do
-            if npx --no-install playwright install --with-deps chromium webkit; then exit 0; fi
-            echo "browser install attempt $attempt failed"
-            if sudo dpkg --configure -a; then
-              echo "dpkg is configured again"
-            else
-              echo "dpkg --configure -a failed after attempt $attempt; another process still holds the lock"
-            fi
-          done
-          exit 1
+        run: node scripts/ci/install-browsers.mjs chromium webkit
       - name: Durations the plan job used
         env:
           GH_TOKEN: ${{ github.token }}

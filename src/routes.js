@@ -1825,18 +1825,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const { token, url, ...grant } = share;
           return out(200, grant);
         }
-        const shareLink = grant => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` });
         if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
-        if (route === 'GET /api/shares') return out(200, weave.listShares({ kind: rx.searchParams.get('kind'), id: rx.searchParams.get('id'), includeInactive: rx.searchParams.get('includeInactive') === '1' }).map(shareLink));
-        if (route === 'POST /api/shares') return out(201, shareLink(weave.mintShare(body ?? {})));
-        if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'PATCH') return out(200, shareLink(weave.updateShare(decodeURIComponent(m[1]), body ?? {})));
-        if ((m = path.match(/^\/api\/shares\/([^/]+)\/regenerate$/)) && rx.method === 'POST') return out(200, shareLink(weave.regenerateShare(decodeURIComponent(m[1]), body ?? {})));
-        if ((m = path.match(/^\/api\/shares\/([^/]+)$/)) && rx.method === 'DELETE') {
-          return out(200, shareLink(weave.revokeShare(decodeURIComponent(m[1]))));
-        }
-        if ((m = path.match(/^\/api\/shares\/([^/]+)\/renew$/)) && rx.method === 'POST') {
-          return out(200, shareLink(weave.renewShare(decodeURIComponent(m[1]))));
-        }
         if (/^\/api\/views\/[^/]+\/share$/.test(path) && ['POST', 'DELETE'].includes(rx.method) && !mayAdminister(weave, role)) {
           return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
         }
@@ -1969,7 +1958,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const registered = matchRoute(rx.method, path);
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }
