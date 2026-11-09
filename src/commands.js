@@ -1,10 +1,26 @@
 import { WeaveError } from './store.js';
+import { nonNegativeInteger } from './errors.js';
 import { guided } from './field-hints.js';
 import { ONTOLOGY } from './engine.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
 const nullable = (v, as = (x) => x) => (v === 'null' ? null : as(v));
+
+const MAX_ROWS = 500;
+const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
+export const boundedLimit = (value, fallback = null) => {
+  if (value == null) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new WeaveError(`limit must be a number, not '${value}'`, 'invalid');
+  return Math.min(n, rowCap());
+};
+const cliNumber = (name, raw, fallback = null) => {
+  if (raw == null || raw === true || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) throw new WeaveError(`--${name} must be a number, not '${raw}'`, 'invalid');
+  return value;
+};
 
 const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
@@ -483,6 +499,61 @@ export const COMMANDS = [
     http: { method: 'POST', path: '/api/tables/:db/import.csv', args: (a) => ({ db: a.db, csv: a.csv ?? '' }) },
     run: (w, a) => w.importCSV(a.db, a.csv),
   },
+  {
+    name: 'activity',
+    engine: ['activityFeed', 'getActivity'],
+    writes: 'none',
+    tool: {
+      name: 'weave_activity',
+      description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' }, entity: { type: 'string' }, table: { type: 'string' },
+          kinds: { type: 'array', items: { type: 'string' } }, since: { type: 'string' },
+          limit: { type: 'number' }, offset: { type: 'number' },
+        },
+      },
+    },
+    cli: {
+      command: 'activity', positional: ['id'],
+      args: (a, flags, { entityRef }) => (a.id ? { id: a.id } : {
+        entity: flags.entity ? entityRef(flags.entity, flags.db) : null,
+        table: flags.table ?? null,
+        kinds: flags.kinds ? list(flags.kinds) : null,
+        since: flags.since ?? null,
+        limit: cliNumber('limit', flags.limit),
+      }),
+    },
+    http: {
+      method: 'GET', path: '/api/activity/:id*?',
+      args: (a, body, q) => (a.id ? { id: a.id } : {
+        entity: q.get('entity'), table: q.get('table'), kinds: q.getAll('kind'), since: q.get('since'),
+        limit: boundedLimit(q.get('limit')), offset: nonNegativeInteger('offset', q.get('offset')),
+      }),
+    },
+    run: (w, a) => (a.id ? w.getActivity(a.id) : w.activityFeed({
+      entityId: a.entity ?? null, tableRef: a.table ?? null, kinds: a.kinds ?? null, since: a.since ?? null,
+      limit: a.limit ?? null, offset: a.offset ?? 0,
+    })),
+  },
+  {
+    name: 'audit',
+    engine: ['listAudit'],
+    writes: 'none',
+    tool: {
+      name: 'weave_audit',
+      description: 'The workspace audit log: schema and account events with their actor.',
+      inputSchema: { type: 'object', properties: { limit: { type: 'number' }, since: { type: 'string' } } },
+    },
+    cli: { command: 'audit', args: (a, flags) => ({ limit: cliNumber('limit', flags.limit, 50) }), result: (r) => r.events },
+    http: {
+      method: 'GET', path: '/api/audit',
+      args: (a, body, q) => ({ limit: boundedLimit(q.get('limit'), 100), offset: nonNegativeInteger('offset', q.get('offset')) }),
+      result: (r) => r.events,
+    },
+    run: (w, a) => ({ events: w.listAudit(defined({ limit: a.limit ?? undefined, since: a.since ?? null, offset: a.offset })) }),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -552,7 +623,11 @@ export function cliRun(cmd, w, args, flags, helpers) {
 
 const ROUTES = COMMANDS.filter((c) => c.http).map((c) => {
   const keys = [];
-  const src = c.http.path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/:([a-z]+)(\*?)/gi, (_, k, rest) => { keys.push(k); return rest ? '(.+)' : '([^/]+)'; });
+  const src = c.http.path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/(\\\/)?:([a-z]+)(\*?)(\??)/gi, (_, slash, k, rest, optional) => {
+    keys.push(k);
+    const group = `${slash ?? ''}${rest ? '(.+)' : '([^/]+)'}`;
+    return optional ? `(?:${group})?` : group;
+  });
   return { cmd: c, method: c.http.method, re: new RegExp(`^${src}$`), keys };
 });
 
@@ -562,7 +637,7 @@ export function matchRoute(method, path) {
   for (const r of ROUTES) {
     if (r.method !== method) continue;
     const m = r.re.exec(path);
-    if (m) return { cmd: r.cmd, params: Object.fromEntries(r.keys.map((k, i) => [k, decode(m[i + 1])])) };
+    if (m) return { cmd: r.cmd, params: Object.fromEntries(r.keys.map((k, i) => [k, m[i + 1]]).filter(([, v]) => v !== undefined).map(([k, v]) => [k, decode(v)])) };
   }
   return null;
 }
@@ -571,7 +646,7 @@ export function httpArgs(hit, body, searchParams) {
   const a = { ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}) };
   for (const q of hit.cmd.http.query ?? []) if (searchParams.has(q)) a[q] = searchParams.get(q);
   Object.assign(a, hit.params);
-  return hit.cmd.http.args ? hit.cmd.http.args(a, body) : a;
+  return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams) : a;
 }
 
 export function httpRun(w, hit, body, searchParams) {

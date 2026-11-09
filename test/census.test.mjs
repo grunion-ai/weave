@@ -136,9 +136,10 @@ export function commandCallers(name, sources = SOURCES) {
   return sources.filter(({ text }) => /weave\.js/.test(text) && re.test(text)).map((s) => s.file);
 }
 
-const registryRoutes = () => REGISTRY.filter((c) => c.http).map((c) => ({
-  method: c.http.method, path: c.http.path.replace(/:[a-z]+\*?/gi, ':id'), source: escape(c.http.path).replace(/:[a-z]+\\\*/gi, '(.+)').replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
-}));
+const registryPaths = (path) => (path.endsWith('?') ? [path.replace(/\/:[a-z]+\*?\?$/i, ''), path.slice(0, -1)] : [path]);
+const registryRoutes = () => REGISTRY.filter((c) => c.http).flatMap((c) => registryPaths(c.http.path).map((path) => ({
+  method: c.http.method, path: path.replace(/:[a-z]+\*?/gi, ':id'), source: escape(path).replace(/:[a-z]+\\\*/gi, '(.+)').replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
+})));
 const ROUTES = [...new Map([...listRoutes('src/routes.js'), ...listRoutes('src/applet.js'), ...registryRoutes()].map((r) => [`${r.method} ${r.path}`, r])).values()];
 const COMMANDS = [...new Set([...listCommands(), ...REGISTRY.filter((c) => c.cli).map((c) => c.cli.command)])].sort();
 const census = () => [

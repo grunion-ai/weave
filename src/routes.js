@@ -1,7 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
-import { matchRoute, httpRun, httpHeaders } from './commands.js';
+import { matchRoute, httpRun, httpHeaders, boundedLimit } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -44,15 +44,7 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
 const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
-export const MAX_ROWS = 500;
-const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
-const boundedLimit = (value, fallback = null) => {
-  if (value == null) return fallback;
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new WeaveError(`limit must be a number, not '${value}'`, 'invalid');
-  return Math.min(n, rowCap());
-};
 
 const prefersHtml = (accept) => {
   const q = {};
@@ -1867,12 +1859,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/uploads') {
           return out(201, prepareUpload({ entity: body.entity, field: body.field, name: body.name, mime: body.mime, size: body.size, preview: body.preview, sameOrigin: true }));
         }
-        if (route === 'GET /api/audit') {
-          return out(200, weave.listAudit({
-            limit: boundedLimit(rx.searchParams.get('limit'), 100),
-            offset: nonNegativeInteger('offset', rx.searchParams.get('offset')),
-          }));
-        }
         if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
@@ -2194,19 +2180,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { ok: true });
         }
 
-        if (route === 'GET /api/activity') {
-          return out(200, weave.activityFeed({
-            entityId: rx.searchParams.get('entity'),
-            tableRef: rx.searchParams.get('table'),
-            kinds: rx.searchParams.getAll('kind'),
-            since: rx.searchParams.get('since'),
-            limit: boundedLimit(rx.searchParams.get('limit')),
-            offset: nonNegativeInteger('offset', rx.searchParams.get('offset')),
-          }));
-        }
-        if ((m = path.match(/^\/api\/activity\/(.+)$/)) && rx.method === 'GET') {
-          return out(200, weave.getActivity(decodeURIComponent(m[1])));
-        }
 
         if (route === 'GET /api/search') {
           const q = rx.searchParams.get('q') ?? '';
