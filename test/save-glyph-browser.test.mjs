@@ -139,6 +139,20 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a yielded tablet record keeps save feedback in its visible header (Issue #1513)', async () => {
+    const page = await open({ viewport: { width: 729, height: 900 } });
+    try {
+      await page.click(`tr[data-eid="${order.id}"] .open-link`);
+      await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
+      await page.evaluate(() => {
+        window.weaveSaves.push({ key: 'test:tablet', value: 'tablet', send: () => new Promise(() => {}) });
+      });
+      const mark = page.locator('#dock .save-glyph');
+      await mark.waitFor({ state: 'visible', timeout: 2000 });
+      assert.match(await mark.getAttribute('aria-label'), /Saving 1 change/);
+    } finally { await page.close(); }
+  });
+
   test('on a phone the glyph is a 44 px target with its name (Feature #217)', async () => {
     const phone = await phoneBrowser();
     const page = await open({}, phone ? (o) => phonePage(phone, o) : (o) => browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, ...o }));
