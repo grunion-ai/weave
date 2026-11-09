@@ -16,6 +16,7 @@ if (s) {
   let n = 0;
 
   const noDebounce = (ctx) => ctx.addInitScript(() => {
+    window.__weaveSaveDelay = 3_600_000;
     let saves = null;
     Object.defineProperty(window, '__weaveDocSaves', {
       configurable: true,

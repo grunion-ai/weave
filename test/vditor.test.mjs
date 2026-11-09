@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { fnBody } from './lib/source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = ['public/app.js', 'public/doc-editor.js'].map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
@@ -71,8 +72,8 @@ test('there is no edit mode, no preview toggle and no save button', () => {
 test('every keystroke is persisted without the user asking', () => {
   assert.match(APP, /input:\s*\(/, 'Vditor input callback must be wired');
   assert.match(APP, /saveDoc|scheduleDocSave/, 'a save path must exist');
-  assert.match(APP, /setTimeout\([^)]*DOC_SAVE_DEBOUNCE|DOC_SAVE_DEBOUNCE/,
-    'saves must be debounced rather than fired per keystroke');
+  assert.match(fnBody('scheduleDocSave', APP), /saves\.push\(/,
+    'saves go through the save queue, which debounces them rather than firing per keystroke (Feature #217)');
 });
 
 test('the toolbar carries the full set Kyle picked in the Toolbar Lab', () => {

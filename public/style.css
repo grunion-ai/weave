@@ -1173,7 +1173,7 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
   .wv-act-filters button { min-height: 44px; padding: 0 14px; font-size: var(--fs-body); }
   .wv-act-row { min-height: 44px; grid-template-columns: 16px minmax(0, 1fr) 44px; }
 }
-.doc-status { margin-left: auto; font-size: var(--fs-meta); color: var(--tblr-secondary); min-width: 10px; text-align: right; }
+.doc-section-head > .doc-dl { margin-left: auto; }
 .doc-editor { border: 0; }
 .doc-editor .vditor { border: 0; background: transparent; }
 .doc-editor { position: relative; }
