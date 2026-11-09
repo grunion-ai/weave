@@ -1837,18 +1837,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/shares\/([^/]+)\/renew$/)) && rx.method === 'POST') {
           return out(200, shareLink(weave.renewShare(decodeURIComponent(m[1]))));
         }
-        if (route === 'GET /api/views') return out(200, weave.listViews({ trash: ['1', 'true'].includes(rx.searchParams.get('trash') ?? '') }));
-        if (route === 'POST /api/views') return out(201, weave.createView(body ?? {}));
-        if ((m = path.match(/^\/api\/views\/([^/]+)$/))) {
-          if (rx.method === 'GET') return out(200, weave.resolveView(m[1]));
-          if (rx.method === 'DELETE') return out(200, weave.deleteView(m[1], { hard: ['1', 'true'].includes(rx.searchParams.get('hard') ?? '') }));
-        }
-        if ((m = path.match(/^\/api\/views\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreView(m[1]));
-        }
-        if ((m = path.match(/^\/api\/views\/([^/]+)\/share$/)) && ['POST', 'DELETE'].includes(rx.method)) {
-          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
-          return rx.method === 'POST' ? out(201, weave.shareView(m[1])) : out(200, weave.unshareView(m[1]));
+        if (/^\/api\/views\/[^/]+\/share$/.test(path) && ['POST', 'DELETE'].includes(rx.method) && !mayAdminister(weave, role)) {
+          return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
         }
         if (route === 'POST /api/uploads') {
           return out(201, prepareUpload({ entity: body.entity, field: body.field, name: body.name, mime: body.mime, size: body.size, preview: body.preview, sameOrigin: true }));

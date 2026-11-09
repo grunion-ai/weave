@@ -36,7 +36,6 @@ const HAND_WRITTEN = [
   ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],
   ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
   ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
-  ['view', ['createView', 'listViews', 'getView', 'deleteView', 'restoreView', 'shareView', 'unshareView', 'resolveView'], 'weave_views', 'view', ['GET /api/views', 'POST /api/views', 'GET /api/views/:ref', 'DELETE /api/views/:ref', 'POST /api/views/:ref/restore', 'POST /api/views/:ref/share', 'DELETE /api/views/:ref/share']],
   ['share', ['mintShare', 'listShares', 'renewShare', 'revokeShare', 'updateShare', 'regenerateShare'], 'weave_shares', 'share', ['GET /api/shares', 'POST /api/shares', 'POST /api/shares/:ref/renew', 'PATCH /api/shares/:ref', 'POST /api/shares/:ref/regenerate', 'DELETE /api/shares/:ref', 'GET /api/share']],
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],

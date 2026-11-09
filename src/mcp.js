@@ -169,18 +169,7 @@ export const TOOLS = [
       required: ['spec'],
     },
   },
-  {
-    name: 'weave_views',
-    description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | restore | share | unshare. delete moves the view to the trash (hard: true purges); list with trash: true lists the trash; restore brings a trashed view and its share links back. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth. share and unshare take an architect token.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
-        blocks: { type: 'array', description: '[{table, where?, view?}]' }, hard: { type: 'boolean' }, trash: { type: 'boolean' },
-      },
-      required: ['action'],
-    },
-  },
+  toolDefinition('weave_views'),
   {
     name: 'weave_shares',
     description: 'Share beta: architect-managed links. action list (kind?, id?, includeInactive?) | mint (kind entity|entities|table|space|view|workspace, id or ids; mode read|submit|edit|manage; formId for submit; visibility public|private; label; expiry 1h|1d|7d|30d|90d|never or expiresAt ISO; default 30d) | update (share, label?, expiry? or expiresAt?; keeps URL) | regenerate (share, optional expiry; old token stops immediately) | renew (share, 30 more days) | revoke (share). Submit only creates through its form. Public links require no login; private requires an existing signed-in member. Named email/domain audiences are unavailable in beta. Tokens never change scope. Every action requires architect access.',
@@ -467,6 +456,9 @@ const ROW_GUARDS = {
     refuseUsersWrite(weave, args.entity, caller);
   },
   weave_delete_entity: (weave, args, caller) => refuseUsersWrite(weave, args.entity, caller),
+  weave_views: (weave, args, caller) => {
+    if (['share', 'unshare'].includes(args.action) && caller && !mayAdminister(weave, caller.role)) throw new Error('Sharing a view, or ending its link, needs an architect token');
+  },
 };
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
@@ -515,19 +507,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       const { spec, dryRun, skipExistingRows, ...bare } = args;
       return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
     }
-    case 'weave_views':
-      switch (args.action) {
-        case 'list': return { views: weave.listViews({ trash: Boolean(args.trash) }) };
-        case 'get': return weave.resolveView(args.view);
-        case 'create': return weave.createView({ name: args.name, blocks: args.blocks ?? [] });
-        case 'delete': return weave.deleteView(args.view, { hard: Boolean(args.hard) });
-        case 'restore': return weave.restoreView(args.view);
-        case 'share':
-        case 'unshare':
-          if (caller && !mayAdminister(weave, caller.role)) throw new Error('Sharing a view, or ending its link, needs an architect token');
-          return args.action === 'share' ? weave.shareView(args.view) : weave.unshareView(args.view);
-        default: throw new Error(`Unknown views action '${args.action}' (list, get, create, delete, restore, share, unshare)`);
-      }
     case 'weave_shares': {
       switch (args.action) {
         case 'list': return { shares: weave.listShares({ kind: args.kind ?? null, id: args.id ?? null, includeInactive: Boolean(args.includeInactive) }) };

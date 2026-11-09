@@ -99,6 +99,18 @@ const UNDO_TOOL = {
   description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
   inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
 };
+const VIEWS_TOOL = {
+  name: 'weave_views',
+  description: 'Saved views: a named list of blocks, each a table plus an optional where and a view kind (table, the one kind weave draws). action: list | get | create | delete | restore | share | unshare. delete moves the view to the trash (hard: true purges); list with trash: true lists the trash; restore brings a trashed view and its share links back. Sharing mints a read-only public share grant on the view (weave_shares lists it); the /s/<token> URL renders that view read-only, even when the workspace requires auth. share and unshare take an architect token.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string' }, view: { type: 'string' }, name: { type: 'string' },
+      blocks: { type: 'array', description: '[{table, where?, view?}]' }, hard: { type: 'boolean' }, trash: { type: 'boolean' },
+    },
+    required: ['action'],
+  },
+};
 const commentAuthor = (w, a, ctx) => (ctx?.caller?.role && !['architect', 'editor'].includes(ctx.caller.role) ? w.actor : a.author ?? 'agent');
 
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
@@ -1087,6 +1099,76 @@ export const COMMANDS = [
     },
     http: { method: 'POST', path: '/api/import', args: (a, body) => ({ state: body }) },
     run: (w, a) => ({ ok: true, ...w.importJSON(a.state) }),
+  },
+  {
+    name: 'view.list',
+    engine: ['listViews'],
+    writes: 'none',
+    tool: VIEWS_TOOL,
+    action: 'list',
+    cli: { command: 'view', sub: 'list', default: true, args: (a, flags) => ({ trash: Boolean(flags.trash) }), result: (r) => r.views },
+    http: { method: 'GET', path: '/api/views', query: ['trash'], args: (a) => ({ trash: truthy(a.trash) }), result: (r) => r.views },
+    run: (w, a) => ({ views: w.listViews({ trash: Boolean(a.trash) }) }),
+  },
+  {
+    name: 'view.get',
+    engine: ['resolveView', 'getView'],
+    writes: 'none',
+    tool: VIEWS_TOOL,
+    action: 'get',
+    cli: { command: 'view', sub: 'get', positional: ['view'] },
+    http: { method: 'GET', path: '/api/views/:view' },
+    run: (w, a) => w.resolveView(a.view),
+  },
+  {
+    name: 'view.create',
+    engine: ['createView'],
+    writes: 'entity',
+    tool: VIEWS_TOOL,
+    action: 'create',
+    cli: { command: 'view', sub: 'create', positional: ['name'], args: (a, flags, { json }) => ({ name: a.name, blocks: json('blocks') ?? [] }) },
+    http: { method: 'POST', path: '/api/views', status: 201, args: (a, body) => ({ input: body ?? {} }) },
+    run: (w, a) => w.createView(a.input ?? { name: a.name, blocks: a.blocks ?? [] }),
+  },
+  {
+    name: 'view.delete',
+    engine: ['deleteView'],
+    writes: 'entity',
+    tool: VIEWS_TOOL,
+    action: 'delete',
+    cli: { command: 'view', sub: 'delete', positional: ['view'], args: (a, flags) => ({ view: a.view, hard: Boolean(flags.hard) }) },
+    http: { method: 'DELETE', path: '/api/views/:view', query: ['hard'], args: (a) => ({ view: a.view, hard: truthy(a.hard) }) },
+    run: (w, a) => w.deleteView(a.view, { hard: Boolean(a.hard) }),
+  },
+  {
+    name: 'view.restore',
+    engine: ['restoreView'],
+    writes: 'entity',
+    tool: VIEWS_TOOL,
+    action: 'restore',
+    cli: { command: 'view', sub: 'restore', positional: ['view'] },
+    http: { method: 'POST', path: '/api/views/:view/restore' },
+    run: (w, a) => w.restoreView(a.view),
+  },
+  {
+    name: 'view.share',
+    engine: ['shareView'],
+    writes: 'entity',
+    tool: VIEWS_TOOL,
+    action: 'share',
+    cli: { command: 'view', sub: 'share', positional: ['view'] },
+    http: { method: 'POST', path: '/api/views/:view/share', status: 201 },
+    run: (w, a) => w.shareView(a.view),
+  },
+  {
+    name: 'view.unshare',
+    engine: ['unshareView'],
+    writes: 'entity',
+    tool: VIEWS_TOOL,
+    action: 'unshare',
+    cli: { command: 'view', sub: 'unshare', positional: ['view'] },
+    http: { method: 'DELETE', path: '/api/views/:view/share' },
+    run: (w, a) => w.unshareView(a.view),
   },
 ];
 
