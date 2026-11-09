@@ -254,7 +254,7 @@ test('writeFileDurable removes its temp file when the rename cannot land', () =>
 test('every blob and restore write goes through writeFileDurable', () => {
   const firstArgs = (file) => [...readFileSync(new URL(file, import.meta.url), 'utf8')
     .matchAll(/writeFileSync\(([^,)]+)/g)].map((m) => m[1].trim());
-  assert.deepEqual(firstArgs('../src/engine.js'), ['keyPath', 'this.keystorePath'],
+  assert.deepEqual(firstArgs('../src/engine.js'), [],
     'a bare writeFileSync in the engine: blob bytes land before their record commits, so they go through writeFileDurable');
   assert.deepEqual(firstArgs('../src/backup.js'), ['local', 'local', 'local'],
     'a bare writeFileSync in backup: a restore lands a whole data directory, so its entries go through writeFileDurable');
