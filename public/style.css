@@ -236,7 +236,7 @@ body.nav-resizing { cursor: col-resize; user-select: none; }
   .crumb-row { flex-wrap: wrap; row-gap: 6px; }
   .crumb-actions { flex-wrap: wrap; margin-bottom: 0; }
 }
-@media (max-width: 600px) {
+@media (max-width: 900px) {
   #ws-rail { display: none; }
   #app.nav-peek #ws-rail { display: flex; position: fixed; left: 0; top: 0; height: 100dvh; z-index: 71; background: var(--wv-canvas); }
 }
