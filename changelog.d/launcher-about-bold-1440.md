@@ -1,0 +1,1 @@
+- Bold words in a launcher About description stay inline with the sentence around them instead of each breaking onto its own line, on the workspace and the space About panes (Issue #1440).

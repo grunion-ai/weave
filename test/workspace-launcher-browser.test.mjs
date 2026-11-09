@@ -7,7 +7,7 @@ const LONG = 'Quarterly renewal forecast reconciliation for the northern territo
 const minutesAgo = (n) => new Date(Date.now() - n * 60000).toISOString();
 
 const s = await launch('workspace launcher', (weave) => {
-  weave.updateWorkspace({ description: 'Everything the studio runs.' });
+  weave.updateWorkspace({ description: 'Everything the **studio** runs.' });
   const sales = weave.createSpace({ name: 'Sales', icon: 'lucide:briefcase' });
   const ops = weave.createSpace({ name: 'Ops' });
   const long = weave.createSpace({ name: LONG });
@@ -20,7 +20,7 @@ const s = await launch('workspace launcher', (weave) => {
 });
 
 const fullPayload = (ids) => ({
-  workspace: { name: 'weave', description: 'Everything the studio runs.' },
+  workspace: { name: 'weave', description: 'Everything the **studio** runs.' },
   spaces: [
     { id: ids.sales, name: 'Sales', icon: 'lucide:briefcase', tables: [{ id: ids.deal, name: 'Deal', icon: null, rowCount: 48, views: [{ id: 'v1', name: 'Pipeline', layout: 'board' }] }] },
     { id: ids.ops, name: 'Ops', icon: null, tables: [{ id: ids.task, name: 'Task', icon: null, rowCount: 1200, views: [] }] },
@@ -124,7 +124,7 @@ if (s) {
       await page.close();
     });
 
-    test(`${engine}: About this workspace holds the description and the system tables, and leaves the relation map to each space`, async () => {
+    test(`${engine}: About this workspace holds the description with its bold words inline and the system tables, and leaves the relation map to each space`, async () => {
       const page = await open(b, profile);
       await painted(page, '.launcher-about');
       assert.match(await page.locator('.launcher-about').innerText(), /About this workspace/);
@@ -135,6 +135,13 @@ if (s) {
       assert.match(body, /Everything the studio runs\./);
       assert.match(body, /Activity/);
       assert.equal(await page.locator('.launcher-detail .home-map').count(), 0);
+      const bold = await page.evaluate(() => {
+        const strong = document.querySelector('.launcher-detail .wv-prose strong');
+        const r = strong.getBoundingClientRect();
+        return { text: strong.textContent, display: getComputedStyle(strong).display, offset: Math.abs(r.top - strong.parentElement.getBoundingClientRect().top), line: parseFloat(getComputedStyle(strong.parentElement).lineHeight) / 2 };
+      });
+      assert.deepEqual({ text: bold.text, display: bold.display }, { text: 'studio', display: 'inline' });
+      assert.ok(bold.offset < bold.line, `bold word starts its own line, ${bold.offset}px down`);
       await page.click('.launcher-detail .system-tables .list-row[data-href="#/activity"]');
       await page.waitForFunction(() => location.hash === '#/activity');
       await page.close();
