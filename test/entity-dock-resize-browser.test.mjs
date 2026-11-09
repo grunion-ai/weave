@@ -163,7 +163,7 @@ if (s) {
     });
 
     test('narrow viewports show a usable record and restore the table on close (Issue #1513)', async () => {
-      for (const width of [601, 729, 901, 1000]) {
+      for (const width of [601, 729, 901, 1000, 1024]) {
         const page = await openPinned('light', 900, width);
         await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
         const g = await geometry(page);
