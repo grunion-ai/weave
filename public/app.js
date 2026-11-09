@@ -1186,9 +1186,6 @@ function crumbIconEl(c) {
   if (c.avatar) return chipElFrom(chipView.avatarHtml(c.avatar, { cls: 'crumb-ic crumb-av' }));
   return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);
 }
-function navIconEl(icon, kind) {
-  return iconEl(icon, 'wv-icon nav-icon') ?? iconEl(CRUMB_ICON_FALLBACK[kind], 'wv-icon nav-icon');
-}
 function crumbInner(c) {
   return [
     crumbIconEl(c),
@@ -1473,7 +1470,7 @@ function renderNav() {
             toggleFold(space.spaceId);
           }
         },
-      }, navIconEl(space.icon, 'space'), space.space),
+      }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
       disclosure('nav-caret', !isFolded, {
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
@@ -1504,7 +1501,7 @@ function renderNav() {
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
         draggable: 'false',
-      }, navIconEl(db.icon, 'table'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
+      }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
