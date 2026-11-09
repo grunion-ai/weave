@@ -120,8 +120,9 @@ test('the Dockerfile and compose agree with the code on what each variable does'
   assert.match(bin, /flags\.port \?\? process\.env\.PORT \?\? 4400/);
   assert.match(bin, /flags\.host \?\? process\.env\.WEAVE_HOST \?\? '127\.0\.0\.1'/);
   assert.match(bin, /flags\.data \?\? process\.env\.WEAVE_DATA/);
-  assert.match(read('src/engine.js'), /keystoreEnv\?\.WEAVE_KEYSTORE_PASSPHRASE/);
-  assert.match(read('src/engine.js'), /process\.env\.WEAVE_KEYSTORE \?\?/);
+  assert.match(read('src/keystore.js'), /env\?\.WEAVE_KEYSTORE_PASSPHRASE/);
+  assert.match(read('src/engine.js'), /keystoreFilePath\(process\.env\.WEAVE_KEYSTORE\) \?\?/);
+  assert.match(read('src/keystore.js'), /path !== join\(home, '\.weave', 'keystore\.json'\)\) return 'file'/);
   assert.match(read('src/engine.js'), /join\(dirname\(this\.store\.path\), 'files', id\)/);
   assert.match(DOCKERFILE, /WEAVE_KEYSTORE=\/data\/keystore\.json/);
 });

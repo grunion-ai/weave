@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "ee25082bf66c112f48722cc1c8e506d5f54b2674"
+      "revision": "a700e1e9144eb5125e83f7a588ab0a327335c390"
     },
     "views": [
       {
@@ -382,6 +382,7 @@
         "src/server.js wraps src/routes.js in node:http",
         "src/minify.js strips whitespace from first-party scripts and styles before src/server.js compresses them",
         "src/store.js keeps one node:sqlite .db per workspace",
+        "src/keystore.js holds credential values: an encrypted file pair, or one macOS keychain item per key",
         "src/server.js answers each workspace at <slug>.WEAVE_BASE_DOMAIN"
       ]
     },
