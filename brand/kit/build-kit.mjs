@@ -4,9 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { kitPage } from './page.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const documentationBanners = process.argv.includes('--documentation-banners');
 const outArg = process.argv.indexOf('--out');
-const OUT = outArg > 0 ? process.argv[outArg + 1] : HERE;
-const SVG_DIR = join(OUT, 'svg');
+const OUT = outArg > 0 ? process.argv[outArg + 1] : documentationBanners ? join(HERE, '../../src/handbook/banners') : HERE;
+const SVG_DIR = documentationBanners ? OUT : join(OUT, 'svg');
 mkdirSync(SVG_DIR, { recursive: true });
 
 const C = {
@@ -109,6 +110,7 @@ function ringText(cx, cy, r, text, { bottom = false, size, color, spacing = 0.18
 const assets = [];
 const fileId = (id) => id.replace(/^seal-/, 'badge-').replace(/^mark-fabric-/, 'pattern-rope-').replace(/^mark-halftone-vignette$/, 'pattern-dots-vignette').replace(/^mark-/, 'pattern-');
 const add = (rawId, group, name, w, h, body, meta = {}) => {
+  if (documentationBanners) return;
   const id = fileId(rawId);
   const s = svg(w, h, body, name);
   assets.push({ id, group, name, w, h, ...meta });
@@ -472,6 +474,22 @@ for (const [code, id, name, w, note] of LOCKS) {
 add('poster-github', 'Posters', 'GitHub social preview, contour field', 1280, 640, nest(1280, 640, contourField('dark', { W: 1280, H: 640, cols: 3, rows: 2, s: 5 }), 0, 0, 1280, 640)
   + `<rect x="64" y="101" width="1152" height="438" rx="219" ${fill(C.canvasD)}/>`
   + sealAt('blue', 128, 140, 360) + wordmark(560, 335, 170, C.cream) + tagline(566, 401, 20, C.sky, 'start', LABELS.githubLine), { code: 'X8' });
+if (documentationBanners) {
+  const row = [-1, 0, 1, 2, 3, 4].map(i => ({ x: 120 + i * 300, y: 198, s: 4.4 }));
+  const variants = [
+    { name: 'blue', pal: PAL.blue, lozenge: C.blue, sealCw: 'ink', word: C.cream, line: C.ice, spots: row },
+    { name: 'light', pal: PAL.light, lozenge: C.panelL, sealCw: 'blue', word: C.ink, line: C.blue, spots: row },
+    { name: 'topo', pal: PAL.dark, lozenge: C.canvasD, sealCw: 'blue', word: C.cream, line: C.sky, spots: scatter(1584, 396, 8, 3, 8, 11).map(p => ({ ...p, show: false })) },
+  ];
+  for (const { name, pal, spots, ...palette } of variants) {
+    const field = contour2({ W: 1584, H: 396, spots, gap: 9, lw: 1.5, pal, ...(name === 'topo' ? { r0: 4 } : {}) });
+    const body = x6({ W: 1584, H: 396, field, ...palette, box: [300, 48, 984, 300], sealXY: [348, 70], sealSize: 256, wordXY: [650, 222], wordSize: 130, lineSize: 17 });
+    writeFileSync(join(OUT, `banner-${name}.svg`), svg(1584, 396, body, `weave documentation, ${name}`) + '\n');
+  }
+  console.log(`3 documentation banners -> ${OUT}`);
+  process.exit(0);
+}
+
 const GUIDE = JSON.parse(readFileSync(join(HERE, 'guide.json'), 'utf8'));
 const FAMILY = { 'Seals and badges': 'badge', Badge: 'badge', Icon: 'icon', Lockup: 'lockup', Posters: 'poster', 'Poster variants': 'poster', 'Mark patterns': 'pattern', 'Contour variants': 'pattern', 'Rope variants': 'pattern', 'Halftone variants': 'pattern' };
 const SCALE = { icon: 4, lockup: 3, badge: 2, poster: 2, pattern: 2 };
