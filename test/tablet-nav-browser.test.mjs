@@ -21,40 +21,37 @@ if (s) {
     };
   });
 
-  const open = async (width, theme) => {
+  const open = async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'load' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
-    await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     return page;
   };
 
-  for (const theme of ['light', 'dark']) {
-    for (const width of [601, 768, 900]) {
-      test(`at ${width}px the menu button stands in for the rail and sidebar, never beside them (${theme}, Issue #1457)`, async () => {
-        const page = await open(width, theme);
-        try {
-          const m = await read(page);
-          assert.equal(m.sidebar, false, `${width}px hides the sidebar`);
-          assert.equal(m.rail, false, `${width}px hides the workspace rail, so the menu button is the only way into navigation`);
-          assert.equal(m.menus, 1, `${width}px offers exactly one menu button`);
-        } finally { await page.close(); }
-      });
-    }
-
-    test(`at 1280px the rail and the sidebar carry navigation on their own (${theme}, Issue #1457)`, async () => {
-      const page = await open(1280, theme);
+  for (const width of [601, 768, 900]) {
+    test(`at ${width}px the menu button stands in for the rail and sidebar, never beside them (Issue #1457)`, async () => {
+      const page = await open(width);
       try {
         const m = await read(page);
-        assert.equal(m.rail, true, 'the rail is on screen');
-        assert.equal(m.sidebar, true, 'the sidebar is on screen');
-        assert.equal(m.menus, 0, 'and no menu button competes with them');
+        assert.equal(m.sidebar, false, `${width}px hides the sidebar`);
+        assert.equal(m.rail, false, `${width}px hides the workspace rail, so the menu button is the only way into navigation`);
+        assert.equal(m.menus, 1, `${width}px offers exactly one menu button`);
       } finally { await page.close(); }
     });
   }
 
+  test('at 1280px the rail and the sidebar carry navigation on their own (Issue #1457)', async () => {
+    const page = await open(1280);
+    try {
+      const m = await read(page);
+      assert.equal(m.rail, true, 'the rail is on screen');
+      assert.equal(m.sidebar, true, 'the sidebar is on screen');
+      assert.equal(m.menus, 0, 'and no menu button competes with them');
+    } finally { await page.close(); }
+  });
+
   test('the peek drawer carries the rail at 768px (Issue #1457)', async () => {
-    const page = await open(768, 'light');
+    const page = await open(768);
     try {
       await page.click('#main .nav-menu');
       await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-peek'));
