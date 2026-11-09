@@ -1,0 +1,1 @@
+- Picker toggle tests wait for queued saves to finish before checking stored dates and tags, preserving the existing persistence assertions (Issue #1516).
