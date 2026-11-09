@@ -930,7 +930,7 @@ async function drawDock() {
   panel.replaceChildren(host);
   if (swapped) panel.scrollTop = 0;
   const dockControls = {
-    nav: navArrows(dockGo),
+    nav: [navMenuButton(), ...navArrows(dockGo)],
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
@@ -948,7 +948,7 @@ async function drawDock() {
   markDockedRow();
 }
 
-const DOCK_PANE = { grip: '#dock-gutter', key: 'wv-dock-width', min: 360 };
+const DOCK_PANE = { grip: '#dock-gutter', key: 'wv-dock-width', min: 400 };
 const SIDE_PANE = { grip: '#side-gutter', key: 'wv-side-width', min: 300 };
 function pinPane(panel, px) {
   panel.style.width = '';
@@ -962,7 +962,7 @@ function fitPanes() {
   const app = $('#app');
   app.classList.remove('pane-over', 'table-yield');
   const floats = !($('#view-pane').hidden && $('#share-pane').hidden);
-  if ($('#dock').hidden || dockCoversScreen.matches || (!floats && $('#side').hidden)) return;
+  if ($('#dock').hidden || dockCoversScreen.matches) return;
   const tight = () => app.scrollWidth > app.clientWidth;
   if (tight()) app.classList.add('table-yield');
   if (tight() && floats) app.classList.add('pane-over');
@@ -11201,7 +11201,7 @@ function wireNavHold() {
     for (const n of nodes) n.inert = false;
     expanded(false);
     if (!inside) return;
-    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
+    const back = opener?.isConnected && reachableStop(opener) ? opener : [...document.querySelectorAll('.nav-menu')].find(reachableStop);
     back?.focus();
   };
   let holdFrame = null;
@@ -11257,8 +11257,7 @@ function navMenuButton() {
     onclick: () => (narrowShell.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
   });
   labelNavMenu(btn);
-  btn.innerHTML = '<svg class="nav-menu-burger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'
-    + '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
+  btn.innerHTML = '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
   return btn;
 }
 

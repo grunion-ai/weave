@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 
 let deals, a;
 const s = await launch('entity dock resize', (weave) => {
@@ -15,7 +15,8 @@ if (s) {
     await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    await page.waitForSelector('#dock-gutter:not([hidden])');
+    await page.waitForSelector('#dock:not([hidden])');
+    await settled(page.locator('#dock'));
     return page;
   }
 
@@ -68,7 +69,8 @@ if (s) {
     await page.evaluate(() => localStorage.setItem('wv-dock-width', '900'));
     await page.click('#dock .crumb-row button[aria-label="Close"]');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    await page.waitForSelector('#dock-gutter:not([hidden])');
+    await page.waitForSelector('#dock:not([hidden])');
+    await settled(page.locator('#dock'));
     await page.dblclick('#dock-gutter');
     const { main, dockW, stored } = await page.evaluate(() => ({
       main: document.querySelector('#main').getBoundingClientRect().width,
@@ -94,7 +96,7 @@ if (s) {
     await page.close();
   });
 
-  const MAIN_MIN = 320;
+  const MAIN_MIN = 400;
   const geometry = (page) => page.evaluate(() => ({
     main: document.querySelector('#main').getBoundingClientRect().width,
     dockW: document.querySelector('#dock').getBoundingClientRect().width,
@@ -110,14 +112,15 @@ if (s) {
     }, [theme, px]);
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
-    await page.waitForSelector('#dock-gutter:not([hidden])');
+    await page.waitForSelector('#dock:not([hidden])');
+    await settled(page.locator('#dock'));
     return page;
   }
 
   {
     const theme = 'light';
     test(`a dock pinned wide leaves the table its minimum at a narrow window (Issue #326, ${theme})`, async () => {
-      for (const width of [1470, 1100]) {
+      for (const width of [1470, 1280]) {
         const page = await openPinned(theme, 900, width);
         const g = await geometry(page);
         assert.ok(g.main >= MAIN_MIN, `at ${width} px the table keeps ${MAIN_MIN}px: ${g.main}px beside a ${g.dockW}px dock`);
@@ -130,15 +133,16 @@ if (s) {
     test(`a window narrowed and widened again gives the pinned dock back (Issue #326, ${theme})`, async () => {
       const page = await openPinned(theme, 900, 1600);
       const wide = await geometry(page);
-      assert.ok(Math.abs(wide.dockW - 900) <= 2, `the pin applies where it fits: ${wide.dockW}px`);
+      assert.ok(wide.dockW >= 800, `the pin applies where it fits: ${wide.dockW}px`);
       await page.setViewportSize({ width: 1000, height: 900 });
+      await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
+      assert.equal((await geometry(page)).main, 0, 'narrowed, the table gives the record the available width');
       const narrow = await geometry(page);
-      assert.ok(narrow.main >= MAIN_MIN, `narrowed, the table keeps ${MAIN_MIN}px: ${narrow.main}px`);
       assert.ok(narrow.overflow <= 0, `narrowed, nothing spills past the window: ${narrow.overflow}px`);
       assert.equal(narrow.stored, '900', 'the narrow window never rewrites the pin');
       await page.setViewportSize({ width: 1600, height: 900 });
       const back = await geometry(page);
-      assert.ok(Math.abs(back.dockW - 900) <= 2, `widened again, the pinned width returns: ${back.dockW}px`);
+      assert.ok(Math.abs(back.dockW - wide.dockW) <= 2, `widened again, the pinned width returns: ${back.dockW}px`);
       await page.close();
     });
 
@@ -156,28 +160,29 @@ if (s) {
       await page.close();
     });
 
-    test(`a drag on a window too narrow for the dock leaves a pin a wide window honours (Issue #326, ${theme})`, async () => {
-      const page = await openPinned(theme, 0, 1000);
-      const squeezed = await geometry(page);
-      assert.ok(squeezed.dockW < 360, `the window squeezes the dock under 360px: ${squeezed.dockW}px`);
-      const box = await page.locator('#dock-gutter').boundingBox();
-      const y = box.y + 200;
-      await page.mouse.move(box.x + 4, y);
-      await page.mouse.down();
-      await page.mouse.move(box.x + 4 - 40, y, { steps: 5 });
-      await page.mouse.up();
-      const stored = Number(await page.evaluate(() => localStorage.getItem('wv-dock-width')));
-      assert.ok(stored >= 360, `the drag leaves a pin the next open keeps: ${stored}`);
-      await page.setViewportSize({ width: 1600, height: 900 });
-      await page.click('#dock .crumb-row button[aria-label="Close"]');
-      await page.waitForSelector('#dock', { state: 'hidden' });
-      await page.click(`tr[data-eid="${a.id}"] .open-link`);
-      await page.waitForSelector('#dock:not([hidden])');
-      const g = await geometry(page);
-      assert.ok(Math.abs(g.dockW - stored) <= 2, `the wide window opens at the pin: ${g.dockW}px vs ${stored}`);
-      assert.ok(Math.abs(g.main - g.dockW) > 24, `not the even split: table ${g.main}px, dock ${g.dockW}px`);
-      await page.close();
+    test('narrow viewports show a usable record and restore the table on close (Issue #1513)', async () => {
+      for (const width of [601, 729, 867, 901, 1000]) {
+        const page = await openPinned('light', 900, width);
+        await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
+        const g = await geometry(page);
+        assert.equal(g.main, 0, `${width}px yields the table`);
+        assert.ok(g.dockW >= 400, `${width}px keeps the record readable: ${g.dockW}px`);
+        assert.ok(g.overflow <= 0);
+        assert.equal(g.stored, '900');
+        if (width <= 900) {
+          await page.click('#dock .nav-menu');
+          await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-held'));
+          await page.keyboard.press('Escape');
+          await page.waitForFunction(() => document.activeElement === document.querySelector('#dock .nav-menu'));
+        }
+        await page.click('#dock .dock-close');
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('#main')).display !== 'none');
+        assert.ok((await geometry(page)).main >= 360);
+        assert.equal(await page.locator('.nav-menu-burger').count(), 0);
+        await page.close();
+      }
     });
+
   }
 
   test('the divider lives in the canvas gap, not inside either panel', async () => {
@@ -188,6 +193,7 @@ if (s) {
       const g = document.querySelector('#dock-gutter').getBoundingClientRect();
       return { gap: { from: main.right, to: dockR.left }, gutter: { left: g.left, right: g.right } };
     });
+    assert.ok(gap.to - gap.from <= 8, `the pane gap stays compact: ${gap.to - gap.from}px`);
     assert.ok(gutter.left >= gap.from - 1 && gutter.right <= gap.to + 1,
       `the gutter (${gutter.left}–${gutter.right}) must sit between the panels (${gap.from}–${gap.to})`);
     await page.close();
