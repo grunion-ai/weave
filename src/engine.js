@@ -7357,6 +7357,15 @@ export class Weave {
     const db = this.getTable(dbRef);
     const meta = this.#interceptCreate(db, input);
     if (meta) return meta;
+    return this.store.batch(() => this.#insertEntity(db, input, depth));
+  }
+
+  #claimPublicId(db) {
+    db.publicIdCounter = Math.max(db.publicIdCounter ?? 0, this.store.maxPublicId(db.id));
+    return ++db.publicIdCounter;
+  }
+
+  #insertEntity(db, input, depth) {
     if (db.system === 'integrations' && !this.#inMetaSync) input = this.#integrationInput(db, input);
     if (db.system === 'forms') input = { ...input, values: normalizeFormValues(this, db, { ...Object.fromEntries(Object.entries(input).filter(([key]) => !CREATE_INPUT_KEYS.has(key))), ...(input.values ?? {}) }) };
     const flat = Object.fromEntries(
@@ -7372,7 +7381,7 @@ export class Weave {
     const e = {
       id: uuid(),
       dbId: db.id,
-      publicId: ++db.publicIdCounter,
+      publicId: this.#claimPublicId(db),
       values: {},
       docs: {},
       comments: [],

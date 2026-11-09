@@ -82,7 +82,7 @@ function uniquePublicIds(db) {
   if (/UNIQUE/i.test(index?.sql ?? '')) return;
   db.exec('BEGIN IMMEDIATE');
   try {
-    const dupes = db.prepare(`SELECT e.id, e.db_id FROM entities e
+    const dupes = db.prepare(`SELECT e.id, e.db_id, e.public_id FROM entities e
       WHERE e.public_id IS NOT NULL AND EXISTS (SELECT 1 FROM entities o
         WHERE o.db_id = e.db_id AND o.public_id = e.public_id AND o.rowid < e.rowid)
       ORDER BY e.rowid`).all();
@@ -90,10 +90,14 @@ function uniquePublicIds(db) {
     const move = db.prepare("UPDATE entities SET public_id = ?, json = json_set(json, '$.publicId', ?) WHERE id = ?");
     const counter = db.prepare(`UPDATE tables SET json = json_set(json, '$.publicIdCounter', ?)
       WHERE id = ? AND COALESCE(json_extract(json, '$.publicIdCounter'), 0) < ?`);
-    for (const { id, db_id } of dupes) {
+    const tableName = db.prepare("SELECT json_extract(json, '$.name') AS name FROM tables WHERE id = ?");
+    const audit = db.prepare("INSERT INTO audit_log (at, actor, action, detail) VALUES (?, NULL, 'public-id-renumbered', ?)");
+    const at = new Date().toISOString();
+    for (const { id, db_id, public_id } of dupes) {
       const next = (top.get(db_id).n ?? 0) + 1;
       move.run(next, next, id);
       counter.run(next, db_id, next);
+      audit.run(at, JSON.stringify({ table: tableName.get(db_id)?.name ?? null, tableId: db_id, entity: id, from: public_id, to: next }));
     }
     db.exec('DROP INDEX IF EXISTS idx_entities_pid');
     db.exec('CREATE UNIQUE INDEX idx_entities_pid ON entities(db_id, public_id)');
@@ -501,6 +505,13 @@ export class Store {
     const changed = v !== this.#dataVersion;
     this.#dataVersion = v;
     return changed;
+  }
+
+  maxPublicId(dbId) {
+    if (!this.#db) return 0;
+    const row = this.#db.prepare(`SELECT MAX(COALESCE((SELECT MAX(public_id) FROM entities WHERE db_id = ?), 0),
+      COALESCE((SELECT json_extract(json, '$.publicIdCounter') FROM tables WHERE id = ?), 0)) AS n`).get(dbId, dbId);
+    return Number(row?.n ?? 0);
   }
 
   reload() {
