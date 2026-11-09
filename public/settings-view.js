@@ -165,12 +165,12 @@ async function showSettings() {
   }
   const gone = [
     ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
-      .map((i) => ({ name: i.name || `#${i.publicId}`, where: i.db, deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
+      .map((i) => ({ name: i.name || `#${i.publicId}`, where: trashKind(i), deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
     ...(trash.views ?? []).map((v) => ({ name: v.name, where: 'Share page', deletedAt: v.deletedAt, path: `/views/${v.id}` })),
   ];
   const purge = el('div', { class: 'card settings-purge' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Delete forever')),
-    el('p', { class: 'settings-note' }, 'Records and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
+    el('p', { class: 'settings-note' }, 'Records, tables, spaces and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
   if (!gone.length) purge.append(el('div', { class: 'empty-note' }, 'Nothing in the trash.'));
   else {
     const rows = el('tbody');
@@ -203,7 +203,7 @@ async function showSettings() {
     }
     purge.append(el('div', { class: 'table-wrap' },
       el('table', { class: 'table table-sm table-vcenter card-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'Name'), el('th', {}, 'Table'), el('th', {}, 'Deleted'), el('th', {}, ''))),
+        el('thead', {}, el('tr', {}, el('th', {}, 'Name'), el('th', {}, 'Type'), el('th', {}, 'Deleted'), el('th', {}, ''))),
         rows)));
   }
   main.append(purge);
