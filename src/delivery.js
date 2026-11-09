@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 const MINUTE = 60_000;
 export const DELIVERY_ATTEMPTS = 8;
 export const RETRY_DELAY_CAP_MS = 60 * MINUTE;
@@ -79,4 +80,30 @@ export function sentValues(body) {
     const parsed = JSON.parse(body);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch { return null; }
+}
+
+export const HOOK_BODY_MAX = 64 * 1024;
+export const HOOK_FRESH_MS = 5 * MINUTE;
+export const HOOK_LOG_KEEP = 50;
+export const hookKeyName = (id) => `integration:hook:${id}`;
+
+const sameText = (a, b) => {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+export function hookRefusal(secret, header, body, now, freshMs = HOOK_FRESH_MS) {
+  if (!secret) return 'the hook has no secret yet: reveal it on the rule first';
+  const signature = header('x-weave-signature');
+  if (signature) {
+    const stamp = String(header('x-weave-timestamp') ?? '');
+    if (!/^\d{1,12}$/.test(stamp)) return 'a signed delivery needs an X-Weave-Timestamp in seconds';
+    if (Math.abs(now - Number(stamp) * 1000) > freshMs) return `stale timestamp: signed at ${new Date(Number(stamp) * 1000).toISOString()}, more than ${freshMs / MINUTE} minutes from now`;
+    const want = `sha256=${createHmac('sha256', secret).update(`${stamp}.`).update(body).digest('hex')}`;
+    return sameText(signature, want) ? null : 'bad signature';
+  }
+  const given = header('x-weave-secret');
+  if (given) return sameText(given, secret) ? null : 'wrong secret in X-Weave-Secret';
+  return 'no X-Weave-Signature or X-Weave-Secret header';
 }

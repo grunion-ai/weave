@@ -234,7 +234,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
       const body = bodies[c.name] ?? {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
-      if (c.name === 'automation.replay') {
+      if (['automation.replay', 'automation.receive'].includes(c.name)) {
         assert.deepEqual([res.status, json.code], [404, 'not-found'], `${c.http.method} ${c.http.path} writes no schema and looks the record up`);
       } else if (c.writes === 'schema') {
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
