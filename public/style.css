@@ -2614,7 +2614,10 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 
 @media (max-width: 600px) {
   .entity-fields .entity-values .fieldrow { grid-template-columns: 100px minmax(0, 1fr) 16px; gap: 0 8px; align-items: center;
-    min-height: 50px; padding: 0; margin: 0; border-radius: 0; box-shadow: inset 0 -1px 0 var(--tblr-border-color); }
+    min-height: 56px; padding: 6px 0; margin: 0; border-radius: 0; box-shadow: inset 0 -1px 0 var(--tblr-border-color); }
+  .entity-fields .entity-values .fieldrow > :is(input.inline-edit, select.inline-edit, .text-dressed, .date-cell) { margin-left: -7px; }
+  .entity-fields .entity-values .fieldrow > input.inline-edit:focus,
+  .entity-fields .entity-values .fieldrow > select.inline-edit:focus { width: min(100%, 360px); margin: 0 0 0 -7px; --wv-edit-pad: 6px 6px; }
   .entity-fields .entity-values .fieldrow:last-child { box-shadow: none; }
   .entity-fields .entity-values .fieldrow:hover { background: none; }
   .entity-fields .opt-grip, .entity-body > .doc-section .doc-section-head .opt-grip { display: none; }
