@@ -8,6 +8,7 @@ const s = await launch('cell and record edits go through the save queue', (weave
   weave.createSpace({ name: 'Ops' });
   orders = weave.createTable({ space: 'Ops', name: 'Order' });
   for (const f of FIELDS) weave.addField(orders, { name: f, type: 'text' });
+  weave.addField(orders, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
   row = weave.createEntity(orders, { name: 'Sensor boards', values: Object.fromEntries(FIELDS.map((f) => [f, `${f.toLowerCase()}0`])) });
   page2 = weave.createEntity(orders, { name: 'Cables', values: { A: 'start' } });
 });
@@ -121,6 +122,21 @@ if (s) {
       assert.equal(await until(() => stored(page2.id, 'B'), 'on the page'), 'on the page');
       await page.waitForSelector('.save-glyph[data-state="saved"]');
       assert.equal(await page.evaluate(() => window.__toasts), 0);
+    } finally { await page.close(); }
+  });
+
+  test('a pick shows at once and survives a reload made before its write is due (Feature #217)', async () => {
+    weave.updateEntity(page2.id, { Priority: 'P0' });
+    const page = await open(`#/entity/${page2.id}`);
+    try {
+      const row2 = page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first();
+      await row2.locator('.chip-trigger').click();
+      await page.locator('.chip-pop .picker-row', { hasText: 'P2' }).click();
+      assert.match(await row2.locator('.chip-trigger').textContent(), /P2/, 'the chip shows the pick before any write');
+      assert.deepEqual(page.__patches, [], 'and the write still waits in the queue');
+      await page.reload({ waitUntil: 'networkidle' });
+      assert.equal(await until(() => stored(page2.id, 'Priority'), 'P2', 1000), 'P2', 'leaving the page sent the pick');
+      assert.match(await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.chip-trigger').textContent(), /P2/, 'and the reloaded page shows it');
     } finally { await page.close(); }
   });
 
