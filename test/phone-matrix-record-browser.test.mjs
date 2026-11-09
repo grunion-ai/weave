@@ -169,6 +169,7 @@ if (s) {
       const sel = '#dock .fieldrow[data-field="Project"] .k-rel';
       const spacing = () => page.evaluate((sel) => {
         const chip = document.querySelector(sel);
+        if (!chip) return [];
         const controls = [...chip.querySelectorAll('button, a')].map((n) => ({ n, r: n.getBoundingClientRect() }))
           .filter(({ r }) => r.width > 0 && r.height > 0).sort((a, b) => a.r.left - b.r.left);
         return controls.slice(1).map(({ n, r }, k) => {
