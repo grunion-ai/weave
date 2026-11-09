@@ -1,2 +1,0 @@
-- The supervisor reads the free space on the releases volume before it downloads a release. Under `WEAVE_RELEASE_FREE_MB` (default 128) it fetches nothing and tries again on the next check, and `/api/health` reports `supervisor.disk` with `freeMB` and `totalMB` (Issue #880).
-- `railway.json` rebuilds the hosted container only when `Dockerfile`, `railway.json` or `src/supervisor.js` changes, so a push to main no longer restarts the one-volume production container (Issue #548).

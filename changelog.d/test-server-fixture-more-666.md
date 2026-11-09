@@ -1,1 +1,0 @@
-- **More unit tests use the shared server fixture** (Issue #666): 44 more start, try and close blocks across 40 unit test files, including the one-line `finally { server.close(); }` shape and blocks with setup lines between the boot and the `try`, now run through `withServer` in `test/lib/fixtures.mjs`.

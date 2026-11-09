@@ -1,1 +1,0 @@
-- Left nav: drag a space to reorder the spaces, and a table to reorder it inside its space; the space travels with its tables. A table never changes its space by drag, since that changes who can see it: Move to space… in its ⋮ menu stays the one way (Feature #350, Feature #284).

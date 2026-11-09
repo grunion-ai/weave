@@ -1,1 +1,0 @@
-- **A bad API offset is refused by name** (Issue #1374): `?offset=nope` or `?offset=-1` on `GET /api/audit`, `GET /api/tables/:id/entities` and the third paged route answered a silently empty page; each now answers 400 `offset must be a whole number of rows, not 'nope'`. A missing offset still starts at the first row. Gate: `test/route-limit-number.test.mjs`.

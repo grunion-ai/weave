@@ -1,3 +1,0 @@
-- No access to a workspace now offers Find your workspaces, offers Start your own workspace whenever open sign-up is on, and keeps the login held, so a person without an invite leaves the sign-in loop (Issue #1331).
-- Your access was removed now offers Find your workspaces, which lists the person's other workspaces (Issue #1336).
-- An invite opened with a login that is already a member leads with Open workspace (Issue #1337).

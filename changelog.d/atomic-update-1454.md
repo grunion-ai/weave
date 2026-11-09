@@ -1,1 +1,0 @@
-- A record update that names several fields checks every value before it changes any of them, so a rejected update leaves the record as it was in memory and on disk instead of keeping the fields that came before the bad one (Issue #1454).
