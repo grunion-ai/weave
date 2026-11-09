@@ -2,6 +2,7 @@ import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
 import { ONTOLOGY, inviteUrl } from './engine.js';
 import { guided } from './field-hints.js';
+import { vocabularyView } from './vocabulary.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
@@ -1470,6 +1471,26 @@ export const COMMANDS = [
       },
     },
     run: (w, a) => w.deleteFile(a.entity, a.file),
+  },
+  {
+    name: 'vocabulary',
+    engine: [],
+    writes: 'none',
+    tool: {
+      name: 'weave_vocabulary',
+      description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
+      inputSchema: { type: 'object', properties: { sections: { type: 'array', items: { type: 'string' } }, section: { type: 'string' }, query: { type: 'string' } } },
+    },
+    cli: { command: 'vocabulary', rest: 'words', args: (a) => ({ section: a.words[0], query: a.words.slice(1).join(' '), invalid: true }) },
+    http: { method: 'GET', path: '/api/vocabulary', args: (a, body, q) => ({ section: q.get('section'), query: q.get('query'), invalid: true }) },
+    run: (w, a) => {
+      try {
+        return vocabularyView(a.sections ?? a.section, a.query);
+      } catch (e) {
+        if (a.invalid) throw new WeaveError(e.message, 'invalid');
+        throw e;
+      }
+    },
   },
 ];
 

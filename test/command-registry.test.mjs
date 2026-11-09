@@ -927,3 +927,28 @@ test('table list and the view family answer the same on CLI, MCP and HTTP, each 
     assert.equal((await d.raw('GET', '/api/tables/Task/views', undefined, editor)).status, 200, 'an editor still reads them');
   } finally { d.close(); }
 });
+
+test('vocabulary answers the same on CLI, MCP and HTTP, and an unknown section is refused on each (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-vocabulary-');
+  try {
+    const whole = await d.http('GET', '/api/vocabulary');
+    assert.deepEqual(d.cli(['vocabulary']), whole, 'the whole vocabulary alike');
+    assert.deepEqual(d.mcp('weave_vocabulary', {}), whole);
+    const icons = await d.http('GET', '/api/vocabulary?section=icons&query=wallet');
+    assert.deepEqual(d.cli(['vocabulary', 'icons', 'wallet']), icons, 'an icon search alike');
+    assert.deepEqual(d.mcp('weave_vocabulary', { sections: ['icons'], query: 'wallet' }), icons);
+    const several = await d.http('GET', '/api/vocabulary?section=icons,optionColors');
+    assert.deepEqual(d.cli(['vocabulary', 'icons,optionColors']), several, 'several sections alike');
+    const res = await d.raw('GET', '/api/vocabulary?section=nope');
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, 'invalid');
+    assert.match(body.error, /Unknown vocabulary section 'nope'/);
+    const cli = d.run(['vocabulary', 'nope']);
+    assert.equal(cli.status, 40);
+    assert.match(cli.stderr, /error \[invalid\]: Unknown vocabulary section 'nope'/);
+    const mcp = d.call('weave_vocabulary', { section: 'nope' });
+    assert.equal(mcp.isError, true);
+    assert.match(mcp.content[0].text, /Unknown vocabulary section 'nope'/);
+  } finally { d.close(); }
+});

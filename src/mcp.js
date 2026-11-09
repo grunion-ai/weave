@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
 import { toolCommand, toolDefinition } from './commands.js';
-import { vocabularyView } from './vocabulary.js';
 import { guided } from './field-hints.js';
 import { Weave, inviteUrl } from './engine.js';
 import '../public/starter-core.js';
@@ -95,11 +94,7 @@ export const TOOLS = [
   toolDefinition('weave_export_csv'),
   toolDefinition('weave_import_csv'),
   toolDefinition('weave_attach_file'),
-  {
-    name: 'weave_vocabulary',
-    description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
-    inputSchema: { type: 'object', properties: { sections: { type: 'array', items: { type: 'string' } }, section: { type: 'string' }, query: { type: 'string' } } },
-  },
+  toolDefinition('weave_vocabulary'),
   toolDefinition('weave_update_space'),
   {
     name: 'weave_template_list',
@@ -437,8 +432,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
-    case 'weave_vocabulary':
-      return vocabularyView(args.sections ?? args.section, args.query);
     case 'weave_template_list':
       return args.starter != null ? globalThis.WeaveStarters.forAgent(args.starter) : { templates: weave.listTemplates(), starters: globalThis.WeaveStarters.catalog() };
     case 'weave_template_use':

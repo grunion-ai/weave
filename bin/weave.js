@@ -14,7 +14,6 @@ import { cliFailure, nonNegativeInteger } from '../src/errors.js';
 import { cliCommand, cliRun, cliMiss } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
-import { vocabularyView } from '../src/vocabulary.js';
 import { listForms, getForm, submitForm, leaveWorkspace, createForm, updateForm, getFormDefinition } from '../src/forms.js';
 
 const argv = process.argv.slice(2);
@@ -676,11 +675,6 @@ async function main() {
         return out(data);
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
-    }
-    case 'vocabulary': {
-      const [section, ...query] = args;
-      try { return out(vocabularyView(section, query.join(' '))); }
-      catch (e) { throw new WeaveError(e.message, 'invalid'); }
     }
     case 'workspace': {
       const [sub] = args;
