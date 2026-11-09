@@ -7,7 +7,7 @@ import { Weave, inviteUrl } from './engine.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
-export const QUERY_PAGE = 200;
+export { QUERY_PAGE } from './commands.js';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');
@@ -66,64 +66,20 @@ export const TOOLS = [
     description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
     inputSchema: { type: 'object', properties: {} },
   },
-  {
-    name: 'weave_query',
-    description: 'Query a table. 200 a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while more remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        db: { type: 'string', description: 'Table name, Space/Name, or id' },
-        where: { description: 'Array of [path, op, value] conditions (AND) or {and/or} tree' },
-        sort: { description: 'Array of field names or {field, dir} objects' },
-        limit: { type: 'number' },
-        offset: { type: 'number' },
-        select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-        fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
-        relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related record\'s summary is sent once, in chips (keyed by id). full: every record embeds its related records\' summaries.' },
-        includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
-        trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s records are in the trash' },
-        countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted records before where and search' },
-        search: { type: 'string', description: 'Only the records weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
-        view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
-        groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
-        shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value.' },
-      },
-      required: ['db'],
-    },
-  },
+  toolDefinition('weave_query'),
   toolDefinition('weave_get_entity'),
   toolDefinition('weave_create_entity'),
   toolDefinition('weave_update_entity'),
   toolDefinition('weave_delete_entity'),
   toolDefinition('weave_restore_entity'),
-  {
-    name: 'weave_trash',
-    description: 'List deleted entities — one table, or the whole workspace when table is omitted.',
-    inputSchema: { type: 'object', properties: { table: { type: 'string' } } },
-  },
-  {
-    name: 'weave_stats',
-    description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
-    inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
-  },
+  toolDefinition('weave_trash'),
+  toolDefinition('weave_stats'),
   {
     name: 'weave_undo',
     description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
     inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
   },
-  {
-    name: 'weave_bulk',
-    description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each record is its own attempt: done names what landed, failed names what did not and why. Each record keeps its own undo step.',
-    inputSchema: { type: 'object', properties: {
-      ids: { type: 'array', items: { type: 'string' } },
-      op: { type: 'string', enum: ['set', 'link', 'move', 'rollup'] },
-      values: { type: 'object', description: 'set: the values to write; rollup: the parent\'s values' },
-      field: { type: 'string', description: 'link / rollup: the relation field' },
-      targets: { type: 'array', items: { type: 'string' }, description: 'link: the records to link to' },
-      table: { type: 'string', description: 'move: the destination; rollup: overrides the relation\'s target table' },
-      name: { type: 'string', description: 'rollup: the new parent\'s name' },
-    }, required: ['ids', 'op'] },
-  },
+  toolDefinition('weave_bulk'),
   toolDefinition('weave_set_state'),
   toolDefinition('weave_link'),
   toolDefinition('weave_unlink'),
@@ -571,25 +527,9 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
-    case 'weave_query':
-      return weave.query(args.db, {
-        where: args.where ?? [], sort: args.sort ?? [], limit: args.limit ?? QUERY_PAGE,
-        offset: args.offset ?? 0, select: args.select ?? null, fields: args.fields ?? null, relations: args.relations ?? 'chip',
-        includeDeleted: args.includeDeleted == null ? null : Boolean(args.includeDeleted),
-        trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
-        groupBy: args.groupBy ?? null, shape: args.shape ?? 'full',
-      });
-    case 'weave_trash':
-      return { items: weave.listTrash(args.table ?? null) };
-    case 'weave_stats':
-      return weave.tableStats(args.table, { by: args.by ?? null, where: args.where ?? null, field: args.field ?? null });
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
-    case 'weave_bulk': {
-      const { ids, op, ...params } = args;
-      return weave.bulk(ids, op, params);
-    }
     case 'weave_get_doc':
       return weave.getDoc(args.entity, args.field ?? null);
     case 'weave_set_doc':

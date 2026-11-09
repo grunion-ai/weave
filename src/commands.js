@@ -7,6 +7,7 @@ const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
 const nullable = (v, as = (x) => x) => (v === 'null' ? null : as(v));
 
+export const QUERY_PAGE = 200;
 const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 export const boundedLimit = (value, fallback = null) => {
@@ -59,6 +60,19 @@ const withSecret = (w, id, ctx) => {
   return { ...w.readEntity(id, zoned(ctx)), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(ctx?.origin ?? '', once.invite.code) } } : once ?? {}) };
 };
 const withoutAffected = ({ affected, ...row }) => row;
+
+const queryOptions = (a) => ({
+  where: a.where ?? [], sort: a.sort ?? [], limit: a.limit ?? QUERY_PAGE,
+  offset: a.offset ?? 0, select: a.select ?? null, fields: a.fields ?? null, relations: a.relations ?? 'chip',
+  includeDeleted: a.includeDeleted == null ? null : Boolean(a.includeDeleted),
+  trashCount: Boolean(a.trashCount), countAll: Boolean(a.countAll), search: a.search ?? '', view: a.view ?? null,
+  groupBy: a.groupBy ?? null, shape: a.shape ?? 'full',
+});
+const csvList = (v) => (v ? String(v).split(',').map((s) => s.trim()) : null);
+const whereJson = (raw) => {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { throw Object.assign(new Error('where must be JSON'), { whereJson: true }); }
+};
 
 const linkArgs = (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, targets: a.targets });
 const linkBody = (a) => ({ entity: a.entity, field: a.field, targets: a.targets ?? a.items });
@@ -738,6 +752,130 @@ export const COMMANDS = [
     http: { method: 'DELETE', path: '/api/entities/:entity', query: ['hard'], args: (a) => ({ entity: a.entity, hard: truthy(a.hard) }), result: (r) => ({ ok: true, ...r }) },
     run: (w, a) => w.deleteEntity(a.entity, { hard: Boolean(a.hard) }),
   },
+  {
+    name: 'entity.query',
+    engine: ['query'],
+    writes: 'none',
+    tool: {
+      name: 'weave_query',
+      description: 'Query a table. 200 a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while more remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          db: { type: 'string', description: 'Table name, Space/Name, or id' },
+          where: { description: 'Array of [path, op, value] conditions (AND) or {and/or} tree' },
+          sort: { description: 'Array of field names or {field, dir} objects' },
+          limit: { type: 'number' },
+          offset: { type: 'number' },
+          select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
+          fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
+          relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related record\'s summary is sent once, in chips (keyed by id). full: every record embeds its related records\' summaries.' },
+          includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
+          trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s records are in the trash' },
+          countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted records before where and search' },
+          search: { type: 'string', description: 'Only the records weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
+          view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
+          groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
+          shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value.' },
+        },
+        required: ['db'],
+      },
+    },
+    cli: {
+      command: 'query', positional: ['db'],
+      args: (a, flags, { json }) => ({
+        db: a.db,
+        options: {
+          where: json('where') ?? [],
+          select: csvList(flags.select),
+          fields: csvList(flags.fields),
+          relations: flags.relations ? String(flags.relations) : 'full',
+          shape: flags.shape ? String(flags.shape) : 'full',
+          sort: flags.sort ? [String(flags.sort)] : [],
+          limit: cliNumber('limit', flags.limit),
+          offset: nonNegativeInteger('--offset', flags.offset === true ? 'true' : flags.offset),
+          search: flags.search ? String(flags.search) : '',
+          countAll: Boolean(flags['count-all']),
+          view: flags.view ? String(flags.view) : null,
+          groupBy: flags['group-by'] ? String(flags['group-by']) : null,
+        },
+      }),
+    },
+    http: { method: 'POST', path: '/api/tables/:db/query', args: (a, body) => ({ db: a.db, options: { ...body, limit: body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit) } }) },
+    run: (w, a, ctx) => w.query(a.db, { ...(a.options ?? queryOptions(a)), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace }),
+  },
+  {
+    name: 'entity.trash',
+    engine: ['listTrash'],
+    writes: 'none',
+    tool: {
+      name: 'weave_trash',
+      description: 'List deleted entities — one table, or the whole workspace when table is omitted.',
+      inputSchema: { type: 'object', properties: { table: { type: 'string' } } },
+    },
+    cli: { command: 'trash', positional: ['table'], result: (r) => r.items },
+    http: {
+      method: 'GET', path: '/api/tables/:table/trash', also: ['/api/trash'],
+      result: ({ items }, a, ctx, w) => (a.table != null ? { total: items.length, items }
+        : { total: items.length, items, views: w.listViews({ trash: true }), purge: !ctx.cap || ctx.cap === 'architect' || ctx.cap === 'editor' }),
+    },
+    run: (w, a, ctx) => ({ items: w.listTrash(a.table ?? null, { workspace: ctx?.workspace ?? null }) }),
+  },
+  {
+    name: 'table.stats',
+    engine: ['tableStats', 'tableRollups'],
+    writes: 'none',
+    tool: {
+      name: 'weave_stats',
+      description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
+      inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
+    },
+    cli: {
+      command: 'stats', positional: ['table'],
+      args: (a, flags) => {
+        if (!a.table) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F]');
+        return { table: a.table, by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null };
+      },
+    },
+    http: {
+      method: 'GET', path: '/api/tables/:table/stats',
+      args: (a, body, q) => ({ table: a.table, by: q.get('by') || null, field: q.get('field') || null, where: whereJson(q.get('where')) }),
+      fail: (err) => (err?.whereJson ? [400, { error: err.message }] : null),
+    },
+    run: (w, a) => w.tableStats(a.table, { by: a.by ?? null, where: a.where ?? null, field: a.field ?? null }),
+  },
+  {
+    name: 'entity.bulk',
+    engine: ['bulk'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_bulk',
+      description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each record is its own attempt: done names what landed, failed names what did not and why. Each record keeps its own undo step.',
+      inputSchema: { type: 'object', properties: {
+        ids: { type: 'array', items: { type: 'string' } },
+        op: { type: 'string', enum: ['set', 'link', 'move', 'rollup'] },
+        values: { type: 'object', description: 'set: the values to write; rollup: the parent\'s values' },
+        field: { type: 'string', description: 'link / rollup: the relation field' },
+        targets: { type: 'array', items: { type: 'string' }, description: 'link: the records to link to' },
+        table: { type: 'string', description: 'move: the destination; rollup: overrides the relation\'s target table' },
+        name: { type: 'string', description: 'rollup: the new parent\'s name' },
+      }, required: ['ids', 'op'] },
+    },
+    cli: {
+      command: 'bulk', positional: ['op'], rest: 'refs',
+      args: (a, flags, { json, entityRef }) => {
+        const ids = a.refs.map((r) => entityRef(r, flags.db));
+        const params = {};
+        for (const n of ['field', 'table', 'name']) if (flags[n] != null && flags[n] !== true) params[n] = flags[n];
+        const values = json('values');
+        if (values) params.values = values;
+        if (flags.targets != null) params.targets = list(flags.targets);
+        return { ...params, ids, op: a.op };
+      },
+    },
+    http: { method: 'POST', path: '/api/bulk' },
+    run: (w, a) => { const { ids, op, ...params } = a; return w.bulk(ids, op, params); },
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -808,15 +946,17 @@ export function cliRun(given, w, args, flags, helpers) {
   return cmd.cli.result ? cmd.cli.result(result) : result;
 }
 
-const ROUTES = COMMANDS.filter((c) => c.http).map((c) => {
+export const httpPaths = (c) => [c.http.path, ...(c.http.also ?? [])];
+
+const ROUTES = COMMANDS.filter((c) => c.http).flatMap((c) => httpPaths(c).map((path) => {
   const keys = [];
-  const src = c.http.path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/(\\\/)?:([a-z]+)(\*?)(\??)/gi, (_, slash, k, rest, optional) => {
+  const src = path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/(\\\/)?:([a-z]+)(\*?)(\??)/gi, (_, slash, k, rest, optional) => {
     keys.push(k);
     const group = `${slash ?? ''}${rest ? '(.+)' : '([^/]+)'}`;
     return optional ? `(?:${group})?` : group;
   });
   return { cmd: c, method: c.http.method, re: new RegExp(`^${src}$`), keys };
-});
+}));
 
 const decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 
@@ -837,11 +977,12 @@ export function httpArgs(hit, body, searchParams) {
 }
 
 export function httpReply(w, hit, body, searchParams, ctx = {}) {
-  const a = httpArgs(hit, body, searchParams);
   const headers = hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {};
+  let a;
   try {
+    a = httpArgs(hit, body, searchParams);
     const result = hit.cmd.run(w, a, ctx);
-    return { status: hit.cmd.http.status ?? 200, data: hit.cmd.http.result ? hit.cmd.http.result(result, a) : result, headers };
+    return { status: hit.cmd.http.status ?? 200, data: hit.cmd.http.result ? hit.cmd.http.result(result, a, ctx, w) : result, headers };
   } catch (err) {
     const failed = hit.cmd.http.fail?.(err, w, a, ctx);
     if (!failed) throw err;

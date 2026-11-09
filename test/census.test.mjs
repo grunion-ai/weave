@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS } from '../src/mcp.js';
-import { COMMANDS as REGISTRY } from '../src/commands.js';
+import { COMMANDS as REGISTRY, httpPaths } from '../src/commands.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
@@ -137,7 +137,7 @@ export function commandCallers(name, sources = SOURCES) {
 }
 
 const registryPaths = (path) => (path.endsWith('?') ? [path.replace(/\/:[a-z]+\*?\?$/i, ''), path.slice(0, -1)] : [path]);
-const registryRoutes = () => REGISTRY.filter((c) => c.http).flatMap((c) => registryPaths(c.http.path).map((path) => ({
+const registryRoutes = () => REGISTRY.filter((c) => c.http).flatMap((c) => httpPaths(c).flatMap(registryPaths).map((path) => ({
   method: c.http.method, path: path.replace(/:[a-z]+\*?/gi, ':id'), source: escape(path).replace(/:[a-z]+\\\*/gi, '(.+)').replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
 })));
 const ROUTES = [...new Map([...listRoutes('src/routes.js'), ...listRoutes('src/applet.js'), ...registryRoutes()].map((r) => [`${r.method} ${r.path}`, r])).values()];

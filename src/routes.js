@@ -1873,21 +1873,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'GET /api/undo') {
           return out(200, weave.listUndo({ limit: boundedLimit(rx.searchParams.get('limit'), 20) }));
         }
-        if (route === 'POST /api/bulk') {
+        if (route === 'POST /api/bulk' && role === 'editor') {
           const { ids, op, ...params } = body ?? {};
-          if (role === 'editor') {
-            const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
-            const list = ids == null ? [] : [].concat(ids);
-            const into = op === 'rollup' && params.table == null
-              ? (() => { try { return weave.relationTargetDbIds(weave.getField(weave.getEntity(list[0]).dbId, params.field)); } catch { return []; } })()
-              : [];
-            if (list.some((id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]))
-              || (params.table != null && sys(() => weave.getTable(params.table)))
-              || into.some((t) => weave.state.tables[t]?.system)) {
-              return deny(403, 'This token cannot change the schema');
-            }
+          const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
+          const list = ids == null ? [] : [].concat(ids);
+          const into = op === 'rollup' && params.table == null
+            ? (() => { try { return weave.relationTargetDbIds(weave.getField(weave.getEntity(list[0]).dbId, params.field)); } catch { return []; } })()
+            : [];
+          if (list.some((id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]))
+            || (params.table != null && sys(() => weave.getTable(params.table)))
+            || into.some((t) => weave.state.tables[t]?.system)) {
+            return deny(403, 'This token cannot change the schema');
           }
-          return out(200, weave.bulk(ids, op, params));
         }
         if (route === 'POST /api/undo') {
           return out(200, weave.undo({ steps: Math.max(1, Number(body?.steps ?? 1)) }));
@@ -1988,7 +1985,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const registered = matchRoute(rx.method, path);
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }
@@ -2034,26 +2031,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/prefill$/)) && rx.method === 'GET') {
           return out(200, prefillDraft(weave, m[1], rx.searchParams));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/query$/)) && rx.method === 'POST') {
-          const limit = body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit);
-          return out(200, weave.query(m[1], { ...body, limit, viewerZone, workspace: member.state.meta.id }));
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/stats$/)) && rx.method === 'GET') {
-          const by = rx.searchParams.get('by') || null;
-          const field = rx.searchParams.get('field') || null;
-          const raw = rx.searchParams.get('where');
-          let where = null;
-          if (raw) { try { where = JSON.parse(raw); } catch { return out(400, { error: 'where must be JSON' }); } }
-          return out(200, weave.tableStats(m[1], { by, where, field }));
-        }
-        if (path === '/api/trash' && rx.method === 'GET') {
-          const items = weave.listTrash(null, { workspace: member.state.meta.id });
-          return out(200, { total: items.length, items, views: weave.listViews({ trash: true }), purge: !cap || cap === 'architect' || cap === 'editor' });
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/trash$/)) && rx.method === 'GET') {
-          const items = weave.listTrash(m[1], { workspace: member.state.meta.id });
-          return out(200, { total: items.length, items });
         }
 
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
