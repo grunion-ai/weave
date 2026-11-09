@@ -413,7 +413,7 @@ function actionWords(a) {
   if (a.type === 'append-doc') return a.field ? `Append to ${a.field}` : 'Append to the document';
   if (a.type === 'add-comment') return 'Add a comment';
   if (a.type === 'upsert-row') return `Create or update a record in ${a.table} by ${a.key}`;
-  if (a.type === 'http-request') return `Send a ${a.method} request to ${urlHost(a.url)}${a.integration ? ` with ${a.integration}` : ''}`;
+  if (a.type === 'http-request') return `Send a ${a.method} request to ${urlHost(a.url)}${a.integration ? ` with ${a.integration}` : ''}${a.signWith ? ', signed' : ''}`;
   return `Post to ${urlHost(a.url)}${a.signWith ? ', signed' : ''}`;
 }
 function urlHost(url) {
@@ -9278,6 +9278,10 @@ export class Weave {
       }
       act.integration = target.name;
     }
+    if (a.signWith != null && a.signWith !== '') {
+      if (typeof a.signWith !== 'string') throw new WeaveError('An http-request signWith names a credential held in the keystore, as a string: its value never enters the Script', 'invalid');
+      act.signWith = a.signWith;
+    }
     if (a.headers != null) {
       if (typeof a.headers !== 'object' || Array.isArray(a.headers)) throw new WeaveError('The http-request headers are an object of name: value strings', 'invalid');
       for (const [k, v] of Object.entries(a.headers)) {
@@ -9349,6 +9353,7 @@ export class Weave {
           return {
             type: a.type, method: a.method, url: a.url,
             ...(a.integration ? { integration: a.integration } : {}),
+            ...(a.signWith ? { signWith: a.signWith } : {}),
             ...(a.headers ? { headers: a.headers } : {}),
             ...(a.body !== undefined ? { body: a.body } : {}),
             ...(a.response ? { response: Object.fromEntries(a.response.map(([fid, path]) => [fname(fid), path])) } : {}),
@@ -10000,7 +10005,7 @@ export class Weave {
     const filled = fill(action.url);
     let u;
     try { u = new URL(filled); } catch { throw new WeaveError(`${action.method} ${filled} is not a URL once its templates are filled in`, 'invalid'); }
-    return { kind: 'http-request', method: action.method, url: u.href, headers, ...(body !== undefined ? { body } : {}), ...(action.integration ? { integration: action.integration } : {}), delivery: uuid() };
+    return { kind: 'http-request', method: action.method, url: u.href, headers, ...(body !== undefined ? { body } : {}), ...(action.integration ? { integration: action.integration } : {}), ...(action.signWith ? { signWith: action.signWith } : {}), delivery: uuid() };
   }
 
   async #send(request) {
@@ -10016,7 +10021,7 @@ export class Weave {
     };
     const code = (err) => err?.cause?.code ?? err?.cause?.message ?? err?.code ?? err?.message ?? String(err);
     let headers;
-    try { headers = { ...request.headers, ...this.#signedHeaders(signWith, request.delivery, body ?? '') }; } catch (err) { throw new DeliveryError(err.message, { refused: true }); }
+    try { headers = { ...request.headers, ...this.#signedHeaders(signWith, request.delivery, body ?? '', !!integration) }; } catch (err) { throw new DeliveryError(err.message, { refused: true }); }
     const init = { method, headers, ...(body !== undefined ? { body } : {}) };
     if (integration) {
       let res;
@@ -10094,14 +10099,14 @@ export class Weave {
     return { e: this.updateEntity(hit.id, values, { depth: depth + 1 }), created: false };
   }
 
-  #signedHeaders(signWith, delivery, body) {
-    if (!signWith) return {};
-    const secret = this.resolveKey(signWith);
+  #signedHeaders(signWith, delivery, body, stamped = false) {
+    if (!signWith && !stamped) return {};
+    const secret = signWith ? this.resolveKey(signWith) : null;
     const timestamp = String(Math.floor(this.now().getTime() / 1000));
     return {
       'X-Weave-Timestamp': timestamp,
       'X-Weave-Delivery': delivery,
-      'X-Weave-Signature': `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`,
+      ...(secret ? { 'X-Weave-Signature': `sha256=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}` } : {}),
     };
   }
 
