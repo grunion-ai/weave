@@ -21,7 +21,8 @@ const s = await launch('automation actor', (w) => {
   w.addComment(rows[0].id, { author: `workflow:${rule.id}`, text: 'Logged by the rule.' });
   w.addComment(rows[0].id, { author: `kyle via ${TOKEN}`, text: 'Logged through MCP.' });
   const workflows = Object.values(w.state.tables).find((x) => x.system === 'workflows');
-  const broken = w.createEntity(workflows.id, { name: 'Ping the webhook', Health: 'Failed', 'Health Reason': 'The webhook answered 500' });
+  const broken = w.createAutomation(t.id, { name: 'Ping the webhook', trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'pinged' }], enabled: false });
+  w.updateEntity(broken.id, { Health: 'Failed', 'Health Reason': 'The webhook answered 500' });
   member.updateWorkspace({ name: 'member' });
   member.createSpace({ name: 'Desk' });
   memberTable = member.createTable({ space: 'Desk', name: 'Ticket' });
