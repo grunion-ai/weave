@@ -17,8 +17,8 @@
       "br": 2293
     },
     "/app.js": {
-      "gzip": 161015,
-      "br": 128635
+      "gzip": 159899,
+      "br": 127835
     },
     "/automation-map.js": {
       "gzip": 676,
@@ -179,6 +179,10 @@
     "/prefill-core.js": {
       "gzip": 603,
       "br": 523
+    },
+    "/relation-map.js": {
+      "gzip": 1758,
+      "br": 1549
     },
     "/relmap-layout.js": {
       "gzip": 1605,

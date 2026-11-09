@@ -1,14 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { APP } from './lib/source.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 await import('../public/relmap-layout.js');
 const { relmapLayout } = globalThis.WeaveRelmap;
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
-const INDEX = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
 
 const rel = (name, target, { many = false, id = name, inverseFieldId = null } = {}) =>
   ({ id, name, type: 'relation', many, targetDbId: target, inverseFieldId });
@@ -108,7 +103,7 @@ test('a self-relation and its automations get room reserved, not overlap', () =>
 });
 
 test('the map is one renderer, used by the page, the home and a space', () => {
-  assert.match(INDEX, /relmap-layout\.js/, 'the layout ships with the app');
+  assert.match(APP, /lazyScript\('\/relmap-layout\.js'\)/, 'the layout loads with the map');
   assert.match(APP, /function relationMapView\(/, 'one renderer');
   assert.equal((APP.match(/relationMapView\(/g) ?? []).length, 3,
     'defined once, drawn full-page and inside the card');
