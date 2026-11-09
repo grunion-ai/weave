@@ -956,7 +956,7 @@ function pinPane(panel, px) {
 }
 function applyPaneWidth(panel, pane) {
   const px = Number(localStorage.getItem(pane.key));
-  pinPane(panel, px >= pane.min ? px : 0);
+  pinPane(panel, Number.isFinite(px) && px > 0 ? Math.max(pane.min, px) : 0);
 }
 function fitPanes() {
   const app = $('#app');

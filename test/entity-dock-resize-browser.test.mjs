@@ -187,6 +187,15 @@ if (s) {
 
   }
 
+  test('an older pin below the new minimum clamps without losing the preference (Issue #1513)', async () => {
+    const page = await openPinned('light', 380, 1600);
+    try {
+      const g = await geometry(page);
+      assert.equal(g.dockW, 400);
+      assert.equal(g.stored, '380');
+    } finally { await page.close(); }
+  });
+
   test('the split holds both content floors around its boundary (Issue #1513)', async () => {
     const page = await openPinned('light', 0, 1600);
     try {
