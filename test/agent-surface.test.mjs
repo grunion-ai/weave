@@ -23,9 +23,6 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
-  ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
-  ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
-  ['workspace.order', ['workspaceOrder', 'moveWorkspace'], 'weave_workspace', 'workspace order', ['GET /api/workspaces', 'PATCH /api/workspaces/:ref']],
   ['accounts', ['createAccount', 'listAccounts', 'setAccountRole', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'PATCH /api/accounts/:ref', 'DELETE /api/accounts/:rest']],
   ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
   ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
