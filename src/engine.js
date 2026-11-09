@@ -7411,11 +7411,6 @@ export class Weave {
     try {
       this.#applyValues(e, db, values, { depth, isCreate: true });
     } catch (err) {
-      for (const field of Object.values(db.fields)) {
-        if (field.type === 'relation' && e.values[field.id] != null) {
-          this.#setRelationValue(e, db, field, []);
-        }
-      }
       delete this.state.entities[e.id];
       this.#unindexRow(e);
       db.publicIdCounter--;
@@ -7480,6 +7475,47 @@ export class Weave {
 
   #applyValues(e, db, valuesByName, { depth = 0, isCreate = false } = {}) {
     this.#checkValues(e, db, valuesByName);
+    const held = this.#holdRows(e, db, valuesByName);
+    const after = [];
+    try {
+      this.#writeValues(e, db, valuesByName, { depth, isCreate, after });
+    } catch (err) {
+      this.#restoreRows(held);
+      throw err;
+    }
+    for (const step of after) step();
+  }
+
+  #holdRows(e, db, valuesByName) {
+    const ids = new Set([e.id]);
+    for (const [key, raw] of Object.entries(valuesByName)) {
+      const field = this.findField(db, key);
+      if (field?.type !== 'relation') continue;
+      const next = this.#normalizeRelationInput(field, raw);
+      const inverse = field.config.inverseFieldId ? this.state.tables[field.config.targetDb]?.fields[field.config.inverseFieldId] : null;
+      for (const id of [...this.#relationIds(e, field), ...next]) {
+        ids.add(id);
+        const holder = inverse && !inverse.config.many ? own(this.state.entities, id)?.values[inverse.id] : null;
+        if (holder) ids.add(holder);
+      }
+    }
+    const held = new Map();
+    for (const id of ids) {
+      const row = own(this.state.entities, id);
+      if (row) held.set(id, [row, structuredClone(row)]);
+    }
+    return held;
+  }
+
+  #restoreRows(held) {
+    for (const [row, copy] of held.values()) {
+      for (const key of Object.keys(row)) delete row[key];
+      Object.assign(row, copy);
+      this.#mark(row);
+    }
+  }
+
+  #writeValues(e, db, valuesByName, { depth, isCreate, after }) {
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
       if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
@@ -7492,7 +7528,7 @@ export class Weave {
         continue;
       }
       if (field.type === 'workflow') {
-        this.#setStateInternal(e, db, field, raw, depth);
+        this.#setStateInternal(e, db, field, raw, depth, after);
         continue;
       }
       if (field.type === 'document') {
@@ -7505,7 +7541,7 @@ export class Weave {
         e.modifiedBy = this.actor;
         this.#mark(e);
         if (!isCreate) this.#logActivity(e, 'doc-updated', docChange(field.name, before, md));
-        this.#recordDocRevision(e, field, before, md, { prior });
+        after.push(() => this.#recordDocRevision(e, field, before, md, { prior }));
         continue;
       }
       const val = this.#validateValue(field, raw);
@@ -7527,7 +7563,7 @@ export class Weave {
       e.modifiedBy = this.actor;
       this.#mark(e);
       if (!isCreate) this.#logActivity(e, 'field-updated', { field: field.name, from: old ?? null, to: val });
-      this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth);
+      after.push(() => this.#runAutomations(db, e, { type: 'field-updated', fieldId: field.id }, depth));
     }
   }
 
@@ -7777,7 +7813,7 @@ export class Weave {
     return e;
   }
 
-  #setStateInternal(e, db, field, stateRef, depth) {
+  #setStateInternal(e, db, field, stateRef, depth, after = null) {
     const empty = stateRef == null || stateRef === '';
     const state = empty ? null
       : field.config.states.find((s) => s.id === stateRef)
@@ -7791,7 +7827,9 @@ export class Weave {
     e.modifiedBy = this.actor;
     const oldName = field.config.states.find((s) => s.id === old)?.name ?? null;
     this.#logActivity(e, 'state-changed', { field: field.name, from: oldName, to: state?.name ?? null });
-    this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state?.id ?? null }, depth);
+    const run = () => this.#runAutomations(db, e, { type: 'state-changed', fieldId: field.id, toStateId: state?.id ?? null }, depth);
+    if (after) after.push(run);
+    else run();
   }
 
   deleteEntity(ref, { hard = false } = {}) {
