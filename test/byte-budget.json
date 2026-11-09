@@ -17,8 +17,12 @@
       "br": 2293
     },
     "/app.js": {
-      "gzip": 165613,
-      "br": 132450
+      "gzip": 161015,
+      "br": 128635
+    },
+    "/automation-map.js": {
+      "gzip": 676,
+      "br": 604
     },
     "/billing.js": {
       "gzip": 2099,

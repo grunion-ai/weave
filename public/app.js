@@ -8604,7 +8604,13 @@ function spaceTablesCard(space) {
     add ? el('div', { class: 'list-row list-row-add' }, add) : null);
 }
 
-const AUTO_ACTION = { 'set-field': (x) => `set ${x.field}`, 'append-doc': (x) => `append ${x.field}`, 'add-comment': () => 'comment' };
+function mapAutomations(automations) {
+  if (!automations?.length) return [];
+  return lazyScript('/automation-map.js').then(() => automations, () => {
+    toast('Automations did not load. Check the connection and try again.', true);
+    return [];
+  });
+}
 
 function relationMapView(tables, automations, { spaceId = null } = {}) {
   const autosByTable = new Map();
@@ -8657,23 +8663,7 @@ function relationMapView(tables, automations, { spaceId = null } = {}) {
       n.foreign ? `${n.space} • ${WeaveTerm.count(n.entityCount, n.term)}` : WeaveTerm.count(n.entityCount, n.term)));
     svg.append(g);
 
-    (autosByTable.get(n.id) ?? []).forEach((a, i) => {
-      const ay = y + n.h + 6 + i * 25;
-      const actions = a.actions.map((x) => (AUTO_ACTION[x.type] ?? (() => 'webhook'))(x)).join(', ');
-      const trig = a.trigger.type === 'state-changed' ? `${a.trigger.field}→${a.trigger.toState ?? '*'}`
-        : a.trigger.type === 'field-updated' ? `${a.trigger.field} changed`
-        : a.trigger.type === 'schedule' ? `cron ${a.trigger.cron}` : 'created';
-      const full = `⚡ ${trig} ⇒ ${actions}`;
-      const fits = Math.floor((n.w - 16) / 5.8);
-      const label = full.length > fits ? full.slice(0, fits - 1).trimEnd() + '…' : full;
-      const tw = Math.min(n.w, label.length * 5.8 + 14);
-      svg.append(svgEl('line', { x1: n.x, y1: y + n.h, x2: n.x, y2: ay, class: 'auto-line' }));
-      const pill = svgEl('g', { class: 'auto' });
-      pill.append(svgEl('title', {}, full));
-      pill.append(svgEl('rect', { x: n.x - tw / 2, y: ay, width: tw, height: 17, rx: 8.5, class: 'auto-pill' + (a.enabled ? '' : ' off') }));
-      pill.append(svgEl('text', { x: n.x, y: ay + 12, 'text-anchor': 'middle', class: 'auto-label' }, label));
-      svg.append(pill);
-    });
+    if (autosByTable.has(n.id)) drawAutomationPills(svg, n, autosByTable.get(n.id));
   }
 
   return el('div', { class: 'map-view' },
@@ -8688,7 +8678,7 @@ async function relationMapCard(title, { spaceId = null } = {}) {
   const card = el('div', { class: 'card panel home-map' },
     el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, title)),
     el('div', { class: 'card-body' }, el('div', { class: 'wv-empty' }, '…')));
-  const automations = await api('GET', '/automations').catch(() => []);
+  const automations = await mapAutomations(await api('GET', '/automations').catch(() => []));
   const tables = state.schema.flatMap((s) => s.tables.map((t) => ({ ...t, space: s.space, spaceId: s.spaceId })));
   const view = relationMapView(tables, automations, { spaceId });
   card.querySelector('.card-body').replaceChildren(view);
@@ -8704,7 +8694,7 @@ async function showMap() {
     permalink: `${location.origin}${WS_PREFIX}/#/map`,
     title: 'Relation map',
   }));
-  const automations = await api('GET', '/automations');
+  const automations = await mapAutomations(await api('GET', '/automations'));
   main.append(relationMapView(allTables(), automations));
 }
 
