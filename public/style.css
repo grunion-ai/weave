@@ -1906,6 +1906,8 @@ input[type="checkbox"].form-check-input:disabled { opacity: .5; cursor: default;
 .wf-kept.is-empty { color: var(--tblr-secondary); }
 .wv-toggle.is-locked { cursor: not-allowed; opacity: .55; }
 .wv-toggle.is-locked:hover .wv-toggle-track { background: var(--tblr-border-color); }
+.wf-health { cursor: default; }
+.wf-health[aria-description] { cursor: help; }
 .wf-reason { max-width: 300px; padding: 4px 8px; font-size: var(--fs-grid); line-height: 1.4; white-space: normal; color: var(--tblr-body-color); }
 .wv-toggle.on .wv-toggle-word { color: var(--tblr-body-color); }
 .tile-field .wv-toggle-word, .fieldrow .wv-toggle-word { white-space: normal; overflow-wrap: anywhere; }

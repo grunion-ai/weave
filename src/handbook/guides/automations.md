@@ -17,7 +17,7 @@ Every rule is a row of `System/Workflows`, and the row is the whole interface to
 | `Script` | the rule itself, as JSON: `{"table", "trigger", "actions"}` |
 | `State` | `Setup incomplete` while the Script does not compile, `Ready` once it does |
 | `Health` | `Healthy`, `Warning`, `Failed`, or `No runs` before the first fire |
-| `Health Reason` | why the last run failed, in the engine's words |
+| `Health Reason` | why the last run failed, in the engine's words. The grid shows it when you hover the Health chip, click it, or tap it on a phone |
 | `Last Run` | when it last fired, to the minute |
 | `Tables`, `Spaces` | what the rule touches, filled in by the engine |
 | `Diagram` | the rule drawn as mermaid |
