@@ -61,11 +61,9 @@ if (s) {
         assert.notEqual(during[2], before[2], 'the drop target is a class with no visible style');
         assert.notEqual(during[2], 'none', 'the drop target draws nothing');
 
-        const prepared = page.waitForRequest((r) => r.method() === 'POST' && /\/api\/uploads$/.test(r.url()));
-        const upload = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/api\/uploads$/.test(r.url()));
+        const upload = page.waitForResponse((r) => r.request().method() === 'POST' && /\/fields\/Files\/files$/.test(r.url()));
         await drag(page, sel, ['drop'], { files: [['brief.txt', 'the brief']] });
-        assert.equal((await prepared).postDataJSON().field, 'Files', 'the drop prepared no upload into the field');
-        assert.equal((await upload).status(), 201, 'the prepared upload did not land');
+        assert.equal((await upload).status(), 201, 'the drop did not upload through the field files route');
         await page.waitForFunction((s) => document.querySelector(s)?.textContent.includes('brief.txt'), sel);
         assert.equal(await hasClass(page, sel), false, 'the drop target outlived the drop');
         assert.deepEqual(stored(row), [{ name: 'brief.txt', bytes: 'the brief' }], 'the server does not hold the dropped file');

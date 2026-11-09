@@ -1,5 +1,4 @@
 import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants, writeFileSync, renameSync, mkdirSync, rmSync } from 'node:fs';
-import { open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { uuid } from './ids.js';
 
@@ -13,23 +12,6 @@ export class WeaveError extends Error {
     super(message);
     this.code = code;
   }
-}
-
-export async function streamToFileDurable(source, path, max) {
-  mkdirSync(dirname(path), { recursive: true });
-  const handle = await open(path, 'w');
-  let size = 0;
-  try {
-    for await (const chunk of source) {
-      size += chunk.length;
-      if (size > max) throw new WeaveError(`Body too large: ${max} bytes at most`, 'too-large');
-      await handle.write(chunk);
-    }
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  return size;
 }
 
 export function writeFileDurable(path, bytes, options = {}) {

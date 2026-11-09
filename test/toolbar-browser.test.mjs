@@ -327,9 +327,9 @@ if (s) {
     const png = join(dir, 'Trip wishlist.png');
     writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==', 'base64'));
     try {
-      await page.route('**/api/uploads', (route) => (route.request().method() === 'PUT' ? route.fulfill({
+      await page.route('**/api/entities/*/files', (route) => route.fulfill({
         status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'the store is down' }),
-      }) : route.continue()));
+      }));
       const before = await value(page);
       await selectStart(page, 6);
       await page.waitForSelector('.doc-editor .vditor-toolbar [data-type="upload"] input[type="file"]', { timeout: 20000 });

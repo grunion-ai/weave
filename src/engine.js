@@ -11,7 +11,7 @@ import '../public/board-core.js';
 import '../public/phone-row.js';
 import '../public/cell-graphics.js';
 import '../public/field-dialog-core.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
@@ -19,7 +19,7 @@ import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
-import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
+import { Store, WeaveError, writeFileDurable } from './store.js';
 import { parseCron, dueBetween } from './schedule.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
@@ -9795,52 +9795,6 @@ export class Weave {
     if (p && !this.store.siblingNames(id)) rmSync(p, { force: true });
   }
 
-  #stagePath(id) {
-    if (!this.#blobPath(id)) throw new WeaveError('This workspace keeps file bytes in its database, so it cannot take a streamed upload', 'invalid');
-    return join(dirname(this.store.path), 'uploads', id);
-  }
-
-  #blobHead(path, bytes = 64) {
-    const fd = openSync(path, 'r');
-    try {
-      const head = Buffer.alloc(bytes);
-      return head.subarray(0, readSync(fd, head, 0, bytes, 0));
-    } finally {
-      closeSync(fd);
-    }
-  }
-
-  filesOnDisk() {
-    return !!this.store.path;
-  }
-
-  stageBlob() {
-    const id = uuid();
-    const path = this.#stagePath(id);
-    mkdirSync(dirname(path), { recursive: true });
-    return { id, path };
-  }
-
-  async streamBlob(source, max) {
-    const staged = this.stageBlob();
-    try {
-      return { ...staged, size: await streamToFileDurable(source, staged.path, max) };
-    } catch (err) {
-      rmSync(staged.path, { force: true });
-      throw err;
-    }
-  }
-
-  dropStagedBlob(id) {
-    rmSync(this.#stagePath(id), { force: true });
-  }
-
-  #adoptBlob(id) {
-    const blob = this.#blobPath(id);
-    mkdirSync(dirname(blob), { recursive: true });
-    renameSync(this.#stagePath(id), blob);
-  }
-
   #writeBlob(id, buf) {
     const p = this.#blobPath(id);
     if (p) {
@@ -9851,21 +9805,19 @@ export class Weave {
     this.state.fileBlobs[id] = buf.toString('base64');
   }
 
-  attachFile(entityId, { name, mime = 'application/octet-stream', bytes, staged = null, preview = null }) {
+  attachFile(entityId, { name, mime = 'application/octet-stream', bytes, preview = null }) {
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
-    const buf = staged ? null : Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
-    const size = staged ? staged.size : buf.length;
-    if (size > FILE_MAX_BYTES) throw new WeaveError(`${name} is ${mbText(size)}; files can be up to ${mbText(FILE_MAX_BYTES)}`, 'too-large');
+    const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), 'base64');
+    if (buf.length > FILE_MAX_BYTES) throw new WeaveError(`${name} is ${mbText(buf.length)}; files can be up to ${mbText(FILE_MAX_BYTES)}`, 'too-large');
     const small = preview?.bytes == null ? null : Buffer.isBuffer(preview.bytes) ? preview.bytes : Buffer.from(String(preview.bytes), 'base64');
     const smallType = small && sniffImage(small);
-    if (small && (!sniffImage(staged ? this.#blobHead(this.#stagePath(staged.id)) : buf) || !PREVIEW_TYPES.has(smallType))) {
+    if (small && (!sniffImage(buf) || !PREVIEW_TYPES.has(smallType))) {
       throw new WeaveError('A preview is a PNG, JPEG or WebP image, and only an image upload takes one', 'unsupported-type');
     }
     if (small && small.length > PREVIEW_MAX_BYTES) throw new WeaveError(`A preview is at most ${PREVIEW_MAX_BYTES} bytes; this one is ${small.length}`, 'invalid');
-    const file = { id: staged ? staged.id : uuid(), name: String(name), size, mime, createdAt: nowISO() };
-    if (staged) this.#adoptBlob(file.id);
-    else this.#writeBlob(file.id, buf);
+    const file = { id: uuid(), name: String(name), size: buf.length, mime, createdAt: nowISO() };
+    this.#writeBlob(file.id, buf);
     if (small) {
       file.preview = { id: uuid(), size: small.length, mime: smallType };
       this.#writeBlob(file.preview.id, small);
@@ -9884,7 +9836,6 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     if (!isFileField(field)) throw new WeaveError(`Field '${field.name}' is not an attachments field`, 'invalid');
     if (field.type === 'avatar') {
-      if (fileInput?.staged) throw new WeaveError('An avatar is attached with its bytes, not through a streamed upload', 'invalid');
       const bytes = fileInput?.bytes;
       const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes ?? ''), 'base64');
       const mime = sniffImage(buf);
