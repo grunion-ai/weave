@@ -803,7 +803,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
         /^\/api\/(spaces|accounts|invites)/.test(path)
-        || path === '/api/import'
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || (/^\/api\/schema$/.test(path))
@@ -1870,6 +1869,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
         }
+        if (route === 'POST /api/import' && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
         if (route === 'POST /api/bulk' && role === 'editor') {
           const { ids, op, ...params } = body ?? {};
           const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
@@ -2083,11 +2083,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
 
-        if (route === 'GET /api/export') return out(200, weave.exportJSON());
-        if (route === 'POST /api/import') {
-          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
-          return out(200, { ok: true, ...weave.importJSON(body) });
-        }
 
         return out(404, { error: `No route: ${route}` });
       }

@@ -565,7 +565,7 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
     return registered.cli.raw ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
@@ -712,18 +712,6 @@ async function main() {
         return out(data);
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
-    }
-    case 'export': {
-      const dump = JSON.stringify(w.exportJSON(), null, 1);
-      if (flags.out) {
-        writeFileSync(flags.out, dump);
-        return out({ ok: true, path: flags.out });
-      }
-      return console.log(dump);
-    }
-    case 'import': {
-      if (!flags.file) throw new WeaveError('import needs --file');
-      return out({ ok: true, ...w.importJSON(JSON.parse(readFileSync(flags.file, 'utf8'))) });
     }
     case 'vocabulary': {
       const [section, ...query] = args;

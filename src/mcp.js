@@ -226,11 +226,7 @@ export const TOOLS = [
   },
   toolDefinition('weave_registry'),
   toolDefinition('weave_relation_map'),
-  {
-    name: 'weave_export_json',
-    description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply. Attachment bytes are left out unless blobs is true; `weave export` always carries them.',
-    inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
-  },
+  toolDefinition('weave_export_json'),
   {
     name: 'weave_forms',
     description: 'Manage native table forms. Architect access is required on the workspace and its hub registry. list shows forms here; get reads an editable definition; create takes a definition with name, table and fields; update changes a form without changing its permalink. Fields accept field, key, label, required, default and aliases. Omitted settings survive edits. Public submissions use weave_form_submit.',
@@ -259,11 +255,7 @@ export const TOOLS = [
       required: ['form'],
     },
   },
-  {
-    name: 'weave_import_json',
-    description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
-    inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
-  },
+  toolDefinition('weave_import_json'),
 ];
 for (const t of TOOLS) if (COMPACT_TOOLS.has(t.name)) t.inputSchema.properties.verbose = VERBOSE;
 
@@ -604,10 +596,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         case 'delete': return weave.deleteFile(args.entity, args.file);
         default: throw new Error(`Unknown files action '${args.action}' (read, delete)`);
       }
-    case 'weave_export_json':
-      return weave.exportJSON({ blobs: args.blobs === true });
-    case 'weave_import_json':
-      return { ok: true, ...weave.importJSON(args.state) };
     default:
       throw unknownTool(name);
   }
