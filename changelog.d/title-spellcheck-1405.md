@@ -1,0 +1,1 @@
+- The record title and view title spellcheck only while focused, so a read-mode title no longer shows a red underline on a phone (Issue #1405).

@@ -1282,7 +1282,9 @@ function refreshWsMarks() {
 }
 
 function titleEdit(tag, modifier, value, attrs) {
-  const node = el(tag, { placeholder: 'Untitled', ...attrs, class: `title-edit wv-edit ${modifier}` });
+  const node = el(tag, { placeholder: 'Untitled', spellcheck: 'false', ...attrs, class: `title-edit wv-edit ${modifier}` });
+  node.addEventListener('focus', () => { node.spellcheck = true; });
+  node.addEventListener('blur', () => { node.spellcheck = false; });
   node.value = value;
   return node;
 }
