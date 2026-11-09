@@ -104,6 +104,7 @@ if (s) {
       await pop.waitFor();
       await pop.locator('.date-day.in', { hasText: /^20$/ }).click();
       await page.waitForFunction(() => !document.querySelector('.date-pop'));
+      await page.waitForSelector('.save-glyph[data-state="saved"]:not([hidden])', { timeout: 10000 });
       assert.equal(weave.readEntity(id).raw.Due, '2026-09-20', 'the pick landed');
       await trigger(page, 'Due', '.date-pick-btn').click();
       await page.waitForSelector('.date-pop');
@@ -120,6 +121,7 @@ if (s) {
       await trigger(page, 'Tags', '.ms-box').click();
       await page.waitForFunction(() => !document.querySelector('.chip-pop'));
       await page.waitForFunction(() => document.querySelector('.entity-fields .ms-box')?.textContent.includes('bug'));
+      await page.waitForSelector('.save-glyph[data-state="saved"]:not([hidden])', { timeout: 10000 });
       assert.deepEqual(weave.readEntity(id).raw.Tags, ['bug'], 'the staged tag was written');
       await settle(page);
       assert.equal(await count(page, '.chip-pop'), 0, 'and the picker stayed closed');
