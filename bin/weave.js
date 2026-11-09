@@ -520,6 +520,7 @@ async function main() {
     const lines = [`Backup ${r.archive} (${mb(r.bytes)}, ${r.encrypted ? 'encrypted' : 'plain tar — no passphrase or key file'}) → ${r.path}`];
     for (const [name, ws] of Object.entries(r.workspaces)) lines.push(`  ${name}: ${ws.entities ?? '?'} entities, ${mb(ws.bytes)}`);
     lines.push(`  files: ${r.files} attachment blob${r.files === 1 ? '' : 's'} copied`);
+    if (r.keys) lines.push(`  credentials: ${r.keys.names.length} key name${r.keys.names.length === 1 ? '' : 's'}, no values (the keychain holds them)`);
     lines.push(`  orphaned references (Issue #250): ${r.orphans.count}${r.orphans.count ? ' — ' + r.orphans.list.slice(0, 5).map((o) => `${o.workspace}: ${o.name || o.id}`).join(', ') + (r.orphans.count > 5 ? ', …' : '') : ''}`);
     if (r.uploaded) lines.push(`  uploaded ${r.uploaded}${r.pruned.length ? `; pruned ${r.pruned.length} past the newest 30` : ''}`);
     return out(lines.join('\n'));
@@ -539,6 +540,7 @@ async function main() {
     const blobs = r.landed.filter((n) => n.startsWith('files/')).length;
     if (blobs) lines.push(`  files/: ${blobs} attachment blob${blobs === 1 ? '' : 's'}`);
     lines.push(`  orphaned references in the source (Issue #250): ${r.orphans.count}`);
+    if (r.keys?.missing.length) lines.push(`  credential values missing from this machine's key store: ${r.keys.missing.join(', ')}. Set each with weave key set <name>`);
     if (r.landed.includes('keystore.json')) lines.push('  keystore.json landed — put keystore.key (or WEAVE_KEYSTORE_PASSPHRASE) beside it before credentials will read');
     return out(lines.join('\n'));
   }
