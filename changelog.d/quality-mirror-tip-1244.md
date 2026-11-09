@@ -1,0 +1,1 @@
+- **The Quality mirror syncs only from main's newest tested commit** (Issue #1244): `tests` runs finish out of order, so `.github/workflows/quality.yml` now skips a run whose commit main has moved past. A late run for an older commit no longer rolls the mirror back to an older test tree, and runs for commits from before `scripts/quality-sync.mjs` existed skip instead of failing.

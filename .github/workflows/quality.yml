@@ -27,16 +27,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Skip a run that main has moved past
+        id: tip
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" = "$HEAD_SHA" ]; then echo "current=true" >> "$GITHUB_OUTPUT"; else echo "main moved past $HEAD_SHA; the run for the newer commit syncs the mirror"; fi
+      - if: steps.tip.outputs.current == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.12.0"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - if: steps.tip.outputs.current == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ci-*
           path: ci-results
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Sync the Quality mirror on the tracker from this commit's tests and results
+        if: steps.tip.outputs.current == 'true'
         env:
           WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
         run: node scripts/quality-sync.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN --results ci-results
