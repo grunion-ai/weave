@@ -100,6 +100,21 @@ test('the full grain keeps its old lenient rule: anything Date.parse reads, stor
   assert.throws(() => stored(w, 'nope'), /not a valid date/);
 });
 
+test('the full grain refuses a string with no year or no day, though Date.parse reads it (Issue #1499)', () => {
+  const w = fresh({});
+  for (const raw of ['12', '2026', '2026-08', 'Aug 21', '1/2']) assert.throws(() => stored(w, raw), /not a valid date/, raw);
+  assert.equal(stored(w, '2026-08-21T14:30:00.000Z'), '2026-08-21T14:30:00.000Z');
+  assert.equal(stored(w, 'Aug 31, 2026'), 'Aug 31, 2026');
+  const t = new Weave();
+  t.createSpace({ name: 'Dev' });
+  t.createTable({ space: 'Dev', name: 'T' });
+  t.addField('T', { name: 'D', type: 'text' });
+  const e = t.createEntity('T', { name: 'x', values: { D: '12' } });
+  t.updateField('T', 'D', { type: 'date' });
+  const id = Object.values(t.getTable('T').fields).find((f) => f.name === 'D').id;
+  assert.equal(t.getEntity(e.id).values[id] ?? null, null);
+});
+
 test('today() and now() defaults resolve to the field\'s grain', () => {
   const at = (config) => {
     const w = fresh({ ...config, default: config.time ? 'now()' : 'today()' });
