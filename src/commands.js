@@ -1048,6 +1048,46 @@ export const COMMANDS = [
     http: { method: 'POST', path: '/api/undo' },
     run: (w, a) => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)) }),
   },
+  {
+    name: 'json.export',
+    engine: ['exportJSON'],
+    writes: 'none',
+    tool: {
+      name: 'weave_export_json',
+      description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply. Attachment bytes are left out unless blobs is true; `weave export` always carries them.',
+      inputSchema: { type: 'object', properties: { blobs: { type: 'boolean' } } },
+    },
+    cli: {
+      command: 'export', args: () => ({ blobs: true }),
+      result: (r, flags, { write }) => {
+        const dump = JSON.stringify(r, null, 1);
+        if (!flags.out) return dump;
+        write(flags.out, dump);
+        return { ok: true, path: flags.out };
+      },
+    },
+    http: { method: 'GET', path: '/api/export', args: () => ({ blobs: true }) },
+    run: (w, a) => w.exportJSON({ blobs: a.blobs === true }),
+  },
+  {
+    name: 'json.import',
+    engine: ['importJSON'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_import_json',
+      description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
+      inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
+    },
+    cli: {
+      command: 'import',
+      args: (a, flags, { file }) => {
+        if (!flags.file) throw new WeaveError('import needs --file');
+        return { state: JSON.parse(file(flags.file)) };
+      },
+    },
+    http: { method: 'POST', path: '/api/import', args: (a, body) => ({ state: body }) },
+    run: (w, a) => ({ ok: true, ...w.importJSON(a.state) }),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -1116,7 +1156,7 @@ export function cliRun(given, w, args, flags, helpers) {
   const swap = given.cli.use?.(flags);
   const cmd = swap ? COMMANDS.find((c) => c.name === swap) : given;
   const result = cmd.run(w, cliArgs(cmd, cliRest(given, args), flags, helpers), helpers);
-  return cmd.cli.result ? cmd.cli.result(result) : result;
+  return cmd.cli.result ? cmd.cli.result(result, flags, helpers) : result;
 }
 
 export const httpPaths = (c) => [c.http.path, ...(c.http.also ?? [])];

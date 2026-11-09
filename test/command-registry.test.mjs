@@ -687,3 +687,36 @@ test('search and undo answer the same on CLI, MCP and HTTP, each door with its o
     }
   } finally { d.close(); }
 });
+
+test('JSON export and import answer the same on CLI, MCP and HTTP, each door with its own blobs default (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-json-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const dir = tempDir('weave-registry-json-file-');
+  const file = join(dir, 'ws.json');
+  const shape = (v) => Object.keys(v).sort();
+  try {
+    const fromHttp = await d.http('GET', '/api/export', undefined, auth);
+    const fromMcp = d.mcp('weave_export_json', {});
+    const printed = d.run(['export']);
+    assert.equal(printed.status, 0, printed.stderr);
+    assert.match(printed.stdout, /^\{\n "/, 'weave export still prints the dump with a one-space indent');
+    const fromCli = JSON.parse(printed.stdout);
+    assert.deepEqual(shape(fromMcp), shape(fromHttp), 'weave_export_json and GET /api/export carry the same keys');
+    assert.deepEqual(shape(fromCli), shape(fromHttp), 'weave export and GET /api/export carry the same keys');
+    assert.deepEqual(d.cli(['export', '--out', file]), { ok: true, path: file }, 'weave export --out still answers the path');
+    const missing = d.run(['import']);
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /import needs --file/);
+    const state = d.httpWeave.exportJSON();
+    const imported = { cli: d.cli(['import', '--file', file]), mcp: d.mcp('weave_import_json', { state: fromMcp }), http: await d.http('POST', '/api/import', state, auth) };
+    assert.equal(imported.http.ok, true);
+    assert.deepEqual(shape(imported.mcp), shape(imported.http), 'weave_import_json and POST /api/import answer alike');
+    assert.deepEqual(shape(imported.cli), shape(imported.http), 'weave import and POST /api/import answer alike');
+    const editor = d.httpWeave.createAccount({ name: 'ed', role: 'editor' }).token;
+    const refused = await d.raw('POST', '/api/import', state, { authorization: `Bearer ${editor}` });
+    assert.equal(refused.status, 403, 'an editor still cannot replace the workspace');
+    for (const [method, path, name] of [['GET', '/api/export', 'json.export'], ['POST', '/api/import', 'json.import']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); }
+});
