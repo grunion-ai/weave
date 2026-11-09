@@ -18,13 +18,14 @@ Every node links to the lines of code it stands for, pinned to one commit. The p
 - a cited file was moved or deleted,
 - a file in `src/` or `bin/` is not named anywhere in the map (a component source or a card line),
 - the HTML was rendered from a different JSON, or pinned to a different commit,
-- the pinned commit is not in this branch's history.
+- the pinned commit is absent from either this branch's history or `origin/main`.
 
 To fix a red gate, edit the JSON, then re-pin and re-render:
 
 ```bash
-node scripts/architecture.mjs          # pins HEAD
-node scripts/architecture.mjs <sha>    # pins a given landed commit
+git fetch origin main
+node scripts/architecture.mjs          # pins the shared ancestor of HEAD and origin/main
+node scripts/architecture.mjs <sha>    # pins an ancestor of both HEAD and origin/main
 ```
 
 The script runs archify's `deliver`, which checks every cited line at the pinned commit and refuses a layout with crossings or overlapping labels. archify is a development tool and never a weave dependency: the script looks for it at `$ARCHIFY`, then `~/.claude/skills/archify/bin/archify.mjs`.
@@ -32,3 +33,5 @@ The script runs archify's `deliver`, which checks every cited line at the pinned
 ## Versions
 
 Every release re-pins the map in the same change as the version bump (DEVELOPMENT.md, "Releasing"), so each tagged release carries a map of the code it shipped. To see how the architecture changed between two releases, check out both JSON files and run `archify compare architecture <old.json> <new.json>`.
+
+Pins must belong to both the checkout history and `origin/main`, so a squash merge preserves their citations. The script refuses a branch-only revision before changing either map file. A checkout without main history must fetch it first; there is no fallback to a branch tip.
