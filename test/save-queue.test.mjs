@@ -151,6 +151,25 @@ test('save queue: a refusal from the server is not retried or kept; the push rej
   assert.notEqual(q.state, 'failed');
 });
 
+test('save queue: a job marked keep holds a refusal as failed, unretried, until the next flush lands it (Issue #1443)', async () => {
+  const t = clock();
+  const srv = server({ fail: 1, error: () => Object.assign(new Error('changed first'), { status: 412, code: 'stale' }) });
+  const fails = [];
+  const q = createSaveQueue({ send: srv.send, timers: t, onFail: (err) => fails.push(err.code) });
+  let answer = null;
+  q.push({ ...job('e1', 'Doc', 'draft'), keep: true }).then((r) => { answer = r; });
+  await t.advance(DEBOUNCE_MS);
+  assert.equal(srv.sent.length, 1, 'a refusal is not retried at once');
+  assert.equal(q.state, 'failed', 'the draft reads not saved');
+  assert.equal(q.pending, 1);
+  assert.deepEqual(fails, ['stale'], 'the refusal is reported once');
+  assert.equal(answer, null);
+  await q.flush();
+  assert.deepEqual(landed(srv), ['e1.Doc=draft']);
+  assert.ok(answer, 'the push answers once the draft lands');
+  assert.equal(q.state, 'saved');
+});
+
 test('save queue: a server error (5xx) is retried like a lost connection (Feature #217)', async () => {
   const t = clock();
   const srv = server({ fail: 1, error: () => Object.assign(new Error('Server error'), { status: 503 }) });

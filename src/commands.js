@@ -122,7 +122,7 @@ const docWriteArgs = (sub) => (a, flags, { entityRef, file }) => {
 const docWriteBody = (a, body) => {
   const text = body.doc ?? body.markdown;
   if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither. Send `{"doc": ""}` to clear the document.', 'invalid');
-  return { entity: a.entity, markdown: text, field: a.field ?? null };
+  return { entity: a.entity, markdown: text, field: a.field ?? null, base: typeof body.base === 'string' ? body.base : null };
 };
 const docWritten = () => ({ ok: true });
 const SET_DOC_TOOL = {
@@ -1087,15 +1087,19 @@ export const COMMANDS = [
   },
   {
     name: 'doc.set',
-    engine: ['setDoc'],
+    engine: ['setDoc', 'docBase'],
     writes: 'entity',
     tool: SET_DOC_TOOL,
     action: 'replace',
     actionArg: 'mode',
     toolDefault: true,
     cli: { command: 'doc', sub: 'set', positional: ['entity'], args: docWriteArgs('set'), result: docWritten },
-    http: { method: 'PUT', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody, result: docWritten },
-    run: (w, a) => { w.setDoc(a.entity, a.markdown, a.field ?? null); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
+    http: {
+      method: 'PUT', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody,
+      result: (r, a, ctx, w) => ({ ok: true, base: w.docBase(a.entity, a.field ?? null) }),
+      fail: (err, w, a, ctx) => (err?.code === 'stale' ? [412, { ...errorBody(err), entity: w.readEntity(a.entity, zoned(ctx)), base: w.docBase(a.entity, a.field ?? null) }] : null),
+    },
+    run: (w, a) => { w.setDoc(a.entity, a.markdown, a.field ?? null, { base: a.base ?? null }); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
   },
   {
     name: 'doc.append',

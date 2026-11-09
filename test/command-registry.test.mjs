@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -614,7 +615,7 @@ test('documents, their revisions and comments answer the same on CLI, MCP and HT
   try {
     assert.deepEqual(d.cli(['doc', 'set', 'Task#1', '--content', 'one']), { ok: true });
     assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3 }, 'weave_set_doc still answers the length');
-    assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true });
+    assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true, base: createHash('sha256').update('one').digest('hex') }, 'HTTP names the base the next write starts from (Issue #1443)');
     assert.deepEqual(d.cli(['doc', 'append', 'Task#1', '--content', 'two']), { ok: true });
     assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'two', mode: 'append' }).ok, true);
     assert.deepEqual(await d.http('POST', `/api/entities/${ids.http}/doc`, { markdown: 'two' }), { ok: true });
