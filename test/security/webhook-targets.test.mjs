@@ -13,6 +13,7 @@ process.env.WEAVE_KEYSTORE = join(ROOT, 'keystore.json');
 delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE;
 const { Weave, localAddress } = await import('../../src/engine.js');
 const { GUIDES } = await import('../../src/handbook.js');
+const { TOOLS } = await import('../../src/mcp.js');
 
 test.after(() => rmSync(ROOT, { recursive: true, force: true }));
 
@@ -189,5 +190,5 @@ test('the signature recipe is documented in the Automations guide and the MCP au
   assert.match(guide.doc, /X-Weave-Timestamp/);
   assert.match(guide.doc, /X-Weave-Delivery/);
   assert.match(guide.doc, /signWith/);
-  assert.match(read('src/mcp.js'), /signWith/);
+  assert.match(TOOLS.find((t) => t.name === 'weave_create_automation').description, /signWith/);
 });
