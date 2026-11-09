@@ -660,7 +660,7 @@ export const PROBES = {
   cutoff: { seed: 'messy', opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
   flicker: { seed: 'grid', opens: ['journey', 'rest'], cells: CELLS, themes: ['light'] },
   budgets: { seed: 'grid', opens: ['journey'], cells: CELLS, themes: ['light'] },
-  a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: ['desktop'], themes: THEMES },
+  a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: THEMES },
   touch: { seed: 'touch', opens: ['rest', 'overlay'], cells: ['phone'], themes: THEMES },
   endings: { seed: 'prose', opens: ['journey', 'rest', 'overlay'], cells: CELLS, themes: ['light'], densities: DENSITIES },
 };
