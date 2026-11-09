@@ -572,26 +572,6 @@ async function main() {
   if (miss) throw miss;
 
   switch (command) {
-    case 'schema': {
-      const [sub] = args;
-      if (sub === 'apply') {
-        const doc = JSON.parse(readFileSync(flags.file, 'utf8'));
-        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'], partial: !!flags.partial }));
-      }
-      if (sub === 'export') {
-        const json = JSON.stringify(w.describeSchema(), null, 2);
-        if (flags.out) { writeFileSync(flags.out, json); return out({ ok: true, out: flags.out }); }
-        return out(json);
-      }
-      return out(w.describeSchema());
-    }
-    case 'build': {
-      const file = args[0] ?? flags.file;
-      if (!file || file === true) throw new WeaveError('Usage: weave build <spec.json> [--dry-run]', 'invalid');
-      const r = w.build(JSON.parse(readFileSync(file, 'utf8')), { dryRun: !!flags['dry-run'], skipExistingRows: !!flags['skip-existing-rows'] });
-      if (!r.ok) process.exitCode = 1;
-      return out(JSON.stringify(r));
-    }
     case 'account': {
       const [sub, ref] = args;
       if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));

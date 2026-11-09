@@ -60,11 +60,7 @@ function pick(args, keys) {
 
 export const TOOLS = [
   toolDefinition('weave_ontology'),
-  {
-    name: 'weave_schema',
-    description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
-    inputSchema: { type: 'object', properties: {} },
-  },
+  toolDefinition('weave_schema'),
   toolDefinition('weave_query'),
   toolDefinition('weave_get_entity'),
   toolDefinition('weave_create_entity'),
@@ -110,26 +106,8 @@ export const TOOLS = [
   toolDefinition('weave_rollback_field'),
   toolDefinition('weave_delete_field'),
   toolDefinition('weave_restore_field'),
-  {
-    name: 'weave_apply_schema',
-    description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
-    inputSchema: {
-      type: 'object',
-      properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' }, partial: { type: 'boolean' } },
-      required: ['document'],
-    },
-  },
-  {
-    name: 'weave_build',
-    description: 'Build in ONE call: spaces, tables, fields, relations and records. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Records are values by field name; a relation value is the target record\'s Name. Re-sending the spec is safe: existing spaces, tables and same-typed fields are reused; records append; skipExistingRows:true skips Names already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
-      + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"records":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"records":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
-      + 'dryRun:true first is cheap: it checks the whole spec, returns every error with its path, and writes nothing. Any error means nothing is written.',
-    inputSchema: {
-      type: 'object',
-      properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, records?, fieldOrder? (leading names), hidden? (names), sort? ("Amount desc"), automations? ([{name,trigger,actions}])}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a record whose Name the table already holds (for a re-run)' } },
-      required: ['spec'],
-    },
-  },
+  toolDefinition('weave_apply_schema'),
+  toolDefinition('weave_build'),
   toolDefinition('weave_views'),
   toolDefinition('weave_shares'),
   toolDefinition('weave_automations'),
@@ -418,14 +396,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     return command.toolResult ? command.toolResult(result) : result;
   }
   switch (name) {
-    case 'weave_schema':
-      return weave.describeSchema();
-    case 'weave_apply_schema':
-      return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
-    case 'weave_build': {
-      const { spec, dryRun, skipExistingRows, ...bare } = args;
-      return JSON.stringify(weave.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) }));
-    }
     case 'weave_forms':
       if (args.action === 'list') return listForms(weave);
       if (args.action === 'get') return getFormDefinition(weave, args.form);

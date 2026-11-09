@@ -804,8 +804,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         /^\/api\/(spaces|accounts|invites)/.test(path)
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
-        || (/^\/api\/schema$/.test(path))
-        || path === '/api/build'
         || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH')
         || path === '/api/onboarding');
       const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
@@ -1539,7 +1537,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const nightly = backup();
           return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}), ...(auth ? { auth } : {}) });
         }
-        if (route === 'GET /api/schema') return out(200, weave.describeSchema());
 
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
         const useTemplateInto = ({ space, workspace, name } = {}) => {
@@ -1802,18 +1799,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const keyed = matchRoute(rx.method, path);
           if (keyed) { const r = httpReply(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams); return out(r.status, r.data, r.headers); }
           if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
-        }
-        if (route === 'PUT /api/schema') {
-          return out(200, weave.applySchema(body?.schema ?? body, {
-            dryRun: !!body?.dryRun,
-            allowDestructive: !!body?.allowDestructive,
-            partial: !!body?.partial,
-          }));
-        }
-        if (route === 'POST /api/build') {
-          const { spec, dryRun, skipExistingRows, ...bare } = body ?? {};
-          const r = weave.build(spec ?? bare, { dryRun: !!dryRun, skipExistingRows: !!skipExistingRows });
-          return out(r.ok ? 200 : 400, r);
         }
         if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
         if (/^\/api\/views\/[^/]+\/share$/.test(path) && ['POST', 'DELETE'].includes(rx.method) && !mayAdminister(weave, role)) {

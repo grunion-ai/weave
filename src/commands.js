@@ -1560,6 +1560,77 @@ export const COMMANDS = [
       return use({ space: a.space, workspace: a.workspace, name: a.name });
     },
   },
+  {
+    name: 'schema.describe',
+    engine: ['describeSchema'],
+    writes: 'none',
+    tool: {
+      name: 'weave_schema',
+      description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    cli: {
+      command: 'schema',
+      result: (schema, flags, { write }) => {
+        if (!flags.out) return schema;
+        write(flags.out, JSON.stringify(schema, null, 2));
+        return { ok: true, out: flags.out };
+      },
+    },
+    http: { method: 'GET', path: '/api/schema' },
+    run: (w) => w.describeSchema(),
+  },
+  {
+    name: 'schema.apply',
+    engine: ['applySchema'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_apply_schema',
+      description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
+      inputSchema: {
+        type: 'object',
+        properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' }, partial: { type: 'boolean' } },
+        required: ['document'],
+      },
+    },
+    cli: {
+      command: 'schema', sub: 'apply',
+      args: (a, flags, { file }) => ({ document: JSON.parse(file(flags.file)), dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'], partial: !!flags.partial }),
+    },
+    http: { method: 'PUT', path: '/api/schema', args: (a, body) => ({ document: body?.schema ?? body, dryRun: !!body?.dryRun, allowDestructive: !!body?.allowDestructive, partial: !!body?.partial }) },
+    run: (w, a) => w.applySchema(a.document, { dryRun: Boolean(a.dryRun), allowDestructive: Boolean(a.allowDestructive), partial: Boolean(a.partial) }),
+    toolResult: (plan) => ({ plan }),
+  },
+  {
+    name: 'build',
+    engine: ['build'],
+    writes: 'schema',
+    tool: {
+      name: 'weave_build',
+      description: 'Build in ONE call: spaces, tables, fields, relations and records. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Records are values by field name; a relation value is the target record\'s Name. Re-sending the spec is safe: existing spaces, tables and same-typed fields are reused; records append; skipExistingRows:true skips Names already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
+      + '{"workspace":"personal-finance","spaces":[{"name":"Budget","icon":"lucide:wallet","tables":[{"name":"Account","icon":"lucide:credit-card","fields":[{"name":"Kind","type":"select","options":[{"name":"Credit card"},{"name":"Checking"}]}],"records":[{"Name":"Amex Gold","Kind":"Credit card"}]},{"name":"Transaction","fields":[{"name":"Amount","type":"number","format":"currency","currency":"USD"},{"name":"Date","type":"date"},{"name":"Account","type":"relation","to":"Account","cardinality":"many-to-one"}],"records":[{"Name":"Whole Foods","Amount":142.18,"Date":"2026-08-03","Account":"Amex Gold"}]}]}]}\n'
+      + 'dryRun:true first is cheap: it checks the whole spec, returns every error with its path, and writes nothing. Any error means nothing is written.',
+      inputSchema: {
+        type: 'object',
+        properties: { spec: { type: 'object', description: '{workspace?, description?, spaces:[{name, icon?, description?, tables:[{name, icon?, description?, fields?, records?, fieldOrder? (leading names), hidden? (names), sort? ("Amount desc"), automations? ([{name,trigger,actions}])}]}]}' }, dryRun: { type: 'boolean' }, skipExistingRows: { type: 'boolean', description: 'Skip a record whose Name the table already holds (for a re-run)' } },
+        required: ['spec'],
+      },
+    },
+    cli: {
+      command: 'build', rest: 'words',
+      args: (a, flags, { file }) => ({ spec: JSON.parse(file(a.words[0] ?? flags.file)), dryRun: !!flags['dry-run'], skipExistingRows: !!flags['skip-existing-rows'] }),
+      result: (built) => {
+        if (!built.ok) process.exitCode = 1;
+        return JSON.stringify(built);
+      },
+    },
+    http: { method: 'POST', path: '/api/build', status: (built) => (built.ok ? 200 : 400) },
+    run: (w, a) => {
+      const { spec, dryRun, skipExistingRows, ...bare } = a;
+      return w.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) });
+    },
+    toolResult: (built) => JSON.stringify(built),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -1661,13 +1732,15 @@ export function httpArgs(hit, body, searchParams, ctx = {}) {
   return hit.cmd.http.args ? hit.cmd.http.args(a, body, searchParams, ctx) : a;
 }
 
+const statusOf = (status, result, a) => (typeof status === 'function' ? status(result, a) : status ?? 200);
+
 export function httpReply(w, hit, body, searchParams, ctx = {}) {
   const headers = hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {};
   let a;
   try {
     a = httpArgs(hit, body, searchParams, ctx);
     const result = hit.cmd.run(w, a, ctx);
-    return { status: hit.cmd.http.status ?? 200, data: hit.cmd.http.result ? hit.cmd.http.result(result, a, ctx, w) : result, headers };
+    return { status: statusOf(hit.cmd.http.status, result, a), data: hit.cmd.http.result ? hit.cmd.http.result(result, a, ctx, w) : result, headers };
   } catch (err) {
     const failed = hit.cmd.http.fail?.(err, w, a, ctx);
     if (!failed) throw err;

@@ -23,9 +23,6 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
-  ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
-  ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
-  ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
   ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
   ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
   ['workspace.order', ['workspaceOrder', 'moveWorkspace'], 'weave_workspace', 'workspace order', ['GET /api/workspaces', 'PATCH /api/workspaces/:ref']],
