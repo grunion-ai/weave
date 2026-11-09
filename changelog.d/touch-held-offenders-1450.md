@@ -1,0 +1,1 @@
+- A held phone touch-target state now has to miss exactly the hit areas `test/touch-held.json` records for it, so a second undersized control on a held surface fails the gate where a bare offender count passed one failure or a hundred. A planted undersized control proves it, and a held surface that comes clean still asks for its hold to be dropped (Issue #1450).
