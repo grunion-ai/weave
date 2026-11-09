@@ -804,15 +804,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
+      const hit = matchRoute(m2, path);
       const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && path === '/api/mcp' && !!role)
-        || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
-        || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
-      const schemaWrite = !read && (
-        /^\/api\/spaces/.test(path)
-        || matchRoute(m2, path)?.cmd.writes === 'schema'
-        || /^\/api\/tables\/[^/]+\/views/.test(path)
-        || path === '/api/onboarding');
+        || (m2 === 'POST' && path === '/api/markdown')
+        || hit?.cmd.writes === 'none';
+      const schemaWrite = !read && (hit ? hit.cmd.writes === 'schema' : path === '/api/onboarding');
       const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
       const sysTouch = sysM && (() => {
         try {

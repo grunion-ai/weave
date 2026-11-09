@@ -1135,3 +1135,12 @@ test('accounts, identity links and invites answer on CLI, MCP and HTTP, each doo
     assert.match(d.run(['workspace', 'nope']).stderr, /Unknown workspace subcommand 'nope'/);
   } finally { delete process.env.WEAVE_OIDC_ISSUER; d.close(); }
 });
+
+test('the role gate reads writes from the registry and keeps only the routes the registry does not serve (Feature #179)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const gate = readFileSync(join(ROOT, 'src/routes.js'), 'utf8').match(/const hit = matchRoute\(m2, path\);[\s\S]*?const sysM/)[0];
+  const paths = [...gate.matchAll(/path === '([^']+)'/g)].map((m) => m[1]).filter((p) => p.startsWith('/api/') && p !== '/api/auth/');
+  assert.deepEqual(paths.sort(), ['/api/markdown', '/api/mcp', '/api/onboarding']);
+  for (const p of paths) assert.equal(COMMANDS.some((c) => httpPaths(c).includes(p)), false, `${p} is not a registry route`);
+  assert.doesNotMatch(gate, /\/api\\\/(spaces|tables)/);
+});
