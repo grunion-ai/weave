@@ -83,36 +83,12 @@ export const TOOLS = [
   toolDefinition('weave_set_state'),
   toolDefinition('weave_link'),
   toolDefinition('weave_unlink'),
-  {
-    name: 'weave_get_doc',
-    description: 'Read an entity document as markdown. Entities can carry several document fields; omit field for the default (the table\'s first document field, usually "Description").',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity'] },
-  },
-  {
-    name: 'weave_set_doc',
-    description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
-  },
-  {
-    name: 'weave_doc_revisions',
-    description: 'A document\'s version history (Feature #225). Without seq: the revisions newest first as {seq, at, actor, len} — one per editing session (writes by one actor inside ten minutes fold into one). With seq: that revision with its text. field picks a document field; omit for the default.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string', description: 'Document field name (optional)' }, seq: { type: 'number', description: 'A revision seq from the list — returns its text' }, limit: { type: 'number', description: 'How many to list (default 50)' } }, required: ['entity'] },
-  },
-  {
-    name: 'weave_doc_restore',
-    description: 'Write a past revision back as the document\'s current text (Feature #225). An ordinary write: activity, undo and automations all see it, and the history keeps both the restored text and what it replaced.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, seq: { type: 'number' }, field: { type: 'string', description: 'Document field name (optional)' } }, required: ['entity', 'seq'] },
-  },
-  {
-    name: 'weave_add_comment',
-    description: 'Add a comment to an entity. Comments are their own thread on the entity page and ride the activity feed; delete one with weave_delete_comment.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, text: { type: 'string' }, author: { type: 'string' } }, required: ['entity', 'text'] },
-  },
-  {
-    name: 'weave_delete_comment',
-    description: 'Delete one comment from an entity. The comment id comes from weave_get_entity.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, comment: { type: 'string' } }, required: ['entity', 'comment'] },
-  },
+  toolDefinition('weave_get_doc'),
+  toolDefinition('weave_set_doc'),
+  toolDefinition('weave_doc_revisions'),
+  toolDefinition('weave_doc_restore'),
+  toolDefinition('weave_add_comment'),
+  toolDefinition('weave_delete_comment'),
   {
     name: 'weave_search',
     description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
@@ -530,21 +506,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     case 'weave_undo':
       if (args.list) return { history: weave.listUndo({ limit: Number(args.limit ?? 20) }) };
       return weave.undo({ steps: Math.max(1, Number(args.steps ?? 1)) });
-    case 'weave_get_doc':
-      return weave.getDoc(args.entity, args.field ?? null);
-    case 'weave_set_doc':
-      if (args.mode === 'append') weave.appendDoc(args.entity, args.markdown, args.field ?? null);
-      else weave.setDoc(args.entity, args.markdown, args.field ?? null);
-      return { ok: true, length: weave.getDoc(args.entity, args.field ?? null).length };
-    case 'weave_doc_revisions':
-      if (args.seq != null) return weave.getDocRevision(args.entity, args.field ?? null, args.seq);
-      return weave.listDocRevisions(args.entity, args.field ?? null, { limit: args.limit ?? 50 });
-    case 'weave_doc_restore':
-      return weave.restoreDocRevision(args.entity, args.field ?? null, args.seq);
-    case 'weave_add_comment':
-      return weave.addComment(args.entity, { author: caller?.role && !['architect', 'editor'].includes(caller.role) ? weave.actor : args.author ?? 'agent', text: args.text });
-    case 'weave_delete_comment':
-      return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
     case 'weave_attach_file': {

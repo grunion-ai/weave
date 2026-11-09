@@ -1985,7 +1985,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const registered = matchRoute(rx.method, path);
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }
@@ -2056,29 +2056,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
 
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions$/)) && rx.method === 'GET') {
-          const fieldRef = rx.searchParams.get('field') ?? null;
-          return out(200, weave.listDocRevisions(m[1], fieldRef, { limit: boundedLimit(rx.searchParams.get('limit'), 50) }));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions\/([^/]+)$/)) && rx.method === 'GET') {
-          return out(200, weave.getDocRevision(m[1], rx.searchParams.get('field') ?? null, m[2]));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc\/revisions\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          return out(200, weave.restoreDocRevision(m[1], body.field ?? null, m[2]));
-        }
-
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/doc$/))) {
-          const fieldRef = rx.searchParams.get('field') ?? body.field ?? null;
-          if (rx.method === 'GET') return out(200, { field: fieldRef, doc: weave.getDoc(m[1], fieldRef) });
-          if (rx.method === 'PUT' || rx.method === 'POST') {
-            const text = body.doc ?? body.markdown;
-            if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither. Send `{"doc": ""}` to clear the document.', 'invalid');
-            if (rx.method === 'PUT') weave.setDoc(m[1], text, fieldRef);
-            else weave.appendDoc(m[1], text, fieldRef);
-            return out(200, { ok: true });
-          }
-        }
-
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/fields\/([^/]+)\/files$/)) && rx.method === 'POST') {
           return out(201, weave.attachToField(m[1], decodeURIComponent(m[2]), { name: body.name, mime: body.mime, bytes: body.bytes ?? body.contentBase64, preview: previewInput(body.preview) }));
         }
@@ -2109,14 +2086,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/files\/([^/]+)\/storage$/))) {
           if (rx.method === 'GET') return out(200, weave.readFileStorage(m[1]));
           if (rx.method === 'PUT') return out(200, weave.writeFileStorage(m[1], body.items));
-        }
-
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments$/)) && rx.method === 'POST') {
-          return out(201, weave.addComment(m[1], (role ? !['architect', 'editor'].includes(role) : guarded()) ? { ...body, author: actorForRequest } : body));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/comments\/([^/]+)$/)) && rx.method === 'DELETE') {
-          weave.deleteComment(m[1], m[2]);
-          return out(200, { ok: true });
         }
 
 
