@@ -809,7 +809,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         || (m2 === 'POST' && (/^\/api\/tables\/[^/]+\/query$/.test(path) || path === '/api/markdown'))
         || (m2 === 'POST' && /^\/api\/spaces\/[^/]+\/use$/.test(path));
       const schemaWrite = !read && (
-        /^\/api\/(spaces|accounts|invites)/.test(path)
+        /^\/api\/spaces/.test(path)
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
         || path === '/api/onboarding');
@@ -1714,25 +1714,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
           }
         }
-        if (route === 'GET /api/accounts') return out(200, weave.listAccounts());
-        if (route === 'GET /api/invites') return out(200, weave.listInvites());
-        if (route === 'POST /api/invites') {
-          const made = weave.inviteMember({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? oidc?.issuer });
-          const url = inviteUrl(`${originFor(rx)}${wsPrefix}`, made.code);
-          let sent = { mailed: false };
-          if (mail) {
-            try {
-              const m = inviteEmail({ inviter: made.invitedBy, workspace: made.workspace, role: made.role, expires: longDate(made.expiresAt), link: url, origin: originFor(rx) });
-              await mail({ to: made.email, subject: m.subject, html: m.html, text: m.text });
-              sent = { mailed: true };
-            } catch (err) {
-              console.error(`weave: the invite email was not sent: ${err.message}`);
-              sent = { mailed: false, mailError: err.message };
-            }
-          }
-          return out(201, { ...made, url, ...sent });
-        }
-        if ((m = path.match(/^\/api\/invites\/([^/]+)$/)) && rx.method === 'DELETE') return out(200, weave.revokeInvite(decodeURIComponent(m[1])));
         if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
           const make = { invite: inviteEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
@@ -1745,25 +1726,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, origin: o,
             theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
           return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-        }
-        if (route === 'POST /api/accounts') return out(201, weave.createAccount(body ?? {}));
-        if ((m = path.match(/^\/api\/accounts\/([^/]+)$/)) && rx.method === 'PATCH') {
-          const changed = weave.setAccountRole(decodeURIComponent(m[1]), body?.role);
-          await remirror(weave);
-          return out(200, changed);
-        }
-        if ((m = path.match(/^\/api\/accounts\/([^/]+)\/identities$/))) {
-          const ref = decodeURIComponent(m[1]);
-          if (rx.method === 'POST') {
-            const made = weave.linkIdentity(ref, { issuer: body?.issuer ?? oidc?.issuer, email: body?.email });
-            return out(201, { ...made, url: inviteUrl(`${originFor(rx)}${wsPrefix}`, made.code) });
-          }
-          if (rx.method === 'DELETE') return out(200, weave.unlinkIdentity(ref, { issuer: rx.searchParams?.get('issuer') ?? null, subject: rx.searchParams?.get('subject') }));
-        }
-        if ((m = path.match(/^\/api\/accounts\/(.+)$/)) && rx.method === 'DELETE') {
-          const gone = weave.deleteAccount(decodeURIComponent(m[1]));
-          await remirror(weave);
-          return out(200, gone);
         }
         if ((m = path.match(/^\/api\/integrations\/([^/]+)\/credential$/))) {
           if (!role || !mayAdminister(weave, roleOn(weave))) return deny(role ? 403 : 401, 'Setting an integration key needs an architect on this workspace');
@@ -1884,6 +1846,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, { ...filed, ...failed });
         }
 
+        const mailInvite = async (made) => {
+          if (!mail) return { ...made, mailed: false };
+          try {
+            const m = inviteEmail({ inviter: made.invitedBy, workspace: made.workspace, role: made.role, expires: longDate(made.expiresAt), link: made.url, origin: originFor(rx) });
+            await mail({ to: made.email, subject: m.subject, html: m.html, text: m.text });
+            return { ...made, mailed: true };
+          } catch (err) {
+            console.error(`weave: the invite email was not sent: ${err.message}`);
+            return { ...made, mailed: false, mailError: err.message };
+          }
+        };
         const registered = matchRoute(rx.method, path);
         if (registered?.cmd.http.serve) {
           const serveFile = (id) => {
@@ -1916,8 +1889,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
         }
         if (registered) {
-          const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, start: oidc ? `${startRoot}/start` : undefined,
+          const registryCtx = {
+            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, issuer: oidc?.issuer, remirror: () => remirror(weave), mailInvite, start: oidc ? `${startRoot}/start` : undefined,
             workspaces: {
               list: () => {
                 const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
@@ -1936,7 +1909,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
                 return hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name)));
               },
             }, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
-          });
+          };
+          const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, registryCtx);
+          if (registered.cmd.http.finish) r.data = await registered.cmd.http.finish(r.data, registryCtx);
           return out(r.status, r.data, r.headers);
         }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {

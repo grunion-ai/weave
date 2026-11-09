@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
 import { toolCommand, toolDefinition } from './commands.js';
 import { guided } from './field-hints.js';
-import { Weave, inviteUrl } from './engine.js';
+import { Weave } from './engine.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
@@ -51,12 +51,6 @@ function compactResult(name, result) {
   return brief(result);
 }
 const VERBOSE = { type: 'boolean', description: 'Return the whole object' };
-
-function pick(args, keys) {
-  const out = {};
-  for (const k of keys) if (k in args) out[k] = args[k];
-  return out;
-}
 
 export const TOOLS = [
   toolDefinition('weave_ontology'),
@@ -114,15 +108,7 @@ export const TOOLS = [
   toolDefinition('weave_activity'),
   toolDefinition('weave_audit'),
   toolDefinition('weave_workspace'),
-  {
-    name: 'weave_accounts',
-    description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor; space scopes the token to one space, and a token never reaches past the account that made it — observer reads and comments, editor writes records, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
-    inputSchema: {
-      type: 'object',
-      properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, space: { type: 'string', description: 'create only: scope the token to this one space' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
-      required: ['action'],
-    },
-  },
+  toolDefinition('weave_accounts'),
   toolDefinition('weave_keys'),
   toolDefinition('weave_files'),
   toolDefinition('weave_registry'),
@@ -400,28 +386,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       throw new Error('Form action must be list, get, create or update');
     case 'weave_form_submit':
       return submitForm(weave, args.form, { values: args.values, note: args.note, categories: args.categories, events: [] }, { actor: weave.actor, idempotencyKey: args.idempotencyKey, server: { version: VERSION, workspace: weave.state.meta.name } });
-    case 'weave_accounts':
-      switch (args.action) {
-        case 'list': return { accounts: weave.listAccounts() };
-        case 'create': return weave.createAccount({ name: args.name, role: args.role ?? 'editor', space: args.space ?? null });
-        case 'set': return weave.setAccountRole(args.account ?? args.name, args.role);
-        case 'delete': return weave.deleteAccount(args.account);
-        case 'require-auth': return weave.setRequireAuth(Boolean(args.on));
-        case 'sessions': return { sessions: weave.listSessions(args.account ?? args.name) };
-        case 'revoke-session': return weave.revokeSession(args.account ?? args.name, { id: args.session ?? null, all: Boolean(args.all) });
-        case 'link-identity': {
-          const made = weave.linkIdentity(args.account ?? args.name, { issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER, email: args.email });
-          return { ...made, url: inviteUrl(envOrigin(), made.code) };
-        }
-        case 'unlink-identity': return weave.unlinkIdentity(args.account ?? args.name, { issuer: args.issuer ?? null, subject: args.subject });
-        case 'invite': {
-          const made = weave.inviteMember({ email: args.email, role: args.role ?? 'editor', issuer: args.issuer ?? process.env.WEAVE_OIDC_ISSUER });
-          return { ...made, url: inviteUrl(envOrigin(), made.code) };
-        }
-        case 'invites': return { invites: weave.listInvites() };
-        case 'revoke-invite': return weave.revokeInvite(args.invite ?? args.id);
-        default: throw new Error(`Unknown accounts action '${args.action}' (list, create, set, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity, invite, invites, revoke-invite)`);
-      }
     default:
       throw unknownTool(name);
   }
