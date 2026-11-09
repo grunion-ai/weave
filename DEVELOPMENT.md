@@ -100,6 +100,18 @@ to outlast. The `tests` shard job and the dev
 soak carry the same bound, after the mirror held their install for thirty
 minutes and cancelled two jobs of the `CI gate` on `14f290cb` (Issue #1107).
 
+The `security scan` check downloads gitleaks, actionlint and hadolint from the
+GitHub release CDN, and the release workflow downloads the MCP publisher the
+same way. Each download retries across 120 seconds
+(`--retry 6 --retry-delay 20`), because a four-attempt budget spread over six
+seconds fit entirely inside one 504 blip on 2026-11-09 and, since the check is
+required, took every pull request in the repository down with it (Issue #1490).
+The three scanner downloads run before the first checksum under an ERR trap, so
+a scanner that cannot be fetched is annotated as a network failure instead of
+reading as a finding in the code, and a bad SHA256 pin is still reported as
+itself. `test/security/workflows.test.mjs` holds that floor for every
+release-asset download in every workflow.
+
 The `tests` workflow runs the full inventory on every main push. Its `plan` job
 downloads the `ci-results` artifacts of the most recent successful main run and
 weights each test file by the `duration_ms` the reporter recorded for it, so the
