@@ -1815,11 +1815,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const r = weave.build(spec ?? bare, { dryRun: !!dryRun, skipExistingRows: !!skipExistingRows });
           return out(r.ok ? 200 : 400, r);
         }
-        if (route === 'GET /api/share') {
-          if (!share) return out(404, { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
-          const { token, url, ...grant } = share;
-          return out(200, grant);
-        }
         if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
         if (/^\/api\/views\/[^/]+\/share$/.test(path) && ['POST', 'DELETE'].includes(rx.method) && !mayAdminister(weave, role)) {
           return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
@@ -1971,7 +1966,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, share, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }

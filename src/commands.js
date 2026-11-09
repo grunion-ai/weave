@@ -1496,6 +1496,18 @@ export const COMMANDS = [
       }
     },
   },
+  {
+    name: 'share.current',
+    engine: [],
+    writes: 'none',
+    via: { tool: 'weave_shares', cli: 'share.list' },
+    http: { method: 'GET', path: '/api/share' },
+    run: (w, a, ctx) => {
+      if (!ctx?.share) throw new WeaveError('No share token on this request: send Authorization: Bearer wvs_…', 'not-found');
+      const { token, url, ...grant } = ctx.share;
+      return grant;
+    },
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
