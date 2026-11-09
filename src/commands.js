@@ -1,6 +1,6 @@
 import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
-import { ONTOLOGY, inviteUrl } from './engine.js';
+import { Weave, ONTOLOGY, inviteUrl } from './engine.js';
 import { guided } from './field-hints.js';
 import { vocabularyView } from './vocabulary.js';
 
@@ -198,6 +198,17 @@ const KEYS_TOOL = {
     required: ['action'],
   },
 };
+
+const WORKSPACE_TOOL = {
+  name: 'weave_workspace',
+  description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name; type read from the bytes) | clear-logo | order | move (name, position: 0 first).',
+  inputSchema: {
+    type: 'object',
+    properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, contentBase64: { type: 'string' }, position: { type: 'number' } },
+  },
+};
+const flagPatch = (flags, names) => Object.fromEntries(names.filter((n) => flags[n] != null && flags[n] !== true).map((n) => [n, flags[n]]));
+const logoFlagCommand = (flags) => (flags.clear ? 'workspace.logo.clear' : flags.out ? 'workspace.logo.read' : null);
 
 export const COMMANDS = [
   {
@@ -1650,13 +1661,134 @@ export const COMMANDS = [
     },
     toolResult: (built) => JSON.stringify(built),
   },
+  {
+    name: 'workspace.get',
+    engine: ['getWorkspace'],
+    writes: 'none',
+    tool: WORKSPACE_TOOL,
+    action: 'get',
+    toolDefault: 'absent',
+    cli: { command: 'workspace', sub: 'get' },
+    http: {
+      method: 'GET', path: '/api/workspace',
+      result: (ws, a, ctx, w) => ({ ...ws, url: `/w/${ws.id}/`, schemaVersion: w.schemaVersion(), ...(ctx?.start ? { start: ctx.start } : {}) }),
+    },
+    run: (w) => w.getWorkspace(),
+  },
+  {
+    name: 'workspace.update',
+    engine: ['updateWorkspace', 'setRequireAuth'],
+    writes: 'schema',
+    tool: WORKSPACE_TOOL,
+    action: 'update',
+    cli: { command: 'workspace', sub: 'set', aliases: ['update'], args: (a, flags) => ({ patch: flagPatch(flags, ['name', 'description']) }) },
+    http: {
+      method: 'PATCH', path: '/api/workspace',
+      args: (a, body) => ({
+        patch: { name: body.name ?? null, description: body.description ?? null, linkPreview: body.linkPreview ?? null },
+        ...('requireAuth' in body ? { requireAuth: !!body.requireAuth, only: Object.keys(body).length === 1 } : {}),
+      }),
+      result: (r) => ('id' in r ? { id: r.id, url: `/w/${r.id}/`, name: r.name, title: r.title, description: r.description, linkPreview: r.linkPreview } : r),
+    },
+    run: (w, a, ctx) => {
+      if (a.requireAuth !== undefined) {
+        w.setRequireAuth(a.requireAuth);
+        if (a.only) return { requireAuth: w.state.meta.requireAuth };
+      }
+      const patch = a.patch ?? Object.fromEntries(['name', 'description', 'linkPreview'].filter((k) => k in a).map((k) => [k, a[k]]));
+      return (ctx?.updateWorkspace ?? ctx?.caller?.updateWorkspace ?? ((p) => w.updateWorkspace(p)))(patch);
+    },
+  },
+  {
+    name: 'workspace.logo.set',
+    engine: ['setWorkspaceLogo'],
+    writes: 'entity',
+    tool: WORKSPACE_TOOL,
+    action: 'logo',
+    cli: {
+      command: 'workspace', sub: 'logo', use: logoFlagCommand,
+      args: (a, flags, { bytes }) => {
+        if (!flags.path) throw new WeaveError('workspace logo needs --path, --out or --clear');
+        return { name: flags.path.split('/').pop(), bytes: bytes(flags.path).toString('base64') };
+      },
+    },
+    http: { method: 'PUT', methods: ['POST'], path: '/api/workspace/logo', args: (a, body) => ({ name: body.name, contentBase64: body.contentBase64, strict: true }) },
+    run: (w, a) => w.setWorkspaceLogo({ name: a.strict ? a.name : a.name ?? 'logo.png', bytes: a.contentBase64 ?? a.bytes }),
+  },
+  {
+    name: 'workspace.logo.read',
+    engine: ['getWorkspaceLogo'],
+    writes: 'none',
+    via: { tool: 'weave_workspace' },
+    cli: {
+      command: 'workspace', swap: true,
+      result: (logo, flags, { write }) => {
+        if (!logo) throw new WeaveError('This workspace has no logo');
+        write(flags.out, Buffer.from(logo.bytes));
+        return { ok: true, path: flags.out, mime: logo.mime };
+      },
+    },
+    http: { method: 'GET', path: '/api/workspace/logo', serve: (a, ctx) => ctx.serveLogo() },
+    run: (w) => w.getWorkspaceLogo(),
+  },
+  {
+    name: 'workspace.logo.clear',
+    engine: ['deleteWorkspaceLogo'],
+    writes: 'entity',
+    tool: WORKSPACE_TOOL,
+    action: 'clear-logo',
+    cli: { command: 'workspace', swap: true },
+    http: { method: 'DELETE', path: '/api/workspace/logo', result: () => ({ ok: true }) },
+    run: (w) => {
+      w.deleteWorkspaceLogo();
+      return { logo: false };
+    },
+  },
+  {
+    name: 'workspace.order',
+    engine: ['workspaceOrder'],
+    writes: 'none',
+    tool: WORKSPACE_TOOL,
+    action: 'order',
+    cli: { command: 'workspace', sub: 'order' },
+    http: { method: 'GET', path: '/api/workspaces' },
+    run: (w, a, ctx) => {
+      if (ctx?.workspaces) return ctx.workspaces.list();
+      if (ctx?.door === 'mcp') return { workspaces: ctx.caller?.workspaceOrder ? ctx.caller.workspaceOrder() : w.workspaceOrder() };
+      return ctx.withHub((hub) => hub.list({ workspace: w }));
+    },
+  },
+  {
+    name: 'workspace.move',
+    engine: ['moveWorkspace'],
+    writes: 'entity',
+    tool: WORKSPACE_TOOL,
+    action: 'move',
+    cli: { command: 'workspace', sub: 'move', positional: ['name'], args: (a, flags) => ({ name: a.name, position: Number(flags.position) }) },
+    http: {
+      method: 'PATCH', path: '/api/workspaces/:ref',
+      args: (a, body) => {
+        if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
+        return { name: a.ref, position: body.position };
+      },
+    },
+    run: (w, a, ctx) => {
+      if (ctx?.workspaces) return ctx.workspaces.move(a.name, a.position);
+      if (ctx?.door === 'mcp') {
+        const caller = ctx.caller;
+        if (caller && !(Weave.roleName(caller.role) === 'architect' || !w.listAccounts().length)) throw new Error('weave_workspace move needs an architect token on this workspace');
+        return { workspaces: caller?.moveWorkspace ? caller.moveWorkspace(a.name, a.position) : w.moveWorkspace(a.name, a.position) };
+      }
+      return ctx.withHub((hub) => hub.move(a.name, a.position, { workspace: w }));
+    },
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 export const BY_TOOL = new Map(COMMANDS.filter((c) => c.tool && c.action === undefined).map((c) => [c.tool.name, c]));
-export const BY_CLI = new Map(COMMANDS.filter((c) => c.cli).map((c) => [`${c.cli.command} ${c.cli.sub ?? ''}`.trim(), c]));
-const DEFAULT_CLI = new Map(COMMANDS.filter((c) => c.cli?.default).map((c) => [c.cli.command, c]));
+export const BY_CLI = new Map(COMMANDS.filter((c) => c.cli && !c.cli.swap).flatMap((c) => [c.cli.sub, ...(c.cli.aliases ?? [])].map((sub) => [`${c.cli.command} ${sub ?? ''}`.trim(), c])));
+const DEFAULT_CLI = new Map(COMMANDS.filter((c) => c.cli?.default && !c.cli.swap).map((c) => [c.cli.command, c]));
 
 export const FAMILIES = new Map();
 for (const c of COMMANDS.filter((x) => x.action !== undefined)) {
@@ -1678,7 +1810,7 @@ export function toolCommand(name, args = {}) {
   const family = FAMILIES.get(name);
   if (!family) return null;
   const picked = (c) => (typeof c.action === 'boolean' ? Boolean(args[c.actionArg]) : args[c.actionArg ?? 'action']);
-  const hit = family.commands.find((c) => c.action === picked(c)) ?? family.commands.find((c) => c.toolDefault);
+  const hit = family.commands.find((c) => c.action === picked(c)) ?? family.commands.find((c) => (c.toolDefault === 'absent' ? args[c.actionArg ?? 'action'] == null : c.toolDefault));
   if (hit?.toolRefusal) throw new Error(hit.toolRefusal);
   if (hit) return hit;
   const offered = family.commands.filter((c) => !c.toolRefusal).map((c) => c.action);
@@ -1700,7 +1832,7 @@ export function cliCommand(given, sub) {
 export function cliMiss(given, sub) {
   const command = CLI_ALIASES[given] ?? given;
   if (!DEFAULT_CLI.has(command)) return null;
-  const subs = COMMANDS.filter((c) => c.cli?.command === command).map((c) => c.cli.sub);
+  const subs = COMMANDS.filter((c) => c.cli?.command === command && !c.cli.swap).map((c) => c.cli.sub);
   return new WeaveError(`Unknown ${command} subcommand '${sub}'. Try: ${subs.join(', ')}`);
 }
 
@@ -1723,15 +1855,15 @@ export function cliRun(given, w, args, flags, helpers) {
 
 export const httpPaths = (c) => [c.http.path, ...(c.http.also ?? [])];
 
-const ROUTES = COMMANDS.filter((c) => c.http).flatMap((c) => httpPaths(c).map((path) => {
+const ROUTES = COMMANDS.filter((c) => c.http).flatMap((c) => [c.http.method, ...(c.http.methods ?? [])].flatMap((method) => httpPaths(c).map((path) => {
   const keys = [];
   const src = path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/(\\\/)?:([a-z]+)(\*?)(\??)/gi, (_, slash, k, rest, optional) => {
     keys.push(k);
     const group = `${slash ?? ''}${rest ? '(.+)' : '([^/]+)'}`;
     return optional ? `(?:${group})?` : group;
   });
-  return { cmd: c, method: c.http.method, re: new RegExp(`^${src}$`), keys };
-}));
+  return { cmd: c, method, re: new RegExp(`^${src}$`), keys };
+})));
 
 const decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 

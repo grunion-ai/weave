@@ -37,7 +37,7 @@ test('every registry command is well formed and reachable on each door it names 
         if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
       } else assert.equal(BY_TOOL.get(c.tool.name), c);
     }
-    if (c.cli) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
+    if (c.cli && !c.cli.swap) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
       assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
       if (c.tool && !c.http.args) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
@@ -225,10 +225,11 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'comment.add': { text: 'more' },
     'file.attach': { name: 'more.txt', mime: 'text/plain', contentBase64: Buffer.from('more').toString('base64') },
     'view.create': { name: 'Gate', blocks: [{ table: 'Task' }] },
+    'workspace.logo.set': { name: 'gate.svg', contentBase64: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') },
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use'].includes(c.name) || c.cli?.command === 'share') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use', 'workspace.move'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -1027,5 +1028,58 @@ test('schema describe, apply and build answer on CLI, MCP and HTTP, each door wi
     const failed = d.run(['build', specFile]);
     assert.equal(failed.status, 1, 'the CLI exits 1 on a refused spec');
     assert.equal(JSON.parse(failed.stdout).ok, false);
+  } finally { d.close(); }
+});
+
+test('the workspace record, logo and order answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-workspace-');
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>');
+  try {
+    assert.equal(matchRoute('PUT', '/api/workspace/logo').cmd.name, 'workspace.logo.set');
+    assert.equal(matchRoute('POST', '/api/workspace/logo').cmd.name, 'workspace.logo.set');
+    assert.equal(matchRoute('GET', '/api/workspaces').cmd.name, 'workspace.order');
+    const record = await d.http('GET', '/api/workspace');
+    assert.match(record.url, /^\/w\//);
+    assert.equal(typeof record.schemaVersion, 'string');
+    const cliGet = d.cli(['workspace', 'get']);
+    assert.deepEqual(Object.keys(cliGet), ['id', 'name', 'title', 'description', 'logo', 'requireAuth', 'linkPreview']);
+    assert.deepEqual(d.cli(['workspace']), cliGet, 'a bare weave workspace reads');
+    assert.deepEqual(d.mcp('weave_workspace', {}), d.mcp('weave_workspace', { action: 'get' }), 'no action reads');
+    assert.deepEqual(Object.keys(d.mcp('weave_workspace', {})), Object.keys(cliGet));
+    const unknown = d.call('weave_workspace', { action: 'nope' });
+    assert.equal(unknown.isError, true);
+    assert.match(unknown.content[0].text, /Unknown workspace action 'nope' \(get, update, logo, clear-logo, order, move\)/);
+
+    const patched = await d.http('PATCH', '/api/workspace', { description: 'Over http' });
+    assert.deepEqual(Object.keys(patched), ['id', 'url', 'name', 'title', 'description', 'linkPreview']);
+    assert.equal(d.cli(['workspace', 'set', '--description', 'Over cli']).description, 'Over cli');
+    assert.equal(d.cli(['workspace', 'update', '--description', 'Alias']).description, 'Alias');
+    assert.equal(d.mcp('weave_workspace', { action: 'update', description: 'Over mcp' }).description, 'Over mcp');
+    assert.deepEqual(await d.http('PATCH', '/api/workspace', { requireAuth: false }), { requireAuth: false }, 'a lone requireAuth answers alone');
+
+    const file = join(tempDir('weave-registry-logo-'), 'logo.svg');
+    writeFileSync(file, svg);
+    assert.equal(d.cli(['workspace', 'logo', '--path', file, '--mime', 'image/svg+xml']).mime, 'image/svg+xml');
+    const out = join(dirname(file), 'got.svg');
+    const read = d.cli(['workspace', 'logo', '--out', out]);
+    assert.equal(read.ok, true);
+    assert.deepEqual(d.cli(['workspace', 'logo', '--clear']), { logo: false });
+    assert.match(d.run(['workspace', 'logo']).stderr, /workspace logo needs --path, --out or --clear/);
+    const put = await d.http('PUT', '/api/workspace/logo', { name: 'a.svg', contentBase64: svg.toString('base64') });
+    assert.equal(put.mime, 'image/svg+xml');
+    const got = await d.raw('GET', '/api/workspace/logo');
+    assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(got.headers.get('content-type'), 'image/svg+xml');
+    assert.deepEqual(await d.http('DELETE', '/api/workspace/logo'), { ok: true });
+    assert.equal((await d.raw('GET', '/api/workspace/logo')).status, 404);
+    assert.equal(d.mcp('weave_workspace', { action: 'logo', contentBase64: svg.toString('base64') }).name, 'logo.png');
+    assert.deepEqual(d.mcp('weave_workspace', { action: 'clear-logo' }), { logo: false });
+
+    const names = (list) => list.map((x) => x.name);
+    assert.deepEqual(names(d.mcp('weave_workspace', { action: 'order' }).workspaces).sort(), names(await d.http('GET', '/api/workspaces')).sort().filter((n) => names(d.mcp('weave_workspace', { action: 'order' }).workspaces).includes(n)));
+    const none = await d.raw('PATCH', `/api/workspaces/${record.name}`, {});
+    assert.equal(none.status, 400);
+    assert.match((await none.json()).error, /position is required/);
+    assert.deepEqual(d.cli(['workspace', 'link-preview']).linkPreview, true, 'the hand-written subcommands still answer');
   } finally { d.close(); }
 });

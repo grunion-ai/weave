@@ -812,7 +812,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         /^\/api\/(spaces|accounts|invites)/.test(path)
         || matchRoute(m2, path)?.cmd.writes === 'schema'
         || /^\/api\/tables\/[^/]+\/views/.test(path)
-        || (/^\/api\/workspace$/.test(path) && m2 === 'PATCH')
         || path === '/api/onboarding');
       const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
       const sysTouch = sysM && (() => {
@@ -1605,18 +1604,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const local = !hub.walled && !target.state.meta.requireAuth && !target.listAccounts().length;
           if (!local && targetRole !== 'architect') return deny(targetRole ? 403 : 401, 'Managing a workspace needs its architect');
         }
-        if (route === 'GET /api/workspaces') {
-          const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
-          const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
-          const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
-          return out(200, hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
-            .sort((a, b) => rank(a) - rank(b) || 0)
-            .map((x) => ({
-              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
-              ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
-            })));
-        }
         if (route === 'POST /api/workspaces' && body?.from != null) {
           const source = String(body.from).match(/^backup:(.+)$/);
           if (!source) throw new WeaveError('from takes backup:<archive>, an archive GET /api/backups lists', 'invalid');
@@ -1638,11 +1625,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
           const w = hub.restore(m[1], { actor: actorOn(hub.get(m[1])) });
           return out(200, { name: w.state.meta.name, deletedAt: null });
-        }
-        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'PATCH') {
-          if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
-          hub.move(decodeURIComponent(m[1]), body.position, { workspace: weave, visible: canOpen });
-          return out(200, hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name))));
         }
         if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
           if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
@@ -1688,11 +1670,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
 
         if (route === 'GET /api/workspace/home') return out(200, weave.workspaceHome());
-
-        if (route === 'GET /api/workspace') {
-          const ws = weave.getWorkspace();
-          return out(200, { ...ws, url: `/w/${ws.id}/`, schemaVersion: weave.schemaVersion(), ...(oidc ? { start: `${startRoot}/start` } : {}) });
-        }
 
         if (path === '/api/billing' || path === '/api/billing/organization') {
           if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and WEAVE_BILLING_PLAN are not set.', code: 'billing-off' });
@@ -1845,14 +1822,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return deny(403, 'This token cannot change the schema');
           }
         }
-        if (route === 'PATCH /api/workspace' && 'requireAuth' in (body ?? {})) {
-          weave.setRequireAuth(!!body.requireAuth);
-          if (Object.keys(body).length === 1) return out(200, { requireAuth: weave.state.meta.requireAuth });
-        }
-        if (route === 'PATCH /api/workspace') {
-          const ws = updateWorkspace({ name: body.name ?? null, description: body.description ?? null, linkPreview: body.linkPreview ?? null });
-          return out(200, { id: ws.id, url: `/w/${ws.id}/`, name: ws.name, title: ws.title, description: ws.description, linkPreview: ws.linkPreview });
-        }
         if (route === 'POST /api/markdown') {
           return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention, rawHtml: false }) });
         }
@@ -1915,24 +1884,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, { ...filed, ...failed });
         }
 
-        if (path === '/api/workspace/logo') {
-          if (rx.method === 'GET') {
-            const { bytes } = weave.getWorkspaceLogo();
-            const type = logoType(bytes);
-            return out(200, bytes, {
-              'Content-Type': type ?? 'application/octet-stream',
-              ...(type ? {} : { 'Content-Disposition': 'attachment; filename="logo"' }),
-              'Cache-Control': 'no-cache',
-              'X-Content-Type-Options': 'nosniff',
-              'Content-Security-Policy': "sandbox; default-src 'none'",
-            });
-          }
-          if (rx.method === 'PUT' || rx.method === 'POST') {
-            return out(200, weave.setWorkspaceLogo({ name: body.name, mime: body.mime, bytes: body.contentBase64 }));
-          }
-          if (rx.method === 'DELETE') { weave.deleteWorkspaceLogo(); return out(200, { ok: true }); }
-        }
-
         const registered = matchRoute(rx.method, path);
         if (registered?.cmd.http.serve) {
           const serveFile = (id) => {
@@ -1951,11 +1902,40 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const page = viewHtml(bytes, frameLinkBase(bytes) + frameStorageScript(weave.readFileStorage(id).items) + FRAME_HEIGHT_SCRIPT);
             return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
           };
-          return registered.cmd.http.serve(registered.params, { serveFile });
+          const serveLogo = () => {
+            const { bytes } = weave.getWorkspaceLogo();
+            const type = logoType(bytes);
+            return out(200, bytes, {
+              'Content-Type': type ?? 'application/octet-stream',
+              ...(type ? {} : { 'Content-Disposition': 'attachment; filename="logo"' }),
+              'Cache-Control': 'no-cache',
+              'X-Content-Type-Options': 'nosniff',
+              'Content-Security-Policy': "sandbox; default-src 'none'",
+            });
+          };
+          return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
         }
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, start: oidc ? `${startRoot}/start` : undefined,
+            workspaces: {
+              list: () => {
+                const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
+                const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
+                const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
+                const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
+                return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+                  .sort((a, b) => rank(a) - rank(b) || 0)
+                  .map((x) => ({
+                    ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+                    ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
+                  }));
+              },
+              move: (ref, position) => {
+                hub.move(ref, position, { workspace: weave, visible: canOpen });
+                return hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name)));
+              },
+            }, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }
