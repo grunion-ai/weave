@@ -22,7 +22,7 @@ import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
 import { parseCron, dueBetween, nextEvery, diffItems, retryAfterMs, pollPrune, POLL_SLOWEST_DEFAULT, POLL_SLOWEST_MAX } from './schedule.js';
-import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute } from './delivery.js';
+import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute, HOOK_BODY_MAX, HOOK_LOG_KEEP, hookKeyName, hookRefusal } from './delivery.js';
 import * as Shares from './shares.js';
 import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
@@ -405,11 +405,31 @@ const listenerOut = (t) => ({
   ...(t.headers ? { headers: t.headers } : {}), ...(t.cursor ? { cursor: t.cursor } : {}),
   ...(t.items != null ? { items: t.items } : {}), key: t.key, maxInterval: t.maxInterval,
 });
-const triggerOut = (t) => (t.type === 'schedule' ? scheduleOut(t) : t.type === 'listener-changed' ? listenerOut(t) : {});
+const HOOK_PARTS = {
+  key: 'The webhook-inbound key is the path in the body that names the delivery, such as id',
+  items: 'The webhook-inbound items is the path in the body that holds a list, such as data',
+  record: 'The webhook-inbound record is the path in the body, or in each item, that names the record to change by its public id or Name',
+  from: 'The webhook-inbound from names the integration or host weave sends to, so a change weave wrote there is dropped as an echo',
+  secret: 'The webhook-inbound secret names a keystore credential, never its value',
+};
+function compileHook(trigger) {
+  const t = {};
+  for (const [k, words] of Object.entries(HOOK_PARTS)) {
+    const v = trigger[k];
+    if (v == null || v === '') continue;
+    if (typeof v !== 'string' || !v.trim()) throw new WeaveError(words, 'invalid');
+    t[k] = v.trim();
+  }
+  return t;
+}
+const hookOut = (t) => Object.fromEntries(Object.keys(HOOK_PARTS).filter((k) => t[k] != null).map((k) => [k, t[k]]));
+const triggerOut = (t) => (t.type === 'schedule' ? scheduleOut(t) : t.type === 'listener-changed' ? listenerOut(t) : t.type === 'webhook-inbound' ? hookOut(t) : {});
 const LISTENER_ACTIONS = ['upsert-row', 'http-request'];
+const HOOK_RECORD_ACTIONS = ['set-field', 'add-comment'];
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
-function whenWords({ table, trigger: t }) {
+function whenWords({ table, trigger: t }, hookPath = null) {
+  if (t.type === 'webhook-inbound') return `A POST arrives at ${hookPath}`;
   if (t.type === 'entity-created') return `A record is created in ${table}`;
   if (t.type === 'field-updated') return `${t.field} changes in ${table}`;
   if (t.type === 'state-changed') return `${t.field} moves${t.toState ? ` to ${t.toState}` : ''} in ${table}`;
@@ -432,6 +452,7 @@ function urlHost(url) {
 }
 const HTTP_STEP_BODY_MAX = 16 * 1024;
 const itemRow = (key, item) => ({ id: `item:${key}`, key, item, publicId: null, values: {}, docs: {}, comments: [] });
+const hookPathOf = (wsId, id) => `/w/${wsId}/api/hooks/${id}`;
 const OUTBOUND = Symbol('outbound');
 const CREDENTIAL_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie']);
 const blankTemplates = (s) => s.replace(/\{\{[^}]*\}\}/g, 'x');
@@ -9251,7 +9272,7 @@ export class Weave {
     if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
     const db = this.getTable(spec.table);
     const { trigger, actions } = spec;
-    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule', 'listener-changed'].includes(trigger.type)) {
+    if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule', 'listener-changed', 'webhook-inbound'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
     }
     const t = { type: trigger.type };
@@ -9268,6 +9289,8 @@ export class Weave {
       }
     } else if (trigger.type === 'listener-changed') {
       Object.assign(t, this.#compileListener(trigger));
+    } else if (trigger.type === 'webhook-inbound') {
+      Object.assign(t, compileHook(trigger));
     } else if (trigger.type !== 'entity-created') {
       const f = this.getField(db.id, trigger.field);
       t.fieldId = f.id;
@@ -9304,6 +9327,11 @@ export class Weave {
     if (!acts.length) throw new WeaveError('Automation needs at least one action', 'invalid');
     if (t.type === 'listener-changed' && acts.some((a) => !LISTENER_ACTIONS.includes(a.type) || a.response)) {
       throw new WeaveError('A listener-changed rule runs on items from the source, not on a record: its actions are upsert-row or http-request, with no response map', 'invalid');
+    }
+    if (t.type === 'webhook-inbound') {
+      const odd = acts.find((a) => !LISTENER_ACTIONS.includes(a.type) && !(t.record && HOOK_RECORD_ACTIONS.includes(a.type)));
+      if (odd) throw new WeaveError(HOOK_RECORD_ACTIONS.includes(odd.type) ? `A webhook-inbound rule runs on the body it is sent: ${odd.type} needs a trigger that names the record by a path, as record` : `A webhook-inbound rule runs upsert-row and http-request, or set-field and add-comment on the record it names: not ${odd.type}`, 'invalid');
+      if (acts.some((a) => a.response)) throw new WeaveError('A webhook-inbound rule\'s http-request takes no response map: its answer has no record to write to', 'invalid');
     }
     return { dbId: db.id, trigger: t, actions: acts };
   }
@@ -9581,7 +9609,8 @@ export class Weave {
         if (JSON.stringify(row.rule) !== JSON.stringify(next)) { row.rule = next; moved = true; }
       }
       const spec = rule.problem ? null : rule.owner.#renderSpec(rule);
-      for (const [n, words] of [['When', spec && whenWords(spec)], ['Then', spec && thenWords(spec)]]) {
+      const hookPath = spec && rule.trigger.type === 'webhook-inbound' ? rule.owner.#hookOf(row.id).path : null;
+      for (const [n, words] of [['When', spec && whenWords(spec, hookPath)], ['Then', spec && thenWords(spec)]]) {
         const wordsF = F(n);
         if (!wordsF || (row.values[wordsF.id] ?? null) === (words || null)) continue;
         row.values[wordsF.id] = words || null;
@@ -9655,6 +9684,10 @@ export class Weave {
       state: r.problem ? 'Setup incomplete' : 'Ready',
     };
     if (r.problem) out.problem = r.problem;
+    if (r.trigger?.type === 'webhook-inbound') {
+      const hook = r.owner.#hookOf(r.row.id);
+      out.hook = { path: hook.path, revealed: !!hook.entry.revealedAt, ...(hook.entry.log?.[0] ? { last: hook.entry.log[0] } : {}) };
+    }
     return out;
   }
 
@@ -9687,6 +9720,7 @@ export class Weave {
         state: auto.state,
         ...(auto.problem ? { problem: auto.problem } : {}),
         trigger,
+        ...(auto.hook ? { hook: auto.hook } : {}),
         actions: auto.actions.map((a) => {
           if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
           if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
@@ -9866,7 +9900,7 @@ export class Weave {
       });
     });
     const waiting = failure == null ? (this.state.meta.deliveries ?? []).filter((d) => d.workflow === rule.row.id).at(-1)?.reason ?? null : null;
-    const note = rule.trigger?.type === 'listener-changed' ? this.#pollWords(rule.row.id) : null;
+    const note = rule.trigger?.type === 'listener-changed' ? this.#pollWords(rule.row.id) : rule.trigger?.type === 'webhook-inbound' ? this.#hookWords(rule.row.id) : null;
     reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at, waiting, note);
     if (run.waited) this.save();
     if (reg !== this) reg.save();
@@ -9886,6 +9920,133 @@ export class Weave {
 
   isEcho(source, change, { now = this.now(), windowMs = ECHO_WINDOW_MS } = {}) {
     return matchesEcho(this.state.meta.echoes, { ...change, source }, now.getTime(), windowMs);
+  }
+
+  #hookOf(rowId) {
+    const hooks = (this.state.meta.hooks ??= {});
+    let id = Object.keys(hooks).find((k) => hooks[k].row === rowId);
+    if (!id) {
+      id = randomBytes(16).toString('hex');
+      hooks[id] = { row: rowId, createdAt: nowISO(), log: [] };
+      this.save();
+    }
+    return { id, entry: hooks[id], path: hookPathOf(this.state.meta.name, id) };
+  }
+
+  #hookWords(rowId) {
+    const last = Object.values(this.state.meta.hooks ?? {}).find((h) => h.row === rowId)?.log?.[0];
+    if (!last) return null;
+    return `Last delivery ${utcMinute(new Date(last.at))}: ${last.outcome}${last.reason ? `: ${last.reason}` : ''}`;
+  }
+
+  #hookSecret(id) {
+    const keys = this.#reg.keyStore;
+    const name = hookKeyName(id);
+    const entry = own(keys.read().keys, name);
+    return entry?.hook === true && entry.workspace === this.state.meta.id ? keys.value(name, entry) : null;
+  }
+
+  #hookRule(rowId) {
+    const mine = this.#myRules();
+    const rule = mine.find((r) => r.row.id === rowId) ?? mine.find((r) => this.#reg.entityName(r.row) === rowId);
+    if (!rule || rule.row.deletedAt) throw new WeaveError(`Automation '${rowId}' not found`, 'not-found');
+    if (rule.trigger?.type !== 'webhook-inbound') throw new WeaveError(`Automation '${this.#reg.entityName(rule.row)}' has no webhook-inbound trigger`, 'invalid');
+    return rule;
+  }
+
+  hookDeliveries(automation) {
+    const rule = this.#hookRule(automation);
+    return structuredClone(this.#hookOf(rule.row.id).entry.log ?? []);
+  }
+
+  revealHookSecret(automation, { rotate = false } = {}) {
+    const rule = this.#hookRule(automation);
+    if (rule.trigger.secret) throw new WeaveError(`This hook checks deliveries with the keystore credential '${rule.trigger.secret}': manage it with weave key`, 'invalid');
+    const { id, entry, path } = this.#hookOf(rule.row.id);
+    if (entry.revealedAt && !rotate) throw new WeaveError(`The secret was shown once, at ${entry.revealedAt}: rotate to mint a new one, which retires the old one`, 'conflict');
+    const secret = `whsec_${randomBytes(32).toString('base64url')}`;
+    this.#onReg((reg) => {
+      const data = reg.keyStore.read();
+      data.keys[hookKeyName(id)] = { value: secret, owner: null, workspace: this.state.meta.id, shared: false, hook: true, createdAt: nowISO() };
+      reg.keyStore.write(data);
+    });
+    entry.revealedAt = nowISO();
+    this.#audit('hook-secret-revealed', { automation: this.#reg.entityName(rule.row), hook: id, rotated: !!rotate });
+    this.save();
+    return { automation: rule.row.id, url: path, endpoint: `/api/hooks/${id}`, secret };
+  }
+
+  #hookRecord(db, ref) {
+    if (ref == null || typeof ref === 'object') return null;
+    const text = String(ref).trim();
+    const pid = /^#?(\d+)$/.exec(text);
+    if (pid) return this.listEntities(db.id).find((x) => x.publicId === Number(pid[1])) ?? null;
+    try { return this.findEntity(db.id, text) ?? null; } catch { return null; }
+  }
+
+  receiveHook(hookId, { bytes = null, header = () => undefined, size = null } = {}) {
+    const was = this.actor;
+    this.actor = 'webhook';
+    try { return unrestricted(() => this.#receiveHook(hookId, bytes, header, size)); } finally { this.actor = was; }
+  }
+
+  #receiveHook(hookId, bytes, header, size) {
+    const missing = { status: 404, answer: { error: 'No hook at this address', code: 'not-found' } };
+    const entry = /^[0-9a-f]{32}$/.test(String(hookId)) ? own(this.state.meta.hooks ?? {}, hookId) : undefined;
+    if (!entry) return missing;
+    const reg = this.#reg;
+    const rule = reg.#allRules().find((r) => r.owner === this && r.row.id === entry.row);
+    const row = rule && own(reg.state.entities, rule.row.id);
+    if (!row || row.deletedAt || (rule.trigger && rule.trigger.type !== 'webhook-inbound')) return missing;
+    const now = this.now();
+    const record = { at: now.toISOString(), size: bytes?.length ?? (Number.isFinite(size) ? size : 0) };
+    const save = () => { this.save(); if (reg !== this) reg.save(); };
+    const log = (status, outcome, reason = null, key = null) => {
+      entry.log = [{ ...record, status, outcome, ...(reason ? { reason } : {}), ...(key != null ? { delivery: String(key) } : {}) }, ...(entry.log ?? [])].slice(0, HOOK_LOG_KEEP);
+      if (['refused', 'failed', 'setup incomplete'].includes(outcome)) reg.#stampPoll(row, 'Warning', this.#hookWords(row.id));
+    };
+    const answer = (status, outcome, body, reason = null, key = null) => { log(status, outcome, reason, key); save(); return { status, answer: body }; };
+    const refuse = (status, code, reason, outcome = 'refused') => answer(status, outcome, { error: `Refused: ${reason}`, code }, reason);
+    if (bytes == null) return refuse(413, 'too-large', `body over ${HOOK_BODY_MAX} bytes`);
+    const t = rule.trigger;
+    let secret = null;
+    try { secret = t?.secret ? this.resolveKey(t.secret) : this.#hookSecret(hookId); } catch { secret = null; }
+    const refusal = hookRefusal(secret, header, bytes, now.getTime());
+    if (refusal) return refuse(401, 'unauthorized', refusal);
+    if (rule.problem) return answer(202, 'setup incomplete', { accepted: false, ran: 0, reason: `The rule is not set up: ${rule.problem}` }, rule.problem);
+    if (row.values[reg.#wfField('On').id] !== true) return answer(202, 'off', { accepted: false, ran: 0, reason: 'The rule is Off: nothing ran' }, 'the rule is Off');
+    const text = bytes.toString('utf8');
+    let body;
+    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+    const list = t.items ? sourcePath(body, t.items) : [body];
+    if (!Array.isArray(list)) return refuse(422, 'invalid', `the items path '${t.items}' finds no list in the body`);
+    const db = own(this.state.tables, rule.dbId);
+    if (!db || db.deletedAt) return refuse(422, 'invalid', 'the rule\'s table is gone');
+    let echoes = 0;
+    const fire = [];
+    for (const item of list) {
+      if (t.from && item && typeof item === 'object' && !Array.isArray(item) && this.isEcho(t.from, { values: item }, { now })) { echoes++; continue; }
+      let target = null;
+      if (t.record) {
+        const ref = sourcePath(item, t.record);
+        target = this.#hookRecord(db, ref);
+        if (!target) return answer(422, 'failed', { error: `No record '${ref ?? ''}' in ${this.qualifiedName(db)}: nothing ran`, code: 'invalid' }, `no record '${ref ?? ''}' in ${this.qualifiedName(db)}`);
+      }
+      fire.push({ item, target });
+    }
+    const key = t.key ? sourcePath(body, t.key) : header('x-weave-delivery');
+    const keyed = key != null && key !== '' && typeof key !== 'object';
+    if (keyed) {
+      const claim = this.claimInbound(`hook:${hookId}`, key, { now });
+      if (claim.duplicate) return answer(200, 'duplicate', { duplicate: true, ran: 0, firstAt: claim.firstAt }, `first seen ${claim.firstAt}`, key);
+    }
+    log(200, fire.length || !echoes ? 'ran' : 'echo', null, keyed ? key : null);
+    fire.forEach(({ item, target }, i) => {
+      const event = { type: 'webhook-inbound', trigger: { body, ...(t.items ? { item } : {}) } };
+      this.#fireRule(rule, db, [target ?? itemRow(`${keyed ? key : hookId}#${i + 1}`, item ?? null)], event, 0, record.at);
+    });
+    save();
+    return { status: 200, answer: { ran: fire.length, echoes, ...(keyed ? { delivery: String(key) } : {}) } };
   }
 
   #rememberEcho(request, e) {
@@ -9967,7 +10128,7 @@ export class Weave {
       name: deliveryName(request),
       values: {
         Status: 'Failed', Workflow: run.rule.row.id, 'Last Error': last.error, 'Last Attempt': last.at,
-        Record: e.item !== undefined ? `${run.rule.trigger.integration} item ${e.key}` : `${this.qualifiedName(run.db)} #${e.publicId} ${this.entityName(e)}`,
+        Record: e.item !== undefined ? `${run.rule.trigger.integration ?? 'Webhook'} item ${e.key}` : `${this.qualifiedName(run.db)} #${e.publicId} ${this.entityName(e)}`,
         ...(reg.#sysRow('workspaces', this.state.meta.id) ? { Workspace: reg.#sysRow('workspaces', this.state.meta.id).id } : {}),
       },
       docs: { Request: requestText(request), Attempts: attemptsText(attempts) },
@@ -10209,7 +10370,7 @@ export class Weave {
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
       if (!f) return null;
-      const value = templated(action.value) ? this.#template(action.value, e, db, steps) : action.value;
+      const value = templated(action.value) ? this.#template(action.value, e, db, steps, event.trigger) : action.value;
       const before = this.#undoBefore(e, db, [f]);
       this.#applyValues(e, db, { [f.name]: value }, { depth: depth + 1 });
       if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
@@ -10219,7 +10380,7 @@ export class Weave {
       if (docField) {
         e.docs = e.docs ?? {};
         const before = e.docs[docField.id] ?? '';
-        const text = stripEmptyEmbeds(this.#template(action.text, e, db, steps));
+        const text = stripEmptyEmbeds(this.#template(action.text, e, db, steps, event.trigger));
         const after = (before ? before.replace(/\n*$/, '\n\n') : '') + text;
         const prior = { at: e.updatedAt, by: e.modifiedBy };
         this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
@@ -10231,7 +10392,7 @@ export class Weave {
         return { field: docField.name, text };
       }
     } else if (action.type === 'add-comment') {
-      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db, steps), createdAt: nowISO() };
+      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db, steps, event.trigger), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
       return { id: comment.id, text: comment.text };
@@ -10250,13 +10411,13 @@ export class Weave {
       return { [OUTBOUND]: { kind: 'webhook', method: 'POST', url: action.url, headers: { 'Content-Type': 'application/json' }, body, ...(action.signWith ? { signWith: action.signWith } : {}), delivery: uuid() } };
     } else if (action.type === 'http-request') {
       if (this.#noWebhooks) return { status: null, ok: false, body: null };
-      return { [OUTBOUND]: this.#httpRequest(action, e, db, steps) };
+      return { [OUTBOUND]: this.#httpRequest(action, e, db, steps, event.trigger) };
     }
     return null;
   }
 
-  #httpRequest(action, e, db, steps) {
-    const fill = (text) => this.#template(text, e, db, steps);
+  #httpRequest(action, e, db, steps, trigger) {
+    const fill = (text) => this.#template(text, e, db, steps, trigger);
     const headers = Object.fromEntries(Object.entries(action.headers ?? {}).map(([k, v]) => [k, fill(v)]));
     let body;
     if (typeof action.body === 'string') body = fill(action.body);
@@ -10329,7 +10490,7 @@ export class Weave {
   }
 
   #upsertSource(e, db, event, steps = {}) {
-    if (e.item !== undefined) return { row: {}, event: { type: event.type }, trigger: { item: e.item }, steps };
+    if (e.item !== undefined) return { row: {}, event: { type: event.type }, trigger: event.trigger ?? { item: e.item }, steps };
     const row = { PublicId: e.publicId };
     for (const [name, v] of Object.entries(this.#readEntityIn(e.id).fields)) {
       const chip = (x) => (x && typeof x === 'object' && 'publicId' in x ? x.name : x);
@@ -10337,7 +10498,7 @@ export class Weave {
     }
     const field = event.fieldId ? db.fields[event.fieldId] : null;
     const toState = event.toStateId ? field?.config.states?.find((s) => s.id === event.toStateId)?.name : null;
-    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) }, steps };
+    return { row, event: { type: event.type, ...(field ? { field: field.name } : {}), ...(toState ? { toState } : {}), ...(event.payload ?? {}) }, ...(event.trigger ? { trigger: event.trigger } : {}), steps };
   }
 
   #upsertRow(action, source, depth) {
@@ -10373,7 +10534,7 @@ export class Weave {
     };
   }
 
-  #template(text, e, db, steps = {}) {
+  #template(text, e, db, steps = {}, trigger = undefined) {
     return text.replace(/\{\{([^}]+)\}\}/g, (_, name) => {
       const key = name.trim();
       if (key.startsWith('steps.')) {
@@ -10381,7 +10542,8 @@ export class Weave {
         return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
       }
       if (key.startsWith('trigger.')) {
-        const v = e.item === undefined ? undefined : sourcePath({ trigger: { item: e.item } }, key);
+        const from = trigger ?? (e.item === undefined ? undefined : { item: e.item });
+        const v = from === undefined ? undefined : sourcePath({ trigger: from }, key);
         return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
       }
       if (key === 'PublicId') return String(e.publicId);

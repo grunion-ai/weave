@@ -79,6 +79,7 @@ const OPEN = (method, path) => path === '/api/health' || path === '/auth' || pat
   || (method === 'GET' && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs' || path === '/status' || path === '/status/'))
   || /^\/api\/auth\/(oidc\/(start|callback)|handoff|open\/[^/]+)$/.test(path)
   || path === '/api/auth/logout' || path === '/.well-known/openai-apps-challenge'
+  || (method === 'POST' && /^\/api\/hooks\/[^/]+$/.test(path))
   || (method === 'GET' && (/^\/view\//.test(path) || path === '/t' || (path.startsWith('/t/') && !/^\/t\/[0-9a-f-]{36}\/new$/.test(path))
     || /\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));
 
@@ -246,6 +247,24 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
     w.importJSON(own);
     assert.equal(w.verifyToken('wv_replacement')?.id, minted.account.id);
     assert.equal(w.verifyToken(minted.token), null);
+  } finally {
+    stop();
+  }
+});
+
+test('Feature #227: a webhook-inbound hook is the one anonymous write, and it answers with its own signature check, never the wall', async () => {
+  const { w, call, stop } = await serve();
+  try {
+    const auto = w.createAutomation('Task', { name: 'Intake', trigger: { type: 'webhook-inbound', key: 'id' }, actions: [{ type: 'upsert-row', table: 'Task', key: 'Name', fields: { Name: 'trigger.body.title' } }] });
+    const { secret } = w.revealHookSecret(auto.id);
+    const path = `/api/hooks/${auto.hook.path.split('/').at(-1)}`;
+    const unsigned = await call('POST', path, { body: { id: 'a', title: 'Nobody' } });
+    assert.equal(unsigned.status, 401);
+    assert.match((await unsigned.json()).error, /^Refused: no X-Weave-Signature/);
+    const res = await fetch(new URL(path, (await call('GET', '/api/health')).url), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Weave-Secret': secret }, body: JSON.stringify({ id: 'b', title: 'From outside' }) });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.ok(Object.values(w.state.entities).some((e) => !e.deletedAt && w.entityName(e) === 'From outside'));
+    assert.equal((await call('POST', `/api/automations/${auto.id}/secret`)).status, 401, 'revealing the secret stays behind the wall');
   } finally {
     stop();
   }

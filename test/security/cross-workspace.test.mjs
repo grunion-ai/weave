@@ -69,6 +69,9 @@ function build() {
   a.tableView = alpha.tableView({ id: a.table.id }).views[0];
   a.share = alpha.mintShare({ scope: { kind: 'table', id: a.table.id }, mode: 'manage', label: 'alpha-share-needle' });
   alpha.setKey('ALPHA_KEY', 'alpha-key-needle');
+  a.hook = alpha.createAutomation(a.table.id, { name: 'Intake', trigger: { type: 'webhook-inbound', key: 'id' }, actions: [{ type: 'upsert-row', table: 'Secret', key: 'Code', fields: { Code: 'trigger.body.id' } }] });
+  a.hookId = a.hook.hook.path.split('/').at(-1);
+  a.hookSecret = alpha.revealHookSecret(a.hook.id).secret;
   alpha.setRequireAuth(true);
   beta.createSpace({ name: 'Home' });
   beta.createTable({ space: 'Home', name: 'Note' });
@@ -80,7 +83,7 @@ function build() {
   const ids = {
     entities: a.entity.id, e: a.entity.id, tables: a.table.id, t: a.table.id, fields: a.field.id, files: a.blob.id,
     views: a.view.id, shares: a.share.id, keys: 'ALPHA_KEY', spaces: a.space.id, accounts: a.architect.account.id,
-    comments: a.comment.id, workspaces: 'alpha', activity: a.entity.id, forms: a.table.id, f: a.table.id,
+    comments: a.comment.id, workspaces: 'alpha', activity: a.entity.id, forms: a.table.id, f: a.table.id, hooks: a.hookId,
   };
   const fill = (path) => {
     const seg = path.split('/');
@@ -165,6 +168,7 @@ test("A's share token and A's account token open nothing under B, and B's creden
     ['POST', `/w/alpha/api/tables/${a.table.id}/query`, { token: b.editor }, 401],
     ['GET', `/w/alpha/api/views/${a.view.id}`, { token: b.editor }, 401],
   ];
+  cases.push(['POST', `/w/beta/api/hooks/${a.hookId}`, {}, 404]);
   for (const [method, url, cred, status] of cases) {
     const res = await call(method, url, { ...cred, body: { Name: 'beta-wrote', Code: 'beta-wrote' } });
     const text = JSON.stringify(res.json) ?? '';
@@ -172,4 +176,25 @@ test("A's share token and A's account token open nothing under B, and B's creden
     assert.ok(!NEEDLE.test(text), `${method} ${url} carried A's data`);
   }
   assert.equal(footprint(), before, "A's audit log and state are untouched");
+});
+
+test("Feature #227: A's hook id, posted under B with A's own secret, runs nothing in either workspace", async () => {
+  const { hub, alpha, beta, a, footprint } = build();
+  const { createRequestHandler } = await import('../../src/routes.js');
+  const handle = createRequestHandler(hub, { version: 'test' });
+  const before = footprint();
+  const betaBefore = JSON.stringify(beta.state.entities);
+  const send = (path) => handle({
+    method: 'POST', path, searchParams: new URLSearchParams(),
+    header: (n) => ({ host: 'localhost:4400', 'content-type': 'application/json', 'x-weave-secret': a.hookSecret })[n.toLowerCase()],
+    readBody: async () => ({ id: 'beta-wrote' }), remote: '127.0.0.1',
+  });
+  const res = await send(`/w/beta/api/hooks/${a.hookId}`);
+  assert.equal(res.status, 404);
+  assert.ok(!NEEDLE.test(String(res.body)));
+  assert.equal(footprint(), before, "A is untouched");
+  assert.equal(JSON.stringify(beta.state.entities), betaBefore, 'B is untouched');
+  assert.equal(alpha.hookDeliveries(a.hook.id).length, 0, "the miss is not logged on A's rule");
+  const home = await send(`/w/alpha/api/hooks/${a.hookId}`);
+  assert.equal(home.status, 200, String(home.body));
 });

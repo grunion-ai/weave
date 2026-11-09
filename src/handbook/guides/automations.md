@@ -32,7 +32,7 @@ A rule's own writes can fire other rules, three deep at most, so a pair of rules
 
 ## Triggers
 
-Five trigger types, and a rule has one:
+Six trigger types, and a rule has one:
 
 | Trigger | Fires when |
 | --- | --- |
@@ -41,6 +41,7 @@ Five trigger types, and a rule has one:
 | `state-changed` | a workflow field moves, optionally only into one named state |
 | `schedule` | the clock reaches a cron minute |
 | `listener-changed` | an item in a list another tool serves is new or changed |
+| `webhook-inbound` | another tool POSTs an event to the rule's own address |
 
 `field-updated` and `state-changed` take `field`; `state-changed` also takes `toState` to narrow it to one landing state.
 
@@ -101,6 +102,61 @@ weave automation create Ops/Task --name 'Mirror Acme tasks' \
                "fields":{"Remote Id":"trigger.item.id","Name":"trigger.item.title",
                          "Status":"trigger.item.status"}}]'
 ```
+
+## When another tool posts an event
+
+A `webhook-inbound` trigger gives the rule its own address. Saving the rule mints it, `POST /w/<workspace>/api/hooks/<id>`, and the rule's When column names it: `A POST arrives at /w/acme/api/hooks/9f2c...`. The body the sender posts is the input to the rule's steps.
+
+```json
+{ "type": "webhook-inbound", "key": "id", "items": "data", "record": "issue", "from": "Acme API" }
+```
+
+| Key | What it holds |
+| --- | --- |
+| `key` | the path in the body that names the delivery, such as `id`; without it weave reads the `X-Weave-Delivery` header |
+| `items` | the path in the body that holds a list; the rule then runs once per item, as `trigger.item` |
+| `record` | the path in the body, or in each item, that names a record of the rule's table by its public id or Name; set-field and add-comment then write to that record |
+| `from` | the integration Name or host weave sends to; a change weave wrote there in the last ten minutes is dropped as its echo |
+| `secret` | the name of a keystore credential to check deliveries with, in place of the minted secret |
+
+Every key is optional. The secret is shown once: `weave automation secret <automation>` prints the full address and the secret, and a second call refuses until you pass `--rotate`, which mints a new secret and retires the old one. The secret lives in the key store, never in the workspace, a log or a step output, and no MCP tool reveals it.
+
+A sender proves itself one of two ways. A sender that can sign sends `X-Weave-Timestamp` (seconds) and `X-Weave-Signature: sha256=<hex>`, the HMAC-SHA256 of `<timestamp>.<body>` keyed with the secret. That is the scheme weave's own signed webhooks use, so a `webhook` action with `signWith` on one weave can post straight into a hook on another. A sender that cannot sign sends the secret itself as `X-Weave-Secret`. A timestamp more than five minutes from weave's clock is refused, and so is a body over 64 KB.
+
+| Answer | When |
+| --- | --- |
+| 200 `{ran, echoes}` | the delivery ran, or every item was weave's own echo |
+| 200 `{duplicate: true}` | the `key` was already run in the last 24 hours; nothing runs again |
+| 202 `{accepted: false}` | the rule is Off, or its setup is incomplete; nothing runs, and the sender stops retrying |
+| 401 | no signature or secret header, a bad signature, a stale timestamp or the wrong secret |
+| 404 | no hook at that address in this workspace |
+| 413 | the body is over 64 KB |
+| 422 | the `items` path finds no list, or the `record` path finds no record |
+
+Every delivery is logged on the rule, newest first, with its time, status, size, outcome and the reason for a refusal: `weave automation describe` shows the last one as `hook.last`, and Health Reason reads `Last delivery 2026-11-09 12:03 UTC: refused: bad signature`. A refused delivery never runs, and it turns Health to Warning until the next one runs.
+
+The actions are `upsert-row` and `http-request`, with no `response` map, plus `set-field` and `add-comment` when the trigger names the record with `record`. Upsert-row source paths and placeholders read the body as `trigger.body.<path>` and each item as `trigger.item.<path>`.
+
+A worked example: a GitHub-style issue event creates or updates a record of `Ops/Task`.
+
+```bash
+weave automation create Ops/Task --name 'GitHub issues' \
+  --trigger '{"type":"webhook-inbound","key":"delivery"}' \
+  --actions '[{"type":"upsert-row","table":"Ops/Task","key":"Remote Id",
+               "fields":{"Remote Id":"trigger.body.issue.number","Name":"trigger.body.issue.title",
+                         "Status":"trigger.body.action"}}]'
+weave automation secret 'GitHub issues'
+```
+
+The sender then posts:
+
+```bash
+curl -X POST https://weave.example.com/w/acme/api/hooks/9f2c... \
+  -H 'Content-Type: application/json' -H "X-Weave-Secret: $HOOK_SECRET" \
+  -d '{"delivery":"72d3162e","action":"opened","issue":{"number":42,"title":"Login fails on Safari"}}'
+```
+
+and `Ops/Task` holds a record named `Login fails on Safari` with Remote Id `42`. Posting the same body again answers `{"duplicate": true}` and changes nothing.
 
 ## Actions
 

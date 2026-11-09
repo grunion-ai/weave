@@ -2,6 +2,7 @@ import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeade
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
 import { matchRoute, httpReply, boundedLimit, previewInput } from './commands.js';
+import { HOOK_BODY_MAX } from './delivery.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -339,6 +340,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     weave.maybeRefresh();
     versionOf = weave;
+    const hookDoor = rx.method === 'POST' ? matchRoute('POST', path) : null;
+    if (hookDoor?.cmd.http.door) {
+      let bytes = null;
+      try { bytes = rx.readBytes ? await rx.readBytes(HOOK_BODY_MAX) : Buffer.from(JSON.stringify(await rx.readBody())); } catch (err) { if (!(err instanceof WeaveError) || err.code !== 'too-large') throw err; }
+      const r = hookDoor.cmd.run(weave, hookDoor.params, { hook: { bytes, header: (n) => rx.header(n), size: Number(rx.header('content-length')) } });
+      return out(r.status, r.answer, { 'Cache-Control': 'no-store' });
+    }
     if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
       if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
         const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);

@@ -107,6 +107,7 @@ const INTERNAL = {
   pendingDeliveries: 'test plumbing (Feature #311): the deliveries waiting to be sent again; an agent reads the same wait from the rule\'s Health Reason',
   claimInbound: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint acknowledges a delivery key it already ran instead of running it again',
   isEcho: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint drops a change that repeats a write weave just sent to that source',
+  hookDeliveries: 'read helper (Feature #227): the delivery log of a webhook-inbound rule, newest first; an agent reads the latest delivery from weave_automations describe (hook.last) and the rule\'s Health Reason',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
