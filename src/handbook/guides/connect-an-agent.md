@@ -4,7 +4,7 @@ An agent connects to a workspace through MCP. On a hosted weave, the address is 
 
 ## Open the native connection guide
 
-Open your workspace's MCP address in a browser. The setup page supplies the address and connection instructions. The embedded guide above explains the routes for browser clients, Claude Code, and Codex; the native page supplies your workspace's actual address.
+Open `https://<host>/w/<workspace>/docs` in a browser. This native connection guide supplies your workspace's MCP address and setup instructions. Copy the MCP address into your client. The embedded guide above explains the routes for browser clients, Claude Code, and Codex; the native page supplies your workspace's actual address.
 
 The client opens a weave sign-in when authorization is needed. Access follows your role: an observer reads and comments, an editor also changes records, and an architect also changes the schema and accounts. Connecting an agent does not grant a higher role.
 

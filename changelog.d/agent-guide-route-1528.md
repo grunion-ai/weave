@@ -1,0 +1,1 @@
+- The agent connection walkthrough opens the native workspace `/docs` setup page in a browser and reserves `/mcp` for the client connection (Issue #1528).
