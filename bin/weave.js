@@ -357,6 +357,16 @@ async function main() {
       } catch (err) {
         console.warn(`Showcase sync skipped: ${err.message}`);
       }
+      try {
+        if (docsW) {
+          const { syncDocumentationPresentation } = await import('../src/documentation-presentation.js');
+          const r = syncDocumentationPresentation(docsW);
+          if (r.applied) console.log(`Documentation presentation: ${r.attached} attachments, ${r.fields} fields, ${r.descriptions} descriptions`);
+          for (const conflict of r.conflicts) console.warn(`Documentation presentation preserved ${conflict}`);
+        }
+      } catch (err) {
+        console.warn(`Documentation presentation skipped: ${err.message}`);
+      }
       if (docsW && docsW !== w) docsW.store.close?.();
     };
     if (!deferred) await bootWrites();
