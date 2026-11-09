@@ -352,7 +352,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('Roll up… creates one parent in the relation\'s table and links the selection to it', async () => {
+  test('Roll up… creates one parent in the relation\'s table and links the selection to it, in the tray (Issue #1472)', async () => {
     const page = await grid();
     try {
       await boxes(page).nth(0).check();
@@ -361,11 +361,17 @@ if (s) {
       await pickRow(page, 'Roll up');
       await page.waitForSelector('.picker-pop .picker-search:focus');
       await pickRow(page, 'Owner');
-      const input = page.locator('.value-pop input');
+      const input = page.locator('#tray input[name="name"]');
       await input.waitFor();
+      assert.equal(await page.locator('.value-pop').count(), 0, 'the new parent is named in the tray, never in a popover');
+      assert.equal(await page.locator('#modal-back').count(), 0, 'and never in a centered modal');
+      assert.match(await page.textContent('#tray-title'), /^New /, 'the tray names the row it will create');
+      assert.equal((await page.textContent('#tray .tray-actions button[type="submit"]')).trim(), 'Create & link');
+      assert.equal(await page.locator('.wv-grid tbody tr.entity-row td[data-field="Owner"]').evaluateAll((tds) => tds.filter((td) => /Carol/.test(td.textContent)).length), 0,
+        'nothing is written until Create & link');
       await input.fill('Carol');
       await holdRepaint(page);
-      await page.keyboard.press('Enter');
+      await page.click('#tray .tray-actions button[type="submit"]');
       await page.waitForFunction(() => !document.querySelector('.sel-puck')
         && [...document.querySelectorAll('.wv-grid tbody tr.entity-row td[data-field="Owner"]')]
           .filter((td) => /Carol/.test(td.textContent)).length === 2, null, { timeout: 8000 }).catch(() => {});

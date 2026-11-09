@@ -6376,8 +6376,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }),
     rollup: (anchor) => relationPicker(anchor, `Roll ${nRows()} up through…`, (f) => {
       const term = termOfTable(f.targetDbId);
-      valuePop({ anchor, title: `New ${term.singular}`, placeholder: 'Name', apply: 'Create & link',
-        onApply: (name) => runBulk('Rolled up', 'rollup', { field: f.name, name }) });
+      tray(`New ${term.singular}`, [el('input', { name: 'name', placeholder: 'Name', class: 'form-control' })],
+        (fd) => runBulk('Rolled up', 'rollup', { field: f.name, name: fd.get('name') }), 'Create & link');
     }),
     copy: () => copyText([...chosen()].map((id) => `${location.origin}/e/${id}`).join('\n'),
       `${SEL().countLabel(chosen().size, db.term)} — links copied`),
