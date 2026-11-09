@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, atRest, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
 
-const s = await launch('phone new-row sheet', (weave) => {
+const s = await launch('phone new-row tray', (weave) => {
   weave.createSpace({ name: 'Development' });
   const issues = weave.createTable({ space: 'Development', name: 'Issue' });
   weave.updateField(issues, 'Name', { config: { term: { singular: 'bug', plural: 'bugs' } } });
@@ -29,11 +29,7 @@ const until = async (read, ok = Boolean, { timeout = 10000 } = {}) => {
   return got;
 };
 const rows = (page, id) => page.evaluate(async (id) => (await (await fetch(`/api/tables/${id}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).items.map((e) => ({ name: e.name, Severity: e.fields.Severity ?? null, Symptom: e.fields.Symptom ?? [] })), id);
-const touchOutside = (page) => page.evaluate(() => {
-  const x = 40, y = 40;
-  const t = document.elementFromPoint(x, y);
-  for (const type of ['pointerdown', 'pointerup']) t.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true, pointerId: 21, button: 0, buttons: type === 'pointerdown' ? 1 : 0, clientX: x, clientY: y }));
-});
+const CREATE = '#tray .tray-actions button[type="submit"]';
 
 if (s) {
   const { base, browser, issues, guides, notes, tasks, todos } = s;
@@ -48,203 +44,82 @@ if (s) {
     return page;
   };
 
-  const dragSheet = async (page, sel, dy, { step = 40 } = {}) => {
-    await atRest(page.locator(sel));
-    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    for (let i = 1; i <= 6; i += 1) {
-      await page.waitForTimeout(step);
-      await page.mouse.move(x, y + (dy * i) / 6);
-    }
-    await page.mouse.up();
-  };
-
-  const flickSheet = async (page, sel, dy) => {
-    await atRest(page.locator(sel));
-    await page.evaluate((s) => {
-      globalThis.wvFlick = null;
-      const mark = (e) => {
-        if (e.type === 'pointerdown') globalThis.wvFlick = { at: e.timeStamp, last: e.timeStamp };
-        else if (globalThis.wvFlick) globalThis.wvFlick.last = e.timeStamp;
-      };
-      for (const type of ['pointerdown', 'pointermove']) {
-        document.querySelector(`${s} .sheet-grip`).addEventListener(type, mark, { capture: true });
-      }
-    }, sel);
-    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y + dy);
-    await page.mouse.up();
-    const seen = await page.evaluate(() => globalThis.wvFlick);
-    return Math.max(1, Math.round((seen?.last ?? 0) - (seen?.at ?? 0)));
-  };
-
   for (const [engine, make] of engines) {
     for (const theme of ['light', 'dark']) {
-      test(`the new-row sheet grabber follows the finger and dismisses past a third (${engine}, ${theme}, Issue #808)`, async () => {
-        const page = await open(make, issues, theme);
-        try {
-          const before = (await rows(page, issues)).length;
-          await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet .sheet-grip');
-          await atRest(page.locator('.new-row-sheet'));
-          const grip = await page.locator('.new-row-sheet .sheet-grip').boundingBox();
-          assert.ok(Math.round(grip.height) >= 44, `the grabber is a real target, got ${Math.round(grip.height)}px tall`);
-          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
-
-          await dragSheet(page, '.new-row-sheet', h * 0.12);
-          assert.ok(await page.isVisible('.new-row-sheet'), 'a short drag springs the sheet back');
-          await atRest(page.locator('.new-row-sheet'));
-          assert.equal(await page.evaluate(() => document.querySelector('.new-row-sheet').style.transform), '',
-            'and leaves no transform behind');
-          assert.equal(await page.locator('.new-row-sheet').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true,
-            'the spring-back is over, so the next drag grabs the grabber where it rests');
-
-          await dragSheet(page, '.new-row-sheet', h * 0.5);
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
-          assert.equal((await rows(page, issues)).length, before, 'dragging it away writes nothing');
-
-          await page.waitForTimeout(700);
-          await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet .sheet-grip');
-          const reach = Math.round(h * 0.2);
-          const budget = Math.round(reach / 0.5);
-          const spans = [];
-          let standing = true;
-          for (let i = 0; i < 3 && standing; i += 1) {
-            spans.push(await flickSheet(page, '.new-row-sheet', reach));
-            standing = (await page.locator('.new-row-sheet').count()) > 0;
-          }
-          assert.equal(standing, false,
-            `a ${reach}px flick, a fifth of the sheet and under its one-third threshold, left it standing after ${spans.length} tries: the harness delivered them over ${spans.join(', ')} ms and a flick has under ${budget} ms (Issue #1110)`);
-        } finally { await page.close(); }
-      });
-
-      test(`a slow drag as far as a flick springs the new-row sheet back (${engine}, ${theme}, Issue #1110)`, async () => {
-        const page = await open(make, issues, theme);
-        try {
-          const before = (await rows(page, issues)).length;
-          await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet .sheet-grip');
-          await atRest(page.locator('.new-row-sheet'));
-          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
-          await dragSheet(page, '.new-row-sheet', Math.round(h * 0.2), { step: 60 });
-          assert.ok(await page.isVisible('.new-row-sheet'),
-            'a fifth of the sheet is a dismissal only when the finger moves fast, so a slow drag that far springs back');
-          await atRest(page.locator('.new-row-sheet'));
-          assert.equal(await page.locator('.new-row-sheet').evaluate((n) => new DOMMatrix(getComputedStyle(n).transform).isIdentity), true);
-          assert.equal((await rows(page, issues)).length, before);
-        } finally { await page.close(); }
-      });
-
-
-      test(`the new-row sheet dismisses when the last movement arrives with the release, not as a move (${engine}, ${theme}, Issue #1064)`, async () => {
-        const page = await open(make, issues, theme);
-        try {
-          const before = (await rows(page, issues)).length;
-          await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet .sheet-grip');
-          await atRest(page.locator('.new-row-sheet'));
-          const h = (await page.locator('.new-row-sheet').boundingBox()).height;
-          const box = await page.locator('.new-row-sheet .sheet-grip').boundingBox();
-          const x = box.x + box.width / 2;
-          const y = box.y + box.height / 2;
-          await page.evaluate(() => {
-            globalThis.wvGripPointer = null;
-            document.querySelector('.new-row-sheet .sheet-grip')
-              .addEventListener('pointerdown', (e) => { globalThis.wvGripPointer = e.pointerId; }, { capture: true });
-          });
-          await page.mouse.move(x, y);
-          await page.mouse.down();
-          for (let i = 1; i <= 6; i += 1) {
-            await page.waitForTimeout(150);
-            await page.mouse.move(x, y + (h * 0.12 * i) / 6);
-          }
-          await page.waitForSelector('.new-row-sheet.sheet-dragging');
-          await page.evaluate(({ at, to }) => {
-            document.querySelector('.new-row-sheet .sheet-grip').dispatchEvent(new PointerEvent('pointerup', {
-              bubbles: true, cancelable: true, composed: true, pointerType: 'touch', isPrimary: true,
-              pointerId: globalThis.wvGripPointer, button: 0, buttons: 0, clientX: at, clientY: to,
-            }));
-          }, { at: x, to: y + h * 0.5 });
-          await page.mouse.up();
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
-          assert.equal((await rows(page, issues)).length, before, 'dragging it away writes nothing');
-        } finally { await page.close(); }
-      });
-
-      test(`on a phone + opens a New bug sheet that writes nothing until Create, then Create writes the name and choices (${engine}, ${theme}, Issue #739)`, async () => {
+      test(`on a phone + opens the create tray, never a bottom sheet or a popover, and writes nothing until Create (${engine}, ${theme}, Issue #739, Issue #1471)`, async () => {
         const page = await open(make, issues, theme);
         try {
           assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
           assert.equal(await page.getAttribute('.phone-bar .phone-new', 'aria-label'), 'New bug');
           const before = (await rows(page, issues)).length;
           await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet');
-          assert.equal(await page.textContent('.new-row-sheet .new-row-title'), 'New bug');
-          assert.equal(await page.getAttribute('.new-row-sheet', 'aria-label'), 'New bug');
-          const labels = await page.locator('.new-row-sheet .new-row-label').allTextContents();
+          await page.waitForSelector('#tray-back #tray .new-row-name');
+          assert.equal(await page.locator('.new-row-sheet').count(), 0, 'the phone + creates in the tray, not a bottom sheet');
+          assert.equal(await page.locator('#modal-back').count(), 0, 'and never a centered modal');
+          assert.equal(await page.textContent('#tray-title'), 'New bug', 'the tray names the row by its table');
+          const labels = await page.locator('#tray .new-row-label').allTextContents();
           assert.deepEqual(labels, ['Name', 'Severity', 'Symptom'], 'the name and the table\'s choice fields');
-          await touchOutside(page);
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          await page.keyboard.press('Escape');
+          await page.waitForSelector('#tray-back', { state: 'detached' });
           assert.equal((await rows(page, issues)).length, before, 'dismissing writes nothing');
-          await page.waitForTimeout(700);
           await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet');
-          assert.equal(await page.isDisabled('.new-row-create'), true, 'Create waits for a name');
-          await page.fill('.new-row-name', `Looks broken: made in ${engine} ${theme}`);
-          await page.click('.new-row-sheet .new-row-opt[data-opt="High"]');
-          await page.click('.new-row-sheet .new-row-opt[data-opt="Slow"]');
-          await page.click('.new-row-sheet .new-row-opt[data-opt="Error"]');
-          const heights = await page.locator('.new-row-sheet button').evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
-          assert.ok(heights.every((h) => h >= 44), `every sheet control is a 44px target: ${heights}`);
+          await page.waitForSelector(CREATE);
+          assert.equal(await page.isDisabled(CREATE), true, 'Create waits for a name');
+          await page.fill('#tray .new-row-name', `Looks broken: made in ${engine} ${theme}`);
+          await page.click('#tray .new-row-opt[data-opt="High"]');
+          await page.click('#tray .new-row-opt[data-opt="Slow"]');
+          await page.click('#tray .new-row-opt[data-opt="Error"]');
+          const heights = await page.locator(`#tray .new-row-opt, #tray .tray-actions .btn`).evaluateAll((bs) => bs.map((b) => b.getBoundingClientRect().height));
+          assert.ok(heights.every((h) => h >= 44), `every create control is a 44px target: ${heights}`);
           assert.equal((await rows(page, issues)).length, before, 'picking writes nothing');
-          await page.click('.new-row-create');
+          await page.click(CREATE);
           const made = await until(async () => (await rows(page, issues)).find((r) => r.name === `Looks broken: made in ${engine} ${theme}`));
           assert.deepEqual(made, { name: `Looks broken: made in ${engine} ${theme}`, Severity: 'High', Symptom: ['Slow', 'Error'] });
           await page.click('#wv-toasts .wv-toast-action');
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          await page.waitForSelector('#tray-back', { state: 'detached' });
           await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
           assert.equal(await page.inputValue('#dock textarea.name-edit'), made.name, 'the toast opens the new row');
         } finally { await page.close(); }
       });
     }
 
-    test(`on a phone the sheet names the row by its table's term, and by the table's name in singular form when it has none (${engine}, Issue #739, Issue #792)`, async () => {
+    test(`on a phone the tray names the row by its table's term, and by the table's name in singular form when it has none (${engine}, Issue #739, Issue #792)`, async () => {
       for (const [id, want, noun] of [[guides, 'New guide', 'guide'], [notes, 'New note', 'note'], [tasks, 'New task', 'task']]) {
         const page = await open(make, id);
         try {
           assert.equal(await page.getAttribute('.phone-bar .phone-new', 'aria-label'), want);
           await page.click('.phone-bar .phone-new');
-          await page.waitForSelector('.new-row-sheet');
-          assert.equal(await page.textContent('.new-row-sheet .new-row-title'), want);
-          assert.equal(await page.getAttribute('.new-row-sheet', 'aria-label'), want);
-          assert.equal(await page.getAttribute('.new-row-name', 'placeholder'), `Name this ${noun}`);
+          await page.waitForSelector('#tray .new-row-name');
+          assert.equal(await page.textContent('#tray-title'), want);
+          assert.equal(await page.getAttribute('#tray', 'aria-labelledby'), 'tray-title');
+          assert.equal(await page.getAttribute('#tray .new-row-name', 'placeholder'), `Name this ${noun}`);
           await page.keyboard.press('Escape');
-          await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+          await page.waitForSelector('#tray-back', { state: 'detached' });
         } finally { await page.close(); }
       }
     });
 
-    test(`on a phone the sheet opened from a table has no table chip, and only a create with no table in context asks which table (${engine}, Issue #793)`, async () => {
+    test(`on a phone the tray opened from a table has no table select, and only a create with no table in context asks which table, inside the tray (${engine}, Issue #793, Issue #1471)`, async () => {
       const page = await open(make, issues);
       try {
         await page.click('.phone-bar .phone-new');
-        await page.waitForSelector('.new-row-sheet');
-        assert.equal(await page.locator('.new-row-sheet .new-row-table').count(), 0, 'no chip switches the table');
+        await page.waitForSelector('#tray .new-row-name');
+        assert.equal(await page.locator('#tray input[name="table"]').count(), 0, 'nothing switches the table');
         await page.keyboard.press('Escape');
-        await page.waitForSelector('.new-row-sheet', { state: 'detached' });
-        await page.evaluate(() => newRowSheet());
-        await page.waitForSelector('.new-row-sheet .new-row-table');
-        assert.match(await page.getAttribute('.new-row-sheet .new-row-table', 'aria-label'), /^Table: /);
+        await page.waitForSelector('#tray-back', { state: 'detached' });
+        await page.evaluate(() => newRowTray());
+        await page.waitForSelector('#tray .picker-face');
+        assert.equal(await page.locator('#tray input[name="table"]').count(), 1, 'the table is chosen inside the tray');
+        assert.equal(await page.locator('.picker-pop').count(), 0, 'and the tray opens no popover of its own');
+        await page.click('#tray .picker-face');
+        await page.waitForSelector('.picker-pop .picker-row');
+        await page.locator('.picker-pop .picker-row', { hasText: 'Issue' }).first().click();
+        await page.waitForSelector('.picker-pop', { state: 'detached' });
+        assert.equal(await page.textContent('#tray .picker-face'), 'Issue', 'the face names the table');
+        assert.equal(await page.textContent('#tray-title'), 'New bug', 'picking a table renames the tray');
+        assert.deepEqual(await page.locator('#tray .new-row-label').allTextContents(), ['Table', 'Name', 'Severity', 'Symptom'], 'and draws that table\'s choice fields');
         await page.keyboard.press('Escape');
-        await page.waitForSelector('.new-row-sheet', { state: 'detached' });
+        await page.waitForSelector('#tray-back', { state: 'detached' });
       } finally { await page.close(); }
     });
 
@@ -258,83 +133,91 @@ if (s) {
         assert.equal(await page.getAttribute('.phone-bar .phone-new', 'aria-label'), 'New todo');
       } finally { await page.close(); }
     });
-    test(`on a phone Create keeps the sheet open with the name cleared and focus in it, so a second row needs no reopen (${engine}, Issue #988)`, async () => {
+
+    test(`on a phone Create keeps the tray open with the name cleared and focus in it, so a second row needs no reopen (${engine}, Issue #988)`, async () => {
       const page = await open(make, issues);
       try {
         const before = (await rows(page, issues)).length;
         await page.click('.phone-bar .phone-new');
-        await page.waitForSelector('.new-row-sheet');
-        await page.fill('.new-row-name', `First of two in ${engine}`);
-        await page.click('.new-row-sheet .new-row-opt[data-opt="High"]');
-        await page.click('.new-row-create');
-        assert.equal(await page.inputValue('.new-row-name'), '', 'the name clears at once');
-        assert.ok(await page.isVisible('.new-row-sheet'), 'the sheet stays open');
+        await page.waitForSelector('#tray .new-row-name');
+        await page.fill('#tray .new-row-name', `First of two in ${engine}`);
+        await page.click('#tray .new-row-opt[data-opt="High"]');
+        await page.click(CREATE);
+        assert.equal(await page.inputValue('#tray .new-row-name'), '', 'the name clears at once');
+        assert.ok(await page.isVisible('#tray'), 'the tray stays open');
         assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('new-row-name')), true, 'focus stays in the name, so the keyboard stays up');
-        assert.equal(await page.getAttribute('.new-row-sheet .new-row-opt[data-opt="High"]', 'aria-pressed'), 'false', 'choices reset with the name');
-        assert.equal(await page.isDisabled('.new-row-create'), true, 'Create waits for the next name');
+        assert.equal(await page.getAttribute('#tray .new-row-opt[data-opt="High"]', 'aria-pressed'), 'false', 'choices reset with the name');
+        assert.equal(await page.isDisabled(CREATE), true, 'Create waits for the next name');
         await page.keyboard.type(`Second of two in ${engine}`);
         await page.keyboard.press('Enter');
-        assert.equal(await page.inputValue('.new-row-name'), '');
+        assert.equal(await page.inputValue('#tray .new-row-name'), '');
         const made = await until(async () => (await rows(page, issues)).filter((r) => r.name.endsWith(`of two in ${engine}`)), (r) => r.length === 2);
         assert.deepEqual(made.map((r) => [r.name, r.Severity]).sort(), [[`First of two in ${engine}`, 'High'], [`Second of two in ${engine}`, null]]);
         assert.equal((await rows(page, issues)).length, before + 2, 'two rows, each written once');
-        assert.ok(await page.isVisible('.new-row-sheet'), 'still open for a third');
+        assert.ok(await page.isVisible('#tray'), 'still open for a third');
         assert.ok(await until(async () => (await page.locator('#wv-toasts .wv-toast-msg').allTextContents()).some((t) => t.includes(`Second of two in ${engine}`))), 'a toast names the new row');
         assert.equal(await page.locator('#dock:not([hidden]) textarea.name-edit').count(), 0, 'no row opened on its own');
       } finally { await page.close(); }
     });
+
     test(`on a phone a refused create puts the name back and says why (${engine}, Issue #988)`, async () => {
       const page = await open(make, notes);
       try {
         await page.route('**/api/tables/*/entities', (r) => (r.request().method() === 'POST' ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"Refused for the test"}' }) : r.continue()));
         await page.click('.phone-bar .phone-new');
-        await page.waitForSelector('.new-row-sheet');
-        await page.fill('.new-row-name', 'Comes back');
-        await page.click('.new-row-create');
-        assert.equal(await until(() => page.inputValue('.new-row-name'), (v) => v === 'Comes back'), 'Comes back', 'the name comes back');
-        assert.ok(await page.isVisible('.new-row-sheet'));
+        await page.waitForSelector('#tray .new-row-name');
+        await page.fill('#tray .new-row-name', 'Comes back');
+        await page.click(CREATE);
+        assert.equal(await until(() => page.inputValue('#tray .new-row-name'), (v) => v === 'Comes back'), 'Comes back', 'the name comes back');
+        assert.ok(await page.isVisible('#tray'));
         assert.match(await until(async () => (await page.locator('#wv-toasts .wv-toast.err .wv-toast-msg').allTextContents()).join(' '), (t) => t.includes('Refused for the test')), /Refused for the test/);
       } finally { await page.close(); }
     });
+
     test(`on a phone the Name is one line whose Return key reads Done and creates the row, never while empty or composing (${engine}, Issue #794)`, async () => {
       const page = await open(make, notes);
       const made = `Made by Return in ${engine}`;
       try {
         await page.click('.phone-bar .phone-new');
-        await page.waitForSelector('.new-row-sheet');
-        assert.equal(await page.evaluate(() => document.querySelector('.new-row-name').tagName), 'INPUT');
-        assert.equal(await page.getAttribute('.new-row-name', 'enterkeyhint'), 'done');
+        await page.waitForSelector('#tray .new-row-name');
+        assert.equal(await page.evaluate(() => document.querySelector('#tray .new-row-name').tagName), 'INPUT');
+        assert.equal(await page.getAttribute('#tray .new-row-name', 'enterkeyhint'), 'done');
         const before = (await rows(page, notes)).length;
-        await page.focus('.new-row-name');
+        await page.focus('#tray .new-row-name');
         await page.keyboard.press('Enter');
         await page.waitForTimeout(300);
         assert.equal((await rows(page, notes)).length, before, 'Return on an empty name writes nothing');
-        assert.ok(await page.isVisible('.new-row-sheet'), 'and the sheet stays');
-        await page.fill('.new-row-name', made);
-        await page.evaluate(() => document.querySelector('.new-row-name').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })));
+        assert.ok(await page.isVisible('#tray'), 'and the tray stays');
+        await page.fill('#tray .new-row-name', made);
+        await page.evaluate(() => document.querySelector('#tray .new-row-name').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })));
         await page.waitForTimeout(300);
         assert.equal((await rows(page, notes)).length, before, 'Return that ends an IME composition writes nothing');
         await page.keyboard.press('Enter');
         await page.keyboard.press('Enter');
         assert.equal(await eventually(async () => (await rows(page, notes)).filter((r) => r.name === made).length, 1), 1, 'Return wrote the row once');
-        assert.ok(await page.isVisible('.new-row-sheet'), 'the sheet stays for the next row, as Create does');
-        assert.equal(await page.inputValue('.new-row-name'), '', 'with the name cleared');
+        assert.ok(await page.isVisible('#tray'), 'the tray stays for the next row, as Create does');
+        assert.equal(await page.inputValue('#tray .new-row-name'), '', 'with the name cleared');
       } finally { await page.close(); }
     });
   }
 
-  test('on a desktop the sheet keeps its two-line Name, where Return starts a new line (Issue #794)', async () => {
+  test('on a desktop the tray keeps its two-line Name, where Return starts a new line, and Create opens the new row (Issue #794, Issue #1471)', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     try {
       await page.goto(`${base}/#/table/${notes}`, { waitUntil: 'networkidle' });
-      await page.evaluate((id) => newRowSheet(allTables().find((t) => t.id === id)), notes);
-      await page.waitForSelector('.new-row-sheet');
-      assert.equal(await page.evaluate(() => document.querySelector('.new-row-name').tagName), 'TEXTAREA');
-      assert.equal(await page.getAttribute('.new-row-name', 'enterkeyhint'), null);
-      await page.fill('.new-row-name', 'two');
+      await page.evaluate((id) => newRowTray(allTables().find((t) => t.id === id)), notes);
+      await page.waitForSelector('#tray .new-row-name');
+      assert.equal(await page.evaluate(() => document.querySelector('#tray .new-row-name').tagName), 'TEXTAREA');
+      assert.equal(await page.getAttribute('#tray .new-row-name', 'enterkeyhint'), null);
+      await page.fill('#tray .new-row-name', 'two');
       await page.keyboard.press('Enter');
       await page.waitForTimeout(300);
-      assert.ok(await page.isVisible('.new-row-sheet'), 'Return does not create on a desktop');
+      assert.ok(await page.isVisible('#tray'), 'Return does not create on a desktop');
+      await page.fill('#tray .new-row-name', 'Made on a desktop');
+      await page.click(CREATE);
+      await page.waitForSelector('#tray-back', { state: 'detached' });
+      await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
+      assert.equal(await page.inputValue('#dock textarea.name-edit'), 'Made on a desktop', 'the tray closes on the new row');
     } finally { await page.close(); }
   });
 }
