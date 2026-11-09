@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tempDir } from './lib/temp.mjs';
 import { join } from 'node:path';
 import { ROOT } from './lib/source.mjs';
 
 test('compact documentation banners reproduce the canonical full mark without changing the marketing kit', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'weave-doc-banners-'));
+  const dir = tempDir('weave-doc-banners-');
   try {
     execFileSync(process.execPath, [join(ROOT, 'brand/kit/build-kit.mjs'), '--documentation-banners', '--out', dir]);
     const names = ['banner-blue.svg', 'banner-light.svg', 'banner-topo.svg'];

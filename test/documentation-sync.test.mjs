@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, rmSync } from 'node:fs';
+import { tempDir } from './lib/temp.mjs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { syncDocumentationPresentation } from '../src/documentation-presentation.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'weave-docs-sync-'));
+const dir = tempDir('weave-docs-sync-');
 const bannerPath = join(dir, 'banner.svg');
 writeFileSync(bannerPath, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 2"/>');
 test.after(() => rmSync(dir, { recursive: true, force: true }));
