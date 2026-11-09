@@ -796,6 +796,7 @@ const FIELD_TYPE_CONFIG = {
       return String(raw);
     },
     toDescriptor(config, out) { if (config.literal) out.literal = true; },
+    fromDescriptor(f, config) { if (f.literal != null) config.literal = f.literal; },
   },
   number: {
     build: numberConfig,
@@ -889,6 +890,10 @@ const FIELD_TYPE_CONFIG = {
     },
     coerce: asBoolean,
     toDescriptor(config, out) { out.on = config.on; out.off = config.off; },
+    fromDescriptor(f, config) {
+      if (f.on != null) config.on = f.on;
+      if (f.off != null) config.off = f.off;
+    },
   },
   url: { coerce: asString },
   email: { coerce: (raw) => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(raw)) ? String(raw) : null) },
@@ -973,7 +978,9 @@ const FIELD_TYPE_CONFIG = {
     },
     coerce: asString,
     toDescriptor: (config, out) => Object.assign(out, credentialConfig({ config })),
-    fromDescriptor(f, config) { if (f.kind != null) config.kind = f.kind; },
+    fromDescriptor(f, config) {
+      for (const k of ['kind', 'keystore', 'parts']) if (f[k] != null) config[k] = f[k];
+    },
   },
   attachments: {
     build(config) {
@@ -3102,7 +3109,8 @@ export class Weave {
     };
     const DESCRIPTOR_KEYS = ['options', 'states', 'expression', 'via', 'viaTable', 'where', 'targetField', 'aggregate',
       'default', 'width', 'format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'style', 'time', 'kind', 'multiple', 'types', 'depth',
-      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon', 'preview', 'size', 'fit'];
+      'grain', 'clock', 'zone', 'zoneName', 'pad', 'elapsed', 'term', 'link', 'state', 'description', 'fields', 'max', 'icon', 'preview', 'size', 'fit',
+      'literal', 'on', 'off', 'keystore', 'parts', 'shape', 'color'];
     const colorsOf = (full) => JSON.stringify((full ?? []).map((o) => ({ name: o.name, color: o.color ?? '' })));
     const fieldChanged = (fDoc, have) => {
       if (!have) return true;

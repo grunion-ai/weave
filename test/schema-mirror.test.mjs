@@ -50,3 +50,30 @@ test('role: the name, description and view roles apply as pinned', () => {
 test('every other field type edits through applySchema as pinned', () => {
   pinEdits([...new Set(EDITS.map(([n]) => n))].filter((n) => !NAMED.includes(n)));
 });
+
+const strip = (doc) => doc.tables.map((t) => ({ name: t.name, fields: t.fields.map(({ id, inverseFieldId, targetDbId, viaTableId, ...rest }) => rest) }));
+
+test('Issues #1494 to #1496: text literal, toggle labels and credential keystore and parts survive a round trip', () => {
+  const r = roundTrip();
+  assert.deepEqual(strip(r.applied), strip(r.described));
+});
+
+test('Issues #1494, #1495, #1497, #1498: a literal, label, shape or colour edit in a schema document plans an update and lands', () => {
+  const cases = [
+    ['Note', { literal: false }, (f) => f.literal === undefined],
+    ['Live', { on: 'Up', off: 'Down' }, (f) => f.on === 'Up' && f.off === 'Down'],
+    ['Face', { shape: 'round' }, (f) => f.shape === 'round'],
+    ['Stars', { color: 'accent' }, (f) => f.color === 'accent'],
+    ['Hearts', { color: 'ink' }, (f) => f.color === 'ink'],
+    ['Amount', { color: 'accent' }, (f) => f.color === 'accent'],
+  ];
+  for (const [name, change, landed] of cases) {
+    const w = everyTypeWorkspace();
+    const doc = w.describeSchema();
+    const field = doc.find((sp) => sp.space === 'Ops').tables.find((t) => t.name === 'Deal').fields.find((f) => f.name === name);
+    Object.assign(field, change);
+    assert.deepEqual(w.applySchema(doc).map((p) => `${p.action} ${p.subject}`), [`update-field Ops/Deal.${name}`], `${name} plans an update`);
+    const after = w.describeSchema().find((sp) => sp.space === 'Ops').tables.find((t) => t.name === 'Deal').fields.find((f) => f.name === name);
+    assert.ok(landed(after), `${name} ${JSON.stringify(change)} landed: ${JSON.stringify(after)}`);
+  }
+});
