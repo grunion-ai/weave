@@ -6,6 +6,7 @@ import { join } from 'node:path';
 const DIR = join(import.meta.dirname, '../../.github/workflows');
 const files = readdirSync(DIR).filter((f) => /\.ya?ml$/.test(f));
 const text = (f) => readFileSync(join(DIR, f), 'utf8');
+const RETRY_WINDOW_SECONDS = 120;
 
 test('every action in every workflow is pinned to a full commit SHA', () => {
   const bad = [];
@@ -159,9 +160,34 @@ test('every workflow download of a release asset retries a transient failure and
       const retry = line.match(/--retry\s+(\d+)/);
       if (!retry || Number(retry[1]) < 3) downloads.push(`${at} --retry 3 or more`);
       if (!/--retry-all-errors\b/.test(line)) downloads.push(`${at} --retry-all-errors`);
-      if (!/--retry-delay\s+\d+/.test(line)) downloads.push(`${at} --retry-delay`);
+      const delay = line.match(/--retry-delay\s+(\d+)/);
+      if (!delay) downloads.push(`${at} --retry-delay`);
       if (!/--max-time\s+\d+/.test(line)) downloads.push(`${at} --max-time`);
+      if (retry && delay) {
+        const window = Number(retry[1]) * Number(delay[1]);
+        if (window < RETRY_WINDOW_SECONDS) downloads.push(`${at} retries span ${window}s, under the ${RETRY_WINDOW_SECONDS}s a release-CDN outage outlasts`);
+        const cap = line.match(/--retry-max-time\s+(\d+)/);
+        if (cap && Number(cap[1]) < window) downloads.push(`${at} --retry-max-time ${cap[1]} cuts the ${window}s retry window short`);
+      }
     }
   }
-  assert.deepEqual(downloads, [], 'one 504 from the release-asset CDN fails a required check (Issue #1419)');
+  assert.deepEqual(downloads, [], 'one 504 from the release-asset CDN fails a required check (Issues #1419, #1490)');
+});
+
+test('a scanner that cannot be downloaded reads as a network failure, not as a finding in the repository', () => {
+  const step = text('security.yml').split(/^      - name: /m).find((s) => s.startsWith('install gitleaks'));
+  assert.ok(step, 'security.yml still installs the scanners in a named step');
+  const firstChecksum = step.indexOf('sha256sum');
+  const lastDownload = step.lastIndexOf('/releases/download/');
+  assert.ok(firstChecksum > lastDownload, 'every scanner downloads before the first checksum, so one trap covers the whole network phase');
+
+  const trap = step.match(/^\s*trap '([^']*)' ERR$/m);
+  assert.ok(trap, 'the download phase carries an ERR trap that names the failure');
+  assert.match(trap[1], /::error::/, 'the trap writes a GitHub error annotation');
+  assert.match(trap[1], /network/i, 'the annotation names the network');
+  assert.match(trap[1], /not a security finding/i, 'the annotation says the repository went unscanned');
+
+  const cleared = step.search(/^\s*trap - ERR$/m);
+  assert.ok(cleared > 0, 'the trap is cleared again');
+  assert.ok(cleared < firstChecksum, 'the trap is cleared before the first checksum, so a bad pin is never blamed on the network');
 });

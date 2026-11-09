@@ -1,0 +1,1 @@
+- The `security scan` check no longer fails the whole repository when a GitHub release download answers 504: the scanner downloads retry across 120 seconds, and a download that still fails is annotated as a network failure rather than as a finding in the code (Issue #1490).
