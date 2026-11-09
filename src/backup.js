@@ -8,6 +8,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, scryptSync, createCipheriv, createDecipheriv } from 'node:crypto';
 import { WeaveError, writeFileDurable } from './store.js';
+import { openKeyStore, keystoreFilePath } from './keystore.js';
 
 let DatabaseSync = null;
 try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
@@ -218,7 +219,7 @@ export function decryptFile(src, dst, passphrase) {
   } finally { closeSync(s); if (d != null) closeSync(d); }
 }
 
-export const keystorePath = (env, dataDir) => env.WEAVE_KEYSTORE || join(dataDir, 'keystore.json');
+export const keystorePath = (env, dataDir) => keystoreFilePath(env.WEAVE_KEYSTORE) || join(dataDir, 'keystore.json');
 export function resolvePassphrase({ env = process.env, dataDir, passphraseEnv = null }) {
   if (passphraseEnv) {
     if (!env[passphraseEnv]) throw new WeaveError(`--passphrase-env names ${passphraseEnv}, which is not set`, 'invalid');
@@ -285,7 +286,7 @@ const fileStream = (path) => Readable.toWeb(createReadStream(path, { highWaterMa
 
 export async function backup({
   dataDir, out = process.cwd(), dest = null, env = process.env, passphraseEnv = null,
-  workspace = null, now = () => new Date(), fetchImpl = fetch, keep = true,
+  workspace = null, now = () => new Date(), fetchImpl = fetch, keep = true, keyStore = null,
 }) {
   needSqlite();
   dataDir = resolve(dataDir);
@@ -308,7 +309,7 @@ export async function backup({
 
   const scratch = mkdtempSync(join(tmpdir(), 'weave-backup-'));
   const partial = `${outPath}.part`;
-  const result = { archive, path: outPath, bytes: 0, encrypted: !!passphrase, workspaces: {}, files: 0, orphans: { count: 0, list: [] }, uploaded: null, pruned: [] };
+  const result = { archive, path: outPath, bytes: 0, encrypted: !!passphrase, workspaces: {}, files: 0, orphans: { count: 0, list: [] }, keys: null, uploaded: null, pruned: [] };
   try {
     const t = tarWriter(partial, { seal: passphrase ? sealer(passphrase) : null });
     const entries = [];
@@ -336,7 +337,11 @@ export async function backup({
     result.files = blobs.length;
     if (!workspace && existsSync(join(dataDir, '_hub.json'))) entries.push(t.add({ name: '_hub.json', path: join(dataDir, '_hub.json') }));
     const ks = keystorePath(env, dataDir);
-    if (existsSync(ks)) entries.push(t.add({ name: 'keystore.json', path: ks }));
+    const keys = keyStore ?? openKeyStore({ path: ks, env });
+    if (keys.kind === 'keychain') {
+      result.keys = { store: 'keychain', names: Object.keys(keys.read().keys).sort() };
+      entries.push(t.add({ name: 'keys.json', data: Buffer.from(JSON.stringify(result.keys)) }));
+    } else if (existsSync(ks)) entries.push(t.add({ name: 'keystore.json', path: ks }));
     const manifest = {
       format: 'weave-backup/1', weave: VERSION, createdAt: now().toISOString(), workspace: workspace ?? 'all',
       encrypted: !!passphrase, entries, workspaces: result.workspaces, files: result.files, orphans: result.orphans,
@@ -385,7 +390,7 @@ export function heldOpen(dbPath) {
   } finally { db?.close(); }
 }
 
-export async function restore({ source, dataDir, env = process.env, passphraseEnv = null, force = false, fetchImpl = fetch }) {
+export async function restore({ source, dataDir, env = process.env, passphraseEnv = null, force = false, fetchImpl = fetch, keyStore = null }) {
   dataDir = resolve(dataDir);
   mkdirSync(dataDir, { recursive: true });
   const scratch = mkdtempSync(join(tmpdir(), 'weave-restore-'));
@@ -429,7 +434,14 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
       if (sha256(e.data) !== m.sha256) throw new WeaveError(`sha256 mismatch on ${m.name}: the archive does not match its manifest`, 'invalid');
       verified += 1;
     }
-    const landing = entries.filter((e) => e.name !== 'manifest.json' && e.name !== 'keystore.key' && !e.name.split('/').includes('..') && !e.name.startsWith('/'));
+    const landing = entries.filter((e) => e.name !== 'manifest.json' && e.name !== 'keystore.key' && e.name !== 'keys.json' && !e.name.split('/').includes('..') && !e.name.startsWith('/'));
+    const named = entries.find((e) => e.name === 'keys.json');
+    let keys = null;
+    if (named) {
+      const { names = [] } = JSON.parse(named.data.toString('utf8'));
+      const held = (keyStore ?? openKeyStore({ path: keystorePath(env, dataDir), env })).read().keys;
+      keys = { store: 'keychain', names, missing: names.filter((n) => !Object.hasOwn(held, n)) };
+    }
     for (const e of landing.filter((x) => /^[^/]+\.db$/.test(x.name))) {
       const target = join(dataDir, e.name);
       if (!existsSync(target)) continue;
@@ -447,7 +459,7 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
       landed.push(e.name);
     }
     return {
-      dataDir, landed, verified,
+      dataDir, landed, verified, keys,
       workspaces: manifest.workspaces ?? {}, orphans: manifest.orphans ?? { count: 0, list: [] },
       archive: { weave: manifest.weave, createdAt: manifest.createdAt, workspace: manifest.workspace },
     };
