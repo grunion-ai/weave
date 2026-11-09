@@ -844,8 +844,9 @@ function tableHop(db) {
 
 const dockCoversScreen = matchMedia('(max-width: 600px)');
 const saves = WeaveSaveQueue.createSaveQueue({
+  delay: globalThis.__weaveSaveDelay ?? WeaveSaveQueue.DEBOUNCE_MS,
   send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
-  onFail: (err, j) => toast(j.failText ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true),
+  onFail: (err, j) => toast(j.failText?.(err) ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true),
 });
 WeaveSaveQueue.bindPageHide(saves);
 WeaveSaveQueue.bindEscape(saves);
@@ -8635,7 +8636,6 @@ async function relationMapCard(title, opts = {}) {
   return mapCard(title, await mapAutomations(await automations), opts);
 }
 
-const DOC_SAVE_DEBOUNCE = 600;
 const liveEditors = new Set();
 const pendingDocSaves = new Map();
 const docPulls = new WeakMap();
@@ -8866,44 +8866,20 @@ function retheme() {
   }
 }
 
-const docSaveChains = new Map();
-function scheduleDocSave(entityId, field, value, statusEl, onSaved = null) {
+function scheduleDocSave(entityId, field, value, onSaved = null) {
   const key = `${entityId}::${field}`;
-  clearTimeout(pendingDocSaves.get(key)?.timer);
-  if (statusEl) statusEl.textContent = '·';
-  let inflight = null;
-  const put = async () => {
-    const prior = docSaveChains.get(key) ?? Promise.resolve();
-    const run = prior.then(() => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }));
-    docSaveChains.set(key, run.catch(() => {}));
-    try {
-      await run;
-      if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
-      onSaved?.();
-      if (!statusEl) return;
-      statusEl.textContent = '✓';
-      statusEl.title = 'Saved automatically';
-      setTimeout(() => { if (statusEl.textContent === '✓') statusEl.textContent = ''; }, 1500);
-    } catch (err) {
-      if (statusEl) {
-        statusEl.textContent = '!';
-        statusEl.title = 'Not saved. Your draft is kept and saves on your next edit or when you leave.';
-      }
-      toast(`${err.message}. Your draft is kept and saves on your next edit or when you leave.`, true);
-    }
-  };
-  const write = () => {
-    clearTimeout(pendingDocSaves.get(key)?.timer);
-    inflight ??= put().finally(() => { inflight = null; });
-    return inflight;
-  };
-  pendingDocSaves.set(key, { timer: setTimeout(write, DOC_SAVE_DEBOUNCE), write, value });
+  const kept = (err) => `${err.message}. Your draft is kept and saves on your next edit or when you leave.`;
+  pendingDocSaves.set(key, { value, write: () => saves.flush() });
+  saves.push({
+    key: `doc:${key}`, entityId, field, value, failText: kept,
+    send: () => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }),
+  }).then(() => {
+    if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
+    onSaved?.();
+  }, (err) => toast(kept(err), true));
 }
-async function flushDocSave(entityId, field) {
-  const p = pendingDocSaves.get(`${entityId}::${field}`);
-  if (!p) return;
-  clearTimeout(p.timer);
-  await p.write();
+function flushDocSave(entityId, field) {
+  return pendingDocSaves.has(`${entityId}::${field}`) ? saves.flush() : Promise.resolve();
 }
 
 function whenEl(iso, cls = null) {
@@ -8911,17 +8887,15 @@ function whenEl(iso, cls = null) {
   return el('time', { ...(cls ? { class: cls } : {}), datetime: iso, title: w.title }, w.text);
 }
 
-function flushDocSaves() {
+function flushDocSaves({ leaving = false } = {}) {
   for (const ed of liveEditors) docPulls.get(ed)?.();
-  for (const { timer, write } of [...pendingDocSaves.values()]) {
-    clearTimeout(timer);
-    write();
-  }
+  return saves.flush({ leaving });
 }
-window.addEventListener('beforeunload', flushDocSaves);
-window.addEventListener('pagehide', flushDocSaves);
+const leaveDocs = () => flushDocSaves({ leaving: true });
+window.addEventListener('beforeunload', leaveDocs);
+window.addEventListener('pagehide', leaveDocs);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushDocSaves();
+  if (document.visibilityState === 'hidden') leaveDocs();
 });
 
 function teardownDocEditors() {
@@ -9135,7 +9109,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const docSection = (f) => {
     const fmtBase = `${WS_PREFIX}/e/${id}/doc/${encodeURIComponent(f.name)}`;
     const host = el('div', { class: 'doc-editor' });
-    const status = el('span', { class: 'doc-status', title: 'Saved automatically' });
 
     const dl = kindDots('doc', f, () => ({ entity }), { title: `${f.name} downloads`, align: 'left', extraClass: 'doc-dl' });
 
@@ -9160,7 +9133,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           type: 'button', class: 'doc-anchor permalink-copy', title: 'Copy link to this document', 'aria-label': 'Copy link to this document',
           onclick: () => copyText(`${location.origin}${fmtBase}.html`, 'Document link copied'),
         }, iconEl('⧉')),
-        status, dl), 'doc', f, () => ({ entity })),
+        dl), 'doc', f, () => ({ entity })),
       body);
 
     if (docSectionCollapse(id, f.name)) {
@@ -9178,7 +9151,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           entityId: id,
           placeholder: `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
-            scheduleDocSave(id, f.name, value, status);
+            scheduleDocSave(id, f.name, value);
             rail.schedule();
             folds.schedule();
           },
@@ -9194,7 +9167,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
-      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, status));
+      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
       sourceBox = ta;
       host.append(ta);
     };

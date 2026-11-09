@@ -32,7 +32,9 @@ if (s) {
       assert.ok(await eventually(() => refused > 0, true), 'the save reached the server and was refused');
       const kept = () => page.evaluate(() => [...window.__weaveDocSaves.values()].some((p) => String(p.value ?? '').includes('KEEPMEDRAFT')));
       assert.equal(await eventually(kept, true), true, 'the draft stays queued after the refusal');
-      assert.equal(await eventually(() => section.locator('.doc-status').textContent(), '!'), '!', 'the section shows the save failed');
+      await page.waitForSelector('#main .view-header .crumb-row > .save-glyph[data-state="failed"]:not([hidden])');
+      assert.equal(await page.locator('.save-glyph').getAttribute('aria-label'), '1 change not saved. Try again', 'the header glyph shows the save failed (Feature #217)');
+      assert.equal(await section.locator('.doc-status').count(), 0, 'and the section carries no save mark of its own');
 
       await page.evaluate((t) => { location.hash = `#/table/${t}`; }, table.id);
       await page.locator('.doc-section').waitFor({ state: 'detached' });
@@ -44,6 +46,7 @@ if (s) {
       await page.evaluate(() => window.__weaveFlushDocSaves());
       assert.equal(await eventually(() => (weave.getDoc(id) ?? '').includes('KEEPMEDRAFT'), true), true, 'the draft lands once the server accepts it');
       assert.equal(await eventually(kept, false), false, 'a saved draft leaves the queue');
+      await page.waitForSelector('.save-glyph[data-state="saved"]');
     } finally {
       await page.close();
     }
