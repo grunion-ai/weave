@@ -228,7 +228,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli?.command === 'share') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
@@ -961,5 +961,26 @@ test('GET /api/share is a registry route and still answers 404 without a share t
     const res = await d.raw('GET', '/api/share');
     assert.equal(res.status, 404);
     assert.deepEqual(await res.json(), { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
+  } finally { d.close(); }
+});
+
+test('template list and use answer on CLI, MCP and HTTP, each door with its own shape and refusals (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-templates-', { seeded: (w) => { seed(w); w.createSpace({ name: 'CRM', template: true }); } });
+  try {
+    const listed = await d.http('GET', '/api/templates');
+    assert.deepEqual(bare(d.cli(['template', 'list'])), bare(listed), 'template list and GET /api/templates answer alike');
+    assert.deepEqual(d.cli(['template']), d.cli(['template', 'list']), 'a bare weave template lists');
+    const viaMcp = d.mcp('weave_template_list', {});
+    assert.deepEqual(bare(viaMcp.templates), bare(listed), 'MCP answers the templates inside its envelope');
+    assert.ok(Array.isArray(viaMcp.starters), 'and the starter catalog beside them');
+    const other = join(tempDir('weave-registry-templates-into-'), 'other.db');
+    const made = d.cli(['template', 'use', 'CRM', '--into', other, '--name', 'Sales']);
+    assert.equal(made.space.name, 'Sales');
+    assert.match(d.run(['template', 'use', 'CRM']).stderr, /template use needs --into/);
+    assert.match(d.run(['template', 'use']).stderr, /Usage: weave template use <space>/);
+    assert.match(d.call('weave_template_use', { space: 'CRM', workspace: 'x' }).content[0].text, /this stdio server holds one workspace/);
+    const res = await d.raw('POST', '/api/spaces/CRM/use', {});
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /Name the workspace to build in/);
   } finally { d.close(); }
 });

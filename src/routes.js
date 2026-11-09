@@ -1940,10 +1940,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (rx.method === 'DELETE') { weave.deleteWorkspaceLogo(); return out(200, { ok: true }); }
         }
 
-        if (route === 'GET /api/templates') return out(200, weave.listTemplates());
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/use$/)) && rx.method === 'POST') {
-          return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
-        }
         const registered = matchRoute(rx.method, path);
         if (registered?.cmd.http.serve) {
           const serveFile = (id) => {
@@ -1966,7 +1962,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (registered) {
           const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
-            viewerZone, workspace: member.state.meta.id, cap, share, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
           });
           return out(r.status, r.data, r.headers);
         }

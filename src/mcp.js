@@ -96,20 +96,8 @@ export const TOOLS = [
   toolDefinition('weave_attach_file'),
   toolDefinition('weave_vocabulary'),
   toolDefinition('weave_update_space'),
-  {
-    name: 'weave_template_list',
-    description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon. Also starters: the built-in starter workspaces (id, title, blurb, and grows, a note on how one is meant to grow). starter: <id> answers {starter, spec}, a spec dated this month to pass to weave_build.',
-    inputSchema: { type: 'object', properties: { starter: { type: 'string' } } },
-  },
-  {
-    name: 'weave_template_use',
-    description: 'Copy a template space\'s schema, never its records, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
-    inputSchema: {
-      type: 'object',
-      properties: { space: { type: 'string' }, workspace: { type: 'string' }, name: { type: 'string' } },
-      required: ['space', 'workspace'],
-    },
-  },
+  toolDefinition('weave_template_list'),
+  toolDefinition('weave_template_use'),
   toolDefinition('weave_delete_space'),
   toolDefinition('weave_restore_space'),
   toolDefinition('weave_update_table'),
@@ -426,19 +414,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   ROW_GUARDS[name]?.(weave, args, caller);
   const command = toolCommand(name, args);
   if (command) {
-    const result = command.run(weave, args, { caller, origin: envOrigin() });
+    const result = command.run(weave, args, { caller, origin: envOrigin(), door: 'mcp' });
     return command.toolResult ? command.toolResult(result) : result;
   }
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
-    case 'weave_template_list':
-      return args.starter != null ? globalThis.WeaveStarters.forAgent(args.starter) : { templates: weave.listTemplates(), starters: globalThis.WeaveStarters.catalog() };
-    case 'weave_template_use':
-      if (!caller?.useTemplate) {
-        throw new Error('weave_template_use copies into another workspace of a hub, and this stdio server holds one workspace. Call it over the HTTP door (POST /api/mcp, or /mcp on the hosted instance), or run weave template use <space> --into <other.db> on the CLI.');
-      }
-      return caller.useTemplate({ space: args.space, workspace: args.workspace, name: args.name });
     case 'weave_apply_schema':
       return { plan: weave.applySchema(args.document, { dryRun: Boolean(args.dryRun), allowDestructive: Boolean(args.allowDestructive), partial: Boolean(args.partial) }) };
     case 'weave_build': {
