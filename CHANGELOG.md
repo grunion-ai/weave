@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.125 (2026-11-08)
+
+- A `now()` or `today()` date default reads the creator's wall clock: a floating field stamps the time in the zone the creating request names in `X-Weave-Zone` (UTC when it names none), and a fixed field stamps the time in its own zone. A row created at 21:41 UTC from New York now stores 16:41 instead of 21:41 (Issue #1480).
+
 ## v0.4.124 (2026-11-08)
 
 - A record update that names several fields checks every value before it changes any of them, so a rejected update leaves the record as it was in memory and on disk instead of keeping the fields that came before the bad one (Issue #1454).
