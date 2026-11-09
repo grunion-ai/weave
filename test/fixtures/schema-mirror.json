@@ -1,0 +1,2677 @@
+{
+ "roundTrip": {
+  "plan": [
+   "create-space Ops",
+   "create-table Ops/Company",
+   "create-table Ops/Deal",
+   "create-table Ops/Label"
+  ],
+  "described": {
+   "space": "Ops",
+   "spaceId": "<space Ops>",
+   "url": "/s/<space Ops>",
+   "description": "",
+   "tables": [
+    {
+     "id": "<table Company>",
+     "name": "Company",
+     "url": "/t/<table Company>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Card"
+     ],
+     "views": [
+      {
+       "id": "<view Company.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Name",
+        "Description",
+        "Size",
+        "Score",
+        "Deals"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "Description",
+      "Deals"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Company",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Company.Name>",
+       "name": "Name",
+       "type": "text",
+       "role": "name"
+      },
+      {
+       "id": "<field Company.Description>",
+       "name": "Description",
+       "type": "document",
+       "role": "description"
+      },
+      {
+       "id": "<field Company.Size>",
+       "name": "Size",
+       "type": "number",
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Company.Score>",
+       "name": "Score",
+       "type": "rating",
+       "max": 10,
+       "icon": "lucide:heart",
+       "color": "accent"
+      },
+      {
+       "id": "<field Company.Deals>",
+       "name": "Deals",
+       "type": "relation",
+       "targetDb": "Ops/Deal",
+       "targetDbId": "<table Deal>",
+       "many": true,
+       "inverseFieldId": "<field Deal.Company>",
+       "inverseField": "Company"
+      },
+      {
+       "id": "<field Company.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": null
+      },
+      {
+       "id": "<field Company.Card>",
+       "name": "Card",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": true,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    },
+    {
+     "id": "<table Deal>",
+     "name": "Deal",
+     "url": "/t/<table Deal>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Summary"
+     ],
+     "views": [
+      {
+       "id": "<view Deal.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Name",
+        "About",
+        "Note",
+        "Amount",
+        "Plain",
+        "Stars",
+        "Hearts",
+        "Due",
+        "Month",
+        "Window",
+        "Done",
+        "Live",
+        "Plain toggle",
+        "Site",
+        "Mail",
+        "Stage",
+        "Tags",
+        "Flow",
+        "Company",
+        "Shape",
+        "Token",
+        "Plain key",
+        "Files",
+        "Face",
+        "Body",
+        "Sizes",
+        "Score seen",
+        "Size sum",
+        "Score avg",
+        "Size bar",
+        "Count",
+        "Double",
+        "Trend",
+        "When"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "About",
+      "Files",
+      "Body"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Deal",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Deal.Name>",
+       "name": "Name",
+       "type": "text",
+       "role": "name"
+      },
+      {
+       "id": "<field Deal.About>",
+       "name": "About",
+       "type": "document",
+       "width": 300,
+       "kind": "html",
+       "role": "description"
+      },
+      {
+       "id": "<field Deal.Note>",
+       "name": "Note",
+       "type": "text",
+       "width": 220,
+       "description": "Free text",
+       "literal": true
+      },
+      {
+       "id": "<field Deal.Amount>",
+       "name": "Amount",
+       "type": "number",
+       "format": "currency",
+       "currency": "EUR",
+       "decimals": 2,
+       "accounting": true,
+       "display": "ring",
+       "scale": 1000,
+       "color": "ink"
+      },
+      {
+       "id": "<field Deal.Plain>",
+       "name": "Plain",
+       "type": "number",
+       "default": 3
+      },
+      {
+       "id": "<field Deal.Stars>",
+       "name": "Stars",
+       "type": "rating",
+       "max": 5,
+       "icon": "lucide:star",
+       "color": "ink"
+      },
+      {
+       "id": "<field Deal.Hearts>",
+       "name": "Hearts",
+       "type": "rating",
+       "max": 7,
+       "icon": "lucide:heart",
+       "color": "icon",
+       "default": 2
+      },
+      {
+       "id": "<field Deal.Due>",
+       "name": "Due",
+       "type": "date",
+       "format": "iso",
+       "time": true,
+       "clock": "24h",
+       "zone": "fixed",
+       "zoneName": "Europe/Berlin",
+       "pad": true
+      },
+      {
+       "id": "<field Deal.Month>",
+       "name": "Month",
+       "type": "date",
+       "grain": [
+        "year",
+        "month"
+       ]
+      },
+      {
+       "id": "<field Deal.Window>",
+       "name": "Window",
+       "type": "daterange",
+       "time": true,
+       "elapsed": true
+      },
+      {
+       "id": "<field Deal.Done>",
+       "name": "Done",
+       "type": "checkbox",
+       "default": true
+      },
+      {
+       "id": "<field Deal.Live>",
+       "name": "Live",
+       "type": "toggle",
+       "on": "Live",
+       "off": "Draft",
+       "default": false
+      },
+      {
+       "id": "<field Deal.Plain toggle>",
+       "name": "Plain toggle",
+       "type": "toggle",
+       "on": "On",
+       "off": "Off"
+      },
+      {
+       "id": "<field Deal.Site>",
+       "name": "Site",
+       "type": "url"
+      },
+      {
+       "id": "<field Deal.Mail>",
+       "name": "Mail",
+       "type": "email"
+      },
+      {
+       "id": "<field Deal.Stage>",
+       "name": "Stage",
+       "type": "select",
+       "options": [
+        "Lead",
+        "Won",
+        "Lost"
+       ],
+       "optionsFull": [
+        {
+         "id": "lead",
+         "name": "Lead",
+         "hue": "slate",
+         "icon": "",
+         "color": ""
+        },
+        {
+         "id": "won",
+         "name": "Won",
+         "hue": "green",
+         "icon": "lucide:star",
+         "color": "#2ea043"
+        },
+        {
+         "id": "lost",
+         "name": "Lost",
+         "hue": "red",
+         "icon": "",
+         "color": "#e5484d"
+        }
+       ],
+       "default": "lead"
+      },
+      {
+       "id": "<field Deal.Tags>",
+       "name": "Tags",
+       "type": "multiselect",
+       "options": [
+        "A",
+        "B"
+       ],
+       "optionsFull": [
+        {
+         "id": "a",
+         "name": "A",
+         "hue": "slate",
+         "icon": "",
+         "color": ""
+        },
+        {
+         "id": "b",
+         "name": "B",
+         "hue": "blue",
+         "icon": "",
+         "color": "#4769eb"
+        }
+       ],
+       "default": [
+        "a"
+       ]
+      },
+      {
+       "id": "<field Deal.Flow>",
+       "name": "Flow",
+       "type": "workflow",
+       "states": [
+        {
+         "id": "open",
+         "name": "Open",
+         "category": "not-started",
+         "default": true,
+         "icon": "lucide:circle-arrow-up"
+        },
+        {
+         "id": "shut",
+         "name": "Shut",
+         "category": "done",
+         "default": false,
+         "hue": "green"
+        }
+       ]
+      },
+      {
+       "id": "<field Deal.Company>",
+       "name": "Company",
+       "type": "relation",
+       "targetDb": "Ops/Company",
+       "targetDbId": "<table Company>",
+       "many": false,
+       "inverseFieldId": "<field Company.Deals>",
+       "inverseField": "Deals"
+      },
+      {
+       "id": "<field Deal.Shape>",
+       "name": "Shape",
+       "type": "field",
+       "types": [
+        "text",
+        "number",
+        "rating",
+        "date",
+        "daterange",
+        "checkbox",
+        "toggle",
+        "url",
+        "email",
+        "select",
+        "multiselect",
+        "workflow",
+        "document",
+        "field",
+        "key",
+        "attachments",
+        "avatar"
+       ],
+       "depth": 2
+      },
+      {
+       "id": "<field Deal.Token>",
+       "name": "Token",
+       "type": "key",
+       "kind": "pair",
+       "keystore": "1password",
+       "parts": [
+        {
+         "name": "user",
+         "secret": false
+        },
+        {
+         "name": "pass",
+         "secret": true
+        }
+       ]
+      },
+      {
+       "id": "<field Deal.Plain key>",
+       "name": "Plain key",
+       "type": "key",
+       "kind": "apikey",
+       "keystore": "local"
+      },
+      {
+       "id": "<field Deal.Files>",
+       "name": "Files",
+       "type": "attachments",
+       "multiple": false,
+       "preview": "cover",
+       "size": "large",
+       "fit": "fill"
+      },
+      {
+       "id": "<field Deal.Face>",
+       "name": "Face",
+       "type": "avatar",
+       "shape": "square"
+      },
+      {
+       "id": "<field Deal.Body>",
+       "name": "Body",
+       "type": "document",
+       "kind": "code"
+      },
+      {
+       "id": "<field Deal.Sizes>",
+       "name": "Sizes",
+       "type": "lookup",
+       "via": "Company",
+       "targetField": "Size"
+      },
+      {
+       "id": "<field Deal.Score seen>",
+       "name": "Score seen",
+       "type": "lookup",
+       "via": "Company",
+       "targetField": "Score",
+       "rating": {
+        "max": 10,
+        "icon": "lucide:heart",
+        "color": "accent"
+       }
+      },
+      {
+       "id": "<field Deal.Size sum>",
+       "name": "Size sum",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Size",
+       "aggregate": "sum",
+       "format": "percent",
+       "decimals": 1,
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Deal.Score avg>",
+       "name": "Score avg",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Score",
+       "aggregate": "avg",
+       "rating": {
+        "max": 10,
+        "icon": "lucide:heart",
+        "color": "accent"
+       }
+      },
+      {
+       "id": "<field Deal.Size bar>",
+       "name": "Size bar",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Size",
+       "aggregate": "max",
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Deal.Count>",
+       "name": "Count",
+       "type": "rollup",
+       "via": "Company",
+       "aggregate": "count"
+      },
+      {
+       "id": "<field Deal.Double>",
+       "name": "Double",
+       "type": "formula",
+       "format": "currency",
+       "currency": "USD",
+       "display": "bar",
+       "color": "accent",
+       "expression": "Plain * 2"
+      },
+      {
+       "id": "<field Deal.Trend>",
+       "name": "Trend",
+       "type": "formula",
+       "display": "sparkline",
+       "style": "column",
+       "color": "ink",
+       "expression": "Sizes"
+      },
+      {
+       "id": "<field Deal.When>",
+       "name": "When",
+       "type": "formula",
+       "grain": [
+        "year",
+        "month",
+        "day"
+       ],
+       "expression": "today()"
+      },
+      {
+       "id": "<field Deal.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": [
+        "Stage",
+        "Amount"
+       ]
+      },
+      {
+       "id": "<field Deal.Summary>",
+       "name": "Summary",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": false,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    },
+    {
+     "id": "<table Label>",
+     "name": "Label",
+     "url": "/t/<table Label>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Card"
+     ],
+     "views": [
+      {
+       "id": "<view Label.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Title",
+        "Description",
+        "Code"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "Description"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Label",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Label.Title>",
+       "name": "Title",
+       "type": "formula",
+       "role": "name",
+       "expression": "concat(Code, \"!\")"
+      },
+      {
+       "id": "<field Label.Description>",
+       "name": "Description",
+       "type": "document",
+       "role": "description"
+      },
+      {
+       "id": "<field Label.Code>",
+       "name": "Code",
+       "type": "text"
+      },
+      {
+       "id": "<field Label.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": null
+      },
+      {
+       "id": "<field Label.Card>",
+       "name": "Card",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": true,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    }
+   ]
+  },
+  "applied": {
+   "space": "Ops",
+   "spaceId": "<space Ops>",
+   "url": "/s/<space Ops>",
+   "description": "",
+   "tables": [
+    {
+     "id": "<table Company>",
+     "name": "Company",
+     "url": "/t/<table Company>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Card"
+     ],
+     "views": [
+      {
+       "id": "<view Company.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Name",
+        "Description",
+        "Size",
+        "Score",
+        "Deals"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "Description",
+      "Deals"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Company",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Company.Name>",
+       "name": "Name",
+       "type": "text",
+       "role": "name"
+      },
+      {
+       "id": "<field Company.Description>",
+       "name": "Description",
+       "type": "document",
+       "role": "description"
+      },
+      {
+       "id": "<field Company.Size>",
+       "name": "Size",
+       "type": "number",
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Company.Score>",
+       "name": "Score",
+       "type": "rating",
+       "max": 10,
+       "icon": "lucide:heart",
+       "color": "accent"
+      },
+      {
+       "id": "<field Company.Deals>",
+       "name": "Deals",
+       "type": "relation",
+       "targetDb": "Ops/Deal",
+       "targetDbId": "<table Deal>",
+       "many": true,
+       "inverseFieldId": "<field Deal.Company>",
+       "inverseField": "Company"
+      },
+      {
+       "id": "<field Company.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": null
+      },
+      {
+       "id": "<field Company.Card>",
+       "name": "Card",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": true,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    },
+    {
+     "id": "<table Deal>",
+     "name": "Deal",
+     "url": "/t/<table Deal>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Summary"
+     ],
+     "views": [
+      {
+       "id": "<view Deal.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Name",
+        "About",
+        "Note",
+        "Amount",
+        "Plain",
+        "Stars",
+        "Hearts",
+        "Due",
+        "Month",
+        "Window",
+        "Done",
+        "Live",
+        "Plain toggle",
+        "Site",
+        "Mail",
+        "Stage",
+        "Tags",
+        "Flow",
+        "Company",
+        "Shape",
+        "Token",
+        "Plain key",
+        "Files",
+        "Face",
+        "Body",
+        "Sizes",
+        "Score seen",
+        "Size sum",
+        "Score avg",
+        "Size bar",
+        "Count",
+        "Double",
+        "Trend",
+        "When"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "About",
+      "Files",
+      "Body"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Deal",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Deal.Name>",
+       "name": "Name",
+       "type": "text",
+       "role": "name"
+      },
+      {
+       "id": "<field Deal.About>",
+       "name": "About",
+       "type": "document",
+       "width": 300,
+       "kind": "html",
+       "role": "description"
+      },
+      {
+       "id": "<field Deal.Note>",
+       "name": "Note",
+       "type": "text",
+       "width": 220,
+       "description": "Free text"
+      },
+      {
+       "id": "<field Deal.Amount>",
+       "name": "Amount",
+       "type": "number",
+       "format": "currency",
+       "currency": "EUR",
+       "decimals": 2,
+       "accounting": true,
+       "display": "ring",
+       "scale": 1000,
+       "color": "ink"
+      },
+      {
+       "id": "<field Deal.Plain>",
+       "name": "Plain",
+       "type": "number",
+       "default": 3
+      },
+      {
+       "id": "<field Deal.Stars>",
+       "name": "Stars",
+       "type": "rating",
+       "max": 5,
+       "icon": "lucide:star",
+       "color": "ink"
+      },
+      {
+       "id": "<field Deal.Hearts>",
+       "name": "Hearts",
+       "type": "rating",
+       "max": 7,
+       "icon": "lucide:heart",
+       "color": "icon",
+       "default": 2
+      },
+      {
+       "id": "<field Deal.Due>",
+       "name": "Due",
+       "type": "date",
+       "format": "iso",
+       "time": true,
+       "clock": "24h",
+       "zone": "fixed",
+       "zoneName": "Europe/Berlin",
+       "pad": true
+      },
+      {
+       "id": "<field Deal.Month>",
+       "name": "Month",
+       "type": "date",
+       "grain": [
+        "year",
+        "month"
+       ]
+      },
+      {
+       "id": "<field Deal.Window>",
+       "name": "Window",
+       "type": "daterange",
+       "time": true,
+       "elapsed": true
+      },
+      {
+       "id": "<field Deal.Done>",
+       "name": "Done",
+       "type": "checkbox",
+       "default": true
+      },
+      {
+       "id": "<field Deal.Live>",
+       "name": "Live",
+       "type": "toggle",
+       "on": "On",
+       "off": "Off",
+       "default": false
+      },
+      {
+       "id": "<field Deal.Plain toggle>",
+       "name": "Plain toggle",
+       "type": "toggle",
+       "on": "On",
+       "off": "Off"
+      },
+      {
+       "id": "<field Deal.Site>",
+       "name": "Site",
+       "type": "url"
+      },
+      {
+       "id": "<field Deal.Mail>",
+       "name": "Mail",
+       "type": "email"
+      },
+      {
+       "id": "<field Deal.Stage>",
+       "name": "Stage",
+       "type": "select",
+       "options": [
+        "Lead",
+        "Won",
+        "Lost"
+       ],
+       "optionsFull": [
+        {
+         "id": "lead",
+         "name": "Lead",
+         "hue": "slate",
+         "icon": "",
+         "color": ""
+        },
+        {
+         "id": "won",
+         "name": "Won",
+         "hue": "green",
+         "icon": "lucide:star",
+         "color": "#2ea043"
+        },
+        {
+         "id": "lost",
+         "name": "Lost",
+         "hue": "red",
+         "icon": "",
+         "color": "#e5484d"
+        }
+       ],
+       "default": "lead"
+      },
+      {
+       "id": "<field Deal.Tags>",
+       "name": "Tags",
+       "type": "multiselect",
+       "options": [
+        "A",
+        "B"
+       ],
+       "optionsFull": [
+        {
+         "id": "a",
+         "name": "A",
+         "hue": "slate",
+         "icon": "",
+         "color": ""
+        },
+        {
+         "id": "b",
+         "name": "B",
+         "hue": "blue",
+         "icon": "",
+         "color": "#4769eb"
+        }
+       ],
+       "default": [
+        "a"
+       ]
+      },
+      {
+       "id": "<field Deal.Flow>",
+       "name": "Flow",
+       "type": "workflow",
+       "states": [
+        {
+         "id": "open",
+         "name": "Open",
+         "category": "not-started",
+         "default": true,
+         "icon": "lucide:circle-arrow-up"
+        },
+        {
+         "id": "shut",
+         "name": "Shut",
+         "category": "done",
+         "default": false,
+         "hue": "green"
+        }
+       ]
+      },
+      {
+       "id": "<field Deal.Company>",
+       "name": "Company",
+       "type": "relation",
+       "targetDb": "Ops/Company",
+       "targetDbId": "<table Company>",
+       "many": false,
+       "inverseFieldId": "<field Company.Deals>",
+       "inverseField": "Deals"
+      },
+      {
+       "id": "<field Deal.Shape>",
+       "name": "Shape",
+       "type": "field",
+       "types": [
+        "text",
+        "number",
+        "rating",
+        "date",
+        "daterange",
+        "checkbox",
+        "toggle",
+        "url",
+        "email",
+        "select",
+        "multiselect",
+        "workflow",
+        "document",
+        "field",
+        "key",
+        "attachments",
+        "avatar"
+       ],
+       "depth": 2
+      },
+      {
+       "id": "<field Deal.Token>",
+       "name": "Token",
+       "type": "key",
+       "kind": "pair",
+       "keystore": "local",
+       "parts": [
+        {
+         "name": "id",
+         "secret": false
+        },
+        {
+         "name": "secret",
+         "secret": true
+        }
+       ]
+      },
+      {
+       "id": "<field Deal.Plain key>",
+       "name": "Plain key",
+       "type": "key",
+       "kind": "apikey",
+       "keystore": "local"
+      },
+      {
+       "id": "<field Deal.Files>",
+       "name": "Files",
+       "type": "attachments",
+       "multiple": false,
+       "preview": "cover",
+       "size": "large",
+       "fit": "fill"
+      },
+      {
+       "id": "<field Deal.Face>",
+       "name": "Face",
+       "type": "avatar",
+       "shape": "square"
+      },
+      {
+       "id": "<field Deal.Body>",
+       "name": "Body",
+       "type": "document",
+       "kind": "code"
+      },
+      {
+       "id": "<field Deal.Sizes>",
+       "name": "Sizes",
+       "type": "lookup",
+       "via": "Company",
+       "targetField": "Size"
+      },
+      {
+       "id": "<field Deal.Score seen>",
+       "name": "Score seen",
+       "type": "lookup",
+       "via": "Company",
+       "targetField": "Score",
+       "rating": {
+        "max": 10,
+        "icon": "lucide:heart",
+        "color": "accent"
+       }
+      },
+      {
+       "id": "<field Deal.Size sum>",
+       "name": "Size sum",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Size",
+       "aggregate": "sum",
+       "format": "percent",
+       "decimals": 1,
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Deal.Score avg>",
+       "name": "Score avg",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Score",
+       "aggregate": "avg",
+       "rating": {
+        "max": 10,
+        "icon": "lucide:heart",
+        "color": "accent"
+       }
+      },
+      {
+       "id": "<field Deal.Size bar>",
+       "name": "Size bar",
+       "type": "rollup",
+       "via": "Company",
+       "targetField": "Size",
+       "aggregate": "max",
+       "display": "bar",
+       "scale": 50,
+       "color": "accent"
+      },
+      {
+       "id": "<field Deal.Count>",
+       "name": "Count",
+       "type": "rollup",
+       "via": "Company",
+       "aggregate": "count"
+      },
+      {
+       "id": "<field Deal.Double>",
+       "name": "Double",
+       "type": "formula",
+       "format": "currency",
+       "currency": "USD",
+       "display": "bar",
+       "color": "accent",
+       "expression": "Plain * 2"
+      },
+      {
+       "id": "<field Deal.Trend>",
+       "name": "Trend",
+       "type": "formula",
+       "display": "sparkline",
+       "style": "column",
+       "color": "ink",
+       "expression": "Sizes"
+      },
+      {
+       "id": "<field Deal.When>",
+       "name": "When",
+       "type": "formula",
+       "grain": [
+        "year",
+        "month",
+        "day"
+       ],
+       "expression": "today()"
+      },
+      {
+       "id": "<field Deal.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": [
+        "Stage",
+        "Amount"
+       ]
+      },
+      {
+       "id": "<field Deal.Summary>",
+       "name": "Summary",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": false,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    },
+    {
+     "id": "<table Label>",
+     "name": "Label",
+     "url": "/t/<table Label>",
+     "description": "",
+     "hiddenFields": [
+      "Chip",
+      "Card"
+     ],
+     "views": [
+      {
+       "id": "<view Label.Standard>",
+       "name": "Standard",
+       "fields": [
+        "Title",
+        "Description",
+        "Code"
+       ]
+      }
+     ],
+     "bodyBlocks": [
+      "@values",
+      "Description"
+     ],
+     "term": {
+      "singular": "record",
+      "plural": "records",
+      "set": false
+     },
+     "qualified": "Ops/Label",
+     "entityCount": 0,
+     "maxPublicId": 0,
+     "fields": [
+      {
+       "id": "<field Label.Title>",
+       "name": "Title",
+       "type": "formula",
+       "role": "name",
+       "expression": "concat(Code, \"!\")"
+      },
+      {
+       "id": "<field Label.Description>",
+       "name": "Description",
+       "type": "document",
+       "role": "description"
+      },
+      {
+       "id": "<field Label.Code>",
+       "name": "Code",
+       "type": "text"
+      },
+      {
+       "id": "<field Label.Chip>",
+       "name": "Chip",
+       "type": "view",
+       "role": "chip",
+       "shape": "chip",
+       "link": false,
+       "state": true,
+       "description": "none",
+       "fields": null
+      },
+      {
+       "id": "<field Label.Card>",
+       "name": "Card",
+       "type": "view",
+       "role": "card",
+       "shape": "card",
+       "link": true,
+       "state": true,
+       "description": "small",
+       "fields": null
+      }
+     ]
+    }
+   ]
+  },
+  "again": [],
+  "self": []
+ },
+ "edits": [
+  {
+   "name": "Note",
+   "change": {
+    "literal": false
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Note>",
+    "name": "Note",
+    "type": "text",
+    "width": 220,
+    "description": "Free text",
+    "literal": true
+   },
+   "after": {
+    "id": "<field Deal.Note>",
+    "name": "Note",
+    "type": "text",
+    "width": 220,
+    "description": "Free text",
+    "literal": true
+   }
+  },
+  {
+   "name": "Note",
+   "change": {
+    "width": 260,
+    "description": "Other"
+   },
+   "plan": [
+    "update-field Ops/Deal.Note"
+   ],
+   "before": {
+    "id": "<field Deal.Note>",
+    "name": "Note",
+    "type": "text",
+    "width": 220,
+    "description": "Free text",
+    "literal": true
+   },
+   "after": {
+    "id": "<field Deal.Note>",
+    "name": "Note",
+    "type": "text",
+    "width": 260,
+    "description": "Other",
+    "literal": true
+   }
+  },
+  {
+   "name": "Amount",
+   "change": {
+    "decimals": 0,
+    "currency": "GBP"
+   },
+   "plan": [
+    "update-field Ops/Deal.Amount"
+   ],
+   "before": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 2,
+    "accounting": true,
+    "display": "ring",
+    "scale": 1000,
+    "color": "ink"
+   },
+   "after": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "GBP",
+    "decimals": 0,
+    "accounting": true,
+    "display": "ring",
+    "scale": 1000,
+    "color": "ink"
+   }
+  },
+  {
+   "name": "Amount",
+   "change": {
+    "display": "text"
+   },
+   "plan": [
+    "update-field Ops/Deal.Amount"
+   ],
+   "before": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 2,
+    "accounting": true,
+    "display": "ring",
+    "scale": 1000,
+    "color": "ink"
+   },
+   "after": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 2,
+    "accounting": true
+   }
+  },
+  {
+   "name": "Amount",
+   "change": {
+    "color": "ink"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 2,
+    "accounting": true,
+    "display": "ring",
+    "scale": 1000,
+    "color": "ink"
+   },
+   "after": {
+    "id": "<field Deal.Amount>",
+    "name": "Amount",
+    "type": "number",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 2,
+    "accounting": true,
+    "display": "ring",
+    "scale": 1000,
+    "color": "ink"
+   }
+  },
+  {
+   "name": "Stars",
+   "change": {
+    "max": 3
+   },
+   "plan": [
+    "update-field Ops/Deal.Stars"
+   ],
+   "before": {
+    "id": "<field Deal.Stars>",
+    "name": "Stars",
+    "type": "rating",
+    "max": 5,
+    "icon": "lucide:star",
+    "color": "ink"
+   },
+   "after": {
+    "id": "<field Deal.Stars>",
+    "name": "Stars",
+    "type": "rating",
+    "max": 3,
+    "icon": "lucide:star",
+    "color": "ink"
+   }
+  },
+  {
+   "name": "Stars",
+   "change": {
+    "color": "accent",
+    "icon": "lucide:star"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Stars>",
+    "name": "Stars",
+    "type": "rating",
+    "max": 5,
+    "icon": "lucide:star",
+    "color": "ink"
+   },
+   "after": {
+    "id": "<field Deal.Stars>",
+    "name": "Stars",
+    "type": "rating",
+    "max": 5,
+    "icon": "lucide:star",
+    "color": "ink"
+   }
+  },
+  {
+   "name": "Hearts",
+   "change": {
+    "color": "ink"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Hearts>",
+    "name": "Hearts",
+    "type": "rating",
+    "max": 7,
+    "icon": "lucide:heart",
+    "color": "icon",
+    "default": 2
+   },
+   "after": {
+    "id": "<field Deal.Hearts>",
+    "name": "Hearts",
+    "type": "rating",
+    "max": 7,
+    "icon": "lucide:heart",
+    "color": "icon",
+    "default": 2
+   }
+  },
+  {
+   "name": "Due",
+   "change": {
+    "clock": "12h"
+   },
+   "plan": [
+    "update-field Ops/Deal.Due"
+   ],
+   "before": {
+    "id": "<field Deal.Due>",
+    "name": "Due",
+    "type": "date",
+    "format": "iso",
+    "time": true,
+    "clock": "24h",
+    "zone": "fixed",
+    "zoneName": "Europe/Berlin",
+    "pad": true
+   },
+   "after": {
+    "id": "<field Deal.Due>",
+    "name": "Due",
+    "type": "date",
+    "format": "iso",
+    "time": true,
+    "zone": "fixed",
+    "zoneName": "Europe/Berlin",
+    "pad": true
+   }
+  },
+  {
+   "name": "Due",
+   "change": {
+    "format": "us"
+   },
+   "plan": [
+    "update-field Ops/Deal.Due"
+   ],
+   "before": {
+    "id": "<field Deal.Due>",
+    "name": "Due",
+    "type": "date",
+    "format": "iso",
+    "time": true,
+    "clock": "24h",
+    "zone": "fixed",
+    "zoneName": "Europe/Berlin",
+    "pad": true
+   },
+   "after": {
+    "id": "<field Deal.Due>",
+    "name": "Due",
+    "type": "date",
+    "format": "us",
+    "time": true,
+    "clock": "24h",
+    "zone": "fixed",
+    "zoneName": "Europe/Berlin",
+    "pad": true
+   }
+  },
+  {
+   "name": "Month",
+   "change": {
+    "grain": [
+     "year"
+    ]
+   },
+   "plan": [
+    "update-field Ops/Deal.Month"
+   ],
+   "before": {
+    "id": "<field Deal.Month>",
+    "name": "Month",
+    "type": "date",
+    "grain": [
+     "year",
+     "month"
+    ]
+   },
+   "after": {
+    "id": "<field Deal.Month>",
+    "name": "Month",
+    "type": "date",
+    "grain": [
+     "year"
+    ]
+   }
+  },
+  {
+   "name": "Window",
+   "change": {
+    "pad": true
+   },
+   "plan": [
+    "update-field Ops/Deal.Window"
+   ],
+   "before": {
+    "id": "<field Deal.Window>",
+    "name": "Window",
+    "type": "daterange",
+    "time": true,
+    "elapsed": true
+   },
+   "after": {
+    "id": "<field Deal.Window>",
+    "name": "Window",
+    "type": "daterange",
+    "time": true,
+    "pad": true,
+    "elapsed": true
+   }
+  },
+  {
+   "name": "Live",
+   "change": {
+    "on": "Up",
+    "off": "Down"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Live>",
+    "name": "Live",
+    "type": "toggle",
+    "on": "Live",
+    "off": "Draft",
+    "default": false
+   },
+   "after": {
+    "id": "<field Deal.Live>",
+    "name": "Live",
+    "type": "toggle",
+    "on": "Live",
+    "off": "Draft",
+    "default": false
+   }
+  },
+  {
+   "name": "Plain toggle",
+   "change": {
+    "on": "On"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Plain toggle>",
+    "name": "Plain toggle",
+    "type": "toggle",
+    "on": "On",
+    "off": "Off"
+   },
+   "after": {
+    "id": "<field Deal.Plain toggle>",
+    "name": "Plain toggle",
+    "type": "toggle",
+    "on": "On",
+    "off": "Off"
+   }
+  },
+  {
+   "name": "Stage",
+   "change": {
+    "options": [
+     "Lead",
+     "Won",
+     "Lost",
+     "New"
+    ]
+   },
+   "plan": [
+    "update-field Ops/Deal.Stage"
+   ],
+   "before": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   },
+   "after": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost",
+     "New"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     },
+     {
+      "id": "new",
+      "name": "New",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "default": "lead"
+   }
+  },
+  {
+   "name": "Stage",
+   "change": {
+    "optionsFull": [
+     {
+      "name": "Lead",
+      "color": "#2ea043"
+     }
+    ]
+   },
+   "plan": [
+    "update-field Ops/Deal.Stage"
+   ],
+   "before": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   },
+   "after": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "green",
+      "icon": "",
+      "color": "#2ea043"
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   }
+  },
+  {
+   "name": "Stage",
+   "change": {
+    "optionsFull": [
+     {
+      "name": "Won",
+      "icon": "lucide:heart"
+     }
+    ]
+   },
+   "plan": [
+    "update-field Ops/Deal.Stage"
+   ],
+   "before": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   },
+   "after": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "slate",
+      "icon": "lucide:heart",
+      "color": ""
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   }
+  },
+  {
+   "name": "Stage",
+   "change": {
+    "options": [
+     "Won"
+    ],
+    "optionsFull": [
+     {
+      "name": "Won",
+      "color": "nope"
+     }
+    ]
+   },
+   "error": "invalid: Unknown option colour 'nope' (use a hue name: slate, blue, green, amber, red, purple, cyan, pink, teal, orange; or its hex, or '' for slate)",
+   "before": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   },
+   "after": {
+    "id": "<field Deal.Stage>",
+    "name": "Stage",
+    "type": "select",
+    "options": [
+     "Lead",
+     "Won",
+     "Lost"
+    ],
+    "optionsFull": [
+     {
+      "id": "lead",
+      "name": "Lead",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "won",
+      "name": "Won",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     },
+     {
+      "id": "lost",
+      "name": "Lost",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     }
+    ],
+    "default": "lead"
+   }
+  },
+  {
+   "name": "Tags",
+   "change": {
+    "options": [
+     "B"
+    ]
+   },
+   "error": "invalid: 'a' is not an option of 'Tags'",
+   "before": {
+    "id": "<field Deal.Tags>",
+    "name": "Tags",
+    "type": "multiselect",
+    "options": [
+     "A",
+     "B"
+    ],
+    "optionsFull": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "blue",
+      "icon": "",
+      "color": "#4769eb"
+     }
+    ],
+    "default": [
+     "a"
+    ]
+   },
+   "after": {
+    "id": "<field Deal.Tags>",
+    "name": "Tags",
+    "type": "multiselect",
+    "options": [
+     "B"
+    ],
+    "optionsFull": [
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "blue",
+      "icon": "",
+      "color": "#4769eb"
+     }
+    ],
+    "default": [
+     "a"
+    ]
+   }
+  },
+  {
+   "name": "Flow",
+   "change": {
+    "states": [
+     {
+      "name": "Open",
+      "category": "in-progress"
+     },
+     {
+      "name": "Shut",
+      "category": "done",
+      "default": true
+     }
+    ]
+   },
+   "plan": [
+    "update-field Ops/Deal.Flow"
+   ],
+   "before": {
+    "id": "<field Deal.Flow>",
+    "name": "Flow",
+    "type": "workflow",
+    "states": [
+     {
+      "id": "open",
+      "name": "Open",
+      "category": "not-started",
+      "default": true,
+      "icon": "lucide:circle-arrow-up"
+     },
+     {
+      "id": "shut",
+      "name": "Shut",
+      "category": "done",
+      "default": false,
+      "hue": "green"
+     }
+    ]
+   },
+   "after": {
+    "id": "<field Deal.Flow>",
+    "name": "Flow",
+    "type": "workflow",
+    "states": [
+     {
+      "id": "open",
+      "name": "Open",
+      "category": "in-progress",
+      "default": false
+     },
+     {
+      "id": "shut",
+      "name": "Shut",
+      "category": "done",
+      "default": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "Shape",
+   "change": {
+    "depth": 3
+   },
+   "plan": [
+    "update-field Ops/Deal.Shape"
+   ],
+   "before": {
+    "id": "<field Deal.Shape>",
+    "name": "Shape",
+    "type": "field",
+    "types": [
+     "text",
+     "number",
+     "rating",
+     "date",
+     "daterange",
+     "checkbox",
+     "toggle",
+     "url",
+     "email",
+     "select",
+     "multiselect",
+     "workflow",
+     "document",
+     "field",
+     "key",
+     "attachments",
+     "avatar"
+    ],
+    "depth": 2
+   },
+   "after": {
+    "id": "<field Deal.Shape>",
+    "name": "Shape",
+    "type": "field",
+    "types": [
+     "text",
+     "number",
+     "rating",
+     "date",
+     "daterange",
+     "checkbox",
+     "toggle",
+     "url",
+     "email",
+     "select",
+     "multiselect",
+     "workflow",
+     "document",
+     "field",
+     "key",
+     "attachments",
+     "avatar"
+    ],
+    "depth": 2
+   }
+  },
+  {
+   "name": "Token",
+   "change": {
+    "kind": "token"
+   },
+   "plan": [
+    "update-field Ops/Deal.Token"
+   ],
+   "before": {
+    "id": "<field Deal.Token>",
+    "name": "Token",
+    "type": "key",
+    "kind": "pair",
+    "keystore": "1password",
+    "parts": [
+     {
+      "name": "user",
+      "secret": false
+     },
+     {
+      "name": "pass",
+      "secret": true
+     }
+    ]
+   },
+   "after": {
+    "id": "<field Deal.Token>",
+    "name": "Token",
+    "type": "key",
+    "kind": "pair",
+    "keystore": "1password",
+    "parts": [
+     {
+      "name": "user",
+      "secret": false
+     },
+     {
+      "name": "pass",
+      "secret": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "Files",
+   "change": {
+    "multiple": true,
+    "preview": "link"
+   },
+   "plan": [
+    "update-field Ops/Deal.Files"
+   ],
+   "before": {
+    "id": "<field Deal.Files>",
+    "name": "Files",
+    "type": "attachments",
+    "multiple": false,
+    "preview": "cover",
+    "size": "large",
+    "fit": "fill"
+   },
+   "after": {
+    "id": "<field Deal.Files>",
+    "name": "Files",
+    "type": "attachments",
+    "multiple": true,
+    "preview": "link",
+    "size": "large",
+    "fit": "fill"
+   }
+  },
+  {
+   "name": "Files",
+   "change": {
+    "size": "small"
+   },
+   "plan": [
+    "update-field Ops/Deal.Files"
+   ],
+   "before": {
+    "id": "<field Deal.Files>",
+    "name": "Files",
+    "type": "attachments",
+    "multiple": false,
+    "preview": "cover",
+    "size": "large",
+    "fit": "fill"
+   },
+   "after": {
+    "id": "<field Deal.Files>",
+    "name": "Files",
+    "type": "attachments",
+    "multiple": false,
+    "preview": "cover",
+    "size": "small",
+    "fit": "fill"
+   }
+  },
+  {
+   "name": "Face",
+   "change": {
+    "shape": "round"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Face>",
+    "name": "Face",
+    "type": "avatar",
+    "shape": "square"
+   },
+   "after": {
+    "id": "<field Deal.Face>",
+    "name": "Face",
+    "type": "avatar",
+    "shape": "square"
+   }
+  },
+  {
+   "name": "Body",
+   "change": {
+    "kind": "markdown"
+   },
+   "plan": [
+    "update-field Ops/Deal.Body"
+   ],
+   "before": {
+    "id": "<field Deal.Body>",
+    "name": "Body",
+    "type": "document",
+    "kind": "code"
+   },
+   "after": {
+    "id": "<field Deal.Body>",
+    "name": "Body",
+    "type": "document"
+   }
+  },
+  {
+   "name": "Size sum",
+   "change": {
+    "aggregate": "avg"
+   },
+   "plan": [
+    "update-field Ops/Deal.Size sum"
+   ],
+   "before": {
+    "id": "<field Deal.Size sum>",
+    "name": "Size sum",
+    "type": "rollup",
+    "via": "Company",
+    "targetField": "Size",
+    "aggregate": "sum",
+    "format": "percent",
+    "decimals": 1,
+    "display": "bar",
+    "scale": 50,
+    "color": "accent"
+   },
+   "after": {
+    "id": "<field Deal.Size sum>",
+    "name": "Size sum",
+    "type": "rollup",
+    "via": "Company",
+    "targetField": "Size",
+    "aggregate": "avg",
+    "format": "percent",
+    "decimals": 1,
+    "display": "bar",
+    "scale": 50,
+    "color": "accent"
+   }
+  },
+  {
+   "name": "Size sum",
+   "change": {
+    "format": "currency",
+    "currency": "EUR"
+   },
+   "plan": [
+    "update-field Ops/Deal.Size sum"
+   ],
+   "before": {
+    "id": "<field Deal.Size sum>",
+    "name": "Size sum",
+    "type": "rollup",
+    "via": "Company",
+    "targetField": "Size",
+    "aggregate": "sum",
+    "format": "percent",
+    "decimals": 1,
+    "display": "bar",
+    "scale": 50,
+    "color": "accent"
+   },
+   "after": {
+    "id": "<field Deal.Size sum>",
+    "name": "Size sum",
+    "type": "rollup",
+    "via": "Company",
+    "targetField": "Size",
+    "aggregate": "sum",
+    "format": "currency",
+    "currency": "EUR",
+    "decimals": 1,
+    "display": "bar",
+    "scale": 50,
+    "color": "accent"
+   }
+  },
+  {
+   "name": "Count",
+   "change": {
+    "separator": ", "
+   },
+   "plan": [
+    "update-field Ops/Deal.Count"
+   ],
+   "before": {
+    "id": "<field Deal.Count>",
+    "name": "Count",
+    "type": "rollup",
+    "via": "Company",
+    "aggregate": "count"
+   },
+   "after": {
+    "id": "<field Deal.Count>",
+    "name": "Count",
+    "type": "rollup",
+    "via": "Company",
+    "aggregate": "count"
+   }
+  },
+  {
+   "name": "Double",
+   "change": {
+    "expression": "Plain * 3"
+   },
+   "plan": [
+    "update-field Ops/Deal.Double"
+   ],
+   "before": {
+    "id": "<field Deal.Double>",
+    "name": "Double",
+    "type": "formula",
+    "format": "currency",
+    "currency": "USD",
+    "display": "bar",
+    "color": "accent",
+    "expression": "Plain * 2"
+   },
+   "after": {
+    "id": "<field Deal.Double>",
+    "name": "Double",
+    "type": "formula",
+    "format": "currency",
+    "currency": "USD",
+    "display": "bar",
+    "color": "accent",
+    "expression": "Plain * 3"
+   }
+  },
+  {
+   "name": "Double",
+   "change": {
+    "display": "text"
+   },
+   "plan": [
+    "update-field Ops/Deal.Double"
+   ],
+   "before": {
+    "id": "<field Deal.Double>",
+    "name": "Double",
+    "type": "formula",
+    "format": "currency",
+    "currency": "USD",
+    "display": "bar",
+    "color": "accent",
+    "expression": "Plain * 2"
+   },
+   "after": {
+    "id": "<field Deal.Double>",
+    "name": "Double",
+    "type": "formula",
+    "format": "currency",
+    "currency": "USD",
+    "color": "accent",
+    "expression": "Plain * 2"
+   }
+  },
+  {
+   "name": "When",
+   "change": {
+    "format": "iso"
+   },
+   "plan": [
+    "update-field Ops/Deal.When"
+   ],
+   "before": {
+    "id": "<field Deal.When>",
+    "name": "When",
+    "type": "formula",
+    "grain": [
+     "year",
+     "month",
+     "day"
+    ],
+    "expression": "today()"
+   },
+   "after": {
+    "id": "<field Deal.When>",
+    "name": "When",
+    "type": "formula",
+    "format": "iso",
+    "grain": [
+     "year",
+     "month",
+     "day"
+    ],
+    "expression": "today()"
+   }
+  },
+  {
+   "name": "Chip",
+   "change": {
+    "fields": [
+     "Stage"
+    ],
+    "link": true
+   },
+   "plan": [
+    "update-field Ops/Deal.Chip"
+   ],
+   "before": {
+    "id": "<field Deal.Chip>",
+    "name": "Chip",
+    "type": "view",
+    "role": "chip",
+    "shape": "chip",
+    "link": false,
+    "state": true,
+    "description": "none",
+    "fields": [
+     "Stage",
+     "Amount"
+    ]
+   },
+   "after": {
+    "id": "<field Deal.Chip>",
+    "name": "Chip",
+    "type": "view",
+    "role": "chip",
+    "shape": "chip",
+    "link": true,
+    "state": true,
+    "description": "none",
+    "fields": [
+     "Stage"
+    ]
+   }
+  },
+  {
+   "name": "Summary",
+   "change": {
+    "description": "large"
+   },
+   "plan": [
+    "update-field Ops/Deal.Summary"
+   ],
+   "before": {
+    "id": "<field Deal.Summary>",
+    "name": "Summary",
+    "type": "view",
+    "role": "card",
+    "shape": "card",
+    "link": true,
+    "state": false,
+    "description": "small",
+    "fields": null
+   },
+   "after": {
+    "id": "<field Deal.Summary>",
+    "name": "Summary",
+    "type": "view",
+    "role": "card",
+    "shape": "card",
+    "link": true,
+    "state": false,
+    "description": "large",
+    "fields": null
+   }
+  },
+  {
+   "name": "Summary",
+   "change": {
+    "role": "chip"
+   },
+   "plan": [],
+   "before": {
+    "id": "<field Deal.Summary>",
+    "name": "Summary",
+    "type": "view",
+    "role": "card",
+    "shape": "card",
+    "link": true,
+    "state": false,
+    "description": "small",
+    "fields": null
+   },
+   "after": {
+    "id": "<field Deal.Summary>",
+    "name": "Summary",
+    "type": "view",
+    "role": "card",
+    "shape": "card",
+    "link": true,
+    "state": false,
+    "description": "small",
+    "fields": null
+   }
+  },
+  {
+   "name": "About",
+   "change": {
+    "kind": "markdown"
+   },
+   "plan": [
+    "update-field Ops/Deal.About"
+   ],
+   "before": {
+    "id": "<field Deal.About>",
+    "name": "About",
+    "type": "document",
+    "width": 300,
+    "kind": "html",
+    "role": "description"
+   },
+   "after": {
+    "id": "<field Deal.About>",
+    "name": "About",
+    "type": "document",
+    "width": 300,
+    "role": "description"
+   }
+  },
+  {
+   "name": "Plain",
+   "change": {
+    "default": 9
+   },
+   "plan": [
+    "update-field Ops/Deal.Plain"
+   ],
+   "before": {
+    "id": "<field Deal.Plain>",
+    "name": "Plain",
+    "type": "number",
+    "default": 3
+   },
+   "after": {
+    "id": "<field Deal.Plain>",
+    "name": "Plain",
+    "type": "number",
+    "default": 9
+   }
+  },
+  {
+   "name": "Done",
+   "change": {
+    "default": false
+   },
+   "plan": [
+    "update-field Ops/Deal.Done"
+   ],
+   "before": {
+    "id": "<field Deal.Done>",
+    "name": "Done",
+    "type": "checkbox",
+    "default": true
+   },
+   "after": {
+    "id": "<field Deal.Done>",
+    "name": "Done",
+    "type": "checkbox",
+    "default": false
+   }
+  }
+ ]
+}
