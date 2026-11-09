@@ -457,6 +457,32 @@ export const COMMANDS = [
     http: { method: 'DELETE', path: '/api/keys/:name*' },
     run: (w, a) => w.deleteKey(a.name),
   },
+  {
+    name: 'csv.export',
+    engine: ['exportCSV'],
+    writes: 'none',
+    tool: {
+      name: 'weave_export_csv',
+      description: 'Export a table as CSV: one record per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
+    },
+    cli: { command: 'csv', sub: 'export', positional: ['db'], default: 'positional', raw: true },
+    http: { method: 'GET', path: '/api/tables/:db/export.csv', type: 'text/csv; charset=utf-8' },
+    run: (w, a) => w.exportCSV(a.db),
+  },
+  {
+    name: 'csv.import',
+    engine: ['importCSV'],
+    writes: 'entity',
+    tool: {
+      name: 'weave_import_csv',
+      description: 'Import entities from CSV text. The header row maps to field names; multiselect and to-many relation cells use "; " separators. Computed fields and Public Id/Created At/Updated At columns are ignored.',
+      inputSchema: { type: 'object', properties: { db: { type: 'string' }, csv: { type: 'string' } }, required: ['db', 'csv'] },
+    },
+    cli: { command: 'csv', sub: 'import', positional: ['db'], flags: ['file'], args: (a, flags, { stdin, file }) => ({ db: a.db, csv: a.file ? file(a.file) : stdin() }) },
+    http: { method: 'POST', path: '/api/tables/:db/import.csv', args: (a) => ({ db: a.db, csv: a.csv ?? '' }) },
+    run: (w, a) => w.importCSV(a.db, a.csv),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -499,7 +525,8 @@ export function cliCommand(given, sub) {
   if (named) return named;
   const bare = BY_CLI.get(command);
   if (bare && !bare.cli.sub) return bare;
-  return sub == null ? DEFAULT_CLI.get(command) ?? null : null;
+  const fallback = DEFAULT_CLI.get(command) ?? null;
+  return sub == null || fallback?.cli.default === 'positional' ? fallback : null;
 }
 
 export function cliMiss(given, sub) {
@@ -509,7 +536,7 @@ export function cliMiss(given, sub) {
   return new WeaveError(`Unknown ${command} subcommand '${sub}'. Try: ${subs.join(', ')}`);
 }
 
-export const cliRest = (cmd, args) => (cmd.cli.sub ? args.slice(1) : args);
+export const cliRest = (cmd, args) => (cmd.cli.sub && args[0] === cmd.cli.sub ? args.slice(1) : args);
 
 export function cliArgs(cmd, positional, flags, helpers) {
   const a = {};
@@ -552,3 +579,5 @@ export function httpRun(w, hit, body, searchParams) {
   const result = hit.cmd.run(w, a);
   return hit.cmd.http.result ? hit.cmd.http.result(result, a) : result;
 }
+
+export const httpHeaders = (hit) => (hit.cmd.http.type ? { 'Content-Type': hit.cmd.http.type } : {});

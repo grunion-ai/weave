@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
@@ -315,5 +316,38 @@ test('the key family answers the same on CLI, MCP and HTTP, and MCP still never 
     const unread = await d.raw('GET', '/api/keys/stripe', null, auth);
     assert.equal(unread.status, 404);
     assert.deepEqual(await unread.json(), { error: 'Secrets cannot be read back', code: 'not-found' });
+  } finally { d.close(); }
+});
+
+test('the CSV pair answers the same on CLI, MCP and HTTP, and export stays raw text (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-csv-');
+  const csv = 'Name\nBeta\nGamma\n';
+  const file = join(tempDir('weave-registry-csv-file-'), 'rows.csv');
+  writeFileSync(file, csv);
+  try {
+    const imported = {
+      cli: d.cli(['csv', 'import', 'Task', '--file', file]),
+      mcp: d.mcp('weave_import_csv', { db: 'Task', csv }),
+      http: await d.http('POST', '/api/tables/Task/import.csv', { csv }),
+    };
+    assert.deepEqual(imported.mcp, imported.http, 'weave_import_csv and POST /api/tables/Task/import.csv answer alike');
+    assert.deepEqual(imported.cli, imported.http, 'weave csv import and POST /api/tables/Task/import.csv answer alike');
+    assert.equal(imported.http.created, 2);
+    const res = await d.raw('GET', '/api/tables/Task/export.csv');
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'text/csv; charset=utf-8');
+    const fromHttp = (await res.text()).replace(/\d{4}-\d\d-\d\dT[^,\n]+/g, 'T');
+    const exported = d.call('weave_export_csv', { db: 'Task' });
+    assert.ok(!exported.isError, exported.content[0].text);
+    assert.equal(unwrapData(exported.content[0].text).replace(/\d{4}-\d\d-\d\dT[^,\n]+/g, 'T'), fromHttp, 'weave_export_csv and GET export.csv answer alike');
+    for (const args of [['csv', 'Task'], ['csv', 'export', 'Task']]) {
+      const r = d.run(args);
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(r.stdout.replace(/\d{4}-\d\d-\d\dT[^,\n]+/g, 'T'), fromHttp, `weave ${args.join(' ')} prints the export as it is`);
+    }
+    assert.match(fromHttp, /^Public Id,Name,/);
+    assert.equal(fromHttp.split('\n').filter((l) => /Beta|Gamma|Alpha/.test(l)).length, 3);
+    assert.equal(cliCommand('csv', 'Task')?.name, 'csv.export', 'weave csv <table> runs the registry export');
+    assert.equal(matchRoute('POST', '/api/tables/Task/import.csv')?.cmd.name, 'csv.import');
   } finally { d.close(); }
 });

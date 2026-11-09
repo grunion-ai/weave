@@ -209,16 +209,8 @@ export const TOOLS = [
   toolDefinition('weave_check_formula'),
   toolDefinition('weave_add_relation'),
   toolDefinition('weave_create_automation'),
-  {
-    name: 'weave_export_csv',
-    description: 'Export a table as CSV: one record per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' } }, required: ['db'] },
-  },
-  {
-    name: 'weave_import_csv',
-    description: 'Import entities from CSV text. The header row maps to field names; multiselect and to-many relation cells use "; " separators. Computed fields and Public Id/Created At/Updated At columns are ignored.',
-    inputSchema: { type: 'object', properties: { db: { type: 'string' }, csv: { type: 'string' } }, required: ['db', 'csv'] },
-  },
+  toolDefinition('weave_export_csv'),
+  toolDefinition('weave_import_csv'),
   {
     name: 'weave_attach_file',
     description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
@@ -691,10 +683,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
       return weave.deleteComment(args.entity, args.comment);
     case 'weave_search':
       return weave.universalSearch(args.query, { limit: args.limit ?? 25 });
-    case 'weave_export_csv':
-      return weave.exportCSV(args.db);
-    case 'weave_import_csv':
-      return weave.importCSV(args.db, args.csv);
     case 'weave_attach_file': {
       if (args.prepare === true) {
         if (!caller?.prepareUpload) throw new Error('Prepare uploads over the authenticated HTTP MCP endpoint; stdio callers can use the file attach CLI.');
