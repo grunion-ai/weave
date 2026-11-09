@@ -1,0 +1,3319 @@
+{
+ "add": [
+  {
+   "type": "text",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "text",
+   "sent": {
+    "literal": true
+   },
+   "config": {
+    "literal": true
+   }
+  },
+  {
+   "type": "text",
+   "sent": {
+    "default": "hi",
+    "width": 200,
+    "description": "A note"
+   },
+   "config": {
+    "default": "hi",
+    "width": 200,
+    "description": "A note"
+   }
+  },
+  {
+   "type": "text",
+   "sent": {
+    "width": 10
+   },
+   "error": "invalid: Column width must be a number of at least 60px"
+  },
+  {
+   "type": "number",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "number",
+   "sent": {
+    "format": "number"
+   },
+   "config": {}
+  },
+  {
+   "type": "number",
+   "sent": {
+    "format": "currency",
+    "unit": "eur"
+   },
+   "config": {
+    "format": "currency",
+    "currency": "EUR"
+   }
+  },
+  {
+   "type": "number",
+   "sent": {
+    "format": "currency",
+    "currency": "usd",
+    "decimals": 2,
+    "separator": true,
+    "accounting": true
+   },
+   "config": {
+    "format": "currency",
+    "currency": "USD",
+    "decimals": 2,
+    "separator": true,
+    "accounting": true
+   }
+  },
+  {
+   "type": "number",
+   "sent": {
+    "format": "compact",
+    "separator": true
+   },
+   "error": "invalid: Compact groups on its own; a separator has nothing to add"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "display": "bar",
+    "scale": 10,
+    "color": "accent"
+   },
+   "config": {
+    "display": "bar",
+    "color": "accent",
+    "scale": 10
+   }
+  },
+  {
+   "type": "number",
+   "sent": {
+    "display": "ring",
+    "scale": "column"
+   },
+   "config": {
+    "display": "ring"
+   }
+  },
+  {
+   "type": "number",
+   "sent": {
+    "display": "text",
+    "scale": 4
+   },
+   "config": {}
+  },
+  {
+   "type": "number",
+   "sent": {
+    "display": "sparkline"
+   },
+   "error": "invalid: A sparkline draws a list: only a formula can wear it"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "format": "bogus"
+   },
+   "error": "invalid: Invalid number format 'bogus' (number, currency, percent, compact)"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "decimals": 7
+   },
+   "error": "invalid: Decimals must be 0..6, got '7'"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "accounting": true
+   },
+   "error": "invalid: Accounting negatives need format currency"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "currency": "zzz1"
+   },
+   "error": "invalid: 'ZZZ1' is not a currency code (use ISO 4217: USD, EUR, GBP…)"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "color": "pink"
+   },
+   "error": "invalid: Invalid color 'pink' (ink, icon, accent)"
+  },
+  {
+   "type": "number",
+   "sent": {
+    "default": 3
+   },
+   "config": {
+    "default": 3
+   }
+  },
+  {
+   "type": "rating",
+   "sent": {},
+   "config": {
+    "max": 5,
+    "icon": "lucide:star"
+   }
+  },
+  {
+   "type": "rating",
+   "sent": {
+    "max": 10,
+    "icon": "lucide:heart",
+    "color": "accent"
+   },
+   "config": {
+    "max": 10,
+    "icon": "lucide:heart",
+    "color": "accent"
+   }
+  },
+  {
+   "type": "rating",
+   "sent": {
+    "max": 0
+   },
+   "error": "invalid: A rating's max is a whole number from 1 to 100, got '0'"
+  },
+  {
+   "type": "rating",
+   "sent": {
+    "default": 7
+   },
+   "config": {
+    "max": 5,
+    "icon": "lucide:star",
+    "default": 5
+   }
+  },
+  {
+   "type": "date",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "date",
+   "sent": {
+    "grain": [
+     "year",
+     "month"
+    ]
+   },
+   "config": {
+    "grain": [
+     "year",
+     "month"
+    ]
+   }
+  },
+  {
+   "type": "date",
+   "sent": {
+    "time": true,
+    "clock": "24h",
+    "zone": "fixed",
+    "zoneName": "Europe/Berlin"
+   },
+   "config": {
+    "time": true,
+    "clock": "24h",
+    "zoneName": "Europe/Berlin",
+    "zone": "fixed"
+   }
+  },
+  {
+   "type": "date",
+   "sent": {
+    "format": "iso",
+    "pad": true
+   },
+   "config": {
+    "format": "iso",
+    "pad": true
+   }
+  },
+  {
+   "type": "date",
+   "sent": {
+    "format": "long"
+   },
+   "config": {}
+  },
+  {
+   "type": "date",
+   "sent": {
+    "zone": "instant"
+   },
+   "error": "invalid: A zone needs a time of day"
+  },
+  {
+   "type": "date",
+   "sent": {
+    "elapsed": true
+   },
+   "error": "invalid: elapsed belongs to a range"
+  },
+  {
+   "type": "date",
+   "sent": {
+    "grain": [],
+    "time": true
+   },
+   "config": {
+    "grain": [],
+    "time": true
+   }
+  },
+  {
+   "type": "date",
+   "sent": {
+    "grain": []
+   },
+   "error": "invalid: A grain with no date parts must keep a time of day"
+  },
+  {
+   "type": "date",
+   "sent": {
+    "default": "today()"
+   },
+   "config": {
+    "default": "today()"
+   }
+  },
+  {
+   "type": "date",
+   "sent": {
+    "format": "nope"
+   },
+   "error": "invalid: Invalid date format 'nope' (iso, us, eu, long, short, month, quarter, ordinal, relative)"
+  },
+  {
+   "type": "daterange",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "daterange",
+   "sent": {
+    "time": true,
+    "elapsed": true
+   },
+   "config": {
+    "time": true,
+    "elapsed": true
+   }
+  },
+  {
+   "type": "daterange",
+   "sent": {
+    "elapsed": true
+   },
+   "error": "invalid: elapsed needs a time of day at both ends"
+  },
+  {
+   "type": "checkbox",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "checkbox",
+   "sent": {
+    "default": true
+   },
+   "config": {
+    "default": true
+   }
+  },
+  {
+   "type": "url",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "email",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "email",
+   "sent": {
+    "default": "a@b.co"
+   },
+   "config": {
+    "default": "a@b.co"
+   }
+  },
+  {
+   "type": "toggle",
+   "sent": {},
+   "config": {
+    "on": "On",
+    "off": "Off"
+   }
+  },
+  {
+   "type": "toggle",
+   "sent": {
+    "on": "Yes",
+    "off": "No"
+   },
+   "config": {
+    "on": "Yes",
+    "off": "No"
+   }
+  },
+  {
+   "type": "toggle",
+   "sent": {
+    "on": "a",
+    "off": "A"
+   },
+   "error": "invalid: A toggle needs two different labels, got 'a' for both"
+  },
+  {
+   "type": "toggle",
+   "sent": {
+    "on": " "
+   },
+   "error": "invalid: A toggle's on label cannot be blank"
+  },
+  {
+   "type": "select",
+   "sent": {
+    "options": [
+     "A",
+     {
+      "name": "B",
+      "hue": "green",
+      "icon": "lucide:star"
+     }
+    ]
+   },
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "green",
+      "icon": "lucide:star",
+      "color": "#2ea043"
+     }
+    ]
+   }
+  },
+  {
+   "type": "select",
+   "sent": {
+    "options": [
+     {
+      "name": "C",
+      "color": "nope"
+     }
+    ]
+   },
+   "error": "invalid: Unknown option colour 'nope' (use a hue name: slate, blue, green, amber, red, purple, cyan, pink, teal, orange; or its hex, or '' for slate)"
+  },
+  {
+   "type": "select",
+   "sent": {
+    "options": [
+     "A"
+    ],
+    "default": "a"
+   },
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "default": "a"
+   }
+  },
+  {
+   "type": "select",
+   "sent": {},
+   "config": {
+    "options": []
+   }
+  },
+  {
+   "type": "multiselect",
+   "sent": {
+    "options": [
+     "A",
+     "B"
+    ],
+    "default": [
+     "a",
+     "b"
+    ]
+   },
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "default": [
+     "a",
+     "b"
+    ]
+   }
+  },
+  {
+   "type": "workflow",
+   "sent": {},
+   "config": {
+    "states": [
+     {
+      "id": "not-started",
+      "name": "Not started",
+      "category": "not-started",
+      "default": false
+     },
+     {
+      "id": "in-progress",
+      "name": "In progress",
+      "category": "in-progress",
+      "default": false
+     },
+     {
+      "id": "done",
+      "name": "Done",
+      "category": "done",
+      "default": false
+     },
+     {
+      "id": "canceled",
+      "name": "Canceled",
+      "category": "canceled",
+      "default": false
+     }
+    ]
+   }
+  },
+  {
+   "type": "workflow",
+   "sent": {
+    "states": [
+     "Open",
+     {
+      "name": "Done",
+      "category": "done",
+      "default": true
+     }
+    ]
+   },
+   "config": {
+    "states": [
+     {
+      "id": "open",
+      "name": "Open",
+      "category": "in-progress",
+      "default": false
+     },
+     {
+      "id": "done",
+      "name": "Done",
+      "category": "done",
+      "default": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "workflow",
+   "sent": {
+    "states": []
+   },
+   "error": "invalid: Workflow field needs at least one state"
+  },
+  {
+   "type": "workflow",
+   "sent": {
+    "states": [
+     {
+      "name": "X",
+      "category": "bad"
+     }
+    ]
+   },
+   "error": "invalid: Invalid state category 'bad' (use not-started, in-progress, done, canceled)"
+  },
+  {
+   "type": "workflow",
+   "sent": {
+    "states": [
+     {
+      "name": "A",
+      "category": "other",
+      "default": true
+     },
+     {
+      "name": "B",
+      "default": true,
+      "hue": "red"
+     }
+    ]
+   },
+   "config": {
+    "states": [
+     {
+      "id": "a",
+      "name": "A",
+      "category": "in-progress",
+      "default": true
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "category": "in-progress",
+      "default": false,
+      "hue": "red"
+     }
+    ]
+   }
+  },
+  {
+   "type": "relation",
+   "sent": {},
+   "error": "invalid: Use addRelation() to create relation fields"
+  },
+  {
+   "type": "view",
+   "sent": {},
+   "error": "invalid: The chip and the card are minted on every table; configure those instead"
+  },
+  {
+   "type": "field",
+   "sent": {},
+   "config": {
+    "types": [
+     "text",
+     "number",
+     "rating",
+     "date",
+     "daterange",
+     "checkbox",
+     "toggle",
+     "url",
+     "email",
+     "select",
+     "multiselect",
+     "workflow",
+     "document",
+     "field",
+     "key",
+     "attachments",
+     "avatar"
+    ],
+    "depth": 1
+   }
+  },
+  {
+   "type": "field",
+   "sent": {
+    "depth": 2
+   },
+   "config": {
+    "types": [
+     "text",
+     "number",
+     "rating",
+     "date",
+     "daterange",
+     "checkbox",
+     "toggle",
+     "url",
+     "email",
+     "select",
+     "multiselect",
+     "workflow",
+     "document",
+     "field",
+     "key",
+     "attachments",
+     "avatar"
+    ],
+    "depth": 2
+   }
+  },
+  {
+   "type": "field",
+   "sent": {
+    "depth": 9
+   },
+   "error": "invalid: Definition depth must be 1..4, got '9'"
+  },
+  {
+   "type": "key",
+   "sent": {},
+   "config": {
+    "kind": "apikey",
+    "keystore": "local"
+   }
+  },
+  {
+   "type": "key",
+   "sent": {
+    "kind": "pair"
+   },
+   "config": {
+    "kind": "pair",
+    "keystore": "local",
+    "parts": [
+     {
+      "name": "id",
+      "secret": false
+     },
+     {
+      "name": "secret",
+      "secret": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "key",
+   "sent": {
+    "kind": "pair",
+    "parts": [
+     "a",
+     {
+      "name": "b",
+      "secret": true
+     }
+    ]
+   },
+   "config": {
+    "kind": "pair",
+    "keystore": "local",
+    "parts": [
+     {
+      "name": "a",
+      "secret": false
+     },
+     {
+      "name": "b",
+      "secret": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "key",
+   "sent": {
+    "kind": "pair",
+    "parts": [
+     "a"
+    ]
+   },
+   "error": "invalid: A pair names exactly two parts, got 1"
+  },
+  {
+   "type": "key",
+   "sent": {
+    "kind": "token",
+    "parts": [
+     "x"
+    ]
+   },
+   "error": "invalid: Only a 'pair' credential names parts; 'token' holds one value"
+  },
+  {
+   "type": "key",
+   "sent": {
+    "kind": "nope"
+   },
+   "error": "invalid: Invalid credential kind 'nope' (apikey, token, password, id, pair)"
+  },
+  {
+   "type": "key",
+   "sent": {
+    "keystore": "1password"
+   },
+   "config": {
+    "kind": "apikey",
+    "keystore": "1password"
+   }
+  },
+  {
+   "type": "key",
+   "sent": {
+    "keystore": "vault"
+   },
+   "error": "invalid: Invalid keystore 'vault' (local, 1password, aws-sm, google-sm, cloudflare, apple-passwords)"
+  },
+  {
+   "type": "attachments",
+   "sent": {},
+   "config": {
+    "multiple": true
+   }
+  },
+  {
+   "type": "attachments",
+   "sent": {
+    "multiple": false,
+    "preview": "cover",
+    "size": "large",
+    "fit": "fill"
+   },
+   "config": {
+    "multiple": false,
+    "preview": "cover",
+    "size": "large",
+    "fit": "fill"
+   }
+  },
+  {
+   "type": "attachments",
+   "sent": {
+    "preview": "cover"
+   },
+   "error": "invalid: A cover preview needs a single-file field (multiple: false)"
+  },
+  {
+   "type": "attachments",
+   "sent": {
+    "size": "medium",
+    "fit": "trim",
+    "preview": "inline"
+   },
+   "config": {
+    "multiple": true,
+    "preview": "inline"
+   }
+  },
+  {
+   "type": "attachments",
+   "sent": {
+    "size": "huge"
+   },
+   "error": "invalid: Invalid attachments size 'huge' (small, medium, large)"
+  },
+  {
+   "type": "avatar",
+   "sent": {},
+   "config": {
+    "shape": "round"
+   }
+  },
+  {
+   "type": "avatar",
+   "sent": {
+    "shape": "square"
+   },
+   "config": {
+    "shape": "square"
+   }
+  },
+  {
+   "type": "avatar",
+   "sent": {
+    "shape": "oval"
+   },
+   "error": "invalid: Invalid avatar shape 'oval' (round, square)"
+  },
+  {
+   "type": "document",
+   "sent": {},
+   "config": {}
+  },
+  {
+   "type": "document",
+   "sent": {
+    "kind": "code"
+   },
+   "config": {
+    "kind": "code"
+   }
+  },
+  {
+   "type": "document",
+   "sent": {
+    "kind": "markdown"
+   },
+   "config": {}
+  },
+  {
+   "type": "document",
+   "sent": {
+    "kind": "pdf"
+   },
+   "error": "invalid: Invalid document kind 'pdf' (markdown, html, code)"
+  },
+  {
+   "type": "lookup",
+   "sent": {
+    "relationField": "Company",
+    "targetField": "Size"
+   },
+   "config": {
+    "relationField": "<field Deal.Company>",
+    "targetField": "<field Company.Size>"
+   }
+  },
+  {
+   "type": "lookup",
+   "sent": {},
+   "error": "not-found: Field 'undefined' not found in table 'Deal'"
+  },
+  {
+   "type": "rollup",
+   "sent": {
+    "relationField": "Company",
+    "targetField": "Size",
+    "aggregate": "sum",
+    "format": "percent",
+    "separator": ", "
+   },
+   "config": {
+    "relationField": "<field Deal.Company>",
+    "targetField": "<field Company.Size>",
+    "aggregate": "sum",
+    "separator": ", ",
+    "format": "percent"
+   }
+  },
+  {
+   "type": "rollup",
+   "sent": {
+    "relationField": "Company",
+    "aggregate": "count"
+   },
+   "config": {
+    "relationField": "<field Deal.Company>",
+    "targetField": null,
+    "aggregate": "count"
+   }
+  },
+  {
+   "type": "rollup",
+   "sent": {
+    "relationField": "Company",
+    "aggregate": "nope"
+   },
+   "error": "invalid: Invalid aggregate 'nope' (use count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range)"
+  },
+  {
+   "type": "rollup",
+   "sent": {
+    "relationField": "Company",
+    "targetField": "Size",
+    "aggregate": "avg",
+    "display": "bar",
+    "decimals": 1
+   },
+   "config": {
+    "relationField": "<field Deal.Company>",
+    "targetField": "<field Company.Size>",
+    "aggregate": "avg",
+    "decimals": 1,
+    "display": "bar"
+   }
+  },
+  {
+   "type": "formula",
+   "sent": {},
+   "error": "invalid: Formula field needs an expression"
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "1 + 1"
+   },
+   "config": {
+    "expression": "1 + 1"
+   }
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "Size + ",
+    "format": "percent"
+   },
+   "error": "invalid: Unknown field 'Size'"
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "1 + 1",
+    "format": "currency",
+    "currency": "EUR",
+    "display": "sparkline",
+    "style": "column"
+   },
+   "config": {
+    "expression": "1 + 1",
+    "format": "currency",
+    "currency": "EUR",
+    "display": "sparkline",
+    "style": "column"
+   }
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "today()",
+    "grain": [
+     "year",
+     "month"
+    ],
+    "format": "iso"
+   },
+   "config": {
+    "expression": "today()",
+    "grain": [
+     "year",
+     "month"
+    ],
+    "format": "iso"
+   }
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "today()",
+    "grain": null,
+    "time": true
+   },
+   "config": {
+    "expression": "today()"
+   }
+  },
+  {
+   "type": "formula",
+   "sent": {
+    "expression": "1 + 1",
+    "default": 2
+   },
+   "error": "invalid: A formula field cannot carry a default value"
+  }
+ ],
+ "update": [
+  {
+   "type": "text",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "literal": true
+     },
+     "config": {
+      "literal": true
+     }
+    },
+    {
+     "patch": {
+      "literal": false
+     },
+     "config": {}
+    },
+    {
+     "patch": {
+      "width": 180
+     },
+     "config": {
+      "width": 180
+     }
+    },
+    {
+     "patch": {
+      "width": null
+     },
+     "config": {}
+    },
+    {
+     "patch": {
+      "width": "wide"
+     },
+     "error": "invalid: Column width must be a number of at least 60px",
+     "config": {}
+    },
+    {
+     "patch": {
+      "description": "Hi"
+     },
+     "config": {
+      "description": "Hi"
+     }
+    },
+    {
+     "patch": {
+      "description": ""
+     },
+     "config": {}
+    },
+    {
+     "patch": {
+      "default": "x"
+     },
+     "config": {
+      "default": "x"
+     }
+    },
+    {
+     "patch": {
+      "default": null
+     },
+     "config": {}
+    }
+   ]
+  },
+  {
+   "type": "number",
+   "start": {
+    "format": "currency",
+    "currency": "USD"
+   },
+   "steps": [
+    {
+     "patch": {
+      "decimals": 2
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "decimals": 2
+     }
+    },
+    {
+     "patch": {
+      "decimals": null
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD"
+     }
+    },
+    {
+     "patch": {
+      "display": "bar",
+      "scale": 5
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "display": "bar",
+      "scale": 5
+     }
+    },
+    {
+     "patch": {
+      "display": null
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD"
+     }
+    },
+    {
+     "patch": {
+      "format": "compact",
+      "separator": true
+     },
+     "error": "invalid: Compact groups on its own; a separator has nothing to add",
+     "config": {
+      "format": "currency",
+      "currency": "USD"
+     }
+    },
+    {
+     "patch": {
+      "color": "accent"
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "color": "accent"
+     }
+    },
+    {
+     "patch": {
+      "accounting": true
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "color": "accent",
+      "accounting": true
+     }
+    },
+    {
+     "patch": {
+      "format": "percent"
+     },
+     "error": "invalid: Accounting negatives need format currency",
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "color": "accent",
+      "accounting": true
+     }
+    },
+    {
+     "patch": {
+      "unit": "kg"
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "color": "accent",
+      "accounting": true,
+      "unit": "kg"
+     }
+    },
+    {
+     "patch": {
+      "default": 4
+     },
+     "config": {
+      "format": "currency",
+      "currency": "USD",
+      "color": "accent",
+      "accounting": true,
+      "unit": "kg",
+      "default": 4
+     }
+    }
+   ]
+  },
+  {
+   "type": "rating",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "max": 10
+     },
+     "config": {
+      "max": 10,
+      "icon": "lucide:star"
+     }
+    },
+    {
+     "patch": {
+      "icon": "lucide:heart"
+     },
+     "config": {
+      "max": 10,
+      "icon": "lucide:heart"
+     }
+    },
+    {
+     "patch": {
+      "color": "accent"
+     },
+     "config": {
+      "max": 10,
+      "icon": "lucide:heart",
+      "color": "accent"
+     }
+    },
+    {
+     "patch": {
+      "color": null
+     },
+     "config": {
+      "max": 10,
+      "icon": "lucide:heart"
+     }
+    },
+    {
+     "patch": {
+      "default": 4
+     },
+     "config": {
+      "max": 10,
+      "icon": "lucide:heart",
+      "default": 4
+     }
+    },
+    {
+     "patch": {
+      "max": 3
+     },
+     "config": {
+      "max": 3,
+      "icon": "lucide:heart",
+      "default": 3
+     }
+    },
+    {
+     "patch": {
+      "max": 0
+     },
+     "error": "invalid: A rating's max is a whole number from 1 to 100, got '0'",
+     "config": {
+      "max": 3,
+      "icon": "lucide:heart",
+      "default": 3
+     }
+    }
+   ]
+  },
+  {
+   "type": "date",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "time": true
+     },
+     "config": {
+      "time": true
+     }
+    },
+    {
+     "patch": {
+      "clock": "24h"
+     },
+     "config": {
+      "time": true,
+      "clock": "24h"
+     }
+    },
+    {
+     "patch": {
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin"
+     },
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin"
+     }
+    },
+    {
+     "patch": {
+      "time": false
+     },
+     "error": "invalid: A clock needs a time of day",
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin"
+     }
+    },
+    {
+     "patch": {
+      "grain": [
+       "year",
+       "month"
+      ]
+     },
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin",
+      "grain": [
+       "year",
+       "month"
+      ]
+     }
+    },
+    {
+     "patch": {
+      "format": "iso"
+     },
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin",
+      "grain": [
+       "year",
+       "month"
+      ],
+      "format": "iso"
+     }
+    },
+    {
+     "patch": {
+      "grain": null
+     },
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin",
+      "format": "iso"
+     }
+    },
+    {
+     "patch": {
+      "format": null
+     },
+     "config": {
+      "time": true,
+      "clock": "24h",
+      "zone": "fixed",
+      "zoneName": "Europe/Berlin"
+     }
+    }
+   ]
+  },
+  {
+   "type": "daterange",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "time": true
+     },
+     "config": {
+      "time": true
+     }
+    },
+    {
+     "patch": {
+      "elapsed": true
+     },
+     "config": {
+      "time": true,
+      "elapsed": true
+     }
+    },
+    {
+     "patch": {
+      "pad": true
+     },
+     "config": {
+      "time": true,
+      "elapsed": true,
+      "pad": true
+     }
+    },
+    {
+     "patch": {
+      "time": false
+     },
+     "error": "invalid: elapsed needs a time of day at both ends",
+     "config": {
+      "time": true,
+      "elapsed": true,
+      "pad": true
+     }
+    }
+   ]
+  },
+  {
+   "type": "toggle",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "on": "Yes"
+     },
+     "config": {
+      "on": "Yes",
+      "off": "Off"
+     }
+    },
+    {
+     "patch": {
+      "off": "yes"
+     },
+     "error": "invalid: A toggle needs two different labels, got 'Yes' for both",
+     "config": {
+      "on": "Yes",
+      "off": "Off"
+     }
+    },
+    {
+     "patch": {
+      "off": "No"
+     },
+     "config": {
+      "on": "Yes",
+      "off": "No"
+     }
+    },
+    {
+     "patch": {
+      "default": true
+     },
+     "config": {
+      "on": "Yes",
+      "off": "No",
+      "default": true
+     }
+    }
+   ]
+  },
+  {
+   "type": "attachments",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "multiple": false
+     },
+     "config": {
+      "multiple": false
+     }
+    },
+    {
+     "patch": {
+      "preview": "cover"
+     },
+     "config": {
+      "multiple": false,
+      "preview": "cover"
+     }
+    },
+    {
+     "patch": {
+      "size": "large"
+     },
+     "config": {
+      "multiple": false,
+      "preview": "cover",
+      "size": "large"
+     }
+    },
+    {
+     "patch": {
+      "fit": "fill"
+     },
+     "config": {
+      "multiple": false,
+      "preview": "cover",
+      "size": "large",
+      "fit": "fill"
+     }
+    },
+    {
+     "patch": {
+      "multiple": true
+     },
+     "error": "invalid: A cover preview needs a single-file field (multiple: false)",
+     "config": {
+      "multiple": false,
+      "preview": "cover",
+      "size": "large",
+      "fit": "fill"
+     }
+    },
+    {
+     "patch": {
+      "preview": null
+     },
+     "config": {
+      "multiple": false,
+      "size": "large",
+      "fit": "fill"
+     }
+    },
+    {
+     "patch": {
+      "size": "medium"
+     },
+     "config": {
+      "multiple": false,
+      "fit": "fill"
+     }
+    }
+   ]
+  },
+  {
+   "type": "avatar",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "shape": "square"
+     },
+     "config": {
+      "shape": "square"
+     }
+    },
+    {
+     "patch": {
+      "shape": ""
+     },
+     "config": {
+      "shape": "round"
+     }
+    },
+    {
+     "patch": {
+      "shape": "oval"
+     },
+     "error": "invalid: Invalid avatar shape 'oval' (round, square)",
+     "config": {
+      "shape": "round"
+     }
+    }
+   ]
+  },
+  {
+   "type": "document",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "kind": "code"
+     },
+     "config": {
+      "kind": "code"
+     }
+    },
+    {
+     "patch": {
+      "kind": "markdown"
+     },
+     "config": {}
+    },
+    {
+     "patch": {
+      "kind": "pdf"
+     },
+     "error": "invalid: Invalid document kind 'pdf' (markdown, html, code)",
+     "config": {}
+    }
+   ]
+  },
+  {
+   "type": "select",
+   "start": {
+    "options": [
+     "A",
+     "B"
+    ],
+    "default": "a"
+   },
+   "steps": [
+    {
+     "patch": {
+      "options": [
+       "A",
+       "C"
+      ]
+     },
+     "config": {
+      "options": [
+       {
+        "id": "a",
+        "name": "A",
+        "hue": "slate",
+        "icon": "",
+        "color": ""
+       },
+       {
+        "id": "c",
+        "name": "C",
+        "hue": "slate",
+        "icon": "",
+        "color": ""
+       }
+      ],
+      "default": "a"
+     }
+    },
+    {
+     "patch": {
+      "options": [
+       {
+        "id": "c",
+        "name": "C",
+        "hue": "green"
+       }
+      ]
+     },
+     "config": {
+      "options": [
+       {
+        "id": "c",
+        "name": "C",
+        "hue": "green",
+        "icon": "",
+        "color": "#2ea043"
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "options": [
+       {
+        "name": "Z",
+        "hue": "bogus"
+       }
+      ]
+     },
+     "error": "invalid: Unknown option colour 'bogus' (use a hue name: slate, blue, green, amber, red, purple, cyan, pink, teal, orange; or its hex, or '' for slate)",
+     "config": {
+      "options": [
+       {
+        "id": "c",
+        "name": "C",
+        "hue": "green",
+        "icon": "",
+        "color": "#2ea043"
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "default": "c"
+     },
+     "config": {
+      "options": [
+       {
+        "id": "c",
+        "name": "C",
+        "hue": "green",
+        "icon": "",
+        "color": "#2ea043"
+       }
+      ],
+      "default": "c"
+     }
+    }
+   ]
+  },
+  {
+   "type": "multiselect",
+   "start": {
+    "options": [
+     "A",
+     "B"
+    ],
+    "default": [
+     "a",
+     "b"
+    ]
+   },
+   "steps": [
+    {
+     "patch": {
+      "options": [
+       "B"
+      ]
+     },
+     "config": {
+      "options": [
+       {
+        "id": "b",
+        "name": "B",
+        "hue": "slate",
+        "icon": "",
+        "color": ""
+       }
+      ],
+      "default": [
+       "b"
+      ]
+     }
+    },
+    {
+     "patch": {
+      "options": []
+     },
+     "config": {
+      "options": []
+     }
+    }
+   ]
+  },
+  {
+   "type": "workflow",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "states": [
+       "X",
+       "Y"
+      ]
+     },
+     "config": {
+      "states": [
+       {
+        "id": "x",
+        "name": "X",
+        "category": "in-progress",
+        "default": false
+       },
+       {
+        "id": "y",
+        "name": "Y",
+        "category": "in-progress",
+        "default": false
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "states": []
+     },
+     "error": "invalid: Workflow field needs at least one state",
+     "config": {
+      "states": [
+       {
+        "id": "x",
+        "name": "X",
+        "category": "in-progress",
+        "default": false
+       },
+       {
+        "id": "y",
+        "name": "Y",
+        "category": "in-progress",
+        "default": false
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "states": [
+       {
+        "name": "Q",
+        "category": "done",
+        "hue": "red"
+       }
+      ]
+     },
+     "config": {
+      "states": [
+       {
+        "id": "q",
+        "name": "Q",
+        "category": "done",
+        "default": false,
+        "hue": "red"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "formula",
+   "start": {
+    "expression": "1 + 1"
+   },
+   "steps": [
+    {
+     "patch": {
+      "expression": "2 * 3"
+     },
+     "config": {
+      "expression": "2 * 3"
+     }
+    },
+    {
+     "patch": {
+      "format": "percent"
+     },
+     "config": {
+      "expression": "2 * 3",
+      "format": "percent"
+     }
+    },
+    {
+     "patch": {
+      "grain": [
+       "year"
+      ]
+     },
+     "config": {
+      "expression": "2 * 3",
+      "grain": [
+       "year"
+      ]
+     }
+    },
+    {
+     "patch": {
+      "format": "iso"
+     },
+     "config": {
+      "expression": "2 * 3",
+      "grain": [
+       "year"
+      ],
+      "format": "iso"
+     }
+    },
+    {
+     "patch": {
+      "grain": null
+     },
+     "config": {
+      "expression": "2 * 3"
+     }
+    },
+    {
+     "patch": {
+      "expression": "Nope +"
+     },
+     "error": "invalid: Unknown field 'Nope'",
+     "config": {
+      "expression": "2 * 3"
+     }
+    },
+    {
+     "patch": {
+      "decimals": 1
+     },
+     "config": {
+      "expression": "2 * 3",
+      "decimals": 1
+     }
+    }
+   ]
+  },
+  {
+   "type": "rollup",
+   "start": {
+    "relationField": "Company",
+    "targetField": "Size",
+    "aggregate": "sum"
+   },
+   "steps": [
+    {
+     "patch": {
+      "format": "currency",
+      "currency": "EUR"
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "aggregate": "sum",
+      "format": "currency",
+      "currency": "EUR"
+     }
+    },
+    {
+     "patch": {
+      "decimals": 1
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "aggregate": "sum",
+      "format": "currency",
+      "currency": "EUR",
+      "decimals": 1
+     }
+    },
+    {
+     "patch": {
+      "format": null
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "aggregate": "sum",
+      "currency": "EUR",
+      "decimals": 1
+     }
+    },
+    {
+     "patch": {
+      "aggregate": "avg"
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "aggregate": "avg",
+      "currency": "EUR",
+      "decimals": 1
+     }
+    },
+    {
+     "patch": {
+      "display": "ring"
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "aggregate": "avg",
+      "currency": "EUR",
+      "decimals": 1,
+      "display": "ring"
+     }
+    }
+   ]
+  },
+  {
+   "type": "lookup",
+   "start": {
+    "relationField": "Company",
+    "targetField": "Size"
+   },
+   "steps": [
+    {
+     "patch": {
+      "width": 150
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Size>",
+      "width": 150
+     }
+    },
+    {
+     "patch": {
+      "targetField": "Name"
+     },
+     "config": {
+      "relationField": "<field Deal.Company>",
+      "targetField": "<field Company.Name>",
+      "width": 150
+     }
+    }
+   ]
+  },
+  {
+   "type": "key",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "kind": "token"
+     },
+     "config": {
+      "kind": "apikey",
+      "keystore": "local"
+     }
+    },
+    {
+     "patch": {
+      "keystore": "1password"
+     },
+     "config": {
+      "kind": "apikey",
+      "keystore": "local"
+     }
+    }
+   ]
+  },
+  {
+   "type": "field",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "depth": 3
+     },
+     "config": {
+      "types": [
+       "text",
+       "number",
+       "rating",
+       "date",
+       "daterange",
+       "checkbox",
+       "toggle",
+       "url",
+       "email",
+       "select",
+       "multiselect",
+       "workflow",
+       "document",
+       "field",
+       "key",
+       "attachments",
+       "avatar"
+      ],
+      "depth": 1
+     }
+    }
+   ]
+  },
+  {
+   "type": "checkbox",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "default": true
+     },
+     "config": {
+      "default": true
+     }
+    },
+    {
+     "patch": {
+      "default": null
+     },
+     "config": {}
+    }
+   ]
+  },
+  {
+   "type": "url",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "default": "https://a.b"
+     },
+     "config": {
+      "default": "https://a.b"
+     }
+    }
+   ]
+  },
+  {
+   "type": "email",
+   "start": {},
+   "steps": [
+    {
+     "patch": {
+      "default": "nope"
+     },
+     "error": "invalid: 'nope' is not a valid email",
+     "config": {}
+    }
+   ]
+  }
+ ],
+ "extraUpdate": [
+  {
+   "which": "relation",
+   "steps": [
+    {
+     "patch": {
+      "subtable": {
+       "fields": [
+        "Size"
+       ],
+       "sort": [
+        {
+         "field": "Size",
+         "dir": "desc"
+        }
+       ]
+      }
+     },
+     "config": {
+      "targetDb": "<table Company>",
+      "many": false,
+      "inverseFieldId": "<field Company.Deals>",
+      "subtable": {
+       "fields": [
+        "Size"
+       ],
+       "sort": [
+        {
+         "field": "Size",
+         "dir": "desc"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "patch": {
+      "subtable": null
+     },
+     "config": {
+      "targetDb": "<table Company>",
+      "many": false,
+      "inverseFieldId": "<field Company.Deals>"
+     }
+    },
+    {
+     "patch": {
+      "width": 140
+     },
+     "config": {
+      "targetDb": "<table Company>",
+      "many": false,
+      "inverseFieldId": "<field Company.Deals>",
+      "width": 140
+     }
+    }
+   ]
+  },
+  {
+   "which": "chip",
+   "steps": [
+    {
+     "patch": {
+      "fields": [
+       "Company"
+      ]
+     },
+     "config": {
+      "shape": "chip",
+      "link": false,
+      "state": true,
+      "description": "none",
+      "fields": [
+       "<field Deal.Company>"
+      ]
+     }
+    },
+    {
+     "patch": {
+      "description": "Short form"
+     },
+     "error": "invalid: description is one of none, small, medium, large",
+     "config": {
+      "shape": "chip",
+      "link": false,
+      "state": true,
+      "description": "none",
+      "fields": [
+       "<field Deal.Company>"
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "migrate": [
+  {
+   "from": "text",
+   "to": "number",
+   "sent": {},
+   "type": "number",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    12,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "key",
+   "sent": {},
+   "type": "key",
+   "config": {
+    "kind": "apikey",
+    "keystore": "local",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    "Red",
+    "red, Blue",
+    null,
+    "a@b.co",
+    "2026-01-02",
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "url",
+   "sent": {},
+   "type": "url",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    "Red",
+    "red, Blue",
+    null,
+    "a@b.co",
+    "2026-01-02",
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "email",
+   "sent": {},
+   "type": "email",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    "a@b.co",
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "select",
+   "sent": {},
+   "type": "select",
+   "config": {
+    "options": [
+     {
+      "id": "12",
+      "name": "12",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "red",
+      "name": "Red",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "red-blue",
+      "name": "red, Blue",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "a-b-co",
+      "name": "a@b.co",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "2026-01-02",
+      "name": "2026-01-02",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "https-x-co",
+      "name": "https://x.co",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    "red",
+    "red-blue",
+    null,
+    "a-b-co",
+    "2026-01-02",
+    "https-x-co",
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "multiselect",
+   "sent": {},
+   "type": "multiselect",
+   "config": {
+    "options": [
+     {
+      "id": "12",
+      "name": "12",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "red",
+      "name": "Red",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "blue",
+      "name": "Blue",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "a-b-co",
+      "name": "a@b.co",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "2026-01-02",
+      "name": "2026-01-02",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "https-x-co",
+      "name": "https://x.co",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    [
+     "12"
+    ],
+    [
+     "red"
+    ],
+    [
+     "red",
+     "blue"
+    ],
+    null,
+    [
+     "a-b-co"
+    ],
+    [
+     "2026-01-02"
+    ],
+    [
+     "https-x-co"
+    ],
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "date",
+   "sent": {},
+   "type": "date",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    null,
+    null,
+    null,
+    null,
+    "2026-01-02",
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "formula",
+   "sent": {
+    "expression": "concat(Name, \"?\")",
+    "width": 160
+   },
+   "type": "formula",
+   "config": {
+    "expression": "concat(Name, \"?\")",
+    "width": 160,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A text field can become number, key, url, email, select, multiselect, date, formula — not avatar",
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    "Red",
+    "red, Blue",
+    null,
+    "a@b.co",
+    "2026-01-02",
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "formula",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "r0!",
+    "r1!"
+   ]
+  },
+  {
+   "from": "formula",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A formula field can become text — not avatar",
+   "type": "formula",
+   "config": {
+    "expression": "concat(Name, \"!\")",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    null
+   ]
+  },
+  {
+   "from": "number",
+   "to": "rating",
+   "sent": {
+    "max": 3
+   },
+   "type": "rating",
+   "config": {
+    "max": 3,
+    "icon": "lucide:star",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    3,
+    0,
+    null,
+    0
+   ]
+  },
+  {
+   "from": "number",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "3.6",
+    "0",
+    null,
+    "-2"
+   ]
+  },
+  {
+   "from": "number",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A number field can become rating, text — not avatar",
+   "type": "number",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    3.6,
+    0,
+    null,
+    -2
+   ]
+  },
+  {
+   "from": "rating",
+   "to": "number",
+   "sent": {},
+   "type": "number",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    4,
+    1,
+    null
+   ]
+  },
+  {
+   "from": "rating",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "4",
+    "1",
+    null
+   ]
+  },
+  {
+   "from": "rating",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A rating field can become number, text — not avatar",
+   "type": "rating",
+   "config": {
+    "max": 5,
+    "icon": "lucide:star",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    4,
+    1,
+    null
+   ]
+  },
+  {
+   "from": "url",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "url",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A url field can become text — not avatar",
+   "type": "url",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "email",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "a@b.co",
+    null
+   ]
+  },
+  {
+   "from": "email",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A email field can become text — not avatar",
+   "type": "email",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "a@b.co",
+    null
+   ]
+  },
+  {
+   "from": "key",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "MY_KEY",
+    null
+   ]
+  },
+  {
+   "from": "key",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A key field can become text — not avatar",
+   "type": "key",
+   "config": {
+    "kind": "apikey",
+    "keystore": "local",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "MY_KEY",
+    null
+   ]
+  },
+  {
+   "from": "date",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "2026-01-02",
+    null
+   ]
+  },
+  {
+   "from": "date",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A date field can become text — not avatar",
+   "type": "date",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "2026-01-02",
+    null
+   ]
+  },
+  {
+   "from": "checkbox",
+   "to": "toggle",
+   "sent": {},
+   "type": "toggle",
+   "config": {
+    "on": "On",
+    "off": "Off",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    true,
+    false,
+    false
+   ]
+  },
+  {
+   "from": "checkbox",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "true",
+    "false",
+    null
+   ]
+  },
+  {
+   "from": "checkbox",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A checkbox field can become toggle, text — not avatar",
+   "type": "checkbox",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    true,
+    false,
+    null
+   ]
+  },
+  {
+   "from": "toggle",
+   "to": "checkbox",
+   "sent": {},
+   "type": "checkbox",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    true,
+    false,
+    false
+   ]
+  },
+  {
+   "from": "toggle",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "Yes",
+    "No",
+    null
+   ]
+  },
+  {
+   "from": "toggle",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A toggle field can become checkbox, text — not avatar",
+   "type": "toggle",
+   "config": {
+    "on": "Yes",
+    "off": "No",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    true,
+    false,
+    null
+   ]
+  },
+  {
+   "from": "select",
+   "to": "multiselect",
+   "sent": {},
+   "type": "multiselect",
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    [
+     "a"
+    ],
+    [
+     "b"
+    ],
+    [
+     "b"
+    ]
+   ]
+  },
+  {
+   "from": "select",
+   "to": "workflow",
+   "sent": {},
+   "type": "workflow",
+   "config": {
+    "states": [
+     {
+      "id": "a",
+      "name": "A",
+      "category": "in-progress",
+      "default": false
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "category": "in-progress",
+      "default": true
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "a",
+    "b",
+    "b"
+   ]
+  },
+  {
+   "from": "select",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "A",
+    "B",
+    "B"
+   ]
+  },
+  {
+   "from": "select",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A select field can become multiselect, workflow, text — not avatar",
+   "type": "select",
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "default": "b",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "a",
+    "b",
+    "b"
+   ]
+  },
+  {
+   "from": "multiselect",
+   "to": "select",
+   "sent": {},
+   "type": "select",
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "a",
+    "b",
+    null
+   ]
+  },
+  {
+   "from": "multiselect",
+   "to": "text",
+   "sent": {},
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "A, B",
+    "B",
+    ""
+   ]
+  },
+  {
+   "from": "multiselect",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A multiselect field can become select, text — not avatar",
+   "type": "multiselect",
+   "config": {
+    "options": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "b",
+      "name": "B",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    [
+     "a",
+     "b"
+    ],
+    [
+     "b"
+    ],
+    []
+   ]
+  },
+  {
+   "from": "workflow",
+   "to": "select",
+   "sent": {},
+   "type": "select",
+   "config": {
+    "options": [
+     {
+      "id": "open",
+      "name": "Open",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
+     {
+      "id": "done",
+      "name": "Done",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "open",
+    "done",
+    "done"
+   ]
+  },
+  {
+   "from": "workflow",
+   "to": "avatar",
+   "sent": {},
+   "error": "invalid: A workflow field can become select — not avatar",
+   "type": "workflow",
+   "config": {
+    "states": [
+     {
+      "id": "open",
+      "name": "Open",
+      "category": "in-progress",
+      "default": false
+     },
+     {
+      "id": "done",
+      "name": "Done",
+      "category": "done",
+      "default": true
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "open",
+    "done",
+    "done"
+   ]
+  },
+  {
+   "from": "text",
+   "to": "select",
+   "sent": {
+    "options": [
+     {
+      "name": "Red",
+      "hue": "red"
+     },
+     "Green"
+    ]
+   },
+   "type": "select",
+   "config": {
+    "options": [
+     {
+      "id": "red",
+      "name": "Red",
+      "hue": "red",
+      "icon": "",
+      "color": "#e5484d"
+     },
+     {
+      "id": "green",
+      "name": "Green",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    "red",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "multiselect",
+   "sent": {
+    "options": [
+     "Blue"
+    ]
+   },
+   "type": "multiselect",
+   "config": {
+    "options": [
+     {
+      "id": "blue",
+      "name": "Blue",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    [],
+    [],
+    [
+     "blue"
+    ],
+    null,
+    [],
+    [],
+    [],
+    null
+   ]
+  },
+  {
+   "from": "select",
+   "to": "workflow",
+   "sent": {
+    "states": [
+     "Only"
+    ]
+   },
+   "type": "workflow",
+   "config": {
+    "states": [
+     {
+      "id": "only",
+      "name": "Only",
+      "category": "in-progress",
+      "default": false
+     }
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "from": "checkbox",
+   "to": "toggle",
+   "sent": {
+    "on": "On it",
+    "off": "Off it"
+   },
+   "type": "toggle",
+   "config": {
+    "on": "On it",
+    "off": "Off it",
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    true,
+    false,
+    false
+   ]
+  },
+  {
+   "from": "text",
+   "to": "date",
+   "sent": {
+    "grain": [
+     "year",
+     "month"
+    ]
+   },
+   "type": "date",
+   "config": {
+    "grain": [
+     "year",
+     "month"
+    ],
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    "2026-01",
+    null,
+    null
+   ]
+  },
+  {
+   "from": "text",
+   "to": "formula",
+   "sent": {},
+   "error": "invalid: Formula field needs an expression",
+   "type": "text",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    "12",
+    "Red",
+    "red, Blue",
+    null,
+    "a@b.co",
+    "2026-01-02",
+    "https://x.co",
+    null
+   ]
+  },
+  {
+   "from": "number",
+   "to": "rating",
+   "sent": {
+    "max": 200
+   },
+   "error": "invalid: A rating's max is a whole number from 1 to 100, got '200'",
+   "type": "number",
+   "config": {
+    "width": 220,
+    "description": "Kept"
+   },
+   "values": [
+    3.6,
+    0,
+    null,
+    -2
+   ]
+  }
+ ],
+ "nameField": [
+  {
+   "to": "number",
+   "error": "invalid: The Name field can be text or a formula — a name is a label, not a number or a date"
+  },
+  {
+   "to": "formula",
+   "type": "formula"
+  },
+  {
+   "to": "date",
+   "error": "invalid: The Name field can be text or a formula — a name is a label, not a number or a date"
+  }
+ ]
+}
