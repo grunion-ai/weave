@@ -137,7 +137,7 @@ export function commandCallers(name, sources = SOURCES) {
 }
 
 const registryRoutes = () => REGISTRY.filter((c) => c.http).map((c) => ({
-  method: c.http.method, path: c.http.path.replace(/:[a-z]+/gi, ':id'), source: escape(c.http.path).replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
+  method: c.http.method, path: c.http.path.replace(/:[a-z]+\*?/gi, ':id'), source: escape(c.http.path).replace(/:[a-z]+\\\*/gi, '(.+)').replace(/:[a-z]+/gi, '([^/]+)'), file: 'src/commands.js',
 }));
 const ROUTES = [...new Map([...listRoutes('src/routes.js'), ...listRoutes('src/applet.js'), ...registryRoutes()].map((r) => [`${r.method} ${r.path}`, r])).values()];
 const COMMANDS = [...new Set([...listCommands(), ...REGISTRY.filter((c) => c.cli).map((c) => c.cli.command)])].sort();

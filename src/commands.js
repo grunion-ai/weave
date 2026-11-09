@@ -41,6 +41,19 @@ const AUTOMATIONS_TOOL = {
   },
 };
 
+const KEYS_TOOL = {
+  name: 'weave_keys',
+  description: 'The keystore behind `key` (credential) fields: the field holds the NAME of a secret; the secret lives encrypted in a chmod-600 file beside the workspace. action: list (names, owners, sharing) | set (name, value) | share (name, account) | unshare (name, account) | delete. No MCP tool returns a secret value — revealing one is a human act on the CLI or the HTTP surface, gated by that credential\'s own access list and written to the audit log.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string' }, name: { type: 'string' }, value: { type: 'string' },
+      account: { type: 'string', description: 'For share/unshare: the account the credential opens to.' },
+    },
+    required: ['action'],
+  },
+};
+
 export const COMMANDS = [
   {
     name: 'schema.ontology',
@@ -383,6 +396,67 @@ export const COMMANDS = [
     },
     run: (w, a) => w.deleteAutomation(a.automation),
   },
+  {
+    name: 'key.list',
+    engine: ['listKeys'],
+    writes: 'none',
+    tool: KEYS_TOOL,
+    action: 'list',
+    cli: { command: 'key', sub: 'list', default: true, result: (r) => r.keys },
+    http: { method: 'GET', path: '/api/keys', result: (r) => r.keys },
+    run: (w) => ({ keys: w.listKeys() }),
+  },
+  {
+    name: 'key.set',
+    engine: ['setKey'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'set',
+    cli: { command: 'key', sub: 'set', positional: ['name'], flags: ['value'], args: (a, flags, { stdin }) => ({ name: a.name, value: a.value ?? stdin().trim() }) },
+    http: { method: 'POST', path: '/api/keys', status: 201 },
+    run: (w, a) => w.setKey(a.name, a.value),
+  },
+  {
+    name: 'key.reveal',
+    engine: ['revealKey'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'reveal',
+    toolRefusal: 'Revealing a secret is not an agent action — use `weave key reveal` or the app.',
+    cli: { command: 'key', sub: 'reveal', positional: ['name'], args: (a, flags) => ({ name: a.name, via: flags.copy ? 'copy' : 'show' }), result: (r) => r.value },
+    http: { method: 'POST', path: '/api/keys/:name/reveal' },
+    run: (w, a) => ({ name: a.name, value: w.revealKey(a.name, { via: a.via ?? 'show' }) }),
+  },
+  {
+    name: 'key.share',
+    engine: ['grantKey'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'share',
+    cli: { command: 'key', sub: 'share', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
+    http: { method: 'POST', path: '/api/keys/:name/share' },
+    run: (w, a) => w.grantKey(a.name, a.account),
+  },
+  {
+    name: 'key.unshare',
+    engine: ['revokeKey'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'unshare',
+    cli: { command: 'key', sub: 'unshare', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
+    http: { method: 'DELETE', path: '/api/keys/:name/share', body: true },
+    run: (w, a) => w.revokeKey(a.name, a.account),
+  },
+  {
+    name: 'key.delete',
+    engine: ['deleteKey'],
+    writes: 'keystore',
+    tool: KEYS_TOOL,
+    action: 'delete',
+    cli: { command: 'key', sub: 'delete', positional: ['name'] },
+    http: { method: 'DELETE', path: '/api/keys/:name*' },
+    run: (w, a) => w.deleteKey(a.name),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -451,7 +525,7 @@ export function cliRun(cmd, w, args, flags, helpers) {
 
 const ROUTES = COMMANDS.filter((c) => c.http).map((c) => {
   const keys = [];
-  const src = c.http.path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/:([a-z]+)/gi, (_, k) => { keys.push(k); return '([^/]+)'; });
+  const src = c.http.path.replace(/\//g, '\\/').replace(/\./g, '\\.').replace(/:([a-z]+)(\*?)/gi, (_, k, rest) => { keys.push(k); return rest ? '(.+)' : '([^/]+)'; });
   return { cmd: c, method: c.http.method, re: new RegExp(`^${src}$`), keys };
 });
 

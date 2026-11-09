@@ -1813,20 +1813,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!mayAdminister(weave, localRole) && !(reveal && localRole) && !owns) {
             return deny(localRole ? 403 : 401, 'Managing keys needs an architect on this workspace');
           }
-          if (route === 'GET /api/keys') return out(200, weave.listKeys());
-          if (route === 'POST /api/keys') return out(201, weave.setKey(body?.name, body?.value));
-          if ((m = path.match(/^\/api\/keys\/([^/]+)\/reveal$/)) && rx.method === 'POST') {
-            return out(200, { name: decodeURIComponent(m[1]), value: weave.revealKey(decodeURIComponent(m[1]), { via: body?.via ?? 'show' }) });
-          }
-          if ((m = path.match(/^\/api\/keys\/([^/]+)\/share$/))) {
-            const name = decodeURIComponent(m[1]);
-            if (rx.method === 'POST') return out(200, weave.grantKey(name, body?.account));
-            if (rx.method === 'DELETE') return out(200, weave.revokeKey(name, (await rx.readBody())?.account));
-          }
-          if ((m = path.match(/^\/api\/keys\/(.+)$/))) {
-            if (rx.method === 'DELETE') return out(200, weave.deleteKey(decodeURIComponent(m[1])));
-            return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
-          }
+          const keyed = matchRoute(rx.method, path);
+          if (keyed) return out(keyed.cmd.http.status ?? 200, httpRun(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams));
+          if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
         }
         if (route === 'PUT /api/schema') {
           return out(200, weave.applySchema(body?.schema ?? body, {
@@ -2016,7 +2005,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
-        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, body, rx.searchParams));
+        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams));
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }

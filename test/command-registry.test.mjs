@@ -19,7 +19,7 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(/^[a-z]+(\.[a-z]+)*$/.test(c.name), `${c.name} is a dotted lowercase name`);
     assert.ok(!names.has(c.name), `${c.name} is registered once`);
     names.add(c.name);
-    assert.ok(['schema', 'entity', 'none'].includes(c.writes), `${c.name} says what it writes`);
+    assert.ok(['schema', 'entity', 'keystore', 'none'].includes(c.writes), `${c.name} says what it writes`);
     assert.equal(typeof c.run, 'function', `${c.name} runs`);
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
     assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
@@ -196,7 +196,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const sample = { db: 'Task', field: 'Points', space: 'Ops' };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET') continue;
+      if (c.http.method === 'GET' || c.writes === 'keystore') continue;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(sample[k] ?? 'x'));
       const body = c.name === 'formula.check' ? { expression: 'Points * 2' } : {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -211,10 +211,11 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   } finally { server.close(); }
 });
 
-async function threeDoors(prefix, { env: extra = {}, seeded = seed } = {}) {
+async function threeDoors(prefix, { env: extra = {}, seeded = seed, local = false } = {}) {
   const dir = tempDir(prefix);
   const data = join(dir, 'ws.db');
   const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry', ...extra };
+  const keystore = (door) => join(dir, `keystore-${door}.json`);
   const run = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
   const cli = (args) => {
     const r = run(args);
@@ -224,7 +225,7 @@ async function threeDoors(prefix, { env: extra = {}, seeded = seed } = {}) {
   const cliWeave = new Weave({ path: data, actor: 'registry' });
   seeded(cliWeave);
   cliWeave.store.close?.();
-  const mcpWeave = new Weave();
+  const mcpWeave = new Weave({ keystorePath: keystore('mcp'), localKeyAccess: local });
   seeded(mcpWeave);
   const call = (name, args) => handleMcpMessage(mcpWeave, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, { tools: 'all' }).result;
   const mcp = (name, args) => {
@@ -232,7 +233,7 @@ async function threeDoors(prefix, { env: extra = {}, seeded = seed } = {}) {
     assert.ok(!res.isError, `${name}: ${res.content[0].text}`);
     return JSON.parse(unwrapData(res.content[0].text));
   };
-  const httpWeave = new Weave();
+  const httpWeave = new Weave({ keystorePath: keystore('http') });
   seeded(httpWeave);
   const { server } = await startServer(httpWeave, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -281,5 +282,38 @@ test('the automation family answers the same on CLI, MCP and HTTP, and a miss na
     const miss = d.run(['automation', 'run']);
     assert.notEqual(miss.status, 0);
     assert.match(miss.stderr, /Unknown automation subcommand 'run'\. Try: create, list, describe, update, delete/);
+  } finally { d.close(); }
+});
+
+test('the key family answers the same on CLI, MCP and HTTP, and MCP still never reveals (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-keys-', { local: true, seeded: (w) => { seed(w); w.createAccount({ name: 'ann', role: 'editor' }); } });
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const keyed = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['owner', 'rotatedAt', 'sharedWith', 'grants'].includes(k) ? undefined : x)));
+  try {
+    const steps = [
+      [['key', 'set', 'stripe', '--value', 'sk-one'], ['set', { name: 'stripe', value: 'sk-one' }], ['POST', '/api/keys', { name: 'stripe', value: 'sk-one' }]],
+      [['key', 'set', 'team/hook', '--value', 'sk-two'], ['set', { name: 'team/hook', value: 'sk-two' }], ['POST', '/api/keys', { name: 'team/hook', value: 'sk-two' }]],
+      [['key', 'list'], ['list', {}, 'keys'], ['GET', '/api/keys']],
+      [['key', 'share', 'stripe', '--with', 'ann'], ['share', { name: 'stripe', account: 'ann' }], ['POST', '/api/keys/stripe/share', { account: 'ann' }]],
+      [['key', 'unshare', 'stripe', '--with', 'ann'], ['unshare', { name: 'stripe', account: 'ann' }], ['DELETE', '/api/keys/stripe/share', { account: 'ann' }]],
+      [['key', 'delete', 'team/hook'], ['delete', { name: 'team/hook' }], ['DELETE', '/api/keys/team/hook']],
+      [['key'], ['list', {}, 'keys'], ['GET', '/api/keys']],
+    ];
+    for (const [c, [action, args, wrap], [method, path, body]] of steps) {
+      const fromHttp = keyed(await d.http(method, path, body, auth));
+      const fromMcp = d.mcp('weave_keys', { action, ...args });
+      assert.deepEqual(keyed(wrap ? fromMcp[wrap] : fromMcp), fromHttp, `weave_keys ${action} and ${method} ${path} answer alike`);
+      assert.deepEqual(keyed(d.cli(c)), fromHttp, `weave ${c.slice(0, 2).join(' ')} and ${method} ${path} answer alike`);
+    }
+    assert.equal(d.cli(['key', 'reveal', 'stripe']), 'sk-one\n', 'weave key reveal prints the bare value');
+    assert.deepEqual(await d.http('POST', '/api/keys/stripe/reveal', {}, auth), { name: 'stripe', value: 'sk-one' });
+    assert.equal(d.call('weave_keys', { action: 'reveal', name: 'stripe' }).content[0].text, 'Error: Revealing a secret is not an agent action — use `weave key reveal` or the app.');
+    assert.equal(d.call('weave_keys', { action: 'rotate' }).content[0].text, "Error: Unknown keys action 'rotate' (list, set, share, unshare, delete)");
+    const miss = d.run(['key', 'rotate']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown key subcommand 'rotate'\. Try: list, set, reveal, share, unshare, delete/);
+    const unread = await d.raw('GET', '/api/keys/stripe', null, auth);
+    assert.equal(unread.status, 404);
+    assert.deepEqual(await unread.json(), { error: 'Secrets cannot be read back', code: 'not-found' });
   } finally { d.close(); }
 });
