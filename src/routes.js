@@ -1,7 +1,7 @@
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
-import { matchRoute, httpRun, httpHeaders, boundedLimit } from './commands.js';
+import { matchRoute, httpReply, boundedLimit } from './commands.js';
 export { storageFull, statusFor, errorBody };
 import { shareDoor, shareGate, sharePage, scopedMention, sharedRead, withinScope } from './shares.js';
 import { vocabularyView } from './vocabulary.js';
@@ -1806,7 +1806,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             return deny(localRole ? 403 : 401, 'Managing keys needs an architect on this workspace');
           }
           const keyed = matchRoute(rx.method, path);
-          if (keyed) return out(keyed.cmd.http.status ?? 200, httpRun(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams));
+          if (keyed) { const r = httpReply(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams); return out(r.status, r.data, r.headers); }
           if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
         }
         if (route === 'PUT /api/schema') {
@@ -1986,7 +1986,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(201, useTemplateInto({ space: decodeURIComponent(m[1]), workspace: body?.workspace, name: body?.name }));
         }
         const registered = matchRoute(rx.method, path);
-        if (registered) return out(registered.cmd.http.status ?? 200, httpRun(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, { viewerZone }), httpHeaders(registered));
+        if (registered) {
+          const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, {
+            viewerZone, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+          });
+          return out(r.status, r.data, r.headers);
+        }
         if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
           if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
         }
@@ -2021,12 +2026,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
 
         if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
-          if (rx.method === 'POST') {
-            const e = weave.createEntity(m[1], body, { viewerZone });
-            const once = weave.takeOneTime(e.id);
-            const secret = once?.invite ? { invite: { ...once.invite, url: inviteUrl(`${originFor(rx)}${wsPrefix}`, once.invite.code) } } : once ?? {};
-            return out(201, { ...weave.readEntity(e.id, { viewerZone }), ...secret });
-          }
           if (rx.method === 'GET') {
             const limit = boundedLimit(rx.searchParams.get('limit'), QUERY_PAGE);
             const offset = nonNegativeInteger('offset', rx.searchParams.get('offset'));
@@ -2057,23 +2056,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { total: items.length, items });
         }
 
-        if ((m = path.match(/^\/api\/entities\/([^/]+)$/))) {
-          if (rx.method === 'GET') return out(200, weave.readEntity(m[1], { viewerZone }));
-          if (rx.method === 'PATCH') {
-            const expectedRevision = ifMatchRevision(rx.header('if-match'));
-            try {
-              const { touched } = weave.touching(() => weave.updateEntity(m[1], body.values ?? body, { expectedRevision }));
-              return out(200, { ...weave.readEntity(m[1], { viewerZone }), affected: weave.affectedBy(m[1], touched) });
-            } catch (err) {
-              if (err?.code !== 'stale') throw err;
-              return out(412, { ...errorBody(err), entity: weave.readEntity(m[1], { viewerZone }) });
-            }
-          }
-          if (rx.method === 'DELETE') {
-            const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-            return out(200, { ok: true, ...weave.deleteEntity(m[1], { hard }) });
-          }
-        }
         if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
           return out(200, weave.referencesTo(m[1]));
         }

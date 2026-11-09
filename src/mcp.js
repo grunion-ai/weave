@@ -90,36 +90,10 @@ export const TOOLS = [
       required: ['db'],
     },
   },
-  {
-    name: 'weave_get_entity',
-    description: 'Read one entity in full: all field values (including computed lookups/rollups/formulas), document markdown, comments, activity.',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string', description: 'Entity id or "Table#publicId"' } }, required: ['entity'] },
-  },
-  {
-    name: 'weave_create_entity',
-    description: 'Create an entity. values maps field names to values; relation fields accept entity names, ids, or "#publicId".',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        db: { type: 'string' },
-        name: { type: 'string' },
-        values: { type: 'object' },
-        doc: { type: 'string', description: 'Initial markdown for the default document field' },
-        docs: { type: 'object', description: 'Initial markdown per document field name, e.g. {"Description": "...", "Spec": "..."}' },
-      },
-      required: ['db'],
-    },
-  },
-  {
-    name: 'weave_update_entity',
-    description: 'Update entity field values by name (writable fields only; computed fields are read-only).',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, values: { type: 'object' } }, required: ['entity', 'values'] },
-  },
-  {
-    name: 'weave_delete_entity',
-    description: 'Delete an entity. Recoverable by default — it moves to the trash keeping its id, public id and links. Pass hard: true to purge it irreversibly (relations are unlinked cleanly).',
-    inputSchema: { type: 'object', properties: { entity: { type: 'string' }, hard: { type: 'boolean' } }, required: ['entity'] },
-  },
+  toolDefinition('weave_get_entity'),
+  toolDefinition('weave_create_entity'),
+  toolDefinition('weave_update_entity'),
+  toolDefinition('weave_delete_entity'),
   toolDefinition('weave_restore_entity'),
   {
     name: 'weave_trash',
@@ -566,6 +540,18 @@ function checkRowArgs(name, args, required) {
   if (unknown.length) throw new Error(`${name} takes ${Object.keys(props).join(', ')}${extra}; field values go in values`);
 }
 
+const ROW_GUARDS = {
+  weave_create_entity: (weave, args, caller) => {
+    checkRowArgs('weave_create_entity', args, false);
+    if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
+  },
+  weave_update_entity: (weave, args, caller) => {
+    checkRowArgs('weave_update_entity', args, true);
+    refuseUsersWrite(weave, args.entity, caller);
+  },
+  weave_delete_entity: (weave, args, caller) => refuseUsersWrite(weave, args.entity, caller),
+};
+
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   if (!mayCall(caller, name)) throw unknownTool(name);
   if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
@@ -575,8 +561,12 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   }
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
+  ROW_GUARDS[name]?.(weave, args, caller);
   const command = toolCommand(name, args);
-  if (command) return command.run(weave, args, { caller });
+  if (command) {
+    const result = command.run(weave, args, { caller, origin: envOrigin() });
+    return command.toolResult ? command.toolResult(result) : result;
+  }
   switch (name) {
     case 'weave_schema':
       return weave.describeSchema();
@@ -588,23 +578,6 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
         trashCount: Boolean(args.trashCount), countAll: Boolean(args.countAll), search: args.search ?? '', view: args.view ?? null,
         groupBy: args.groupBy ?? null, shape: args.shape ?? 'full',
       });
-    case 'weave_get_entity':
-      return weave.readEntity(args.entity);
-    case 'weave_create_entity': {
-      checkRowArgs(name, args, false);
-      if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
-      const e = weave.createEntity(args.db, { name: args.name, values: args.values, doc: args.doc, docs: args.docs });
-      const once = weave.takeOneTime(e.id);
-      return { ...weave.readEntity(e.id), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(envOrigin(), once.invite.code) } } : once ?? {}) };
-    }
-    case 'weave_update_entity':
-      checkRowArgs(name, args, true);
-      refuseUsersWrite(weave, args.entity, caller);
-      weave.updateEntity(args.entity, args.values);
-      return weave.readEntity(args.entity);
-    case 'weave_delete_entity':
-      refuseUsersWrite(weave, args.entity, caller);
-      return weave.deleteEntity(args.entity, { hard: Boolean(args.hard) });
     case 'weave_trash':
       return { items: weave.listTrash(args.table ?? null) };
     case 'weave_stats':
