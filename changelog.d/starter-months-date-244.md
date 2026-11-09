@@ -1,0 +1,1 @@
+- **Money's Months sorts by date** (Feature #244): the Months table in the Money starter carries a month-grain Date field and its standard view sorts on it, so October sorts above November instead of below it by name. The sample month is dated to the first of the month it is built in. Gate: `test/starter-core.test.mjs`.
