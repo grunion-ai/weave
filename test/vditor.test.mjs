@@ -7,7 +7,7 @@ import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+const APP = ['public/app.js', 'public/doc-editor.js'].map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 const CSS_TOOLBAR = CSS.match(/\.doc-editor \.vditor-toolbar\s*\{[^}]*\}/)?.[0] ?? '';
 const VENDOR = 'public/vendor/vditor';

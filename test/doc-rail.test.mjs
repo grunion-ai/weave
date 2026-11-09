@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 await import('../public/editor-lib.js');
 const LIB = globalThis.WeaveEditorLib;
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+const APP = ['public/app.js', 'public/doc-editor.js'].map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
 const CSS = readFileSync(join(ROOT, 'public/style.css'), 'utf8');
 
 const H = (...levels) => levels.map((level, i) => ({ level, text: `h${i}` }));

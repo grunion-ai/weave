@@ -17,8 +17,8 @@
       "br": 2293
     },
     "/app.js": {
-      "gzip": 159899,
-      "br": 127835
+      "gzip": 147657,
+      "br": 118113
     },
     "/automation-map.js": {
       "gzip": 676,
@@ -83,6 +83,10 @@
     "/date-picker.js": {
       "gzip": 3662,
       "br": 3291
+    },
+    "/doc-editor.js": {
+      "gzip": 12965,
+      "br": 11538
     },
     "/editor-lib.js": {
       "gzip": 4499,

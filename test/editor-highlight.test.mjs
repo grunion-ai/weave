@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { renderDocumentPage } from '../src/markdown.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+const APP = ['public/app.js', 'public/doc-editor.js'].map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
 
 function slashInsert(label) {
   const line = APP.split('\n').find((l) => l.includes(`label: '${label}'`));
