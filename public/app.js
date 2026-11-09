@@ -842,6 +842,16 @@ function tableHop(db) {
 }
 
 const dockCoversScreen = matchMedia('(max-width: 600px)');
+const saves = WeaveSaveQueue.createSaveQueue({ send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }) });
+WeaveSaveQueue.bindPageHide(saves);
+WeaveSaveQueue.bindEscape(saves);
+window.weaveSaves = saves;
+const dockHoldsSaveMark = () => dockCoversScreen.matches && !!$('#dock:not([hidden])');
+const saveMark = WeaveSaveQueue.saveGlyph(saves, {
+  icon: iconEl,
+  place: () => (dockHoldsSaveMark() && $('#dock .view-header .crumb-row')) || $('#main .view-header .crumb-row'),
+});
+const saveMarkFor = (inDock) => (inDock === dockHoldsSaveMark() ? saveMark : null);
 const touchOnly = matchMedia('(hover: none) and (pointer: coarse)');
 const SHORTCUT_CLAUSE = /\s*(?:\([^()]*(?:⌘|Ctrl)[^()]*\)|— ⌘-click for a new tab|<[^<>]*(?:⌘|Ctrl)[^<>]*>)/g;
 const keyHint = (text) => (touchOnly.matches ? text.replace(SHORTCUT_CLAUSE, '') : text);
@@ -1319,7 +1329,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         run: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
       },
     }),
-    el('span', { class: 'crumb-actions wv-toolbar' }, ...tools), dots));
+    el('span', { class: 'crumb-actions wv-toolbar' }, ...tools), dots, saveMarkFor(false)));
 
   syncDocTitle(title);
   const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
@@ -9089,7 +9099,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: inPeek ? 1 : 4,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls)),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls), saveMarkFor(inPeek)),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   let nextFab = null;

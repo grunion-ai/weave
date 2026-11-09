@@ -201,8 +201,8 @@
       "br": 561
     },
     "/save-queue.js": {
-      "gzip": 1559,
-      "br": 1420
+      "gzip": 2136,
+      "br": 1903
     },
     "/selection-core.js": {
       "gzip": 1018,
@@ -305,6 +305,7 @@
     "/upload-core.js": "Issue #1413 (upload error causes) added the restarting, storage-full and request-id failures, the retry waits and the generic-call strings: gzip 1,551 to 1,864, br 1,349 to 1,634 served. Budget set 5% above",
     "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above",
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
-    "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap"
+    "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
+    "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above."
   }
 }
