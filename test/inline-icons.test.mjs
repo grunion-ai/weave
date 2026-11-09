@@ -7,7 +7,7 @@ await import('../public/editor-lib.js');
 await import('../public/icon-registry.js');
 const LIB = globalThis.WeaveEditorLib, reg = globalThis.weaveIconRegistry;
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
-const APP = src('public/app.js'), CSS = src('public/style.css');
+const APP = src('public/app.js') + '\n' + src('public/doc-editor.js'), CSS = src('public/style.css');
 const accept = (t) => { const h = reg.inline(t); return h ? (h.name ? `lucide:${h.name}` : h.mark) : null; };
 
 test('the renderer draws :name: as the icon and leaves the rest of the text alone', () => {

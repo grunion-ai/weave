@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const KATEX = join(ROOT, 'public/vendor/vditor/dist/js/katex');
-const APP = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
+const APP = ['public/app.js', 'public/doc-editor.js'].map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n');
 const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 
 await import('../public/editor-lib.js');

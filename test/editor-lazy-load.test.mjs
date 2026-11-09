@@ -6,7 +6,7 @@ import { createContext, runInContext } from 'node:vm';
 import { withServer } from './lib/fixtures.mjs';
 
 const HTML = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const APP = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const APP = ['app.js', 'doc-editor.js'].map((f) => readFileSync(new URL(`../public/${f}`, import.meta.url), 'utf8')).join('\n');
 
 test('the document editor is not render-blocking: index.html names its files in a template, not as live tags (Issue #989)', () => {
   const live = HTML.replace(/<template id="vditor-assets">[\s\S]*?<\/template>/, '');
@@ -27,13 +27,14 @@ function loadingContext() {
   const context = createContext({
     window: {},
     document: { querySelector: () => null, head: { append() {} } },
+    lazyScript: () => Promise.resolve(),
     el: (tag) => {
       const node = { tag, handlers: {}, addEventListener(name, handler) { this.handlers[name] = handler; }, remove() { this.removed = true; } };
       nodes.push(node);
       return node;
     },
   });
-  runInContext(APP.slice(APP.indexOf('let vditorLoading = null;'), APP.indexOf('function mountDocEditor(')), context);
+  runInContext(APP.slice(APP.indexOf('let vditorLoading = null;'), APP.indexOf('const docBubbles = new Set();')), context);
   return { context, nodes };
 }
 
