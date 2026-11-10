@@ -1,1 +1,0 @@
-- On a phone, **Report a problem** now sits in a record's ⋮ menu, and the bug glyph sits in the Activity sheet's head, so a report can start from the screen that shows the problem (Issue #1023).

@@ -115,7 +115,7 @@ test('every kind has exactly one definition, and the registry names them all', (
 test('the definitions match the target menu table', () => {
   const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
   assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['move', 'duplicate', 'trash'], share: ['share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
-  assert.deepEqual(shape('record'), { organize: ['duplicate', 'report'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
+  assert.deepEqual(shape('record'), { organize: ['duplicate'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { organize: ['trash'], delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
