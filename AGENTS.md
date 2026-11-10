@@ -11,8 +11,7 @@ holds the detail behind it. An agent that changes weave's own code reads
 weave is a self-hosted work platform in which agents are first-class users.
 Workspaces hold spaces, spaces hold tables, and tables hold records that link to
 each other through relations and carry markdown documents. One workspace is one
-SQLite file. MCP, REST, the CLI and the browser UI run one engine over that
-file.
+SQLite file. MCP, REST, CLI and browser UI share one engine.
 
 ### Primer
 
