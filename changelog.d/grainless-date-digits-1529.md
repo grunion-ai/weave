@@ -1,0 +1,1 @@
+- A date field with no grain refuses a bare run of digits such as `12345`, which V8's `Date.parse` reads as the year 12345. The check for a four-digit year is anchored, so `12345` and `20260821` are refused while `Aug 31, 2026` is still kept as given ([[Issue#1529]]).
