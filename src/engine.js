@@ -9998,7 +9998,7 @@ export class Weave {
           return null;
         }
         if (!r.mailMessage) {
-          const runUrl = `${base.origin}/w/${encodeURIComponent(this.state.meta.name)}/e/${row.id}`;
+          const runUrl = `${base.origin}${this.permalink('entity', row.id)}`;
           const { subject, html, text } = runEmail({ ...runOut(row), runUrl, origin: base.origin });
           r.mailMessage = { to: r.recipient, subject, html, text, idempotencyKey: `weave-run-${id}` };
         }

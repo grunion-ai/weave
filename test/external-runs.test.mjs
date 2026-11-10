@@ -66,6 +66,7 @@ test('completion sends one frozen HTML and text confirmation, even with concurre
   await first;
   assert.equal(latest(w, r.id).mailStatus, 'sent');
   assert.equal(latest(w, r.id).mailProviderId, 'email_1');
+  assert.ok(sent[0].html.includes(`${ORIGIN}${w.permalink('entity', r.id)}`));
   await w.runMaintenance({ mail, origin: ORIGIN });
   assert.equal(sent.length, 1);
 });
