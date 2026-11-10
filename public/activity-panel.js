@@ -182,6 +182,7 @@ const activityPanelCore = (() => {
     const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
     const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
       el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
+        bugTrigger('wv-act-icon'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
     const side = $('#side');
@@ -286,7 +287,7 @@ const activityPanelCore = (() => {
     sideSyncUrl();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
+    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back, #bug-panel')) return;
     e.stopPropagation();
     close();
   }, true);

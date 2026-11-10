@@ -1,6 +1,6 @@
 # Reporting a bug
 
-The bug glyph in the bottom-right corner of every page opens a small panel beside it. The page stays visible while the report is written, because reporting a bug must not cover the bug. Type a sentence, pick any of the four symptoms — **Slow**, **Looks broken**, **Wrong data**, **Error** — and there are two ways to send it.
+The bug glyph in the bottom-right corner of a desktop page opens a small panel beside it. On a phone the same panel opens from **Report a problem** in Your menu, from the ⋮ menu on a record, and from the bug glyph in the Activity sheet’s head, so a report starts on the screen the problem is on. The page stays visible while the report is written, because reporting a bug must not cover the bug. Type a sentence, pick any of the four symptoms — **Slow**, **Looks broken**, **Wrong data**, **Error** — and there are two ways to send it.
 
 ## Report issue: an Issue on this instance
 
