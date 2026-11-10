@@ -1725,6 +1725,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .wv-prefill-notice { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .wv-prefill-copy { align-self: flex-start; }
 .tray-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
+#modal form[aria-busy="true"] button[type="submit"], .tray-form[aria-busy="true"] button[type="submit"] { opacity: 0.6; pointer-events: none; }
 .type-grid.editing .type-tile { opacity: 1; }
 .type-tile.current:not(.sel) { border-style: dashed; }
 .migrate-note { color: var(--tblr-warning, #f59f00); }

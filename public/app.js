@@ -531,6 +531,20 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
+const submitsInFlight = new WeakSet();
+
+function holdSubmit(form) {
+  if (submitsInFlight.has(form)) return false;
+  submitsInFlight.add(form);
+  form.setAttribute('aria-busy', 'true');
+  return true;
+}
+
+function freeSubmit(form) {
+  submitsInFlight.delete(form);
+  form.removeAttribute('aria-busy');
+}
+
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
@@ -548,11 +562,14 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
       done));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!holdSubmit(form)) return;
     try {
       await onSubmit?.(new FormData(form));
       close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      freeSubmit(form);
     }
   });
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
@@ -582,11 +599,14 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!holdSubmit(form)) return;
     try {
       await onSubmit(new FormData(form));
       if (!stay) close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      freeSubmit(form);
     }
   });
   const box = el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },

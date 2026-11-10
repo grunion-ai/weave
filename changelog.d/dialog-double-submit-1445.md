@@ -1,0 +1,1 @@
+- A create dialog now refuses its own second submit while the first write is in flight, so a double tap, a repeated Enter or two `requestSubmit()` calls make one record instead of two. The guard sits in the shared modal and tray shells, and a refused write re-enables the button so the create can be retried ([[Issue#1445]]).
