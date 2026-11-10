@@ -3221,8 +3221,8 @@ const MENU_ROWS = {
     }),
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null } = {}) => ({
-    report: bugRecorder && dockCoversScreen.matches && anchor ? {
-      label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row',
+    report: bugRecorder && anchor ? {
+      label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
       run: () => openBugPanel(anchor),
     } : null,
     duplicate: db && !db.system ? {
