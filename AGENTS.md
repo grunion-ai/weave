@@ -11,7 +11,8 @@ holds the detail behind it. An agent that changes weave's own code reads
 weave is a self-hosted work platform in which agents are first-class users.
 Workspaces hold spaces, spaces hold tables, and tables hold records that link to
 each other through relations and carry markdown documents. One workspace is one
-SQLite file. MCP, REST, CLI and browser UI share one engine.
+SQLite file. MCP, REST, the CLI and the browser UI run one engine over that
+file.
 
 ### Primer
 
@@ -67,7 +68,7 @@ workspace file (see
 ### Tool map
 
 <!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
-17 listed by default, out of 66. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+17 listed by default, out of 65. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
 
 | Job | Tool | What it does |
 | --- | --- | --- |
@@ -89,7 +90,7 @@ workspace file (see
 | Look up allowed values | `weave_vocabulary` | allowed values; several sections and icon queries in one call |
 | Everything else | `weave_call` | run any other tool by name; help describes one |
 
-The other 49, through `weave_call {name, args}`:
+The other 48, through `weave_call {name, args}`:
 
 | Area | Tools |
 | --- | --- |
@@ -102,7 +103,7 @@ The other 49, through `weave_call {name, args}`:
 | Figures | `weave_stats` |
 | Import and export | `weave_export_csv`, `weave_export_json`, `weave_import_json` |
 | Files | `weave_attach_file`, `weave_files` |
-| Automations | `weave_create_automation`, `weave_automations`, `weave_runs` |
+| Automations | `weave_create_automation`, `weave_automations` |
 | Share pages and forms | `weave_views`, `weave_shares`, `weave_forms` |
 | History | `weave_activity`, `weave_audit` |
 | Accounts and secrets | `weave_accounts`, `weave_keys` |
@@ -680,7 +681,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 66 tools over the engine, 17 listed by default |
+| `src/mcp.js` | MCP server: 65 tools over the engine, 17 listed by default |
 | `src/commands.js` | The command registry: one entry per operation names its MCP tool, CLI command, HTTP route, what it writes and how it runs; the three doors dispatch from it |
 | `src/errors.js` | The error contract: each code's HTTP status, MCP code and CLI exit |
 | `src/formula.js` | Formula parser/evaluator |
@@ -724,5 +725,3 @@ For agents changing weave itself: where the code lives and the rules every chang
    Issue or Feature record, a `ponytail:` upgrade path included.
    `test/no-inline-comments.test.mjs` enforces it; vendored code, `brand/` and
    `docs/` are exempt.
-
-External run lifecycle: `weave run start <name> --recipient <email> --timeout-minutes 60 --key <key>`, `weave run update <id> --patch '{"status":"succeeded","summary":"Done"}'`, and `weave run list --status succeeded`.
