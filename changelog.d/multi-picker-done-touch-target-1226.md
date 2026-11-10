@@ -1,0 +1,1 @@
+- On a touch screen the multi-select picker's **Done** button takes a 46 px box, so the full 44 px is reachable on both engines. The phone touch gate now walks the multi-select picker, so a smaller control in its footer fails it ([[Issue#1226]]).
