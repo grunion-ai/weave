@@ -3220,7 +3220,11 @@ const MENU_ROWS = {
       undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
-  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
+  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null } = {}) => ({
+    report: bugRecorder && dockCoversScreen.matches && anchor ? {
+      label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row',
+      run: () => openBugPanel(anchor),
+    } : null,
     duplicate: db && !db.system ? {
       label: 'Duplicate',
       run: async () => {
