@@ -1,0 +1,1 @@
+- On a touch screen the date and range pickers give every control a 44 px hit area: the month lays out as a 7 × 44 px grid in a 336 px popover, and the month arrows, the month and year buttons, Clear, Today and the typed date inputs each take a 44 px box. The phone touch gate now walks both pickers, so a smaller control there fails it ([[Issue#1184]]).

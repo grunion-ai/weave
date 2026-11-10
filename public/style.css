@@ -1771,6 +1771,14 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .date-pop-time .date-time { width: auto; }
 .date-pop-foot { display: flex; justify-content: space-between; padding: 8px 2px 0; }
 .date-pop-link { background: none; border: none; color: var(--tblr-primary); font-size: var(--fs-grid); cursor: pointer; padding: 2px 2px; }
+@media (pointer: coarse) {
+  .date-pop { width: 336px; }
+  .date-pop .form-control-sm { min-height: 44px; }
+  .date-pop-arrow { width: 44px; height: 44px; padding-bottom: 0; }
+  .date-pop-title { min-height: 44px; padding-inline: 8px; }
+  .date-day { min-height: 44px; }
+  .date-pop-link { min-height: 44px; padding-inline: 8px; }
+}
 
 .date-format-list { display: flex; flex-direction: column; gap: 4px; }
 .date-format-opt { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); cursor: pointer; text-align: left; }

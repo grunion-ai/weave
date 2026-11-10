@@ -637,6 +637,8 @@ const TOUCH_STATES = [
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
   { name: 'field editor tray', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '#tray-back', roots: ['#tray'], act: (p) => p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label') },
+  { name: 'date picker', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Due"] .date-pick-btn', root: '.date-pop', act: (p) => p.click('#dock .fieldrow[data-field="Due"] .date-pick-btn') },
+  { name: 'range picker', route: 'sink-row', open: 'overlay', layout: null, ready: '#dock .fieldrow[data-field="Window"] .date-pick-btn', root: '.date-pop.range', act: (p) => p.click('#dock .fieldrow[data-field="Window"] .date-pick-btn') },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
