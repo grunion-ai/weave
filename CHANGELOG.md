@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.130 (2026-11-10)
+
+- On a phone, **Report a problem** now sits in a record's ⋮ menu, and the bug glyph sits in the Activity sheet's head, so a report can start from the screen that shows the problem (Issue #1023).
+- The **+ New** button on a record's related block now opens the create tray with an empty Name and a **Create & link** action, so no record is written before you name it (Issue #1474).
+
 ## v0.4.129 (2026-11-09)
 
 - The agent connection walkthrough opens the native workspace `/docs` setup page in a browser and reserves `/mcp` for the client connection (Issue #1528).
