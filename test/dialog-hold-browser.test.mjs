@@ -360,7 +360,8 @@ if (s) {
     return {
       submits: window.__submits,
       pending: form?.getAttribute('aria-busy') === 'true',
-      dimmed: done ? getComputedStyle(done).pointerEvents === 'none' : null,
+      opacity: done ? getComputedStyle(done).opacity : null,
+      pointer: done ? getComputedStyle(done).pointerEvents : null,
       open: !!document.querySelector(q),
     };
   }, box);
@@ -384,8 +385,8 @@ if (s) {
         try {
           await openShell(page, shell, { name: `Held ${shell} ${theme}` });
           await twice(page, box);
-          assert.deepEqual(await submitState(page, box), { submits: 1, pending: true, dimmed: true, open: true },
-            'the second submit is refused while the first create is in flight, and the dialog says it is busy');
+          assert.deepEqual(await submitState(page, box), { submits: 1, pending: true, opacity: '0.6', pointer: 'none', open: true },
+            'the second submit is refused while the first create is in flight, and the submit button is dimmed and deaf to the pointer in this theme');
           hold.release();
           await page.waitForSelector(`${box}-back`, { state: 'detached' });
           assert.equal(hold.posts(), 1, 'exactly one entity POST left the page');
@@ -400,7 +401,7 @@ if (s) {
     try {
       await openShell(page, 'tray', { name: 'Refused once', fail: true });
       await twice(page, '#tray');
-      const retried = { submits: 2, pending: false, dimmed: false, open: true };
+      const retried = { submits: 2, pending: false, opacity: '1', pointer: 'auto', open: true };
       assert.deepEqual(await eventually(() => submitState(page, '#tray'), retried), retried,
         'a refused create leaves the tray open and not busy, so the second attempt runs');
     } finally { await page.close(); }
@@ -412,10 +413,10 @@ if (s) {
     try {
       await openShell(page, 'tray', { name: 'Stay one', stay: true });
       await twice(page, '#tray');
-      assert.deepEqual(await submitState(page, '#tray'), { submits: 1, pending: true, dimmed: true, open: true },
+      assert.deepEqual(await submitState(page, '#tray'), { submits: 1, pending: true, opacity: '0.6', pointer: 'none', open: true },
         'create-and-stay refuses its own second submit while the first create is in flight');
       hold.release();
-      const landed = { submits: 1, pending: false, dimmed: false, open: true };
+      const landed = { submits: 1, pending: false, opacity: '1', pointer: 'auto', open: true };
       assert.deepEqual(await eventually(() => submitState(page, '#tray'), landed), landed,
         'the tray stays open and no longer busy once the create lands');
       assert.equal(hold.posts(), 1, 'exactly one entity POST left the page');
