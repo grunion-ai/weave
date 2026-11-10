@@ -1,0 +1,1 @@
+- The agent-surface test names `auth.cookie` (OIDC start and callback, logout, `GET /api/auth/me`, `DELETE /api/auth/sessions/:ref`) as the one hand-written surface and states why: cookie and redirect plumbing that answers no single JSON result. A guard test keeps the list to that one row and no door keeps its own `pick` reader (Feature #179).
