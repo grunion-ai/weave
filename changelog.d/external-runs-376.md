@@ -1,0 +1,1 @@
+- Track external task runs in System/Runs, report completion through REST, CLI or MCP, expire overdue runs, and queue HTML confirmations with persisted delivery state and duplicate protection (Feature #376).

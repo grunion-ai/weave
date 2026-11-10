@@ -170,8 +170,8 @@ which prints a one-time invite, and open that invite in a browser. Any role
 connects, and `tools/list` names only the tools that role may call.
 
 The server lists 17 tools by default: the 16 a workspace build uses,
-`weave_build` among them, and `weave_call`, which runs the other 48.
-`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 65. The 65 include
+`weave_build` among them, and `weave_call`, which runs the other 49.
+`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 66. The 66 include
 the same undo the UI has, and `weave_vocabulary`, which returns the allowed
 values so an agent reads them instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
@@ -238,7 +238,7 @@ more mature than weave. They differ mainly in what they optimize for:
 | Phone | At 600 px and under, menus, pickers and the Group popover open as bottom sheets and touch targets are 44 px. Search and + float at the bottom, and the New row sheet stays open for the next row. Board columns snap at 85% of the screen width, and a 250 ms hold lifts a card. |
 | Distribution | Every release publishes `ghcr.io/grunion-ai/weave:<version>` and `:latest`, plus an Official MCP Registry entry, `io.github.grunion-ai/weave`, that runs the image over stdio. The repository is also a Claude Code plugin marketplace for weave cloud. |
 | History | Each row's Activity panel lists its events, field diffs and document revisions, with Restore. The audit log records the account behind each write; a signed-in caller cannot write under another name. `PATCH /api/entities/:id` with `If-Match` refuses a stale revision (412) and writes nothing; the grid sends it, so two people editing one cell in the browser cannot overwrite each other. |
-| Interfaces | Web UI (vanilla JS, no build step) · REST API · CLI (`bin/weave.js`) · MCP server: `weave mcp` over stdio, or HTTP with OAuth 2.1 sign-in on an instance with a provider configured. 65 tools, 17 listed by default; `tools/list` names only the tools the caller's role may call. |
+| Interfaces | Web UI (vanilla JS, no build step) · REST API · CLI (`bin/weave.js`) · MCP server: `weave mcp` over stdio, or HTTP with OAuth 2.1 sign-in on an instance with a provider configured. 66 tools, 17 listed by default; `tools/list` names only the tools the caller's role may call. |
 
 ## Agents: MCP, REST, and CLI
 
@@ -259,7 +259,7 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as 65 tools. `tools/list` names the core build
+It exposes the whole platform as 66 tools. `tools/list` names the core build
 set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
@@ -270,7 +270,7 @@ set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
 each; `weave_call {name: "help", args: {tool}}` returns a tool's full schema.
 Add `--tools all` to the `mcp` args, or set `WEAVE_MCP_TOOLS=all`, to list all
-65 directly. An agent designs a schema,
+66 directly. An agent designs a schema,
 fills it, and configures how it reads (icons, option colors, column widths and
 order, hidden columns, saved views) without a human opening the UI.
 
@@ -382,9 +382,9 @@ file you own. See [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature
 matrix.
 
 **Can AI agents use it?**
-Yes, with the same reach as people. The MCP server exposes 65 tools: schema
+Yes, with the same reach as people. The MCP server exposes 66 tools: schema
 design, CRUD, documents, relations, workflow states, search, automations and
-CSV import and export. It lists 17 by default and runs the other 48 through
+CSV import and export. It lists 17 by default and runs the other 49 through
 `weave_call`. Agents build the schema as well as the rows.
 
 **Do I need Docker, Postgres, or npm install?**

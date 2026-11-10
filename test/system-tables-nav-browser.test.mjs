@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
-let wfId, usersId, linksId, member, other;
+let wfId, runsId, usersId, linksId, member, other;
 const s = await launch('system tables nav', (weave) => {
   weave.createSpace({ name: 'Work' });
   for (let i = 1; i <= 16; i += 1) {
@@ -14,6 +14,7 @@ const s = await launch('system tables nav', (weave) => {
   const e = weave.createEntity(t.id, { Name: 'binned' });
   weave.deleteEntity(e.id);
   wfId = weave.getTable('System/Workflows').id;
+  runsId = weave.getTable('System/Runs').id;
   usersId = weave.getTable('System/Users').id;
   linksId = weave.getTable('System/Integrations').id;
   member = new Weave();
@@ -46,12 +47,12 @@ if (s) {
   });
   const refill = (page) => page.evaluate(() => window.__refill());
 
-  test('browser: five fixed rows under the spaces; Trash opens the workspace trash', async () => {
+  test('browser: six fixed rows under the spaces; Trash opens the workspace trash', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href'), !!a.querySelector('.nav-db-menu')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Users', `#/table/${usersId}`, false], ['Integrations', `#/table/${linksId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${wfId}`, false], ['Runs', `#/table/${runsId}`, false], ['Users', `#/table/${usersId}`, false], ['Integrations', `#/table/${linksId}`, false], ['Activity', '#/activity', false], ['Trash', '#/trash', false]]);
     const inList = await page.$$eval('#nav .nav-db', (as) => as.map((a) => a.textContent.trim()));
     assert.ok(!inList.includes('Workflows') && !inList.includes('Users'), 'Workflows and Users are not listed twice');
     const below = await page.evaluate(() => {
@@ -131,7 +132,7 @@ if (s) {
     }
     const registry = await page.locator('#main .system-tables .list-row[data-registry]').evaluateAll((rows) => rows.map((r) => [r.dataset.registry, r.dataset.href]));
     const spacesId = registry.find(([kind]) => kind === 'spaces')?.[1];
-    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['deliveries', 'fields', 'forms', 'integrations', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
+    assert.deepEqual(registry.map(([kind]) => kind).sort(), ['deliveries', 'fields', 'forms', 'integrations', 'runs', 'spaces', 'tables', 'users', 'views', 'workflows', 'workspaces'],
       'the workspace page lists every registry table');
     assert.match(spacesId ?? '', /^#\/table\//);
     await page.click('#main .system-tables .list-row[data-registry="spaces"]');
@@ -141,12 +142,12 @@ if (s) {
     await page.close();
   });
 
-  test('browser: a member workspace served by the hub still pins Workflows, Users, Integrations, Activity and Trash (Issue #872)', async () => {
+  test('browser: a member workspace served by the hub still pins Workflows, Runs, Users, Integrations, Activity and Trash (Issue #872)', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/w/${member.state.meta.id}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar .nav-system a');
     const rows = await page.locator('#sidebar .nav-system a').evaluateAll((as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Integrations', `#/table/${member.getTable('System/Integrations').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
+    assert.deepEqual(rows, [['Workflows', `#/table/${member.getTable('System/Workflows').id}`], ['Runs', `#/table/${member.getTable('System/Runs').id}`], ['Users', `#/table/${member.getTable('System/Users').id}`], ['Integrations', `#/table/${member.getTable('System/Integrations').id}`], ['Activity', '#/activity'], ['Trash', '#/trash']]);
     await page.close();
   });
 

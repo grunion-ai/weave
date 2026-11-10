@@ -1547,6 +1547,7 @@ function renderNav() {
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const links = registryTable('integrations');
+  const runs = registryTable('runs');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
     el('div', { class: 'nav-space-row nav-system-head' },
@@ -1561,6 +1562,7 @@ function renderNav() {
       })),
     ...(systemFolded ? [] : [
       sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+      ...(runs ? [sysRow(`#/table/${runs.id}`, 'activity', 'Runs', state.route?.dbId === runs.id)] : []),
       ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
       ...(links ? [sysRow(`#/table/${links.id}`, 'link', 'Integrations', state.route?.dbId === links.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
@@ -3999,11 +4001,12 @@ function readOnlyValue(f, val) {
     }));
   }
   const text = fieldValueCell(val);
-  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, text || '—');
+  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, el('span', { class: 'k-label' }, text || '—'));
 }
 function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
+  if (db?.system === 'runs') return readOnlyValue(f, val);
   if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
@@ -5890,7 +5893,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     await pager.refresh();
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
-  state.inlineAdd = async () => {
+  state.inlineAdd = db.system === 'runs' ? null : async () => {
     if (searching) {
       await setTableSearch(db, '', { open: false });
       return state.inlineAdd();
@@ -11037,7 +11040,7 @@ function syncPhoneBar() {
   const text = `Search ${db?.name ?? (currentWsName() || 'weave')}`;
   parts.label.textContent = text;
   parts.search.setAttribute('aria-label', text);
-  parts.add.hidden = !db;
+  parts.add.hidden = !db || db.system === 'runs';
   const noun = rowNoun(db);
   parts.add.title = `New ${noun}`;
   parts.add.setAttribute('aria-label', `New ${noun}`);

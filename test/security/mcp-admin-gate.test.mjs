@@ -57,7 +57,7 @@ test('the role table: an observer reads and comments, an editor adds row writes 
   const byName = Object.fromEntries(listTools('all').map((t) => [t.name, t]));
   for (const name of ROLE_TOOLS.observer) {
     assert.ok(byName[name], `${name} is a tool`);
-    assert.ok(byName[name].annotations.readOnlyHint || ['weave_add_comment', 'weave_call'].includes(name), `${name} writes, so an observer may not hold it`);
+    assert.ok(byName[name].annotations.readOnlyHint || ['weave_add_comment', 'weave_call', 'weave_runs'].includes(name), `${name} writes, so an observer may not hold it`);
   }
   for (const name of SEATLESS_TOOLS) assert.ok(ROLE_TOOLS.observer.has(name), `observer holds ${name}`);
   assert.deepEqual([...ROLE_TOOLS.editor].filter((n) => !ROLE_TOOLS.observer.has(n)).sort(), ['weave_attach_file', 'weave_create_entity', 'weave_delete_entity', 'weave_update_entity']);
@@ -157,4 +157,18 @@ test('REST and MCP ask one function', () => {
   const routes = readFileSync(new URL('../../src/routes.js', import.meta.url), 'utf8');
   assert.match(routes, /import \{[^}]*mayAdminister[^}]*\} from '\.\/mcp\.js'/);
   assert.equal(/listAccounts\(\)\.length && role !== 'admin'/.test(routes), false, 'no inline copy of the gate is left in routes.js');
+});
+
+
+test('the runs family allows observer reads but refuses its mutations through either MCP entry', async () => {
+  const { root, call, reader, writer } = build();
+  const run = root.startRun({ name: 'Security check' });
+  for (const [name, args] of [
+    ['weave_runs', { action: 'start', name: 'Denied' }],
+    ['weave_runs', { action: 'update', run: run.id, patch: { status: 'succeeded' } }],
+    ['weave_call', { name: 'weave_runs', args: { action: 'update', run: run.id, patch: { status: 'succeeded' } } }],
+  ]) assert.ok(refused(await mcp(call, '', name, args, reader)));
+  assert.equal(refused(await mcp(call, '', 'weave_runs', { action: 'list' }, reader)), false);
+  assert.equal(root.listRuns()[0].status, 'queued');
+  assert.equal(refused(await mcp(call, '', 'weave_runs', { action: 'update', run: run.id, patch: { status: 'succeeded' } }, writer)), false);
 });
