@@ -57,7 +57,8 @@ if (s) {
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .crumb-row .dots-btn');
           const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-          assert.deepEqual(items, ['Duplicate', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the row menu is the plain record definition, with no view rows');
+          assert.deepEqual(items, ['Duplicate', 'Report a problem', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
+            'the plain record definition with no view rows, plus the report row a phone has no other route to (Issue #1023)');
           await page.keyboard.press('Escape');
           await page.click('#dock .crumb-row .eye-btn');
           await page.waitForSelector('.chip-pop .eye-row, .chip-pop input[type="checkbox"]');
