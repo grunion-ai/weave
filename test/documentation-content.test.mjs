@@ -46,3 +46,24 @@ test('the hosted connection walkthrough opens the native docs page and reserves 
   assert.ok(guide.includes('https://<host>/w/<workspace>/docs'));
   assert.doesNotMatch(guide, /Open your workspace's MCP address in a browser/);
 });
+
+test('the connect guide gives every client it names its own connect step (Issue #1248)', () => {
+  const guide = readFileSync(new URL('../src/handbook/guides/connect-an-agent.md', import.meta.url), 'utf8');
+  const sections = new Map(guide.split(/^## /m).slice(1).map((s) => [s.split('\n')[0].trim(), s]));
+  for (const [heading, step] of [
+    ['Claude Code plugin on weave cloud', '/plugin install weave --marketplace grunion-ai/weave'],
+    ['Claude Code with a workspace address', 'claude mcp add --scope user --transport http weave https://<host>/w/<workspace>/mcp'],
+    ['Claude.ai connector', 'Connectors'],
+    ['ChatGPT connector', 'custom connector'],
+    ['Codex and other MCP clients', 'codex mcp add weave --url'],
+    ['A self-hosted file over stdio', 'weave.js mcp --data'],
+  ]) {
+    const section = sections.get(heading);
+    assert.ok(section, `the guide has no "${heading}" section, so that client has no instructions of its own`);
+    assert.ok(section.includes(step), `the "${heading}" section never says ${step}`);
+  }
+  for (const step of ['The first call opens a browser sign-in', 'weave_ontology', '`weave_build`', 'dryRun: true']) {
+    assert.ok(guide.includes(step), `the guide never says ${step}`);
+  }
+  assert.doesNotMatch(guide, /—/, 'weave prose carries no em dash');
+});
