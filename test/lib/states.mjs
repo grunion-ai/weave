@@ -639,6 +639,10 @@ const TOUCH_STATES = [
   { name: 'field editor tray', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '#tray-back', roots: ['#tray'], act: (p) => p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label') },
   { name: 'date picker', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Due"] .date-pick-btn', root: '.date-pop', act: (p) => p.click('#dock .fieldrow[data-field="Due"] .date-pick-btn') },
   { name: 'range picker', route: 'sink-row', open: 'overlay', layout: null, ready: '#dock .fieldrow[data-field="Window"] .date-pick-btn', root: '.date-pop.range', act: (p) => p.click('#dock .fieldrow[data-field="Window"] .date-pick-btn') },
+  { name: 'multi picker', route: 'sink-row', open: 'overlay', layout: null, ready: '#dock .fieldrow[data-field="Tags"] .ms-box', root: '.picker-pop', async act(p) {
+    await p.click('#dock .fieldrow[data-field="Tags"] .ms-box');
+    await p.waitForSelector('.picker-pop .picker-foot:not([hidden]) .picker-done');
+  } },
   { name: 'icon picker', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '.picker-pop', async act(p) {
     await p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label');
     await p.click('#tray .opt-row .icon-btn >> nth=0');
