@@ -3871,8 +3871,8 @@ const filePanel = (() => {
   return { open, close, mounted, get isOpen() { return isOpen(); } };
 })();
 
-function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact, fit });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label, locked = false } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit, locked });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
@@ -3943,9 +3943,24 @@ function optionChipEl(f, name) {
   }
 }
 
-function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
+const READ_ONLY_KEEPS = new Set(['view', 'document', 'attachments', 'avatar']);
+function readOnlyValue(f, val) {
+  const all = val == null ? [] : Array.isArray(val) ? val : [val];
+  const title = `${f.name}, read-only`;
+  if (f.type === 'relation') return el('span', { class: 'ms-box', title }, ...all.flatMap((s) => [relationChipEl(f, s), ' ']));
+  if (['select', 'multiselect', 'workflow'].includes(f.type) && all.length) {
+    return el('span', { class: 'ms-box', title }, ...all.flatMap((name) => {
+      const chip = optionChipEl(f, name);
+      return [el('span', { class: chip.className.replace(' chip-trigger', '') }, ...chip.childNodes), ' '];
+    }));
+  }
+  const text = fieldValueCell(val);
+  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, text || '—');
+}
+function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
+  if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
@@ -9138,12 +9153,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
+  const locked = !!entity.readOnly;
   const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
     rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
+  if (locked) nameInput.readOnly = true;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
@@ -9151,7 +9168,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (later) fills.push(() => { if (nameInput.value !== (entity.name ?? '') && document.activeElement !== nameInput) nameInput.value = entity.name ?? ''; });
-  if (!computed) nameInput.addEventListener('change', async () => {
+  if (!computed && !locked) nameInput.addEventListener('change', async () => {
     try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
     catch (err) { toast(err.message, true); }
   });
@@ -9193,7 +9210,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   );
   let nextFab = null;
   const drawFab = () => {
-    const fab = nextStateButton(entity, db, refresh);
+    const fab = locked ? null : nextStateButton(entity, db, refresh);
     if (nextFab && fab && nextFab.outerHTML === fab.outerHTML) return;
     nextFab?.remove();
     nextFab = fab;
@@ -9236,7 +9253,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
       kindContext(el('div', { class: 'doc-section-head' },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        locked ? restingGrip() : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         nameEl,
         el('button', {
@@ -9260,7 +9277,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         const ed = mountDocEditor(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
-          placeholder: `Write ${f.name}… press / for blocks`,
+          readOnly: !!entity.readOnly,
+          placeholder: entity.readOnly ? '' : `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
             scheduleDocSave(id, f.name, value);
             rail.schedule();
@@ -9276,7 +9294,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       });
     };
     const mountSourceEditor = () => {
-      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
+      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source`, readonly: locked ? '' : undefined });
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
       sourceBox = ta;
@@ -9343,10 +9361,12 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const blocks = new Map();
 
   const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const restingGrip = () => el('span', { class: 'opt-grip', 'aria-hidden': 'true' });
+  const handle = (what) => (locked ? restingGrip() : anchor(what));
   const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
-    for (const h of handles.filter(Boolean)) {
+    for (const h of locked ? [] : handles.filter(Boolean)) {
       RO().guard(h);
       h.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
@@ -9363,6 +9383,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   };
   const dragRow = (node, f) => {
     node.dataset.field = f.name;
+    if (locked) return node;
     RO().guard(node);
     node.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
@@ -9388,11 +9409,12 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     }
     const note = fieldDescription(f) ? el('div', { class: 'fieldrow-note' }, el('div', { class: 'desc-clamp clamped' }, fieldDescription(f))) : null;
     const sheetKind = SHEET_FIELD_TYPES.has(f.type);
+    const labelKids = [fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null];
     const node = el('div', { class: 'fieldrow' },
-      f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-      el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
-      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
+      f.type === 'attachments' || locked ? handle(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+      locked ? el('label', { class: 'fieldrow-label' }, ...labelKids)
+        : el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, ...labelKids),
+      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name, locked })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
@@ -9433,8 +9455,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         const system = row.classList.contains('fieldrow-system');
         const label = row.querySelector('.fieldrow-label');
         return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
-          el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
-          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name })));
+          el('span', { class: 'wv-sum-label', onclick: f && !locked ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
+          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name, locked })));
       }));
     const setFolded = (closed) => {
       values.classList.toggle('hidden', closed);
@@ -9452,14 +9474,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       },
     });
     const valuesHead = el('div', { class: 'block-head' },
-      anchor('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
+      handle('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
     if (docSectionCollapse(id, VALUES_BLOCK)) setFolded(true);
     fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
 
   for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
-    const grip = anchor(f.name);
+    const grip = handle(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
     const drawRelated = () => relatedGrid(entity, f, refresh)
       .then((grid) => {
@@ -9559,8 +9581,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       } catch (err) { toast(err.message, true); }
     };
     const filesHead = el('div', { class: 'block-head' },
-      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
-      el('button', {
+      handle('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
+      locked ? null : el('button', {
         type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
         title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
       }, 'Make a field'));

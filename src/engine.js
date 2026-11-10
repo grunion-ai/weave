@@ -24,7 +24,7 @@ import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './stor
 import { parseCron, dueBetween, nextEvery, diffItems, retryAfterMs, pollPrune, POLL_SLOWEST_DEFAULT, POLL_SLOWEST_MAX } from './schedule.js';
 import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute, HOOK_BODY_MAX, HOOK_LOG_KEEP, hookKeyName, hookRefusal } from './delivery.js';
 import * as Shares from './shares.js';
-import { RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
+import { ANONYMOUS, RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
@@ -7298,6 +7298,12 @@ export class Weave {
       : `Your role in '${sp.name}' is ${role}: it reads and comments, nothing else`, 'forbidden');
   }
 
+  #readOnlyFor(db) {
+    const v = viewerOf(this);
+    if (!v || v === ANONYMOUS || !this.#guarded(db)) return false;
+    const role = spaceRole(this, v, this.state.spaces[db.spaceId]);
+    return role != null && RANK[role] < RANK.editor;
+  }
   #guarded(db) {
     return !!viewerOf(this) && !db.system && !this.state.spaces[db.spaceId]?.system;
   }
@@ -8544,6 +8550,7 @@ export class Weave {
         ...(face ? { avatar: face } : {}),
         ...(Object.keys(scales).length ? { scales } : {}),
         ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
+        ...(this.#readOnlyFor(db) ? { readOnly: true } : {}),
       };
     }
     return {
@@ -8571,6 +8578,7 @@ export class Weave {
       url: this.permalink('entity', e.id),
       ...(Object.keys(scales).length ? { scales } : {}),
       ...(e.sysId ? { sysId: e.sysId, sysWorkspaceId: this.#wsIdOfRow(e) } : {}),
+      ...(this.#readOnlyFor(db) ? { readOnly: true } : {}),
     };
   }
 

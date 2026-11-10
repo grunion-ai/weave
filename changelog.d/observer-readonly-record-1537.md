@@ -1,0 +1,1 @@
+- An observer opening a record sees its title, field values and document body read-only, with no drag grips, field dialogs, "Make a field" button or next-state button. The record read now carries `readOnly: true` when the viewer's role in that space is below editor, and the record page gates every write control on it. Comments stay open to observers (Issue #1537).

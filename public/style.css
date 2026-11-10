@@ -1220,6 +1220,7 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
   cursor: pointer; box-shadow: var(--tblr-box-shadow); }
 .wv-file-tools button:hover { color: var(--tblr-primary); border-color: var(--tblr-primary); }
 .doc-editor .vditor-ir pre.vditor-reset { padding: 0 !important; font-size: var(--fs-doc); background: transparent; }
+.doc-editor .vditor-ir pre.vditor-reset[contenteditable="false"] { opacity: 1; }
 .doc-editor .vditor-ir .vditor-reset > h1 { font-size: var(--fs-h1); }
 .doc-editor .vditor-ir .vditor-reset > h2 { font-size: var(--fs-h2); }
 .doc-editor .vditor-ir .vditor-reset > h3 { font-size: var(--fs-doc); font-weight: 700; }
