@@ -9954,14 +9954,16 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { colspan: String(colCount) },
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async () => {
-            try {
-              const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
-              await link([made.id]);
-              if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
-              else focusNewRow(made.id, { scope: '.related-block', select: true });
-            } catch (err) { toast(err.message, true); }
-          },
+          onclick: () => tray(`New ${target.term.singular}`, [
+            el('input', { name: 'name', placeholder: 'Name', class: 'form-control', required: '' }),
+          ], async (fd) => {
+            const name = fd.get('name').trim();
+            if (!name) throw new Error(`Name the ${target.term.singular} first`);
+            const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: name } });
+            await link([made.id]);
+            if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
+            else focusNewRow(made.id, { scope: '.related-block', select: true });
+          }, 'Create & link'),
         }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
