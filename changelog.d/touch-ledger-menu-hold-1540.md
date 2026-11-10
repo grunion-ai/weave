@@ -1,1 +1,0 @@
-- The phone touch gate walks the menu again: with every table and space drawing an icon, the space row clears the 44px minimum, so the hold for Issue #1163 and its two `test/touch-held.json` entries leave the ledger (Issue #1540).

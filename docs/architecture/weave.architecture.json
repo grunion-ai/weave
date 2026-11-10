@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "ce91a11a0b22175891b173b9fa7eedc4010091cd"
+      "revision": "cd6b160ae9c5adf44bb4d4147488fa42c303fce1"
     },
     "views": [
       {
@@ -154,7 +154,7 @@
         },
         {
           "path": "src/mcp.js",
-          "line": 768,
+          "line": 397,
           "label": "MCP JSON-RPC"
         }
       ]
@@ -242,7 +242,7 @@
         },
         {
           "path": "src/mcp.js",
-          "line": 767,
+          "line": 433,
           "label": "stdio MCP"
         }
       ]
