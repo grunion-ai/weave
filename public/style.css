@@ -1481,6 +1481,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .file-viewer > img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
 .file-viewer.fit-content { height: auto; min-height: 0; resize: none; }
 .file-viewer-frame.fits-content { flex: none; height: 75vh; }
+.file-viewer-frame.fit-pending, .attachment-intro:has(.fit-pending) .intro-controls, .attachment-intro:has(.fit-pending, .intro-deciding) ~ * { visibility: hidden; }
 .entity-files-page { padding-top: 0; }
 #side:has(> .wv-file-panel) { flex-basis: 560px; }
 .wv-file-panel { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-body); }

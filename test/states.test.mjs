@@ -129,8 +129,8 @@ test('journeys, overlays and the cut-off sweep are filtered views of the catalog
 test('each probe keeps the surfaces it walked before the catalog, and adds the board and list views and the kitchen sink', () => {
   const rests = (probe) => unique(plan(probe).filter((p) => p.state.open === 'rest').map((p) => p.state.name)).sort();
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
-  assert.equal(JOURNEYS.length, 14);
-  assert.equal(SWEEP_JOURNEYS.length, 15);
+  assert.equal(JOURNEYS.length, 15);
+  assert.equal(SWEEP_JOURNEYS.length, 16);
   assert.equal(OVERLAYS.length, 38);
   assert.deepEqual(rests('cutoff'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('flicker'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
