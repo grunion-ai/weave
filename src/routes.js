@@ -138,7 +138,7 @@ const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><hea
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
-const LIMITS = { options: 10, failed: 5, slugs: 60 };
+const LIMITS = { options: 10, failed: 5, slugs: 60, paint: 6, paintAll: 600 };
 const START_TTL_MS = 30 * 60 * 1000;
 const RECENT_CAP = 50;
 const RECENT_NAME = /^[a-z0-9_.-]+$/;
@@ -151,6 +151,22 @@ const holdsLink = (w, kind, id) => {
 const linkHolder = (hub, kind, id) => hub.entries().map(([, w]) => w).find((w) => !w.state.meta.deletedAt && holdsLink(w, kind, id)) ?? null;
 const INGEST_MAX_BYTES = 2 * 1024 * 1024;
 const INGEST_HEADERS = ['content-type', 'content-encoding', 'user-agent'];
+const PAINT_MAX_BYTES = 8 * 1024;
+const PAINT_ENGINES = new Set(['blink', 'gecko', 'webkit', 'other']);
+const paintNumber = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null);
+const paintText = (v, max, shape) => (typeof v === 'string' && v.length <= max && shape.test(v) ? v : null);
+function paintReports(body) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.reports) || !body.reports.length || body.reports.length > 10) return null;
+  const common = { build: paintText(body.build, 40, /^[0-9A-Za-z.+-]+$/), engine: PAINT_ENGINES.has(body.engine) ? body.engine : null, vw: paintNumber(body.vw, 20000), vh: paintNumber(body.vh, 20000) };
+  const rows = [];
+  for (const r of body.reports) {
+    const route = paintText(r?.route, 120, /^[A-Za-z0-9/:#._-]*$/);
+    if (r?.kind === 'shift') rows.push({ kind: 'shift', score: paintNumber(r.score, 100), move: paintNumber(r.move, 100000), selector: paintText(r.selector, 200, /^[A-Za-z0-9 >.#_-]*$/), route, ...common });
+    else if (r?.kind === 'frame') rows.push({ kind: 'frame', ms: paintNumber(r.ms, 600000), blocking: paintNumber(r.blocking, 600000), route, ...common });
+    else return null;
+  }
+  return rows;
+}
 const newChallenge = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const joinedInvite = (next) => {
   const i = next.indexOf('#');
@@ -159,7 +175,7 @@ const joinedInvite = (next) => {
 };
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
-export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, signIn = () => null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
+export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, paintLog = null, signIn = () => null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
     let host;
@@ -189,7 +205,8 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const scheme = origin ? new URL(origin).protocol : 'http:';
   const apexOrigin = origin ?? `${scheme}//${baseDomain}`;
   const hostSuffix = `.${baseDomain}${origin && new URL(origin).port ? `:${new URL(origin).port}` : ''}`;
-  const rates = { options: new Map(), failed: new Map(), slugs: new Map() };
+  const rates = { options: new Map(), failed: new Map(), slugs: new Map(), paint: new Map(), paintAll: new Map() };
+  limits = { ...LIMITS, ...limits };
   const starts = new Map();
   const formRates = new Map();
   const formLimited = (keys) => {
@@ -288,6 +305,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const page = isPage ? serveStatic('/404.html') : null;
       return page ? { ...page, status: 404 } : out(404, json);
     };
+
+    if (path === '/api/paint') {
+      if (!paintLog || !rx.readBytes) return out(404, { error: 'Not found', code: 'not-found' });
+      if (rx.method !== 'POST') return out(405, { error: 'POST only', code: 'method-not-allowed' }, { Allow: 'POST' });
+      if (limited('paint', clientIp(rx)) || limited('paintAll', '*')) return out(429, { error: 'Too many paint reports: wait a minute', code: 'rate-limited' }, { 'Retry-After': '60' });
+      let rows;
+      try { rows = paintReports(JSON.parse(Buffer.from(await rx.readBytes(PAINT_MAX_BYTES)).toString('utf8'))); } catch (err) {
+        if (err instanceof WeaveError) return out(statusFor(err), errorBody(err));
+        rows = null;
+      }
+      if (!rows) return out(400, { error: 'A paint report is JSON with 1 to 10 shift or frame reports', code: 'invalid' });
+      for (const row of rows) paintLog(`weave: paint ${JSON.stringify(row)}`);
+      return { status: 204, headers: {}, body: '' };
+    }
 
     if (path === '/ingest' || path.startsWith('/ingest/')) {
       if (!posthog || !rx.readBytes) return out(404, { error: 'Not found', code: 'not-found' });

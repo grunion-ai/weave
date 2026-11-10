@@ -2875,11 +2875,15 @@ function registryTable(kind) {
   return null;
 }
 
+let introControlsHidden = null;
 function showIntroControls(controls) {
-  controls.hidden = true;
+  controls.hidden = introControlsHidden ?? true;
+  if (introControlsHidden !== null) return;
+  controls.classList.add('intro-deciding');
   api('GET', '/auth/me').catch(() => null)
-    .then(async (me) => { controls.hidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; })
-    .catch(() => {});
+    .then(async (me) => { introControlsHidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; controls.hidden = introControlsHidden; })
+    .catch(() => {})
+    .finally(() => controls.classList.remove('intro-deciding'));
 }
 
 async function renderMarkdownInto(body, md) {
@@ -3779,11 +3783,25 @@ function fileBodyEl(file, frameClass) {
         : null;
 }
 const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id], iframe[data-inline-doc]')].find((f) => f.contentWindow === source) ?? null : null);
+const fittedHeights = new Map();
+const FIT_PENDING_MS = 600;
+function fitFrame(frame, h) {
+  const px = Math.min(h, 200000);
+  frame.style.height = `${px}px`;
+  frame.classList.remove('fit-pending');
+  if (frame.dataset.fileId) fittedHeights.set(frame.dataset.fileId, px);
+}
+function reserveFit(frame) {
+  const known = fittedHeights.get(frame.dataset.fileId);
+  if (known) { frame.style.height = `${known}px`; return; }
+  frame.classList.add('fit-pending');
+  frame.addEventListener('load', () => setTimeout(() => frame.classList.remove('fit-pending'), FIT_PENDING_MS), { once: true });
+}
 addEventListener('message', (e) => {
   if (e.data?.weave !== 'frame-height') return;
   const frame = fileFrameOf(e.source);
   const h = Math.round(Number(e.data.height));
-  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
+  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) fitFrame(frame, h);
 });
 const PAGE_STORAGE_SAVE_MS = 400;
 (() => {
@@ -3817,6 +3835,7 @@ function fileViewerEl(file, { size = 'medium', chrome = true } = {}) {
   const kind = fileKind(file);
   const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
   if (!body) return null;
+  if (kind === 'html') reserveFit(body);
   return el('div', { class: `file-viewer size-${size} kind-${kind}` + (kind === 'html' ? ' fit-content' : '') },
     chrome ? el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),

@@ -129,15 +129,15 @@ test('journeys, overlays and the cut-off sweep are filtered views of the catalog
 test('each probe keeps the surfaces it walked before the catalog, and adds the board and list views and the kitchen sink', () => {
   const rests = (probe) => unique(plan(probe).filter((p) => p.state.open === 'rest').map((p) => p.state.name)).sort();
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
-  assert.equal(JOURNEYS.length, 14);
-  assert.equal(SWEEP_JOURNEYS.length, 15);
+  assert.equal(JOURNEYS.length, 15);
+  assert.equal(SWEEP_JOURNEYS.length, 16);
   assert.equal(OVERLAYS.length, 38);
   assert.deepEqual(rests('cutoff'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('flicker'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'field editor tray', 'icon picker', 'menu', 'picker sheet', 'range picker']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'field editor tray', 'icon picker', 'menu', 'multi picker', 'picker sheet', 'range picker']);
 });
 
 const sinkOf = (weave, handles) => {

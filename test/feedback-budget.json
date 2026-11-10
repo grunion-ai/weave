@@ -17,7 +17,9 @@
     "phone-menu|phone": 250,
     "phone-table-sheet|phone": 120,
     "phone-picker|phone": 200,
-    "phone-open-row|phone": 120
+    "phone-open-row|phone": 120,
+    "html-intro-row|desktop": 120,
+    "html-intro-row|phone": 120
   },
   "busy": {
     "switch-view|desktop": "Issue #1062: a grid hold sets aria-busy at once, so closing the view strip flips it for 95 to 141 ms"
