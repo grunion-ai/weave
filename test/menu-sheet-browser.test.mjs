@@ -68,7 +68,12 @@ if (s) {
             const seen = await read(page);
             assert.equal(seen.theme, theme);
             assert.equal(seen.sheet, true, 'the same menu() draws a sheet');
-            assert.deepEqual(seen.labels, desktop.labels, 'same rows, same order as the desktop menu');
+            const phoneOnly = ['Report a problem'];
+            assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels,
+              'the desktop rows, in the desktop order');
+            assert.deepEqual(seen.labels.filter((l) => phoneOnly.includes(l)),
+              what === 'record' ? ['Report a problem'] : [],
+              'plus the rows a phone has no other route to (Issue #1023)');
             assert.ok(seen.heights.every((h) => h >= 44), `every row is a 44px target: ${seen.heights}`);
             assert.ok(Math.abs(seen.box.bottom - seen.vh) <= 1, `pinned to the bottom edge (${seen.box.bottom} vs ${seen.vh})`);
             assert.ok(seen.box.left <= 0.5 && seen.box.right >= seen.vw - 0.5, 'full width');
