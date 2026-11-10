@@ -633,10 +633,12 @@ const TOUCH_STATES = [
   { name: 'workspace home', route: 'home', open: 'rest', layout: null, roots: ['#main'] },
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
-  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu'), hold: { touch: [1163] } },
+  { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
   { name: 'field editor tray', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '#tray-back', roots: ['#tray'], act: (p) => p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label') },
+  { name: 'date picker', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Due"] .date-pick-btn', root: '.date-pop', act: (p) => p.click('#dock .fieldrow[data-field="Due"] .date-pick-btn') },
+  { name: 'range picker', route: 'sink-row', open: 'overlay', layout: null, ready: '#dock .fieldrow[data-field="Window"] .date-pick-btn', root: '.date-pop.range', act: (p) => p.click('#dock .fieldrow[data-field="Window"] .date-pick-btn') },
 ].map((s) => ({ ...s, cells: PHONE, seeds: TOUCH }));
 
 const SHARED_STATES = [
@@ -673,6 +675,11 @@ export const readyOf = (s, cell) => s.ready ?? ROUTES[s.route].ready(cell);
 export const densitiesOf = (s, p) => (p.densities && s.layout && s.open !== 'overlay' ? p.densities : [null]);
 
 export const HOLD_PLATFORMS = ['darwin', 'linux'];
+export function holdOf(state, probe, cell, platform) {
+  const scoped = state.hold?.[`${probe}|${cell}|${platform}`] ?? null;
+  if (scoped) return { hold: scoped, platform };
+  return { hold: state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null, platform: null };
+}
 export function plan(probe) {
   const p = PROBES[probe];
   const out = [];
@@ -680,8 +687,8 @@ export function plan(probe) {
     if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
-        const hold = state.hold?.[`${probe}|${cell}|${process.platform}`] ?? state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null;
-        for (const density of densitiesOf(state, p)) out.push({ state, cell, theme, density, hold });
+        const { hold, platform: holdPlatform } = holdOf(state, probe, cell, process.platform);
+        for (const density of densitiesOf(state, p)) out.push({ state, cell, theme, density, hold, holdPlatform });
       }
     }
   }

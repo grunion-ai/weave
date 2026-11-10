@@ -1,1 +1,0 @@
-- Tables and spaces without an icon of their own show the default table or folder icon in the sidebar and the phone drawer, so every row lines up with the breadcrumb and with rows that set an icon (Issue #1394).

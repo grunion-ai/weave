@@ -182,7 +182,7 @@ test('cli: account create defaults to editor and takes the old names with a note
     const old = JSON.parse(run(['account', 'create', 'eye', '--role', 'reader']).stdout);
     assert.equal(old.account.role, 'observer');
     assert.match(old.note, /deprecated/);
-    assert.match(run(['help']).stdout, /account create <name> \[--role architect\|editor\|observer\]/);
+    assert.match(run(['help']).stdout, /account create <name> \[--role\]/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -105,7 +105,7 @@ test('shape row: REST, MCP and CLI all answer the lean row (Issue #1270)', async
     const out = JSON.parse(execFileSync('node', [BIN, 'query', 'Case', '--fields', 'Name,Chip', '--relations', 'chip', '--shape', 'row', '--limit', '1', '--data', data], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
     assert.equal('url' in out.items[0], false, 'the CLI --shape row drops the envelope');
     assert.ok(out.items[0].fields.Name, 'and still draws the field');
-    assert.match(execFileSync('node', [BIN, '--help'], { encoding: 'utf8' }), /--shape row/, 'the CLI usage names it');
+    assert.match(execFileSync('node', [BIN, '--help'], { encoding: 'utf8' }), /\[--shape\]/, 'the CLI usage names it');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

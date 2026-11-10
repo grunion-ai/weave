@@ -1,1 +1,0 @@
-- A date field with the full grain refuses a value with no four-digit year or a partial ISO date, such as `12`, `Aug 21` or `2026-08`, instead of storing the string as given; changing a text field to a date clears those cells (Issue #1499).

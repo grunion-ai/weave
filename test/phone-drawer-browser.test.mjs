@@ -74,16 +74,21 @@ if (s) {
     });
   }
 
-  test('between 600 and 900px the drawer holds the rail beside it too, and the scrim gives the page back', async () => {
+  const railState = (page) => page.evaluate(() => {
+    const rail = document.querySelector('#ws-rail');
+    return { inert: rail.inert, seen: rail.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && rail.getBoundingClientRect().width > 0 };
+  });
+  test('between 600 and 900px the drawer carries the rail beside the sidebar, and the scrim gives the page back', async () => {
     const page = await open([700, 844]);
     try {
+      assert.deepEqual(await railState(page), { inert: false, seen: false }, 'the rail is off screen until the menu button opens the drawer');
       await openMenu(page);
       assert.deepEqual(await state(page), HELD);
-      assert.equal(await page.evaluate(() => document.querySelector('#ws-rail').inert), true, 'the rail outside the drawer is held');
+      assert.deepEqual(await railState(page), { inert: false, seen: true }, 'the drawer draws the rail and the hold leaves it live, so its workspaces still take a click (Issue #1546)');
       assert.equal(await focusIn(page), 'drawer');
       await page.mouse.click(680, 500);
       assert.deepEqual(await state(page), CLOSED, 'a tap on the scrim closes it and frees the page');
-      assert.equal(await page.evaluate(() => document.querySelector('#ws-rail').inert), false, 'the rail is live again');
+      assert.deepEqual(await railState(page), { inert: false, seen: false }, 'and the rail leaves the screen with the drawer');
       assert.equal(await focusIn(page), 'menu', 'focus returns to the menu button');
     } finally { await page.close(); }
   });

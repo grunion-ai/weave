@@ -2,6 +2,7 @@ import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
 import { Weave, ONTOLOGY, inviteUrl } from './engine.js';
 import { guided } from './field-hints.js';
+import { leaveWorkspace } from './forms.js';
 import { vocabularyView } from './vocabulary.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
@@ -210,6 +211,29 @@ const WORKSPACE_TOOL = {
 const flagPatch = (flags, names) => Object.fromEntries(names.filter((n) => flags[n] != null && flags[n] !== true).map((n) => [n, flags[n]]));
 const logoFlagCommand = (flags) => (flags.clear ? 'workspace.logo.clear' : flags.out ? 'workspace.logo.read' : null);
 
+const ACCOUNTS_TOOL = {
+  name: 'weave_accounts',
+  description: 'Agent and human accounts. action: list | create (name, role: observer|editor|architect, default editor; space scopes the token to one space, and a token never reaches past the account that made it — observer reads and comments, editor writes records, architect also changes structure and accounts; the old names reader|writer|admin are deprecated aliases; the token is returned once) | set (account, role — changes role without rotating tokens or sessions; cannot demote the last architect) | delete | require-auth (on: true|false, which turns token auth on for the whole workspace) | sessions (account — the browser sessions it holds) | revoke-session (account, session id or all: true) | link-identity (account, issuer — mints a one-time invite link, good for 7 days; the person who opens it and signs in at the OpenID Connect provider is linked by subject, and weave stores no email. Signing in at the provider provisions nobody, so an account opens to a provider identity only through this. issuer defaults to WEAVE_OIDC_ISSUER; the url is rooted at WEAVE_ORIGIN) | unlink-identity (account, subject, issuer — the subject account list shows) | invite (email, role default editor, issuer — invites a new person: answers a one-time sign-in link, good for 7 days, that makes the account at that role when they sign in; weave sends no email, so hand the link over) | invites (the pending ones: email, role, invitedBy, createdAt) | revoke-invite (invite: the id invites shows).',
+  inputSchema: {
+    type: 'object',
+    properties: { action: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, space: { type: 'string', description: 'create only: scope the token to this one space' }, account: { type: 'string' }, on: { type: 'boolean' }, session: { type: 'string' }, all: { type: 'boolean' }, subject: { type: 'string' }, issuer: { type: 'string' }, email: { type: 'string' }, invite: { type: 'string' } },
+    required: ['action'],
+  },
+};
+const trimmed = (v) => v?.trim().replace(/\/+$/, '') || null;
+const identityArgs = (verb) => (a, flags) => {
+  if (!a.account) throw new WeaveError(`account ${verb} needs an account name`, 'invalid');
+  if (flags.email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): run account link <name> and send the invite link it prints', 'invalid');
+  const issuer = flags.issuer ?? trimmed(process.env.WEAVE_OIDC_ISSUER);
+  if (verb === 'unlink') {
+    if (!flags.subject || flags.subject === true) throw new WeaveError('account unlink needs --subject <provider subject> (account list shows it)', 'invalid');
+    return { account: a.account, issuer: issuer ?? null, subject: String(flags.subject) };
+  }
+  if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
+  return { account: a.account, issuer };
+};
+const remirrored = (data, ctx) => ctx.remirror().then(() => data);
+
 export const COMMANDS = [
   {
     name: 'schema.ontology',
@@ -234,7 +258,7 @@ export const COMMANDS = [
       inputSchema: { type: 'object', properties: { db: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'name', 'type'] },
     },
     cli: {
-      command: 'field', sub: 'add', positional: ['db', 'name', 'type'],
+      command: 'field', sub: 'add', positional: ['db', 'name', 'type'], helpFlags: ['config', 'description'],
       args: (a, flags, { json }) => {
         const config = json('config') ?? {};
         if (flags.description != null) config.description = String(flags.description);
@@ -254,7 +278,7 @@ export const COMMANDS = [
       inputSchema: { type: 'object', properties: { db: { type: 'string' }, field: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, config: { type: 'object' } }, required: ['db', 'field'] },
     },
     cli: {
-      command: 'field', sub: 'update', positional: ['db', 'field'],
+      command: 'field', sub: 'update', positional: ['db', 'field'], helpFlags: ['name', 'type', 'config', 'width', 'description'],
       args: (a, flags, { json }) => {
         const config = json('config') ?? {};
         if (flags.width != null) config.width = nullable(flags.width, Number);
@@ -784,7 +808,7 @@ export const COMMANDS = [
       },
     },
     cli: {
-      command: 'activity', positional: ['id'],
+      command: 'activity', positional: ['id'], note: 'Prints one page of 500 by default; --limit -1 prints the whole log',
       args: (a, flags, { entityRef }) => (a.id ? { id: a.id } : {
         entity: flags.entity ? entityRef(flags.entity, flags.db) : null,
         table: flags.table ?? null,
@@ -1668,7 +1692,7 @@ export const COMMANDS = [
     tool: WORKSPACE_TOOL,
     action: 'get',
     toolDefault: 'absent',
-    cli: { command: 'workspace', sub: 'get' },
+    cli: { command: 'workspace', sub: 'get', default: true },
     http: {
       method: 'GET', path: '/api/workspace',
       result: (ws, a, ctx, w) => ({ ...ws, url: `/w/${ws.id}/`, schemaVersion: w.schemaVersion(), ...(ctx?.start ? { start: ctx.start } : {}) }),
@@ -1782,6 +1806,174 @@ export const COMMANDS = [
       return ctx.withHub((hub) => hub.move(a.name, a.position, { workspace: w }));
     },
   },
+  {
+    name: 'account.list',
+    engine: ['listAccounts'],
+    writes: 'none',
+    tool: ACCOUNTS_TOOL,
+    action: 'list',
+    cli: { command: 'account', sub: 'list', default: true },
+    http: { method: 'GET', path: '/api/accounts' },
+    run: (w) => w.listAccounts(),
+    toolResult: (accounts) => ({ accounts }),
+  },
+  {
+    name: 'account.create',
+    engine: ['createAccount'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'create',
+    cli: { command: 'account', sub: 'create', positional: ['name'], helpFlags: ['role'], args: (a, flags) => ({ input: { name: a.name, role: flags.role ?? 'editor' } }) },
+    http: { method: 'POST', path: '/api/accounts', status: 201, args: (a, body) => ({ input: body ?? {} }) },
+    run: (w, a) => w.createAccount(a.input ?? { name: a.name, role: a.role ?? 'editor', space: a.space ?? null }),
+  },
+  {
+    name: 'account.set',
+    engine: ['setAccountRole'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'set',
+    cli: { command: 'account', sub: 'set', positional: ['account'], helpFlags: ['role'], args: (a, flags) => ({ account: a.account, role: flags.role }) },
+    http: { method: 'PATCH', path: '/api/accounts/:ref', args: (a, body) => ({ account: a.ref, role: body?.role }), finish: remirrored },
+    run: (w, a) => w.setAccountRole(a.account ?? a.name, a.role),
+  },
+  {
+    name: 'account.delete',
+    engine: ['deleteAccount'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'delete',
+    cli: { command: 'account', sub: 'delete', positional: ['account'] },
+    http: { method: 'DELETE', path: '/api/accounts/:rest*', args: (a) => ({ account: a.rest }), finish: remirrored },
+    run: (w, a) => w.deleteAccount(a.account),
+  },
+  {
+    name: 'account.require',
+    engine: [],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'require-auth',
+    cli: { command: 'workspace', sub: 'require-auth', args: (a, flags) => ({ on: !flags.off }) },
+    http: null,
+    via: { http: 'workspace.update' },
+    run: (w, a) => w.setRequireAuth(Boolean(a.on)),
+  },
+  {
+    name: 'account.sessions',
+    engine: ['listSessions'],
+    writes: 'none',
+    tool: ACCOUNTS_TOOL,
+    action: 'sessions',
+    cli: { command: 'account', sub: 'sessions', positional: ['account'] },
+    http: null,
+    via: { http: 'none: sessions have no HTTP list' },
+    run: (w, a) => w.listSessions(a.account ?? a.name),
+    toolResult: (sessions) => ({ sessions }),
+  },
+  {
+    name: 'account.revoke',
+    engine: ['revokeSession'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'revoke-session',
+    cli: {
+      command: 'account', sub: 'revoke-session', positional: ['account'],
+      args: (a, flags) => {
+        if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
+        return { account: a.account, all: Boolean(flags.all), session: flags.all ? null : String(flags.id) };
+      },
+    },
+    http: null,
+    via: { http: 'none: the browser session routes are DELETE /api/auth/sessions/:ref' },
+    run: (w, a) => w.revokeSession(a.account ?? a.name, { id: a.session ?? null, all: Boolean(a.all) }),
+  },
+  {
+    name: 'account.link',
+    engine: ['linkIdentity'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'link-identity',
+    cli: { command: 'account', sub: 'link', positional: ['account'], args: identityArgs('link') },
+    http: { method: 'POST', path: '/api/accounts/:ref/identities', status: 201, args: (a, body, q, ctx) => ({ account: a.ref, issuer: body?.issuer ?? ctx?.issuer, email: body?.email }) },
+    run: (w, a, ctx) => {
+      const made = w.linkIdentity(a.account ?? a.name, { issuer: a.issuer ?? (ctx?.door === 'mcp' ? process.env.WEAVE_OIDC_ISSUER : undefined), email: a.email });
+      return { ...made, url: inviteUrl(ctx.origin, made.code) };
+    },
+  },
+  {
+    name: 'account.unlink',
+    engine: ['unlinkIdentity'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'unlink-identity',
+    cli: { command: 'account', sub: 'unlink', positional: ['account'], args: identityArgs('unlink') },
+    http: { method: 'DELETE', path: '/api/accounts/:ref/identities', args: (a, body, q) => ({ account: a.ref, issuer: q.get('issuer') ?? null, subject: q.get('subject') }) },
+    run: (w, a) => w.unlinkIdentity(a.account ?? a.name, { issuer: a.issuer ?? null, subject: a.subject }),
+  },
+  {
+    name: 'invite.create',
+    engine: ['inviteMember'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'invite',
+    cli: {
+      command: 'invite',
+      args: (a, flags) => {
+        const issuer = flags.issuer ?? trimmed(process.env.WEAVE_OIDC_ISSUER);
+        if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
+        return { email: a.words[0], role: flags.role ?? 'editor', issuer };
+      },
+      rest: 'words',
+    },
+    http: {
+      method: 'POST', path: '/api/invites', status: 201,
+      args: (a, body, q, ctx) => ({ email: body?.email, role: body?.role ?? 'editor', issuer: body?.issuer ?? ctx?.issuer }),
+      finish: (data, ctx) => ctx.mailInvite(data),
+    },
+    run: (w, a, ctx) => {
+      const made = w.inviteMember({ email: a.email, role: a.role ?? 'editor', issuer: a.issuer ?? (ctx?.door === 'mcp' ? process.env.WEAVE_OIDC_ISSUER : undefined) });
+      return { ...made, url: inviteUrl(ctx.origin, made.code) };
+    },
+  },
+  {
+    name: 'invite.list',
+    engine: ['listInvites'],
+    writes: 'none',
+    tool: ACCOUNTS_TOOL,
+    action: 'invites',
+    cli: { command: 'invite', sub: 'list' },
+    http: { method: 'GET', path: '/api/invites' },
+    run: (w) => w.listInvites(),
+    toolResult: (invites) => ({ invites }),
+  },
+  {
+    name: 'invite.revoke',
+    engine: ['revokeInvite'],
+    writes: 'schema',
+    tool: ACCOUNTS_TOOL,
+    action: 'revoke-invite',
+    cli: { command: 'invite', sub: 'revoke', positional: ['invite'] },
+    http: { method: 'DELETE', path: '/api/invites/:ref', args: (a) => ({ invite: a.ref }) },
+    run: (w, a) => w.revokeInvite(a.invite ?? a.id),
+  },
+  {
+    name: 'workspace.preview',
+    engine: [],
+    writes: 'schema',
+    via: { tool: 'weave_workspace', http: 'workspace.update' },
+    cli: { command: 'workspace', sub: 'link-preview', args: (a, flags) => ({ on: !flags.off }) },
+    http: null,
+    run: (w, a) => ({ linkPreview: w.updateWorkspace({ linkPreview: a.on }).linkPreview }),
+  },
+  {
+    name: 'workspace.leave',
+    engine: [],
+    writes: 'none',
+    via: { tool: 'weave_workspace', http: 'none: POST /api/workspace/leave answers a signed-in member' },
+    cli: { command: 'workspace', sub: 'leave', args: (a, flags, { actor }) => ({ account: flags.account ?? actor }) },
+    http: null,
+    run: (w, a) => leaveWorkspace(w, a.account),
+  },
 ];
 
 const camel = (flag) => flag.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -1853,7 +2045,7 @@ export function cliRun(given, w, args, flags, helpers) {
   return cmd.cli.result ? cmd.cli.result(result, flags, helpers) : result;
 }
 
-export const httpPaths = (c) => [c.http.path, ...(c.http.also ?? [])];
+export const httpPaths = (c) => (c.http ? [c.http.path, ...(c.http.also ?? [])] : []);
 
 const ROUTES = COMMANDS.filter((c) => c.http).flatMap((c) => [c.http.method, ...(c.http.methods ?? [])].flatMap((method) => httpPaths(c).map((path) => {
   const keys = [];
@@ -1863,7 +2055,7 @@ const ROUTES = COMMANDS.filter((c) => c.http).flatMap((c) => [c.http.method, ...
     return optional ? `(?:${group})?` : group;
   });
   return { cmd: c, method, re: new RegExp(`^${src}$`), keys };
-})));
+}))).sort((x, y) => x.re.source.includes('(.+)') - y.re.source.includes('(.+)'));
 
 const decode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 
@@ -1897,4 +2089,25 @@ export function httpReply(w, hit, body, searchParams, ctx = {}) {
     if (!failed) throw err;
     return { status: failed[0], data: failed[1], headers };
   }
+}
+
+const kebab = (s) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+const lead = (text) => {
+  const first = String(text ?? '').replace(/\s+/g, ' ').trim().split(/(?<=\.)\s/)[0].replace(/\.$/, '');
+  return first.length > 100 ? `${first.slice(0, 99).trimEnd()}…` : first;
+};
+const toolUses = (c) => COMMANDS.filter((x) => x.cli && !x.cli.swap && x.tool?.name === c.tool?.name).length;
+const cliFlags = (c) => c.cli.helpFlags ?? c.cli.flags
+  ?? (toolUses(c) > 1 ? [] : Object.keys(c.tool?.inputSchema?.properties ?? {}).filter((k) => !['verbose', 'action'].includes(k) && !(c.cli.positional ?? []).includes(k) && k !== c.cli.rest).map(kebab));
+const cliSynopsis = (c) => [
+  c.cli.command, c.cli.sub,
+  ...(c.cli.positional ?? []).map((p) => `<${p}>`),
+  ...(c.cli.rest ? [`<${c.cli.rest}...>`] : []),
+  ...cliFlags(c).map((f) => `[--${f}]`),
+].filter(Boolean).join(' ');
+const cliEntries = (command) => COMMANDS.filter((c) => c.cli && !c.cli.swap && (command == null || c.cli.command === (CLI_ALIASES[command] ?? command)));
+export function cliHelp(command = null) {
+  const rows = cliEntries(command).map((c) => ({ synopsis: cliSynopsis(c), about: [c.cli.note ?? lead(c.tool?.description)].filter(Boolean) }));
+  if (!rows.length) return null;
+  return rows.map((r) => [`  ${r.synopsis}`, ...r.about.map((l) => `      ${l}`)].join('\n')).join('\n');
 }

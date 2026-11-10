@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, settled, styleOf } from './lib/browser.mjs';
 
 const svg = readFileSync(new URL('../brand/kit/svg/poster-contour-banner.svg', import.meta.url));
 let ids, observer, owner;
@@ -83,6 +83,30 @@ if (s) {
         assert.equal(await page.locator('.attachment-intro iframe').count(), 1);
         assert.ok(await page.locator('.entity-cover').evaluate(n => n.compareDocumentPosition(document.querySelector('.attachment-intro')) & Node.DOCUMENT_POSITION_FOLLOWING));
         if (process.env.WEAVE_DOCS_SCREENSHOTS) await page.screenshot({ path: `${process.env.WEAVE_DOCS_SCREENSHOTS}/${kind}-${key}-${width}.png`, fullPage: true });
+      } finally { await page.close(); }
+    });
+  }
+  for (const theme of ['light', 'dark']) for (const width of [1440, 390]) for (const [route, key] of [['e', 'row'], ['#/table', 'table'], ['#/space', 'space']]) {
+    test(`breadcrumbs and toolbar sit above the banner on ${route} at ${width} ${theme} (Issue #1538)`, async () => {
+      const page = await browser.newPage({ colorScheme: null, extraHTTPHeaders: { Authorization: `Bearer ${owner}` }, viewport: { width, height: 900 } });
+      try {
+        await page.addInitScript(t => localStorage.setItem('weave-theme', t), theme);
+        await page.goto(`${base}/${route}/${ids[key]}`);
+        await page.waitForFunction(() => document.querySelector('.entity-cover img')?.naturalWidth > 0);
+        await page.locator('.attachment-intro iframe').waitFor();
+        const header = page.locator('.view-header').first();
+        await settled(header);
+        assert.equal(await styleOf(header, 'visibility', 'visible'), 'visible');
+        const order = await header.evaluate(h => {
+          const cover = document.querySelector('.entity-cover');
+          const intro = document.querySelector('.attachment-intro');
+          return {
+            next: h.nextElementSibling === cover,
+            above: h.getBoundingClientRect().bottom <= cover.getBoundingClientRect().top + 1,
+            introAfter: !!(cover.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING),
+          };
+        });
+        assert.deepEqual(order, { next: true, above: true, introAfter: true });
       } finally { await page.close(); }
     });
   }

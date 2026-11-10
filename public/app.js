@@ -531,6 +531,20 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
+const submitsInFlight = new WeakSet();
+
+function holdSubmit(form) {
+  if (submitsInFlight.has(form)) return false;
+  submitsInFlight.add(form);
+  form.setAttribute('aria-busy', 'true');
+  return true;
+}
+
+function freeSubmit(form) {
+  submitsInFlight.delete(form);
+  form.removeAttribute('aria-busy');
+}
+
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
@@ -548,11 +562,14 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
       done));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!holdSubmit(form)) return;
     try {
       await onSubmit?.(new FormData(form));
       close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      freeSubmit(form);
     }
   });
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
@@ -582,11 +599,14 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!stay && !holdSubmit(form)) return;
     try {
       await onSubmit(new FormData(form));
       if (!stay) close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      if (!stay) freeSubmit(form);
     }
   });
   const box = el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
@@ -2878,10 +2898,11 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
     const row = mineOnly(result.items).find((r) => r.sysId === subjectId);
     if (!row || !header.isConnected || header.presentationRequest !== request) return;
     const file = boardCore.coverOf(db, row);
+    let lead = header;
     if (file) {
-      const banner = entityCoverEl(file, { size: cover.size, fit: cover.fit });
-      banner.classList.add('registry-cover');
-      header.before(banner);
+      lead = entityCoverEl(file, { size: cover.size, fit: cover.fit });
+      lead.classList.add('registry-cover');
+      header.after(lead);
     }
     const sections = [];
     for (const field of intros) {
@@ -2893,7 +2914,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
         el('details', { class: 'intro-controls' }, el('summary', {}, 'Introduction options'),
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
-    header.after(...sections);
+    lead.after(...sections);
     for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
 }
@@ -3219,7 +3240,11 @@ const MENU_ROWS = {
       undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
-  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
+  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null } = {}) => ({
+    report: bugRecorder && anchor ? {
+      label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
+      run: () => openBugPanel(anchor),
+    } : null,
     duplicate: db && !db.system ? {
       label: 'Duplicate',
       run: async () => {
@@ -9329,7 +9354,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const introHeader = shown.some((f) => f.type === 'attachments' && f.preview === 'intro');
   const placeCover = (file) => {
     const cover = coverEl(file);
-    if (introHeader) mount.querySelector(':scope > .view-header').before(cover);
+    if (introHeader) mount.querySelector(':scope > .view-header').after(cover);
     else left.prepend(cover);
   };
   if (coverFile) placeCover(coverFile);
@@ -9975,14 +10000,16 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { colspan: String(colCount) },
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async () => {
-            try {
-              const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
-              await link([made.id]);
-              if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
-              else focusNewRow(made.id, { scope: '.related-block', select: true });
-            } catch (err) { toast(err.message, true); }
-          },
+          onclick: () => tray(`New ${target.term.singular}`, [
+            el('input', { name: 'name', placeholder: 'Name', class: 'form-control', required: '' }),
+          ], async (fd) => {
+            const name = fd.get('name').trim();
+            if (!name) throw new Error(`Name the ${target.term.singular} first`);
+            const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: name } });
+            await link([made.id]);
+            if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
+            else focusNewRow(made.id, { scope: '.related-block', select: true });
+          }, 'Create & link'),
         }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
@@ -11260,14 +11287,13 @@ function wireNavResize() {
   });
 }
 
-const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
   const app = $('#app');
   const rail = $('#ws-rail');
   const sidebar = $('#sidebar');
   if (!app || !rail || !sidebar) return;
-  const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
+  const drawer = () => (narrowShell.matches ? [sidebar, rail] : [sidebar]);
   const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
     .filter(reachableStop);
   const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };

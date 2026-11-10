@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliHelp, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -23,13 +23,14 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
-  ['accounts', ['createAccount', 'listAccounts', 'setAccountRole', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'PATCH /api/accounts/:ref', 'DELETE /api/accounts/:rest']],
-  ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
-  ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
-  ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
+  ['auth.cookie', ['createSession', 'accountForIdentity', 'redeemIdentityInvite', 'identityInvite'], null, null, ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref'], 'The one deliberate exception to the registry: cookie and redirect plumbing. OIDC start and callback redirect the browser and set the session cookie, logout clears it, GET /api/auth/me and DELETE /api/auth/sessions/:ref read the cookie session. None answers one JSON result from one set of arguments, which is what a registry entry is, and an agent signs in with a token instead.'],
 ];
 
 const SURFACE = [...HAND_WRITTEN, ...REGISTERED];
+test('every hand-written surface row says why it is not in the registry (Feature #179)', () => {
+  assert.deepEqual(HAND_WRITTEN.map(([name]) => name), ['auth.cookie']);
+  for (const [name, , , , , why] of HAND_WRITTEN) assert.ok(why && why.length > 40, `${name} names its reason`);
+});
 
 const INTERNAL = {
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
@@ -272,7 +273,7 @@ test('every query option reaches every door', () => {
     assert.ok(mcpBlock.includes(`a.${k}`), `weave_query drops ${k}`);
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
-  assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
+  assert.match(cliHelp('query'), /\[--fields\] \[--relations\]/, 'the usage names the two flags');
   assert.match(String(cmd.http.args), /options: \{ \.\.\.body, limit:/, 'POST /api/tables/:ref/query passes its body through');
   assert.match(String(cmd.run), /viewerZone: ctx\?\.viewerZone, workspace: ctx\?\.workspace/, 'the query runs in the caller\'s zone, scoped to the asking workspace (Issue #875)');
   assert.match(ROUTES, /workspace: member\.state\.meta\.id/, 'the HTTP door names the asking workspace (Issue #875)');

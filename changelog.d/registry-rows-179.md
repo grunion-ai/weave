@@ -1,1 +1,0 @@
-- Link, unlink, workflow state and restore run from the command registry on every door: `weave link`, `weave unlink`, `weave state`, `weave restore`, their MCP tools and the `/api/entities/<id>/link|unlink|state|restore` routes dispatch from one entry each, and the HTTP answers still read the record in the caller's zone (Feature #179).

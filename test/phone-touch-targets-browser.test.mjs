@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
-import { ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { HOLD_PLATFORMS, ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 
 const MIN = 44;
@@ -12,7 +12,9 @@ const STEP = 0.5;
 const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 const HELD = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'touch-held.json'), 'utf8')).offenders;
-const heldKey = (surface, theme) => `${surface} | ${theme}`;
+const heldKey = (surface, theme, platform = null) => [surface, theme, platform].filter((p) => p).join(' | ');
+const platformOf = (key) => key.split(' | ')[2];
+const ledgerOn = (entries, platform) => Object.fromEntries(Object.entries(entries).filter(([key]) => (platformOf(key) ?? platform) === platform));
 const fingerprint = (c) => (c.over
   ? `${c.label} is covered by ${c.over}`
   : `${c.label} misses the ${MIN}px minimum ${[c.left + c.right < SPAN ? 'across' : null, c.up + c.down < SPAN ? 'down' : null].filter(Boolean).join(' and ')}`);
@@ -157,8 +159,19 @@ if (s) {
     } finally { await page.close(); }
   };
 
+  test('a platform-keyed test/touch-held.json entry cross-checks on its own platform and is ignored on the others (Issue #1542)', () => {
+    assert.equal(heldKey('menu', 'light', 'darwin'), 'menu | light | darwin');
+    assert.equal(heldKey('menu', 'light'), 'menu | light');
+    const entries = { 'menu | light': 1, 'menu | light | darwin': 2, 'menu | light | linux': 3 };
+    for (const platform of HOLD_PLATFORMS) {
+      assert.deepEqual(Object.keys(ledgerOn(entries, platform)), ['menu | light', `menu | light | ${platform}`],
+        `on ${platform} the ledger offers the platform-free entry and that platform's own`);
+    }
+    assert.deepEqual(ledgerOn({ 'menu | light | darwin': 2 }, 'linux'), {}, 'a darwin entry is no entry on linux');
+    assert.deepEqual(ledgerOn({}, process.platform), {}, 'an empty ledger stays empty');
+  });
   test('every held touch state has a test/touch-held.json entry naming the Issue its hold names, and no entry outlives its hold (Issue #1450)', () => {
-    const holds = new Map(held('touch').map((p) => [heldKey(surfaceOf(p.state).name, p.theme), p.hold]));
+    const holds = new Map(held('touch').map((p) => [heldKey(surfaceOf(p.state).name, p.theme, p.holdPlatform), p.hold]));
     for (const [key, hold] of holds) {
       const row = HELD[key];
       assert.ok(row, `${key} is held in test/lib/states.mjs with no entry in test/touch-held.json`);
@@ -169,6 +182,10 @@ if (s) {
       }
     }
     for (const key of Object.keys(HELD)) {
+      const platform = platformOf(key);
+      assert.ok(platform === undefined || HOLD_PLATFORMS.includes(platform), `${key}: a ledger key names its platform last, one of ${HOLD_PLATFORMS.join(', ')}, so a misspelt one fails here rather than passing unread`);
+    }
+    for (const key of Object.keys(ledgerOn(HELD, process.platform))) {
       assert.ok(holds.has(key), `${key} is recorded in test/touch-held.json but nothing holds it any more: drop the entry`);
     }
   });
@@ -182,13 +199,13 @@ if (s) {
         assert.deepEqual(offenders, [], `${offenders.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
       });
     }
-    for (const { state, theme, hold } of held('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+    for (const { state, theme, hold, holdPlatform } of held('touch').filter((p) => themesOn(engine).includes(p.theme))) {
       const surface = surfaceOf(state);
-      const ledger = HELD[heldKey(surface.name, theme)];
+      const ledger = HELD[heldKey(surface.name, theme, holdPlatform)];
       test(`on a phone the ${surface.name} misses exactly the ${MIN}px hit areas test/touch-held.json records for Issue #${hold.join(', #')} (${engine}, ${theme}, Issues #1119, #1450)`, async (t) => {
         const { seen, offenders, fingerprints } = await measure(b, profile, theme, surface);
         t.diagnostic(`held: ${offenders.length} of ${seen.length} controls on the ${surface.name} miss ${MIN}px:\n${offenders.join('\n')}`);
-        assert.ok(ledger, `${heldKey(surface.name, theme)} is held but test/touch-held.json records no offenders for it`);
+        assert.ok(ledger, `${heldKey(surface.name, theme, holdPlatform)} is held but test/touch-held.json records no offenders for it`);
         assert.ok(fingerprints.length, `every control on the ${surface.name} now keeps ${MIN}px: drop its touch hold in test/lib/states.mjs and its test/touch-held.json entry so the gate walks it`);
         assert.deepEqual(fingerprints.slice().sort(), ledger.offenders.slice().sort(),
           `the held offenders on the ${surface.name} moved: test/touch-held.json only shrinks, so a new one is a regression and a fixed one leaves the file in the same change. Measured:\n${offenders.join('\n')}`);

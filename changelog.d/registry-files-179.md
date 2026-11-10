@@ -1,1 +1,0 @@
-- File attach, read and delete run from the command registry on every door: `weave file [attach|read|delete]`, `weave_attach_file`, `weave_files` and `/api/entities/<id>[/fields/<field>]/files`, `/api/files/<id>` dispatch from one entry each, with the same answers, ETag and 304 behavior as before (Feature #179).

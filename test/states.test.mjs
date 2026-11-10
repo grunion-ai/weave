@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, Weave } from '../src/engine.js';
-import { DENSITIES, CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
+import { DENSITIES, CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, holdOf, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
 import { SWEEP_JOURNEYS } from './lib/cutoff.mjs';
@@ -67,6 +67,22 @@ test('a hold names the Issue rows that track it, and only holds a probe that wou
   }
 });
 
+test('a hold that names one platform resolves on that platform, and the others read the plain key (Issue #1542)', () => {
+  const both = { name: 'fixture', hold: { 'touch|phone|darwin': [1163], 'touch|phone': [1119] } };
+  assert.deepEqual(holdOf(both, 'touch', 'phone', 'darwin'), { hold: [1163], platform: 'darwin' });
+  assert.deepEqual(holdOf(both, 'touch', 'phone', 'linux'), { hold: [1119], platform: null });
+  const one = { name: 'fixture', hold: { 'touch|phone|darwin': [1163] } };
+  assert.deepEqual(holdOf(one, 'touch', 'phone', 'darwin'), { hold: [1163], platform: 'darwin' });
+  assert.deepEqual(holdOf(one, 'touch', 'phone', 'linux'), { hold: null, platform: null });
+  assert.deepEqual(holdOf({ name: 'fixture' }, 'touch', 'phone', 'darwin'), { hold: null, platform: null });
+  for (const probe of Object.keys(PROBES)) {
+    for (const p of plan(probe)) {
+      assert.deepEqual(holdOf(p.state, probe, p.cell, process.platform), { hold: p.hold, platform: p.holdPlatform },
+        `${probe} ${p.state.name} on ${p.cell}: the plan carries what holdOf resolves`);
+    }
+  }
+});
+
 test('a hold with a platform segment holds that platform alone and the others fall back to the plain key', () => {
   for (const s of STATES) {
     for (const [key, rows] of Object.entries(s.hold ?? {})) {
@@ -121,7 +137,7 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'field editor tray', 'menu', 'picker sheet']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'field editor tray', 'menu', 'picker sheet', 'range picker']);
 });
 
 const sinkOf = (weave, handles) => {
