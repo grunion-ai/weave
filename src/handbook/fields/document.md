@@ -6,7 +6,7 @@ The first one is a **role**, not a name. Rename it to `Notes` and it is still th
 
 ## Config
 
-**Display inline** (`displayInline: true`) renders the content directly in the record body without its field heading or collapse control. Editors open **Field options** beneath the content to reach settings, source and file controls. The field keeps its identity, permissions and place in the schema. Move it using the existing body order to put it above Fields or elsewhere; enabling inline display does not change its position. Turn it off to restore the standard display.
+**Display inline** (`displayInline` set to `true`) renders the content directly in the record body without its field heading or collapse control. Editors open **Field options** beneath the content to reach settings, source and file controls. The field keeps its identity, permissions and place in the schema. Move it using the existing body order to put it above Fields or elsewhere; enabling inline display does not change its position. Turn it off to restore the standard display.
 
 HTML keeps its sandbox and expands to fit its content. Empty inline documents have no reader-facing section. The setting is available in the field editor and through the same config in MCP, REST and CLI.
 
