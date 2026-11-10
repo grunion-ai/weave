@@ -105,6 +105,8 @@ test('the full grain refuses a string with no year or no day, though Date.parse 
   for (const raw of ['12', '2026', '2026-08', 'Aug 21', '1/2']) assert.throws(() => stored(w, raw), /not a valid date/, raw);
   assert.equal(stored(w, '2026-08-21T14:30:00.000Z'), '2026-08-21T14:30:00.000Z');
   assert.equal(stored(w, 'Aug 31, 2026'), 'Aug 31, 2026');
+  for (const raw of ['12345', '1234567', '20260821']) assert.throws(() => stored(w, raw), /not a valid date/, `${raw} is a run of digits, not a year (Issue #1529)`);
+  assert.equal(stored(w, '2026-08-21 14:30'), '2026-08-21 14:30', 'a four-digit year beside other digits is still a year');
   const t = new Weave();
   t.createSpace({ name: 'Dev' });
   t.createTable({ space: 'Dev', name: 'T' });

@@ -7652,7 +7652,7 @@ export class Weave {
     if (config.grain == null) {
       const p = DG.partsOf(raw);
       const full = p?.y != null && p.m != null && p.d != null;
-      if (Number.isNaN(Date.parse(raw)) || (!full && (p || !/\d{4}/.test(String(raw))))) throw new WeaveError(`'${raw}' is not a valid date`, 'invalid');
+      if (Number.isNaN(Date.parse(raw)) || (!full && (p || !/\b\d{4}\b/.test(String(raw))))) throw new WeaveError(`'${raw}' is not a valid date`, 'invalid');
       return String(raw);
     }
     try { return DG.coerce(config, raw); } catch (e) { throw new WeaveError(e.message, 'invalid'); }
