@@ -170,7 +170,7 @@ which prints a one-time invite, and open that invite in a browser. Any role
 connects, and `tools/list` names only the tools that role may call.
 
 The server lists 17 tools by default: the 16 a workspace build uses,
-`weave_build` among them, and `weave_call`, which runs the other 48.
+`weave_build` among them, and `weave_call`, which runs the other 49.
 `weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 65. The 65 include
 the same undo the UI has, and `weave_vocabulary`, which returns the allowed
 values so an agent reads them instead of guessing. Full map:

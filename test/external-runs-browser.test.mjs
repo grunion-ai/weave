@@ -4,6 +4,8 @@ import { launch } from './lib/browser.mjs';
 import { runEmail } from '../src/mail.js';
 
 const s = await launch('external runs', (w) => {
+  w.createSpace({ name: 'Work' });
+  w.createTable({ space: 'Work', name: 'Jobs' });
   const run = w.startRun({ name: 'Daily review' });
   w.updateRun(run.id, { status: 'succeeded', summary: 'Reviewed three items.', sessionUrl: 'https://claude.ai/code/session_example' });
   return { run, runs: w.getTable('System/Runs') };
@@ -20,7 +22,8 @@ if (s) for (const theme of ['light', 'dark']) {
     const row = page.locator(`[data-eid="${s.run.id}"]`).first();
     await row.waitFor();
     assert.ok((await row.innerText()).includes('Daily review'));
-    assert.equal(await row.locator('input,select,textarea,.chip-trigger').count(), 0);
+    assert.equal(await page.locator('#main .add-entity-btn').count(), 0);
+    assert.equal(await row.locator('input:not([type=checkbox]),select,textarea,.chip-trigger').count(), 0);
     if (process.env.WEAVE_SHOTS) await page.screenshot({ path: `${process.env.WEAVE_SHOTS}/runs-${theme}.png`, fullPage: true });
     await page.close();
   });

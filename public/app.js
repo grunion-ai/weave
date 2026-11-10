@@ -4001,7 +4001,7 @@ function readOnlyValue(f, val) {
     }));
   }
   const text = fieldValueCell(val);
-  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, text || '—');
+  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, el('span', { class: 'k-label' }, text || '—'));
 }
 function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
@@ -5893,7 +5893,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     await pager.refresh();
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
-  state.inlineAdd = async () => {
+  state.inlineAdd = db.system === 'runs' ? null : async () => {
     if (searching) {
       await setTableSearch(db, '', { open: false });
       return state.inlineAdd();
@@ -11040,7 +11040,7 @@ function syncPhoneBar() {
   const text = `Search ${db?.name ?? (currentWsName() || 'weave')}`;
   parts.label.textContent = text;
   parts.search.setAttribute('aria-label', text);
-  parts.add.hidden = !db;
+  parts.add.hidden = !db || db.system === 'runs';
   const noun = rowNoun(db);
   parts.add.title = `New ${noun}`;
   parts.add.setAttribute('aria-label', `New ${noun}`);
