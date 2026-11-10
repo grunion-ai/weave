@@ -49,7 +49,20 @@ function grid(weave) {
   const doc = weave.createEntity(tasks, { name: 'Spec', doc: '# Spec\n\nFirst paragraph of the spec.\n\n- one\n- two\n' }).id;
   weave.tableView(`${tasks.id}/All`, { from: 'blank' });
   weave.tableView(`${tasks.id}/Compact`, { from: 'blank', fields: ['Name', 'Status'] });
-  return { tasks, projects, ids, doc, table: tasks.id, ...views(weave, tasks) };
+  return { tasks, projects, ids, doc, table: tasks.id, intro: introPage(weave), ...views(weave, tasks) };
+}
+
+export const INTRO_HTML = `<!doctype html><html><body style="margin:0;font:16px/1.6 system-ui"><h1>Handbook</h1>${Array.from({ length: 24 }, (_, i) => `<p style="margin:0 0 24px">Paragraph ${i + 1} of an introduction tall enough that the record's fields start well below it.</p>`).join('')}</body></html>`;
+
+export function introPage(weave) {
+  const pages = weave.createTable({ space: 'Work', name: 'Page' });
+  weave.addField(pages, { name: 'Introduction', type: 'attachments', config: { multiple: false, preview: 'intro' } });
+  weave.addField(pages, { name: 'Owner', type: 'text' });
+  weave.updateTable(pages.id, { bodyOrder: ['Introduction', '@values', 'Description'] });
+  const row = weave.createEntity(pages, { name: 'Handbook', values: { Owner: 'ana' } }).id;
+  weave.attachToField(row, 'Introduction', { name: 'handbook.html', mime: 'text/html', bytes: Buffer.from(INTRO_HTML) });
+  const other = weave.createEntity(pages, { name: 'Glossary', values: { Owner: 'bo' } }).id;
+  return { table: pages.id, row, other };
 }
 
 function messy(weave) {
@@ -452,6 +465,21 @@ const JOURNEY_STATES = [
       await page.tap(`.picker-pop .picker-row:has-text("${to}")`);
       await page.waitForSelector('.picker-pop', { state: 'detached' });
       await page.waitForFunction(([q, st]) => document.querySelector(q)?.textContent.includes(st), [chip, to]);
+    },
+  },
+  {
+    name: 'html-intro-row', layout: 'table', cells: BOTH,
+    async setup(page, ctx) {
+      await page.goto(`${ctx.base}/#/table/${ctx.intro.table}?e=${ctx.intro.other}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector(ROW);
+      await page.waitForSelector('#dock:not([hidden]) .fieldrow[data-field="Owner"]');
+      await frames(page, 3);
+    },
+    async run(page, ctx) {
+      await page.$eval(`tr[data-eid="${ctx.intro.row}"] ${phoneCell(page) ? '.list-name' : '.open-link'}`, (a) => a.click());
+      await page.waitForSelector('#dock:not([hidden]) .fieldrow[data-field="Owner"]');
+      await page.frameLocator('#dock .attachment-intro iframe').locator('p').last().waitFor();
+      await frames(page, 3);
     },
   },
   {

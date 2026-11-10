@@ -17,7 +17,9 @@
     "phone-menu|phone": 2,
     "phone-table-sheet|phone": 2,
     "phone-picker|phone": 2,
-    "phone-open-row|phone": 1
+    "phone-open-row|phone": 1,
+    "html-intro-row|desktop": 0,
+    "html-intro-row|phone": 0
   },
   "raised": {
     "switch-view|desktop": "Feature #340 moved the view list from a popover into the View pane: the journey opens the pane, opens its view picker, picks two views and closes the pane, where the popover took a click to open before each pick"
