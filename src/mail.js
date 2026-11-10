@@ -177,62 +177,6 @@ ${why(workspace, host)}
   return { subject, preheader, html: shell(theme, { origin, preheader, body, footer: why(esc(workspace), esc(host)) }), text };
 }
 
-export const RUN_STATUSES = {
-  succeeded: { label: 'succeeded', title: 'Run succeeded' },
-  failed: { label: 'failed', title: 'Run failed' },
-  'timed-out': { label: 'timed out', title: 'Run timed out' },
-};
-
-const safeUrl = (u) => {
-  try {
-    const url = new URL(String(u ?? '').trim());
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
-  } catch {
-    return '';
-  }
-};
-const utc = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-};
-const span = (a, b) => {
-  const ms = new Date(b) - new Date(a);
-  if (!Number.isFinite(ms) || ms < 0) return '';
-  const total = Math.round(ms / 1000), m = Math.floor(total / 60), s = total % 60;
-  return [m && `${m}m`, (s || !m) && `${s}s`].filter(Boolean).join(' ');
-};
-
-export function runEmail({ name, status, summary, error, sessionUrl, startedAt, finishedAt, runUrl, origin, theme } = {}) {
-  const st = Object.hasOwn(RUN_STATUSES, status) ? RUN_STATUSES[status] : null;
-  if (!st) throw new Error(`Run email needs a terminal status (${Object.keys(RUN_STATUSES).join(', ')}), got '${status}'`);
-  const title = String(name ?? '').replace(/\s+/g, ' ').trim() || 'Untitled run';
-  const subject = `${title}: run ${st.label}`;
-  const preheader = `${title} ${st.label}.`;
-  const started = utc(startedAt), finished = utc(finishedAt), took = span(startedAt, finishedAt);
-  const session = safeUrl(sessionUrl), page = safeUrl(runUrl);
-  const detail = [summary, error].filter((v) => v != null && String(v).trim()).map((v) => String(v).trim()).join('\n\n');
-  const rows = [['Started', started], ['Finished', finished], ['Duration', took]].filter(([, v]) => v);
-  const body = (at) => `
-<div${at('eyebrow')}>Run ${esc(st.label)}</div>
-<h1${at('h1')}>${esc(st.title)}</h1>
-<p${at('lead')}><b${at('ink')}>${esc(title)}</b> ${esc(st.label)}.</p>
-${rows.length ? `<table role="presentation" width="100%"${at('panel')}>
-${rows.map(([l, v]) => row(at, l, esc(v))).join('\n')}
-</table>` : ''}
-${detail ? `<p${at('lead', 'overflow-wrap:anywhere')}>${esc(detail).replace(/\r?\n/g, '<br>')}</p>` : ''}
-${page ? button(at, page, 'Open run') : ''}
-${session ? `<p${at('fallback')}>Session: <a${at('flink')} href="${esc(session)}">${esc(session)}</a></p>` : ''}
-${page ? `<p${at('fallback')}>Run: <a${at('flink')} href="${esc(page)}">${esc(page)}</a></p>` : ''}`;
-  const footer = 'This confirmation was sent to the recipient configured for this run.';
-  const text = `${title}: run ${st.label}
-${rows.map(([l, v]) => `${l}: ${v}`).join('\n')}
-${detail ? `\n${detail}\n` : ''}${session ? `\nSession: ${session}` : ''}${page ? `\nRun: ${page}` : ''}
-
-${footer}
-`;
-  return { subject, preheader, html: shell(theme, { origin, preheader, body, footer: esc(footer) }), text };
-}
-
 const when = (v, s) => (v ? `{{#if ${v}}}${s}{{/if}}` : s);
 
 export function clerkEmail(slug, { origin } = {}) {

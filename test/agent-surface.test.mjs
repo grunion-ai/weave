@@ -33,7 +33,6 @@ test('every hand-written surface row says why it is not in the registry (Feature
 });
 
 const INTERNAL = {
-  runMaintenance: 'server timer plumbing: expires external runs and delivers persisted HTML confirmations; start, update and list use weave_runs',
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
   isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   readFileMeta: 'revalidation helper (Issue #1430): the file route checks the row is visible and answers 304 before readFile loads any bytes; an agent reads files through readFile',

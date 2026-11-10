@@ -560,10 +560,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const schedules = armSchedules(() => {
     for (const { name } of hub.list()) {
-      try { hub.get(name)?.runSchedules(); }
-      catch (err) { console.error(`weave: schedules on '${name}' failed: ${err?.message ?? err}`); }
-      try { hub.get(name)?.runMaintenance({ mail, origin }).catch((err) => console.error(`weave: run maintenance on '${name}' failed: ${err?.message ?? err}`)); }
-      catch (err) { console.error(`weave: run maintenance on '${name}' failed: ${err?.message ?? err}`); }
+      try { hub.get(name)?.runSchedules(); } catch (err) { console.error(`weave: schedules on '${name}' failed: ${err?.message ?? err}`); }
     }
   }, { every: scheduleEvery });
   const sweepTrials = () => sweepTrialMail({ hub, billing, mail, origin })

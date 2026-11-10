@@ -15,8 +15,8 @@ const DESTRUCTIVE = new Set([
   'weave_apply_schema', 'weave_import_json', 'weave_automations', 'weave_accounts', 'weave_keys', 'weave_files',
   'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
 ]);
-const OPEN_WORLD = new Set(['weave_runs', 'weave_create_automation', 'weave_automations', 'weave_call']);
-const NOT_IDEMPOTENT = new Set(['weave_runs',
+const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+const NOT_IDEMPOTENT = new Set([
   'weave_create_entity', 'weave_undo', 'weave_bulk', 'weave_set_doc', 'weave_add_comment', 'weave_create_space',
   'weave_create_table', 'weave_add_field', 'weave_add_relation', 'weave_create_automation', 'weave_import_csv',
   'weave_attach_file', 'weave_template_use', 'weave_duplicate_table', 'weave_build', 'weave_views', 'weave_shares',
@@ -25,7 +25,7 @@ const NOT_IDEMPOTENT = new Set(['weave_runs',
 const hint = (name) => TOOLS.find((t) => t.name === name)?.annotations?.idempotentHint;
 
 test('every tool carries a title and all four hints, set explicitly', () => {
-  assert.equal(TOOLS.length, 66);
+  assert.equal(TOOLS.length, 65);
   for (const t of TOOLS) {
     const a = t.annotations;
     assert.ok(a && typeof a === 'object', `${t.name} has no annotations`);

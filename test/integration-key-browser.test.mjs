@@ -33,7 +33,7 @@ if (s) {
   test('the System nav lists Integrations between Users and Activity, and the Credential cell offers no Show or Copy', async () => {
     const { ctx, page } = await open('light');
     const rows = await page.locator('#sidebar .nav-system a.nav-db').evaluateAll((as) => as.map((a) => a.textContent.trim()));
-    assert.deepEqual(rows.slice(rows.indexOf('Users'), rows.indexOf('Users') + 3), ['Users', 'Integrations', 'Activity']);
+    assert.deepEqual(rows.slice(1, 4), ['Users', 'Integrations', 'Activity']);
     const actions = await page.locator('.cred-cell button').evaluateAll((bs) => bs.map((b) => b.textContent.trim()));
     assert.deepEqual(actions, ['Add key'], 'no key yet: Add key is the one action');
     assert.equal(await page.locator('.integration-kept').count() >= 5, true, 'the weave-kept columns read, they do not edit');

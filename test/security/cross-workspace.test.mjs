@@ -18,7 +18,7 @@ const ID = '00000000-0000-4000-8000-000000000000';
 const TOKEN = 'nosuchtoken';
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const REFUSED = [401, 403, 404];
-const NEEDLE = /alpha-(row|code|doc|blob|comment|view|share|key|run)-needle/;
+const NEEDLE = /alpha-(row|code|doc|blob|comment|view|share|key)-needle/;
 const NOT_WORKSPACE_KEYED = [/^\/api\/backups\//];
 const LEAKS = [];
 
@@ -62,7 +62,6 @@ function build() {
   a.table = alpha.createTable({ space: 'Vault', name: 'Secret' });
   a.field = alpha.addField(a.table.id, { name: 'Code', type: 'text' });
   a.entity = alpha.createEntity(a.table.id, { name: 'alpha-row-needle', values: { Code: 'alpha-code-needle' } });
-  a.run = alpha.startRun({ name: 'alpha-run-needle', record: a.entity.id });
   alpha.setDoc(a.entity.id, 'alpha-doc-needle');
   a.blob = alpha.attachFile(a.entity.id, { name: 'alpha.txt', mime: 'text/plain', bytes: Buffer.from('alpha-blob-needle') });
   a.comment = alpha.addComment(a.entity.id, { author: 'alpha-architect', text: 'alpha-comment-needle' });
@@ -82,7 +81,7 @@ function build() {
   beta.setRequireAuth(true);
   const hub = createWorkspaceHub(root, { workspaces: { alpha, beta } });
   const ids = {
-    runs: a.run.id, entities: a.entity.id, e: a.entity.id, tables: a.table.id, t: a.table.id, fields: a.field.id, files: a.blob.id,
+    entities: a.entity.id, e: a.entity.id, tables: a.table.id, t: a.table.id, fields: a.field.id, files: a.blob.id,
     views: a.view.id, shares: a.share.id, keys: 'ALPHA_KEY', spaces: a.space.id, accounts: a.architect.account.id,
     comments: a.comment.id, workspaces: 'alpha', activity: a.entity.id, forms: a.table.id, f: a.table.id, hooks: a.hookId,
   };
@@ -128,7 +127,7 @@ for (const [who, cred] of [['token', (b) => ({ token: b.editor })], ['session', 
       for (const method of METHODS) {
         const url = `/w/beta${fill(path)}`;
         if (excluded(method, path)) continue;
-        const res = await call(method, url, { ...cred(b), body: path.startsWith('/api/runs/') ? { status: 'succeeded' } : body() });
+        const res = await call(method, url, { ...cred(b), body: body() });
         const text = JSON.stringify(res.json) ?? '';
         assert.ok(REFUSED.includes(res.status), `${method} ${url} answered ${res.status}: ${text.slice(0, 200)}`);
         assert.ok(!NEEDLE.test(text), `${method} ${url} carried A's data: ${text.slice(0, 200)}`);
