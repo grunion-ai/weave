@@ -2929,10 +2929,12 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
         continue;
       }
       const ids = row.raw?.[field.name] ?? [];
-      const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
-      if (!page) continue;
+      if (field.preview === 'cover') continue;
+      const files = (row.files ?? []).filter(f => ids.includes(f.id));
+      const pages = field.displayInline ? files : files.filter(f => !f.missing && fileKind(f) === 'html').slice(0, 1);
+      if (!pages.length) continue;
       sections.push(el('section', { class: 'registry-intro attachment-intro', 'aria-label': field.name },
-        fileViewerEl(page, { chrome: false }),
+        ...pages.map(file => (file.missing ? null : fileViewerEl(file, { chrome: false })) ?? attachItemEl(file, { group: files })),
         el('details', { class: 'intro-controls' }, el('summary', {}, field.displayInline ? 'Field options' : 'Introduction options'),
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
@@ -4237,7 +4239,12 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
     const single = mode === 'inline' && f.multiple === false && present[0] && !pages.includes(present[0]) ? present[0] : null;
-    for (const file of single ? [single] : pages) { const viewer = fileViewerEl(file, look); if (viewer) box.append(viewer); }
+    for (const file of single ? [single] : pages) {
+      const viewer = fileViewerEl(file, look);
+      if (viewer) box.append(viewer);
+      else if (clean) box.append(attachItemEl(file, { group: files }));
+    }
+    if (clean) for (const file of files.filter(f => f.missing)) box.append(attachItemEl(file));
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));

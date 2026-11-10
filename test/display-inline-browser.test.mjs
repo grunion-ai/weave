@@ -11,12 +11,16 @@ const s = await launch('display inline', w => {
   w.addField(table, { name: 'Audience', type: 'text' });
   docId = w.addField(table, { name: 'HTML document', type: 'document', config: { kind: 'html', displayInline: true } }).id;
   w.addField(table, { name: 'HTML file', type: 'attachments', config: { multiple: false, displayInline: true } });
+  w.addField(table, { name: 'Download', type: 'attachments', config: { multiple: false, displayInline: true } });
   w.addField(table, { name: 'Empty document', type: 'document', config: { displayInline: true } });
   row = w.createEntity(table, { name: 'Inline example', values: { Audience: 'Readers', 'HTML document': html, Description: 'Normal description stays normal.' } }).id;
+  w.attachToField(row, 'Download', { name: 'example.zip', mime: 'application/zip', bytes: Buffer.from('download fixture') });
   w.attachToField(row, 'HTML file', { name: 'example.html', mime: 'text/html', bytes: Buffer.from(html) });
   for (const [registry, id] of [['System/Tables', table], ['System/Spaces', space]]) {
     w.addField(registry, { name: 'Inline guide', type: 'document', config: { kind: 'html', displayInline: true } });
     const record = w.query(registry, {}).items.find(r => r.sysId === id);
+    w.addField(registry, { name: 'Downloads', type: 'attachments', config: { multiple: false, displayInline: true } });
+    w.attachToField(record.id, 'Downloads', { name: 'guide.zip', mime: 'application/zip', bytes: Buffer.from('download fixture') });
     w.addField(registry, { name: 'Written guide', type: 'document', config: { displayInline: true } });
     w.updateEntity(record.id, { 'Inline guide': html, 'Written guide': '## Written introduction\n\n**Native Markdown** with [a link](https://example.com).\n\n<script>document.title="unsafe"</script>' });
   }
@@ -58,6 +62,7 @@ if (s) {
       await page.locator('.document-inline iframe').waitFor();
       assert.equal(await page.locator('.document-inline-options:visible').count(), 0);
       assert.equal(await page.locator('[data-doc-field="Empty document"]').isVisible(), false);
+      assert.equal(await page.locator('.attach-block[data-block="Download"] .intro-content > .attach-item').isVisible(), true);
     } finally { await page.close(); }
   });
   test('docked documents keep inline rendering and resize with interaction', async () => {
@@ -85,6 +90,7 @@ if (s) {
       await page.getByRole('heading', { name: 'Written introduction' }).waitFor();
       assert.equal(await page.locator('.registry-intro script').count(), 0);
       assert.notEqual(await page.title(), 'unsafe');
+      assert.equal(await page.locator('.registry-intro[aria-label="Downloads"] .attach-item').isVisible(), true);
     } finally { await page.close(); }
   });
   test('inline rendering leaves source downloads unchanged and retains the HTML sandbox', async () => {
