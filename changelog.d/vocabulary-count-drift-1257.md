@@ -1,0 +1,1 @@
+- AGENTS.md names the view kinds and the option colors instead of counting them, and the docs drift gate now reads every view-kind and option-color count in the docs and the Handbook back from `src/vocabulary.js` (Issue #1257, Issue #1557).

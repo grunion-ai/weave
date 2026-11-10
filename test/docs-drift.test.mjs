@@ -30,6 +30,8 @@ const CLAIMS = [
   [/\blists? all ([\w-]+)/gi, TOTAL],
   [/\breaches the other ([\w-]+)/gi, TOTAL - CORE],
   [/\b([\w-]+) field types\b/gi, FIELD_TYPES.length],
+  [/\b([\w-]+) view kinds?\b/gi, VOCABULARY.viewKinds.length],
+  [/\b([\w-]+) option colou?rs?\b/gi, VOCABULARY.optionColors.length],
 ];
 function countClaims(text) {
   const flat = text.replace(/\s+/g, ' ');
@@ -37,7 +39,18 @@ function countClaims(text) {
     .map((m) => ({ phrase: m[0], said: number(m[1]), want }))
     .filter((c) => c.said !== undefined));
 }
-const codeHas = `src/mcp.js has ${TOTAL} tools, ${CORE} listed by default; src/engine.js has ${FIELD_TYPES.length} field types`;
+const codeHas = `src/mcp.js has ${TOTAL} tools, ${CORE} listed by default; src/engine.js has ${FIELD_TYPES.length} field types; src/vocabulary.js has ${VOCABULARY.viewKinds.length} view kinds and ${VOCABULARY.optionColors.length} option colors`;
+
+test('a vocabulary count the docs state is read back and checked (Issue #1257)', () => {
+  const kinds = countClaims(`weave_vocabulary returns the ${UNITS[VOCABULARY.viewKinds.length + 1]} view kinds`);
+  assert.deepEqual(kinds.map((c) => [c.said, c.want]), [[VOCABULARY.viewKinds.length + 1, VOCABULARY.viewKinds.length]],
+    'a wrong view-kind count in the docs passes the gate');
+  const colors = countClaims(`the ${UNITS[VOCABULARY.optionColors.length - 1]} option colors`);
+  assert.deepEqual(colors.map((c) => [c.said, c.want]), [[VOCABULARY.optionColors.length - 1, VOCABULARY.optionColors.length]],
+    'a wrong option-color count in the docs passes the gate');
+  assert.deepEqual(countClaims('the view kinds and the option colors'), [],
+    'naming the sets without a number is read as a count claim');
+});
 
 test('every tool and field-type count in the docs is the count the code has', () => {
   let seen = 0;
