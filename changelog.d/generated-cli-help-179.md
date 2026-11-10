@@ -1,0 +1,1 @@
+- `weave help` and `weave <command> --help` build the registry commands from the command registry: each entry lists its command, positionals and flags with the first sentence of its tool description, so a new registry entry shows in help without an edit. Serve, service, backup, restore, forms and `doc export` stay hand-written beside them (Feature #179).

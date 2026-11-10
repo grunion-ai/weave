@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { TOOLS, dispatchTool } from '../src/mcp.js';
@@ -230,11 +232,9 @@ test('MCP exposes the same delete / restore / trash contract', () => {
 });
 
 test('CLI documents delete --hard, restore and trash', () => {
-  const help = readFileSync(new URL('../bin/weave.js', import.meta.url), 'utf8');
-  for (const cmd of ['restore', 'trash']) {
-    assert.ok(help.includes(`case '${cmd}'`) || cliCommand(cmd), `CLI must implement '${cmd}'`);
-  }
-  assert.match(help, /delete <ref> \[--hard\]/, 'the help text must document --hard');
+  const help = execFileSync('node', [fileURLToPath(new URL('../bin/weave.js', import.meta.url)), 'help'], { encoding: 'utf8' });
+  for (const cmd of ['restore', 'trash']) assert.ok(cliCommand(cmd), `CLI must implement '${cmd}'`);
+  assert.match(help, /delete <entity> \[--hard\]/, 'the help text must document --hard');
 });
 
 test('includeDeleted answers liveTotal, so a paged show-deleted view counts the live rows of the whole match (Issue #1269)', () => {
