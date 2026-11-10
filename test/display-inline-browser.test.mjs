@@ -41,6 +41,8 @@ if (s) {
       await frame.contentFrame().getByRole('button', { name: 'Expand example' }).click();
       await eventually(async () => (await frame.boundingBox()).height > short + 150, true);
       assert.ok(!(await frame.getAttribute('sandbox')).includes('allow-same-origin'));
+      assert.notEqual(await frame.getAttribute('allowfullscreen'), null);
+      assert.equal(await frame.getAttribute('allow'), 'fullscreen');
       assert.ok(await frame.evaluate(n => n.compareDocumentPosition(document.querySelector('.entity-values')) & Node.DOCUMENT_POSITION_FOLLOWING));
       await doc.getByText('Field options', { exact: true }).click();
       await doc.getByRole('button', { name: 'Edit HTML document source' }).click();
