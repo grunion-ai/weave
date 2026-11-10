@@ -164,6 +164,10 @@
       "gzip": 1000,
       "br": 885
     },
+    "/paint.js": {
+      "gzip": 2095,
+      "br": 1840
+    },
     "/palette-core.js": {
       "gzip": 1474,
       "br": 1322

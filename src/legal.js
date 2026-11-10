@@ -31,6 +31,10 @@ We store on our servers the content that you upload or receive or maintain in yo
 
 We record the browser description (user agent) and the times of each signed-in session for security and fraud prevention purposes, and we keep this login data for as long as your account is active. We use the IP address of a sign-in request to limit repeated sign-in attempts.
 
+### Display performance
+
+When a weave page jumps or stalls while it draws, your browser sends our server a short report: how far the page moved or how long it stalled, the tag and style class names of the element that moved, the page address with workspace names and record ids removed, the window size, the browser engine and the weave version. The report sets no cookie and carries no account, name, email address or workspace content, and we do not keep the IP address it came from. We write it to the server log so we can find and fix the jump. A self-hosted weave instance writes these reports only to its own server log, and a local install sends none.
+
 ### Cookies
 
 We use first-party cookies to keep you signed in and to complete a sign-in with the sign-in provider. Clerk, our sign-in provider, sets its own cookies during sign-in. We also keep your cookie choice in a first-party cookie on the .grunion.ai domain, so one choice covers both weave.grunion.ai and grunion.ai.
