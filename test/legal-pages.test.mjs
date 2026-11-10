@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { PRIVACY, TERMS } from '../src/legal.js';
+import { TRIAL_DAYS, PAID_ROLES } from '../src/billing.js';
 
 const ATTRIBUTION = /Adapted from the Basecamp open-source policies.*github\.com\/basecamp\/policies.*CC BY 4\.0/s;
 const PAGES = [['/privacy', 'Privacy policy'], ['/terms', 'Terms of Service']];
@@ -27,7 +28,7 @@ test('with requireAuth on, an anonymous visitor reads /privacy and /terms', asyn
       assert.match(html, new RegExp(`<h1>${heading}</h1>`), `${path} lacks its heading`);
       assert.match(html, new RegExp(`<title>${heading}`), `${path} lacks its title`);
       assert.match(html, ATTRIBUTION, `${path} lacks the CC BY attribution`);
-      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-16/ : /Effective date: 2026-10-02/);
+      assert.match(html, path === '/privacy' ? /Effective date: 2026-10-16/ : /Effective date: 2026-11-10/);
       assert.ok(html.includes('[Entity name]'), `${path} lost the entity placeholder`);
       assert.ok(!html.includes('[Contact email]'), `${path} still shows the contact email slot`);
       assert.ok(!html.includes('[Address]'), `${path} still shows the address slot`);
@@ -67,4 +68,39 @@ test('the legal text names the contact address, keeps the entity slot and carrie
   }
   assert.ok(PRIVACY.includes('please contact us at [weave@grunion.ai](mailto:weave@grunion.ai). If an authorized agent'), 'privacy contact sentence lost its address clause');
   for (const vendor of ['Clerk', 'Railway', 'Cloudflare', 'PostHog']) assert.ok(PRIVACY.includes(vendor), `privacy lacks ${vendor}`);
+});
+
+const billingSection = () => {
+  const start = TERMS.indexOf('## Billing and Seats');
+  return start < 0 ? '' : TERMS.slice(start, TERMS.indexOf('\n## ', start + 1));
+};
+
+test('the terms state billing between Account Terms and Cancellation and Termination', () => {
+  const order = ['## Account Terms', '## Billing and Seats', '## Cancellation and Termination'].map((h) => TERMS.indexOf(h));
+  assert.ok(order.every((i) => i >= 0), `a heading is missing: ${order}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'billing does not sit between Account Terms and Cancellation and Termination');
+});
+
+test('the billing section names the trial length weave runs, the paid roles and the trial end', () => {
+  const md = billingSection();
+  assert.ok(md.includes(`free trial of ${TRIAL_DAYS} days`), 'the trial length is not the TRIAL_DAYS weave runs');
+  assert.deepEqual([...PAID_ROLES].sort(), ['architect', 'editor']);
+  assert.match(md, /Each Editor and each Architect takes a paid seat\. Observers read and comment for free/);
+  assert.match(md, /At the end of the trial, weave charges you nothing\./);
+  assert.match(md, /Creating and editing then need a paid seat\./);
+});
+
+test('the billing section says how to cancel and states the refund position Clerk Billing gives', () => {
+  const md = billingSection();
+  assert.match(md, /To cancel, an Architect cancels the subscription on the workspace's Billing page/);
+  assert.match(md, /keep working until the end of the month you paid for/);
+  assert.match(md, /Clerk Billing does not issue refunds/);
+  assert.match(md, /Any refund is one we issue by hand through Stripe\./);
+});
+
+test('the billing section points at the checkout price and prints no number that could drift from the plan', () => {
+  const md = billingSection();
+  assert.match(md, /The price of a seat is the price shown on the Billing page and at checkout, before you pay\./);
+  assert.ok(!/\$\s?\d/.test(md), 'the billing section hardcodes a price');
+  assert.ok(md.includes('4845 Pearl East Cir STE 118 PMB 720820, Boulder, CO 80301'), 'the billing section lacks the mailing address');
 });
