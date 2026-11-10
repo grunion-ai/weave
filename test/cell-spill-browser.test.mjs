@@ -4,6 +4,7 @@ import { launch } from './lib/browser.mjs';
 
 const LONG = (i) => `Row ${i}: a name long enough that the grid column has to clip it before the end`;
 const SQUIRREL = 'Design a weekly squirrel digest run it from net.weave workflows';
+const SPILL = 'A name no window leaves the spill editor room for: it runs from the first column past the last one and still needs a second line to reach its final word.';
 let tasks, squirrel;
 const s = await launch('cell spill', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -13,6 +14,7 @@ const s = await launch('cell spill', (weave) => {
   weave.updateField(tasks, 'Name', { config: { width: 150 } });
   squirrel = weave.createEntity(tasks, { name: SQUIRREL, values: { Notes: 'short', Owner: 'Kyle', Stage: 'Open', Tail: LONG(0) } });
   for (let i = 1; i <= 9; i++) weave.createEntity(tasks, { name: LONG(i), values: { Notes: LONG(i), Owner: 'Mia', Stage: 'Open', Tail: LONG(i) } });
+  weave.createEntity(tasks, { name: SPILL, values: { Notes: 'short', Owner: 'Mia', Stage: 'Open', Tail: 'short' } });
 });
 
 if (s) {
@@ -198,7 +200,7 @@ if (s) {
   test('clicking a clipped name opens a textarea on the cell that spills, wraps and grows', async () => {
     const page = await grid({ width: 640 });
     try {
-      const cell = await tag(page, 3);
+      const cell = await tag(page, 10);
       const rest = await page.evaluate(() => {
         const i = document.querySelector('[data-t="cell"] .text-dressed');
         const r = i.getBoundingClientRect();

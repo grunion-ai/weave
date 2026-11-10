@@ -97,8 +97,9 @@ if (s) {
         }
         const lane = page.locator('.board-lane[data-key="Office"] .board-lane-title');
         assert.equal(await lane.evaluate((n) => getComputedStyle(n).position), 'sticky');
-        await page.setViewportSize({ width: 820, height: 900 });
-        assert.ok(await page.locator('.wv-board').evaluate((n) => n.scrollWidth > n.clientWidth), 'the narrow viewport overflows the columns');
+        const columns = await page.$$eval('.wv-board .board-col-head', (hs) => Math.round(hs.reduce((w, h) => w + h.getBoundingClientRect().width, 0)));
+        await page.setViewportSize({ width: columns, height: 900 });
+        assert.ok(await page.locator('.wv-board').evaluate((n) => n.scrollWidth > n.clientWidth), `a viewport as narrow as the columns themselves (${columns}px) overflows them, whatever the shell draws beside the board`);
         await page.locator('.wv-board').evaluate((n) => { n.scrollLeft = 400; });
         const board = await page.locator('.wv-board').boundingBox();
         await page.waitForFunction(() => document.querySelector('.wv-board').scrollLeft > 0);

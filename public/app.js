@@ -11239,14 +11239,13 @@ function wireNavResize() {
   });
 }
 
-const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
   const app = $('#app');
   const rail = $('#ws-rail');
   const sidebar = $('#sidebar');
   if (!app || !rail || !sidebar) return;
-  const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
+  const drawer = () => (narrowShell.matches ? [sidebar, rail] : [sidebar]);
   const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
     .filter(reachableStop);
   const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
