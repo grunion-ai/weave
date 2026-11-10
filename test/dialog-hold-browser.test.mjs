@@ -327,4 +327,103 @@ if (s) {
       assert.deepEqual(await inertNow(page), []);
     } finally { await page.close(); }
   });
+
+  const holdPost = async (page) => {
+    let free;
+    const held = new Promise((r) => { free = r; });
+    let posts = 0;
+    await page.route(`**/tables/${tasks.id}/entities`, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      posts += 1;
+      await held;
+      await route.continue();
+    });
+    return { release: () => free(), posts: () => posts };
+  };
+
+  const openShell = (page, shell, { name, stay = false, fail = false } = {}) => page.evaluate(({ id, shell: which, name: value, stay: keep, fail: refuse }) => {
+    window.__submits = 0;
+    const input = el('input', { name: 'name', class: 'form-control' });
+    input.value = value;
+    const onSubmit = async (fd) => {
+      window.__submits += 1;
+      if (refuse) throw new Error('refused on purpose');
+      await api('POST', `/tables/${id}/entities`, { name: fd.get('name') });
+    };
+    if (which === 'tray') tray('New Task', [input], onSubmit, 'Create', { stay: keep });
+    else modal('New Task', [input], onSubmit);
+  }, { id: tasks.id, shell, name, stay, fail });
+
+  const submitState = (page, box) => page.evaluate((q) => {
+    const form = document.querySelector(`${q} form`);
+    const done = document.querySelector(`${q} button[type=submit]`);
+    return {
+      submits: window.__submits,
+      pending: form?.getAttribute('aria-busy') === 'true',
+      opacity: done ? getComputedStyle(done).opacity : null,
+      pointer: done ? getComputedStyle(done).pointerEvents : null,
+      open: !!document.querySelector(q),
+    };
+  }, box);
+
+  const twice = async (page, box) => {
+    await page.waitForSelector(`${box} input[name=name]`);
+    await page.evaluate((q) => document.querySelector(`${q} form`).requestSubmit(), box);
+    await page.evaluate((q) => document.querySelector(`${q} form`).requestSubmit(), box);
+  };
+
+  const rowsNamed = (page, name) => page.evaluate(async ({ id, name: want }) => {
+    const r = await api('GET', `/tables/${id}/entities`);
+    return (r.items ?? []).filter((e) => e.name === want).length;
+  }, { id: tasks.id, name });
+
+  for (const [shell, box] of [['tray', '#tray'], ['modal', '#modal']]) {
+    for (const theme of ['light', 'dark']) {
+      test(`the ${shell} refuses its own second submit while the first create is in flight (${theme}) (Issue #1445)`, async () => {
+        const page = await open(theme);
+        const hold = await holdPost(page);
+        try {
+          await openShell(page, shell, { name: `Held ${shell} ${theme}` });
+          await twice(page, box);
+          assert.deepEqual(await submitState(page, box), { submits: 1, pending: true, opacity: '0.6', pointer: 'none', open: true },
+            'the second submit is refused while the first create is in flight, and the submit button is dimmed and deaf to the pointer in this theme');
+          hold.release();
+          await page.waitForSelector(`${box}-back`, { state: 'detached' });
+          assert.equal(hold.posts(), 1, 'exactly one entity POST left the page');
+          assert.equal(await rowsNamed(page, `Held ${shell} ${theme}`), 1, 'exactly one record exists');
+        } finally { hold.release(); await page.close(); }
+      });
+    }
+  }
+
+  test('a refused submit re-enables the dialog so the create can be retried (Issue #1445)', async () => {
+    const page = await open('light');
+    try {
+      await openShell(page, 'tray', { name: 'Refused once', fail: true });
+      await twice(page, '#tray');
+      const retried = { submits: 2, pending: false, opacity: '1', pointer: 'auto', open: true };
+      assert.deepEqual(await eventually(() => submitState(page, '#tray'), retried), retried,
+        'a refused create leaves the tray open and not busy, so the second attempt runs');
+    } finally { await page.close(); }
+  });
+
+  test('a create-and-stay tray takes one more independent record after a success (Issue #1445)', async () => {
+    const page = await open('light');
+    const hold = await holdPost(page);
+    try {
+      await openShell(page, 'tray', { name: 'Stay one', stay: true });
+      await twice(page, '#tray');
+      assert.deepEqual(await submitState(page, '#tray'), { submits: 1, pending: true, opacity: '0.6', pointer: 'none', open: true },
+        'create-and-stay refuses its own second submit while the first create is in flight');
+      hold.release();
+      const landed = { submits: 1, pending: false, opacity: '1', pointer: 'auto', open: true };
+      assert.deepEqual(await eventually(() => submitState(page, '#tray'), landed), landed,
+        'the tray stays open and no longer busy once the create lands');
+      assert.equal(hold.posts(), 1, 'exactly one entity POST left the page');
+      assert.equal(await rowsNamed(page, 'Stay one'), 1, 'the repeated submit created one record');
+      await page.evaluate(() => { document.querySelector('#tray input[name=name]').value = 'Stay two'; });
+      await page.evaluate(() => document.querySelector('#tray form').requestSubmit());
+      assert.equal(await eventually(() => rowsNamed(page, 'Stay two'), 1), 1, 'the next submit creates the next record');
+    } finally { hold.release(); await page.close(); }
+  });
 }
