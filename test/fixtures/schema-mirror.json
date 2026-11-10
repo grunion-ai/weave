@@ -2224,18 +2224,8 @@
     "id": "<field Deal.Token>",
     "name": "Token",
     "type": "key",
-    "kind": "pair",
-    "keystore": "1password",
-    "parts": [
-     {
-      "name": "user",
-      "secret": false
-     },
-     {
-      "name": "pass",
-      "secret": true
-     }
-    ]
+    "kind": "token",
+    "keystore": "1password"
    }
   },
   {

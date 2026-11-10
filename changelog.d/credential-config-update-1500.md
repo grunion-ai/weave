@@ -1,0 +1,1 @@
+- A credential field's kind, keystore and parts can be changed after it is created. `updateField` merges them through the key field's own validation, a schema document that edits them applies, and the field dialog's Holds and Kept in pickers now send what they show instead of dropping it ([[Issue#1500]]).

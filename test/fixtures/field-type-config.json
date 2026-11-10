@@ -2023,7 +2023,7 @@
       "kind": "token"
      },
      "config": {
-      "kind": "apikey",
+      "kind": "token",
       "keystore": "local"
      }
     },
@@ -2032,8 +2032,71 @@
       "keystore": "1password"
      },
      "config": {
-      "kind": "apikey",
-      "keystore": "local"
+      "kind": "token",
+      "keystore": "1password"
+     }
+    },
+    {
+     "patch": {
+      "kind": "pair"
+     },
+     "config": {
+      "kind": "pair",
+      "keystore": "1password",
+      "parts": [
+       {
+        "name": "id",
+        "secret": false
+       },
+       {
+        "name": "secret",
+        "secret": true
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "parts": [
+       "client",
+       {
+        "name": "secret",
+        "secret": true
+       }
+      ]
+     },
+     "config": {
+      "kind": "pair",
+      "keystore": "1password",
+      "parts": [
+       {
+        "name": "client",
+        "secret": false
+       },
+       {
+        "name": "secret",
+        "secret": true
+       }
+      ]
+     }
+    },
+    {
+     "patch": {
+      "kind": "token"
+     },
+     "config": {
+      "kind": "token",
+      "keystore": "1password"
+     }
+    },
+    {
+     "patch": {
+      "kind": "nope"
+     },
+     "error": "invalid: Invalid credential kind 'nope' (apikey, token, password, id, pair)",
+     "config": {
+      "kind": "token",
+      "keystore": "1password"
      }
     }
    ]
