@@ -1144,3 +1144,10 @@ test('the role gate reads writes from the registry and keeps only the routes the
   for (const p of paths) assert.equal(COMMANDS.some((c) => httpPaths(c).includes(p)), false, `${p} is not a registry route`);
   assert.doesNotMatch(gate, /\/api\\\/(spaces|tables)/);
 });
+
+test('no door keeps its own argument reader: pick and pickFlags are gone, the registry reads arguments (Feature #179)', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const file of ['src/mcp.js', 'bin/weave.js', 'src/routes.js']) {
+    assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /\b(?:function|const) (?:pick|pickFlags)\b/, `${file} reads arguments through the registry`);
+  }
+});

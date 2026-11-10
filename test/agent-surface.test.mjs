@@ -23,10 +23,14 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
-  ['auth.cookie', ['createSession', 'accountForIdentity', 'redeemIdentityInvite', 'identityInvite'], null, null, ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
+  ['auth.cookie', ['createSession', 'accountForIdentity', 'redeemIdentityInvite', 'identityInvite'], null, null, ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref'], 'The one deliberate exception to the registry: cookie and redirect plumbing. OIDC start and callback redirect the browser and set the session cookie, logout clears it, GET /api/auth/me and DELETE /api/auth/sessions/:ref read the cookie session. None answers one JSON result from one set of arguments, which is what a registry entry is, and an agent signs in with a token instead.'],
 ];
 
 const SURFACE = [...HAND_WRITTEN, ...REGISTERED];
+test('every hand-written surface row says why it is not in the registry (Feature #179)', () => {
+  assert.deepEqual(HAND_WRITTEN.map(([name]) => name), ['auth.cookie']);
+  for (const [name, , , , , why] of HAND_WRITTEN) assert.ok(why && why.length > 40, `${name} names its reason`);
+});
 
 const INTERNAL = {
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
