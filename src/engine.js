@@ -234,7 +234,7 @@ export function fileHeaders(meta, bytes, { view = false } = {}) {
 export const ATTACHMENT_PREVIEWS = ['link', 'inline', 'auto', 'cover', 'intro'];
 export const ATTACHMENT_SIZES = ['small', 'medium', 'large'];
 export const ATTACHMENT_FITS = ['fill', 'trim'];
-const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit'];
+const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit', 'displayInline'];
 
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
@@ -1067,6 +1067,8 @@ const FIELD_TYPE_CONFIG = {
     build(config) {
       const multiple = config.multiple == null ? true : !!config.multiple;
       const out = { multiple };
+      if (config.displayInline != null && typeof config.displayInline !== 'boolean') throw new WeaveError('displayInline must be a boolean', 'invalid');
+      if (config.displayInline) out.displayInline = true;
       const pick = (key, list, unmarked) => {
         const v = config[key];
         if (v == null || v === '' || v === unmarked) return;
@@ -1108,19 +1110,22 @@ const FIELD_TYPE_CONFIG = {
   },
   document: {
     build(config) {
+      const out = {};
+      if (config.displayInline != null && typeof config.displayInline !== 'boolean') throw new WeaveError('displayInline must be a boolean', 'invalid');
+      if (config.displayInline) out.displayInline = true;
       if (config.kind != null && config.kind !== 'markdown') {
         if (!DOCUMENT_KINDS.includes(config.kind)) throw new WeaveError(`Invalid document kind '${config.kind}' (${DOCUMENT_KINDS.join(', ')})`, 'invalid');
-        return { kind: config.kind };
+        out.kind = config.kind;
       }
-      return {};
+      return out;
     },
     merge(config, patch) {
-      if (!('kind' in patch)) return;
-      const { kind } = FIELD_TYPE_CONFIG.document.build(patch);
-      if (kind) config.kind = kind; else delete config.kind;
+      if (!['kind', 'displayInline'].some(k => k in patch)) return;
+      const next = FIELD_TYPE_CONFIG.document.build({ ...config, ...patch });
+      putCostume(config, ['kind', 'displayInline'], next);
     },
-    toDescriptor(config, out) { if (config.kind) out.kind = config.kind; },
-    fromDescriptor(f, config) { if (f.kind != null) config.kind = f.kind; },
+    toDescriptor(config, out) { pickCostume(config, ['kind', 'displayInline'], out); },
+    fromDescriptor(f, config) { pickCostume(f, ['kind', 'displayInline'], config); },
   },
   view: {
     toDescriptor(config, out, { fieldName }) {

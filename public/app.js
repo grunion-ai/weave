@@ -2889,7 +2889,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
   const db = registryTable(kind);
   const hidden = new Set(db?.hiddenFields ?? []);
   const order = new Map((db?.bodyBlocks ?? []).map((name, i) => [name, i]));
-  const intros = (db?.fields ?? []).filter((f) => f.type === 'attachments' && f.preview === 'intro' && !hidden.has(f.name))
+  const intros = (db?.fields ?? []).filter((f) => ((f.type === 'attachments' && (f.displayInline || f.preview === 'intro')) || (f.type === 'document' && f.displayInline)) && !hidden.has(f.name))
     .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
   const cover = boardCore.coverField(db);
   if (!db || (!cover && !intros.length)) return;
@@ -2905,15 +2905,34 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
       header.after(lead);
     }
     const sections = [];
+    const detail = intros.some(f => f.type === 'document') ? await api('GET', `/entities/${row.id}`) : row;
+    if (!header.isConnected || header.presentationRequest !== request) return;
     for (const field of intros) {
+      if (field.type === 'document') {
+        const text = detail.docs?.[field.name] ?? '';
+        if (!text.trim()) continue;
+        const mode = globalThis.WeaveEditorLib.docViewMode(field.kind, text);
+        const content = mode === 'app'
+          ? el('iframe', { class: 'doc-app fits-content', src: `${WS_PREFIX}/e/${row.id}/doc/${encodeURIComponent(field.name)}.html?inline=1`, sandbox: HTML_FRAME_SANDBOX, title: field.name, dataset: { inlineDoc: field.id } })
+          : el('div', { class: 'wv-prose' });
+        if (mode !== 'app') {
+          if (mode === 'code') content.append(el('pre', {}, el('code', {}, text)));
+          else { const rendered = await api('POST', '/markdown', { md: text }); content.innerHTML = rendered.html; }
+        }
+        sections.push(el('section', { class: 'registry-intro document-inline', 'aria-label': field.name }, content,
+          el('details', { class: 'intro-controls' }, el('summary', {}, 'Field options'),
+            el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
+        continue;
+      }
       const ids = row.raw?.[field.name] ?? [];
       const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
       if (!page) continue;
       sections.push(el('section', { class: 'registry-intro attachment-intro', 'aria-label': field.name },
         fileViewerEl(page, { chrome: false }),
-        el('details', { class: 'intro-controls' }, el('summary', {}, 'Introduction options'),
+        el('details', { class: 'intro-controls' }, el('summary', {}, field.displayInline ? 'Field options' : 'Introduction options'),
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
+    if (!header.isConnected || header.presentationRequest !== request) return;
     lead.after(...sections);
     for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
@@ -3753,7 +3772,7 @@ function fileBodyEl(file, frameClass) {
       : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX, dataset: { fileId: file.id } })
         : null;
 }
-const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id]')].find((f) => f.contentWindow === source) ?? null : null);
+const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id], iframe[data-inline-doc]')].find((f) => f.contentWindow === source) ?? null : null);
 addEventListener('message', (e) => {
   if (e.data?.weave !== 'frame-height') return;
   const frame = fileFrameOf(e.source);
@@ -4204,9 +4223,10 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
-    const mode = f.preview === 'intro' && files.length && !files.some((file) => fileKind(file) === 'html')
+    const clean = !!f.displayInline && f.preview !== 'cover';
+    const mode = clean ? 'inline' : f.preview === 'intro' && files.length && !files.some((file) => fileKind(file) === 'html')
       ? 'inline' : f.preview || (f.multiple === false ? 'inline' : 'auto');
-    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim', chrome: mode !== 'intro' };
+    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim', chrome: !clean && mode !== 'intro' };
     const present = files.filter((x) => !x.missing);
     const pages = ['inline', 'auto', 'intro'].includes(mode) ? present.filter((x) => fileKind(x) === 'html') : [];
     const sheet = mode === 'inline' && f.multiple !== false ? present.filter((x) => !pages.includes(x))
@@ -4217,13 +4237,13 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
-    if (mode === 'intro') {
+    if (clean || mode === 'intro') {
       box.classList.add('intro-content');
       const controls = el('details', { class: 'intro-controls' },
-        el('summary', {}, 'Introduction options'),
+        el('summary', {}, clean ? 'Field options' : 'Introduction options'),
         el('button', { type: 'button', class: 'btn btn-sm', onclick: () => editFieldDialog(db, f) }, 'Field settings'),
         ...files.map((file) => el('a', { href: fileUrl(file), download: file.name }, 'Download source')), chips);
-      showIntroControls(controls);
+      if (locked) controls.hidden = true; else showIntroControls(controls);
       box.append(controls);
     } else box.append(chips);
     const input = el('input', { type: 'file', multiple: f.multiple === false ? null : '', style: 'display:none' });
@@ -9263,10 +9283,26 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         dl), 'doc', f, () => ({ entity })),
       body);
 
-    if (docSectionCollapse(id, f.name)) {
+    if (!f.displayInline && docSectionCollapse(id, f.name)) {
       body.classList.add('hidden');
       caret.classList.add('closed');
       setDisclosure(caret, false);
+    }
+    if (f.displayInline) {
+      section.classList.add('document-inline');
+      section.setAttribute('aria-label', f.name);
+      const head = section.querySelector('.doc-section-head');
+      caret.remove();
+      const options = el('details', { class: 'intro-controls document-inline-options' },
+        el('summary', {}, 'Field options'), head,
+        el('button', { type: 'button', class: 'btn btn-sm', onclick: () => editFieldDialog(db, f) }, 'Field settings'));
+      section.append(options);
+      if (!(entity.docs?.[f.name] ?? '').trim()) {
+        section.classList.add('document-inline-empty');
+        if (locked) section.hidden = true;
+        options.addEventListener('toggle', () => section.classList.toggle('inline-editing', options.open));
+      }
+      if (locked) options.hidden = true; else showIntroControls(options);
     }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
@@ -9280,6 +9316,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           readOnly: !!entity.readOnly,
           placeholder: entity.readOnly ? '' : `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
+            if (f.displayInline) section.classList.toggle('document-inline-empty', !value.trim());
             scheduleDocSave(id, f.name, value);
             rail.schedule();
             folds.schedule();
@@ -9304,7 +9341,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
       const isApp = mode === 'app';
       const isDiagram = mode === 'diagram';
-      const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
+      const appFrame = isApp ? el('iframe', { class: 'doc-app' + (f.displayInline ? ' fits-content' : ''), src: `${fmtBase}.html${f.displayInline ? '?inline=1' : ''}`, dataset: f.displayInline ? { inlineDoc: f.id } : {}, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
         : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
       const drawDiagram = () => {
         appFrame.replaceChildren(el('pre', { class: 'mermaid' }, sourceBox?.value ?? entity.docs?.[f.name] ?? ''));
@@ -9313,8 +9350,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       let showingSource = false;
       let mounted = false;
       if (appFrame) {
-        const sourceToggle = el('span', {
-          class: 'doc-anchor', title: 'Edit source',
+        const sourceToggle = el('button', {
+          type: 'button', class: 'doc-anchor', title: 'Edit source', 'aria-label': `Edit ${f.name} source`,
           onclick: () => {
             showingSource = !showingSource;
             host.classList.toggle('hidden', !showingSource);
@@ -9351,7 +9388,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const coverF = boardCore.coverField(db);
   const coverFile = boardCore.coverOf(db, entity);
   const coverEl = (file) => entityCoverEl(file, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' });
-  const introHeader = shown.some((f) => f.type === 'attachments' && f.preview === 'intro');
+  const introHeader = shown.some((f) => f.displayInline || (f.type === 'attachments' && f.preview === 'intro'));
   const placeCover = (file) => {
     const cover = coverEl(file);
     if (introHeader) mount.querySelector(':scope > .view-header').after(cover);
@@ -9419,7 +9456,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
-      if (f.preview === 'intro') {
+      if (f.displayInline || f.preview === 'intro') {
         node.classList.add('attachment-intro');
         const controls = node.querySelector('.intro-controls');
         if (controls) controls.append(node.querySelector('.opt-grip'), node.querySelector('.fieldrow-label'));
@@ -9554,7 +9591,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
     if (!loose.length) return;
     const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
-    const introTable = db.fields.some((f) => f.type === 'attachments' && f.preview === 'intro');
+    const introTable = db.fields.some((f) => f.type === 'attachments' && (f.displayInline || f.preview === 'intro'));
     const pages = (introTable ? [] : loose.filter((file) => !file.missing && fileKind(file) === 'html')).map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
     const foldFiles = (closed) => {
       for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);

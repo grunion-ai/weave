@@ -322,6 +322,7 @@
     date: { grain: { year: true, month: true, day: true }, format: DG().DEFAULT_FORMAT, time: false, clock: DG().DEFAULT_CLOCK, zone: 'floating', zoneName: '', pad: false, elapsed: false },
     depth: 1,
     multiple: true,
+    displayInline: false,
     files: { preview: '', size: 'medium', fit: 'trim' },
     kind: 'markdown',
     toggle: { on: 'On', off: 'Off' },
@@ -428,12 +429,14 @@
     } else if (t === 'avatar') {
       config.shape = state.avatarShape === 'square' ? 'square' : 'round';
     } else if (t === 'attachments') {
+      if (state.displayInline) config.displayInline = true;
       if (state.multiple === false) config.multiple = false;
       const fl = state.files ?? {};
       if (fl.preview) config.preview = fl.preview;
       if (fl.size && fl.size !== 'medium') config.size = fl.size;
       if (fl.fit && fl.fit !== 'trim') config.fit = fl.fit;
     } else if (t === 'document') {
+      if (state.displayInline) config.displayInline = true;
       if (state.kind && state.kind !== 'markdown') config.kind = state.kind;
     } else if (t === 'key') {
       config.kind = state.credential?.kind ?? 'apikey';
@@ -515,9 +518,11 @@
     } else if (def.type === 'avatar') {
       state.avatarShape = c.shape ?? 'round';
     } else if (def.type === 'attachments') {
+      state.displayInline = !!c.displayInline || c.preview === 'intro';
       state.multiple = c.multiple !== false;
       state.files = { preview: c.preview ?? '', size: c.size ?? 'medium', fit: c.fit ?? 'trim' };
     } else if (def.type === 'document') {
+      state.displayInline = !!c.displayInline;
       state.kind = c.kind ?? 'markdown';
     } else if (def.type === 'key') {
       state.credential = { kind: c.kind ?? 'apikey', keystore: c.keystore ?? 'local' };
@@ -606,6 +611,7 @@
     if (f.type === 'avatar') c.shape = f.shape ?? 'round';
     if (f.type === 'toggle') { c.on = f.on ?? 'On'; c.off = f.off ?? 'Off'; }
     if (f.type === 'rating') { c.max = f.max ?? 5; c.icon = f.icon ?? 'lucide:star'; if (f.color && f.color !== 'ink') c.color = f.color; }
+    if (['document', 'attachments'].includes(f.type) && f.displayInline) c.displayInline = true;
     if (f.type === 'document' && f.kind) c.kind = f.kind;
     if (f.type === 'key') { c.kind = f.kind ?? 'apikey'; c.keystore = f.keystore ?? 'local'; }
     if (f.type === 'rollup' && f.viaTable) {
@@ -650,6 +656,7 @@
     if (existing.type === 'toggle') { patch.on = c.on; patch.off = c.off; }
     if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
+    if (['document', 'attachments'].includes(existing.type)) patch.displayInline = !!state.displayInline;
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
     if (existing.type === 'key') { patch.kind = c.kind; patch.keystore = c.keystore; }
     if (DEFAULTABLE.includes(existing.type)) {
