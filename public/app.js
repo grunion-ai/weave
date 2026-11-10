@@ -3871,8 +3871,8 @@ const filePanel = (() => {
   return { open, close, mounted, get isOpen() { return isOpen(); } };
 })();
 
-function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact, fit });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label, locked = false } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit, locked });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
@@ -3957,10 +3957,10 @@ function readOnlyValue(f, val) {
   const text = fieldValueCell(val);
   return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, text || '—');
 }
-function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
+function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
-  if (item.readOnly && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
+  if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
@@ -9414,7 +9414,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       f.type === 'attachments' || locked ? handle(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
       locked ? el('label', { class: 'fieldrow-label' }, ...labelKids)
         : el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, ...labelKids),
-      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
+      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name, locked })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
@@ -9456,7 +9456,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         const label = row.querySelector('.fieldrow-label');
         return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
           el('span', { class: 'wv-sum-label', onclick: f && !locked ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
-          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name })));
+          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name, locked })));
       }));
     const setFolded = (closed) => {
       values.classList.toggle('hidden', closed);

@@ -47,3 +47,10 @@ test('the mark follows the space role, so an observer made editor of one space e
   assert.equal(res.status, 200);
   assert.equal(res.json.readOnly, undefined);
 });
+
+test('a visitor with no session is not marked, so the page keeps its sign-in path to edit', async () => {
+  const { call, quickstart } = build();
+  const res = await call('GET', `/api/entities/${quickstart.id}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.json.readOnly, undefined);
+});
