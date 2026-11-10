@@ -17,7 +17,8 @@ const s = await launch('display inline', w => {
   for (const [registry, id] of [['System/Tables', table], ['System/Spaces', space]]) {
     w.addField(registry, { name: 'Inline guide', type: 'document', config: { kind: 'html', displayInline: true } });
     const record = w.query(registry, {}).items.find(r => r.sysId === id);
-    w.updateEntity(record.id, { 'Inline guide': html });
+    w.addField(registry, { name: 'Written guide', type: 'document', config: { displayInline: true } });
+    w.updateEntity(record.id, { 'Inline guide': html, 'Written guide': '## Written introduction\n\n**Native Markdown** with [a link](https://example.com).\n\n<script>document.title="unsafe"</script>' });
   }
   w.updateTable(table, { bodyOrder: ['HTML document', 'HTML file', '@values', 'Description', 'Empty document'] });
 });
@@ -79,6 +80,9 @@ if (s) {
       await frame.contentFrame().getByRole('heading', { name: 'Inline task content' }).waitFor();
       await eventually(async () => (await frame.boundingBox()).height < 160, true);
       assert.equal(await page.locator('.registry-intro .intro-controls:visible').count(), 0);
+      await page.getByRole('heading', { name: 'Written introduction' }).waitFor();
+      assert.equal(await page.locator('.registry-intro script').count(), 0);
+      assert.notEqual(await page.title(), 'unsafe');
     } finally { await page.close(); }
   });
   test('inline rendering leaves source downloads unchanged and retains the HTML sandbox', async () => {

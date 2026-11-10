@@ -1394,8 +1394,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       const body = el('div', { class: 'view-desc-body wv-prose clamped' });
       if (descriptionKey) body.classList.add('desc-clamp');
       try {
-        const { html } = await api('POST', '/markdown', { md });
-        body.innerHTML = html;
+        await renderMarkdownInto(body, md);
       } catch {
         body.textContent = md;
       }
@@ -2883,6 +2882,11 @@ function showIntroControls(controls) {
     .catch(() => {});
 }
 
+async function renderMarkdownInto(body, md) {
+  const { html } = await api('POST', '/markdown', { md });
+  body.innerHTML = html;
+}
+
 async function appendRegistryPresentation(header, kind, subjectId, name) {
   const request = Symbol();
   header.presentationRequest = request;
@@ -2917,7 +2921,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
           : el('div', { class: 'wv-prose' });
         if (mode !== 'app') {
           if (mode === 'code') content.append(el('pre', {}, el('code', {}, text)));
-          else { const rendered = await api('POST', '/markdown', { md: text }); content.innerHTML = rendered.html; }
+          else await renderMarkdownInto(content, text);
         }
         sections.push(el('section', { class: 'registry-intro document-inline', 'aria-label': field.name }, content,
           el('details', { class: 'intro-controls' }, el('summary', {}, 'Field options'),
