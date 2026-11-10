@@ -662,6 +662,12 @@ const TOUCH_STATES = [
   { name: 'table list', route: 'table', open: 'rest', layout: 'table', roots: ['#main'] },
   { name: 'row page', route: 'row-dock', open: 'rest', layout: 'table', roots: ['#dock'] },
   { name: 'menu', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#sidebar', roots: ['#sidebar', '#ws-rail'], act: (p) => p.click('#main .nav-menu') },
+  { name: 'search sheet', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#cmdk', async act(p) {
+    await p.evaluate(() => openPalette());
+    await p.waitForSelector('#cmdk #cmdk-input');
+    await p.fill('#cmdk #cmdk-input', 'Issue');
+    await p.waitForSelector('#cmdk-results .result .copy-btn');
+  } },
   { name: 'picker sheet', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .chip-trigger[title="Status"]', root: '.picker-pop', act: (p) => p.click('#dock .chip-trigger[title="Status"]') },
   { name: 'bug panel', route: 'table', open: 'overlay', layout: 'table', ready: '#main .nav-menu', root: '#bug-panel', act: (p) => openBugReport(p) },
   { name: 'field editor tray', route: 'row-dock', open: 'overlay', layout: 'table', ready: '#dock .fieldrow[data-field="Status"] .fieldrow-label', root: '#tray-back', roots: ['#tray'], act: (p) => p.click('#dock .fieldrow[data-field="Status"] .fieldrow-label') },

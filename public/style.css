@@ -2957,7 +2957,11 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .launcher-detail-body > .card, .launcher-detail-body > .wv-stat-tiles { margin-top: 16px; }
 .launcher-failed { padding: 18px 0; color: var(--tblr-secondary); }
 .launcher-failed .btn { min-height: 44px; }
-@media (max-width: 600px) { #cmdk-results .result { height: 44px; } }
+@media (max-width: 600px) {
+  #cmdk-results .result { height: 44px; }
+  #cmdk-input { align-self: stretch; }
+  #cmdk .copy-btn { width: 44px; height: 44px; padding: 0; opacity: 1; }
+}
 
 @media (min-width: 601px) and (not (pointer: coarse)) {
   @supports selector(::-webkit-scrollbar) {
