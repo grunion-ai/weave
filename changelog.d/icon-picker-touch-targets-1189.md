@@ -1,0 +1,1 @@
+- On a touch screen the icon picker draws its cells on a 44 px grid, eight to a row on a phone, and its search field takes a 44 px box. The cell is drawn at 46 px so that 44 px of it is still reachable under WebKit's coarser hit test on iOS. The phone touch gate now walks the icon picker, so a smaller cell there fails it ([[Issue#1189]]).
