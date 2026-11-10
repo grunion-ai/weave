@@ -407,23 +407,21 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a create-and-stay tray takes one more independent record after a success (Issue #1445)', async () => {
+  test('a create-and-stay tray takes the next record while the first write is still in flight (Issue #1445)', async () => {
     const page = await open('light');
     const hold = await holdPost(page);
     try {
       await openShell(page, 'tray', { name: 'Stay one', stay: true });
-      await twice(page, '#tray');
-      assert.deepEqual(await submitState(page, '#tray'), { submits: 1, pending: true, opacity: '0.6', pointer: 'none', open: true },
-        'create-and-stay refuses its own second submit while the first create is in flight');
-      hold.release();
-      const landed = { submits: 1, pending: false, opacity: '1', pointer: 'auto', open: true };
-      assert.deepEqual(await eventually(() => submitState(page, '#tray'), landed), landed,
-        'the tray stays open and no longer busy once the create lands');
-      assert.equal(hold.posts(), 1, 'exactly one entity POST left the page');
-      assert.equal(await rowsNamed(page, 'Stay one'), 1, 'the repeated submit created one record');
+      await page.waitForSelector('#tray input[name=name]');
+      await page.evaluate(() => document.querySelector('#tray form').requestSubmit());
       await page.evaluate(() => { document.querySelector('#tray input[name=name]').value = 'Stay two'; });
       await page.evaluate(() => document.querySelector('#tray form').requestSubmit());
-      assert.equal(await eventually(() => rowsNamed(page, 'Stay two'), 1), 1, 'the next submit creates the next record');
+      const both = { submits: 2, pending: false, opacity: '1', pointer: 'auto', open: true };
+      assert.deepEqual(await submitState(page, '#tray'), both,
+        'a tray that stays open hands its draft back at once, so the next record does not wait on the last write');
+      hold.release();
+      assert.equal(await eventually(() => rowsNamed(page, 'Stay one'), 1), 1);
+      assert.equal(await eventually(() => rowsNamed(page, 'Stay two'), 1), 1, 'each submit wrote its own record');
     } finally { hold.release(); await page.close(); }
   });
 }
