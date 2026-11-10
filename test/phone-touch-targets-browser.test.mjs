@@ -335,9 +335,8 @@ if (s) {
     act: (page) => page.click('#main .nav-menu'),
   };
   for (const [engine, b, profile] of engines) {
-    {
-      const theme = 'light';
-      test(`on a phone every space and table in the menu sits in view and takes a tap (${engine}, ${theme}, Issue #1164)`, async () => {
+    for (const theme of ['light', 'dark']) {
+      test(`on a phone every space and table in the menu sits in view and takes a tap (${engine}, ${theme}, Issue #1164, Feature #376)`, async () => {
         const page = await open(b, profile, theme, phoneMenu);
         try {
           const seen = await page.evaluate(REACH);
@@ -351,6 +350,7 @@ if (s) {
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
             return !!hit && (hit === n || n.contains(hit));
           }), true, 'the sticky identity panel leaves Trash reachable');
+          if (process.env.WEAVE_SHOTS) await page.screenshot({ path: `${process.env.WEAVE_SHOTS}/phone-menu-${engine}-${theme}.png` });
           await trash.click();
           await page.waitForFunction(() => location.hash === '#/trash' && !document.querySelector('#app').classList.contains('nav-peek'));
 
