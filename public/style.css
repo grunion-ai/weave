@@ -1590,6 +1590,11 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 .picker-none { color: var(--tblr-secondary); }
 .picker-none .wv-icon { opacity: .75; }
 .picker-pop:has(.picker-cells) { width: 292px; }
+@media (pointer: coarse) {
+  .picker-cells { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+  .picker-cell:not(.picker-term) { aspect-ratio: auto; height: 46px; }
+  .picker-search { min-height: 44px; }
+}
 
 .picker-empty { color: var(--tblr-secondary); font-size: var(--fs-grid); padding: 8px 6px; }
 .picker-face { text-align: left; cursor: pointer; width: 100%; }
