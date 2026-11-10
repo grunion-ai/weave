@@ -572,9 +572,14 @@ one-letter name beside them). The shared states `sink-table`, `sink-list`,
 the record page, so every probe sees every field type.
 
 A state that fails a probe it newly joins carries a `hold` naming the Issue
-rows that track the failure, keyed by probe (`touch`) or probe and cell
-(`cutoff|desktop`). A held state stays out of that gate and is still walked:
-the gate asserts it still shows what its rows track and prints the counts.
+rows that track the failure, keyed by probe (`touch`), probe and cell
+(`cutoff|desktop`), or probe, cell and platform (`touch|phone|darwin`), which
+holds that platform alone while the others read the plain key. The touch gate's
+offender ledger `test/touch-held.json` carries the same platform last in its
+own key, so one platform's font metrics can be held without reddening the other,
+as `test/cutoff-baseline.json` already does per platform (Issue #1542). A held
+state stays out of that gate and is still walked: the gate asserts it still
+shows what its rows track and prints the counts.
 **Fixing one:** fix the rows, watch the held test fail because the state is
 clean, and drop the hold in the same change so the gate walks it. A hold never
 stands in for a baseline: `test/cutoff-baseline.json` and the touch gate's

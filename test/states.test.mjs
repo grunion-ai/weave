@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, Weave } from '../src/engine.js';
-import { DENSITIES, CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
+import { DENSITIES, CELLS, HOLD_PLATFORMS, LAYOUTS, OPENS, PROBES, ROUTES, SEEDS, STATES, THEMES, cellsOf, held, holdOf, plan, seedsOf, themesOf, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf as journeyCells } from './lib/journeys.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
 import { SWEEP_JOURNEYS } from './lib/cutoff.mjs';
@@ -63,6 +63,22 @@ test('a hold names the Issue rows that track it, and only holds a probe that wou
       assert.ok(cell === undefined || cellsOf(s).includes(cell), `${s.name}: hold names cell ${cell}`);
       assert.ok(PROBES[probe].opens.includes(s.open) && seedsOf(s).includes(PROBES[probe].seed), `${s.name}: ${probe} would walk it, so the hold means something`);
       assert.ok(Array.isArray(rows) && rows.length && rows.every((n) => Number.isInteger(n) && n > 0), `${s.name}: hold ${key} names its Issue rows, got ${JSON.stringify(rows)}`);
+    }
+  }
+});
+
+test('a hold that names one platform resolves on that platform, and the others read the plain key (Issue #1542)', () => {
+  const both = { name: 'fixture', hold: { 'touch|phone|darwin': [1163], 'touch|phone': [1119] } };
+  assert.deepEqual(holdOf(both, 'touch', 'phone', 'darwin'), { hold: [1163], platform: 'darwin' });
+  assert.deepEqual(holdOf(both, 'touch', 'phone', 'linux'), { hold: [1119], platform: null });
+  const one = { name: 'fixture', hold: { 'touch|phone|darwin': [1163] } };
+  assert.deepEqual(holdOf(one, 'touch', 'phone', 'darwin'), { hold: [1163], platform: 'darwin' });
+  assert.deepEqual(holdOf(one, 'touch', 'phone', 'linux'), { hold: null, platform: null });
+  assert.deepEqual(holdOf({ name: 'fixture' }, 'touch', 'phone', 'darwin'), { hold: null, platform: null });
+  for (const probe of Object.keys(PROBES)) {
+    for (const p of plan(probe)) {
+      assert.deepEqual(holdOf(p.state, probe, p.cell, process.platform), { hold: p.hold, platform: p.holdPlatform },
+        `${probe} ${p.state.name} on ${p.cell}: the plan carries what holdOf resolves`);
     }
   }
 });
