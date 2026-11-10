@@ -1,0 +1,1 @@
+- The phone touch gate's offender ledger `test/touch-held.json` now names the platform last in its key wherever the hold in `test/lib/states.mjs` names one, so hit-area debt that only one platform's font metrics show can be held without reddening the other runner, the way `test/cutoff-baseline.json` already holds its counts per platform (Issue #1542).

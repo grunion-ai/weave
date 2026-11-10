@@ -673,6 +673,11 @@ export const readyOf = (s, cell) => s.ready ?? ROUTES[s.route].ready(cell);
 export const densitiesOf = (s, p) => (p.densities && s.layout && s.open !== 'overlay' ? p.densities : [null]);
 
 export const HOLD_PLATFORMS = ['darwin', 'linux'];
+export function holdOf(state, probe, cell, platform) {
+  const scoped = state.hold?.[`${probe}|${cell}|${platform}`] ?? null;
+  if (scoped) return { hold: scoped, platform };
+  return { hold: state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null, platform: null };
+}
 export function plan(probe) {
   const p = PROBES[probe];
   const out = [];
@@ -680,8 +685,8 @@ export function plan(probe) {
     if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
-        const hold = state.hold?.[`${probe}|${cell}|${process.platform}`] ?? state.hold?.[`${probe}|${cell}`] ?? state.hold?.[probe] ?? null;
-        for (const density of densitiesOf(state, p)) out.push({ state, cell, theme, density, hold });
+        const { hold, platform: holdPlatform } = holdOf(state, probe, cell, process.platform);
+        for (const density of densitiesOf(state, p)) out.push({ state, cell, theme, density, hold, holdPlatform });
       }
     }
   }
