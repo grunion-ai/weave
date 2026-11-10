@@ -1,1 +1,0 @@
-- The **+ New** button on a record's related block now opens the create tray with an empty Name and a **Create & link** action, so no record is written before you name it (Issue #1474).
