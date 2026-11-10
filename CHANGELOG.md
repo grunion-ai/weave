@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.131 (2026-11-10)
+
+- A create tray that stays open takes the next record while the previous write is still in flight. The pending-submit hold covers the dialogs that close on success; a create-and-stay tray hands its draft back as soon as its caller resets it, and the phone create sheet keeps its own guard: the name clears and Create goes quiet until the next name is typed ([[Issue#1445]]).
+- A credential field's kind, keystore and parts can be changed after it is created. `updateField` merges them through the key field's own validation, a schema document that edits them applies, and the field dialog's Holds and Kept in pickers now send what they show instead of dropping it ([[Issue#1500]]).
+- A create dialog now refuses its own second submit while the first write is in flight, so a double tap, a repeated Enter or two `requestSubmit()` calls make one record instead of two. The guard sits in the shared modal and tray shells, and a refused write re-enables the button so the create can be retried ([[Issue#1445]]).
+- A date field with no grain refuses a bare run of digits such as `12345`, which V8's `Date.parse` reads as the year 12345. The check for a four-digit year is anchored, so `12345` and `20260821` are refused while `Aug 31, 2026` is still kept as given ([[Issue#1529]]).
+
 ## v0.4.130 (2026-11-10)
 
 - On a phone, **Report a problem** now sits in a record's ⋮ menu, and the bug glyph sits in the Activity sheet's head, so a report can start from the screen that shows the problem (Issue #1023).
