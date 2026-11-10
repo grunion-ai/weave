@@ -651,6 +651,7 @@
     if (existing.type === 'rating') { patch.max = c.max; patch.icon = c.icon; patch.color = c.color ?? null; }
     if (existing.type === 'view') { const { shape, ...rest } = c; void shape; Object.assign(patch, rest); }
     if (existing.type === 'document') patch.kind = state.kind ?? 'markdown';
+    if (existing.type === 'key') { patch.kind = c.kind; patch.keystore = c.keystore; }
     if (DEFAULTABLE.includes(existing.type)) {
       patch.default = c.default ?? null;
     }

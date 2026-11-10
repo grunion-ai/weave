@@ -850,6 +850,8 @@ const optionType = {
   },
 };
 
+const CREDENTIAL_CONFIG_KEYS = ['kind', 'keystore', 'parts'];
+
 const FIELD_TYPE_CONFIG = {
   text: {
     build: (config) => (config.literal ? { literal: true } : {}),
@@ -1046,9 +1048,19 @@ const FIELD_TYPE_CONFIG = {
       return out;
     },
     coerce: asString,
+    merge(config, patch) {
+      if (!CREDENTIAL_CONFIG_KEYS.some((k) => k in patch)) return;
+      const seed = { ...config, ...patch };
+      if ((patch.kind ?? config.kind) !== 'pair' && !('parts' in patch)) delete seed.parts;
+      const next = FIELD_TYPE_CONFIG.key.build(seed);
+      config.kind = next.kind;
+      config.keystore = next.keystore;
+      if (next.parts) config.parts = next.parts; else delete config.parts;
+    },
     toDescriptor: (config, out) => Object.assign(out, credentialConfig({ config })),
     fromDescriptor(f, config) {
-      for (const k of ['kind', 'keystore', 'parts']) if (f[k] != null) config[k] = f[k];
+      for (const k of CREDENTIAL_CONFIG_KEYS) if (f[k] != null) config[k] = f[k];
+      if ((config.kind ?? 'apikey') !== 'pair') delete config.parts;
     },
   },
   attachments: {

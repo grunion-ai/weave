@@ -544,6 +544,9 @@ test('editPatchConfig builds each type\'s patch body', () => {
   assert.equal(name.term, null, 'null clears the term');
   const dflt = core.editPatchConfig({ type: 'text' }, { type: 'text', config: {} }, {});
   assert.equal(dflt.default, null, 'an emptied input clears the default');
+  const cred = core.editPatchConfig({ type: 'key' }, core.definitionFromState({ type: 'key', credential: { kind: 'token', keystore: '1password' } }), {});
+  assert.equal(cred.kind, 'token', 'the credential kind the dialog shows is the one it sends (Issue #1500)');
+  assert.equal(cred.keystore, '1password', 'and so is the keystore');
 });
 
 test('every formula function names its group, a doc and an example that parses', async () => {

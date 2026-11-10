@@ -78,3 +78,42 @@ test('the authenticated API sets and lists keys while a generic key GET never re
     assert.equal(w.hasKey('stripe'), false);
   });
 });
+
+test('a credential field takes a new kind, keystore and parts through updateField (Issue #1500)', () => {
+  const { w } = fresh();
+  const f = w.addField('Service', { name: 'Token', type: 'key', config: { kind: 'pair', keystore: '1password' } });
+  assert.deepEqual(w.getField('Service', f.id).config.parts, [{ name: 'id', secret: false }, { name: 'secret', secret: true }]);
+
+  w.updateField('Service', f.id, { config: { kind: 'token' } });
+  const token = w.getField('Service', f.id).config;
+  assert.equal(token.kind, 'token', 'the new kind lands');
+  assert.equal(token.keystore, '1password', 'the keystore it did not name is left alone');
+  assert.equal('parts' in token, false, 'a single-value credential keeps no parts');
+
+  w.updateField('Service', f.id, { config: { keystore: 'local' } });
+  assert.equal(w.getField('Service', f.id).config.keystore, 'local', 'the new keystore lands');
+
+  w.updateField('Service', f.id, { config: { kind: 'pair', parts: ['client', { name: 'secret', secret: true }] } });
+  assert.deepEqual(w.getField('Service', f.id).config.parts, [{ name: 'client', secret: false }, { name: 'secret', secret: true }]);
+
+  assert.throws(() => w.updateField('Service', f.id, { config: { kind: 'nope' } }), /Invalid credential kind/);
+  assert.throws(() => w.updateField('Service', f.id, { config: { parts: ['only-one'] } }), /A pair names exactly two parts/);
+  assert.equal(w.getField('Service', f.id).config.kind, 'pair', 'a refused patch changes nothing');
+});
+
+test('a credential kind edited in a schema document lands through applySchema (Issue #1500)', () => {
+  const { w } = fresh();
+  w.addField('Service', { name: 'Token', type: 'key', config: { kind: 'pair', keystore: '1password' } });
+  const doc = w.describeSchema();
+  const field = doc.flatMap((s) => s.tables).find((t) => t.name === 'Service').fields.find((f) => f.name === 'Token');
+  field.kind = 'token';
+  field.keystore = 'local';
+  delete field.parts;
+
+  assert.deepEqual(w.applySchema(doc, { dryRun: true }).map((p) => p.action), ['update-field']);
+  w.applySchema(doc);
+  const after = Object.values(w.getTable('Service').fields).find((f) => f.name === 'Token').config;
+  assert.equal(after.kind, 'token');
+  assert.equal(after.keystore, 'local');
+  assert.deepEqual(w.applySchema(w.describeSchema(), { dryRun: true }), [], 'the document and the field now agree');
+});
