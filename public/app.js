@@ -599,14 +599,14 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!holdSubmit(form)) return;
+    if (!stay && !holdSubmit(form)) return;
     try {
       await onSubmit(new FormData(form));
       if (!stay) close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
     } finally {
-      freeSubmit(form);
+      if (!stay) freeSubmit(form);
     }
   });
   const box = el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },

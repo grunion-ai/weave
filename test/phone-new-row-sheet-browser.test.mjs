@@ -220,4 +220,32 @@ if (s) {
       assert.equal(await page.inputValue('#dock textarea.name-edit'), 'Made on a desktop', 'the tray closes on the new row');
     } finally { await page.close(); }
   });
+
+  test('on a phone a held create does not block the next bug the tray takes (Issue #988, Issue #1445)', async () => {
+    const page = await open(() => phonePage(phone), issues);
+    let free;
+    const held = new Promise((r) => { free = r; });
+    let posts = 0;
+    await page.route(`**/tables/${issues}/entities`, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      posts += 1;
+      if (posts === 1) await held;
+      await route.continue();
+    });
+    try {
+      await page.click('.phone-bar .phone-new');
+      await page.waitForSelector('#tray .new-row-name');
+      await page.fill('#tray .new-row-name', 'Held first');
+      await page.click(CREATE);
+      assert.equal(await page.inputValue('#tray .new-row-name'), '', 'the name clears while the first write is in flight');
+      await page.keyboard.type('Second while held');
+      await page.keyboard.press('Enter');
+      assert.equal(await until(() => page.inputValue('#tray .new-row-name'), (v) => v === ''), '',
+        'the second bug is taken, not refused, while the first write is still open');
+      free();
+      const made = await until(async () => (await rows(page, issues)).filter((r) => ['Held first', 'Second while held'].includes(r.name)), (r) => r.length === 2);
+      assert.deepEqual(made.map((r) => r.name).sort(), ['Held first', 'Second while held']);
+      assert.equal(posts, 2, 'one POST per bug');
+    } finally { free(); await page.close(); }
+  });
 }
