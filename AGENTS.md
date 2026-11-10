@@ -334,9 +334,9 @@ Card, `description` is the description size (`none`, `small`, `medium`, `large`)
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
 screen*: every field type with how it renders in the grid and which
-config keys it takes, the eight option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
+config keys it takes, the option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
 and date formats, document kinds, relation cardinalities, workflow state
-categories, rollup aggregates, the system columns, the two view kinds, and the
+categories, rollup aggregates, the system columns, the view kinds, and the
 column-width rules (60px floor, 260px cap when unset, a set width is a floor as
 well as a ceiling). Guessing a color that validates still reads wrong.
 `weave_vocabulary {section: "icons"}` returns that section alone, `{sections: ["icons", "optionColors", "formulaFunctions"]}` returns several keyed by name (REST `?section=icons,optionColors`, CLI `weave vocabulary icons,optionColors`), a comma list of queries searches several icon words at once, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
