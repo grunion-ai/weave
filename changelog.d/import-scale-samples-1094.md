@@ -1,1 +1,0 @@
-- The import scaling check reads the fastest of three interleaved imports at each size, so one stall on a loaded CI runner no longer fails it while a superlinear import still does (Issue #1094).

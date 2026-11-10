@@ -1,1 +1,0 @@
-- The 50,000-row lookup-sort query check compares the sorted first page with the unsorted one measured in the same run, so a loaded CI runner no longer fails it while a sort that walks every row again still does (Issue #1511).

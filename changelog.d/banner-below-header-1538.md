@@ -1,1 +1,0 @@
-- Breadcrumbs and the toolbar stay above a record's banner image, and the banner sits directly below them, on records, tables and spaces (Issue #1538).
