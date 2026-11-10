@@ -822,6 +822,11 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         ], state.avatarShape ?? 'round', (v) => { state.avatarShape = v; changed(); })));
         kids.push(el('div', { class: 'modal-note full' }, 'The record\'s face on its chip, card and header. With no photo it shows initials on the name\'s colour. One per table.'));
       } else if (t === 'attachments') {
+        kids.push(el('label', { class: 'form-check full' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.displayInline ? '' : undefined,
+            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; changed(); drawCfg(); } }),
+          el('span', { class: 'form-check-label' }, 'Display inline')));
+        kids.push(el('div', { class: 'modal-note full' }, 'Render content directly without a field heading. Editing controls remain under Field options. Position is set by the record body order.'));
         const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined,
@@ -847,6 +852,11 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; changed(); } }),
           el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show ', el('code', {}, '**marks**'), ' and ', el('code', {}, '`syntax`'), ' as typed, never dressed'))));
       } else if (t === 'document') {
+        kids.push(el('label', { class: 'form-check full' },
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.displayInline ? '' : undefined,
+            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; changed(); drawCfg(); } }),
+          el('span', { class: 'form-check-label' }, 'Display inline')));
+        kids.push(el('div', { class: 'modal-note full' }, 'Render content directly without a field heading. Editing controls remain under Field options. Position is set by the record body order.'));
         kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
       } else if (t === 'key') {
         const cred = (state.credential ??= { kind: 'apikey', keystore: 'local' });

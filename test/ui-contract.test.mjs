@@ -1261,7 +1261,7 @@ test('a document that is an HTML app is embedded, not edited as markdown', () =>
   assert.ok(app.includes('docViewMode(f.kind'), 'the declared kind rules the viewer; docKind sniffs only the undeclared');
   const i = app.indexOf("class: 'doc-app'");
   assert.ok(i > 0, 'the embedded frame exists');
-  assert.ok(app.slice(i, i + 160).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
+  assert.ok(app.slice(i, app.indexOf('\n', i)).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
   assert.ok(app.includes("title: 'Edit source'"), 'the source editor is one toggle away');
   assert.ok(app.includes("if (mode === 'markdown') mountEditor();"), 'the rendering editor is for markdown only');
   assert.ok(app.includes("class: 'doc-source'") && app.includes('mountSourceEditor'), 'HTML source edits in a code box, mounted on first toggle');

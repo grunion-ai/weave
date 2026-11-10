@@ -2982,3 +2982,19 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .attachment-intro:has(.intro-content) > .fieldrow-label, .attachment-intro:has(.intro-content) > .opt-grip { display: none; }
 .attachment-intro iframe { color-scheme: light; }
 [data-bs-theme="dark"] .attachment-intro iframe { color-scheme: dark; }
+
+.document-inline { border: 0; }
+.document-inline > .doc-section-body { padding-top: 0; }
+.document-inline .doc-app.fits-content { aspect-ratio: auto; height: 80px; min-height: 0; border-radius: 0; }
+.document-inline .doc-app { color-scheme: light; }
+[data-bs-theme="dark"] .document-inline .doc-app { color-scheme: dark; }
+.document-inline-options .doc-section-head { margin: 0; cursor: default; }
+.document-inline-options .doc-anchor { border: 0; background: transparent; color: inherit; }
+
+.document-inline-empty:not(.inline-editing) > .doc-section-body { display: none; }
+.document-inline-empty:has(> .intro-controls[hidden]) { display: none; }
+
+@media (max-width: 600px), (pointer: coarse) {
+  .document-inline-options .doc-section-head { flex-wrap: wrap; }
+  .document-inline-options .doc-anchor { min-width: 44px; min-height: 44px; opacity: .7; }
+}

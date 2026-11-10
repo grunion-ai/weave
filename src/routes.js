@@ -938,7 +938,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
         }
         if (m[3] === 'html') {
-          if (isHtmlDocument(markdown)) return out(200, markdown, sandboxedHtmlHeaders());
+          if (isHtmlDocument(markdown)) return out(200, rx.searchParams.get('inline') === '1' ? viewHtml(Buffer.from(markdown), frameLinkBase(Buffer.from(markdown)) + FRAME_HEIGHT_SCRIPT) : markdown, sandboxedHtmlHeaders());
           const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
           return out(200, page, sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
         }

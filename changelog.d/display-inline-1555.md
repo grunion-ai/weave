@@ -1,0 +1,1 @@
+- Document and attachment fields gain a Display inline setting that renders their content without a field heading. Editing controls remain available under Field options, and existing field identity, body order, template export and HTML sandboxing are preserved. Inline HTML documents resize with their content (Issue #1555).
