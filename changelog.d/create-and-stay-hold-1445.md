@@ -1,1 +1,0 @@
-- A create tray that stays open takes the next record while the previous write is still in flight. The pending-submit hold covers the dialogs that close on success; a create-and-stay tray hands its draft back as soon as its caller resets it, and the phone create sheet keeps its own guard: the name clears and Create goes quiet until the next name is typed ([[Issue#1445]]).
