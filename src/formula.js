@@ -1,4 +1,6 @@
 export const MAX_RESULT_CHARS = 65536;
+export const MAX_EXPRESSION_CHARS = 8192;
+export const MAX_EXPRESSION_DEPTH = 100;
 
 function joined(parts) {
   const out = [];
@@ -151,6 +153,15 @@ export function evaluate(expression, getField) {
     const t = next();
     if (!t || t.type !== 'op' || t.value !== v) throw new Error(`Expected '${v}'`);
   };
+  let depth = 0;
+  const nestedIn = (parse) => {
+    if (++depth > MAX_EXPRESSION_DEPTH) throw new Error(`Formula nests more than ${MAX_EXPRESSION_DEPTH} levels deep`);
+    try {
+      return parse();
+    } finally {
+      depth--;
+    }
+  };
 
   function parseOr() {
     let left = parseAnd();
@@ -215,8 +226,8 @@ export function evaluate(expression, getField) {
   }
   function parseUnary() {
     const t = peek();
-    if (t?.type === 'op' && t.value === '-') { next(); return -Number(parseUnary()); }
-    if (t?.type === 'op' && t.value === '!') { next(); return !truthy(parseUnary()); }
+    if (t?.type === 'op' && t.value === '-') { next(); return -Number(nestedIn(parseUnary)); }
+    if (t?.type === 'op' && t.value === '!') { next(); return !truthy(nestedIn(parseUnary)); }
     return parseAtom();
   }
   function parseAtom() {
@@ -232,10 +243,10 @@ export function evaluate(expression, getField) {
         next();
         const args = [];
         if (!(peek()?.type === 'op' && peek().value === ')')) {
-          args.push(parseOr());
+          args.push(nestedIn(parseOr));
           while (peek()?.type === 'op' && peek().value === ',') {
             next();
-            args.push(parseOr());
+            args.push(nestedIn(parseOr));
           }
         }
         expectOp(')');
@@ -246,7 +257,7 @@ export function evaluate(expression, getField) {
       return getField(t.value);
     }
     if (t.type === 'op' && t.value === '(') {
-      const v = parseOr();
+      const v = nestedIn(parseOr);
       expectOp(')');
       return v;
     }
@@ -259,7 +270,11 @@ export function evaluate(expression, getField) {
 }
 
 export function check(expression, fieldNames = []) {
-  if (!String(expression ?? '').trim()) return { ok: false, error: 'Formula is empty' };
+  const source = String(expression ?? '');
+  if (!source.trim()) return { ok: false, error: 'Formula is empty' };
+  if (source.length > MAX_EXPRESSION_CHARS) {
+    return { ok: false, error: `Formula is longer than ${MAX_EXPRESSION_CHARS} characters` };
+  }
   const known = new Set([...fieldNames, 'PublicId']);
   try {
     evaluate(expression, (name) => {

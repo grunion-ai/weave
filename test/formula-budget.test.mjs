@@ -29,7 +29,7 @@ test('one oversized value is refused before it is joined (Issue #1604)', () => {
 });
 
 test('check still passes an expression whose stand-in values are small (Issue #1604)', () => {
-  assert.deepEqual(check(`concat(${args('Text', 4000)})`, ['Text']), { ok: true });
+  assert.deepEqual(check(`concat(${args('Text', 400)})`, ['Text']), { ok: true });
 });
 
 function chained(rows) {
