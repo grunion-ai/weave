@@ -1,2 +1,0 @@
-- **Formula expression budget** (Issue #1605): a formula is refused past 8,192 characters, so one oversized expression can no longer make every read of its table cost milliseconds a row.
-- **Formula nesting limit** (Issue #1612): nesting past 100 levels is refused with `Formula nests more than 100 levels deep` rather than V8's `Maximum call stack size exceeded`.
