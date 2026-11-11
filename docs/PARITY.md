@@ -82,7 +82,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 52 | Outgoing webhooks | ✅ | automation action, fire-and-forget JSON POST |
 | 53 | REST API | ✅ | full surface, honest status codes, CORS |
 | 54 | Query language w/ relation traversal | ✅ | dotted paths, and/or, select/sort/paginate |
-| 55 | Full-text search | ✅ | SQLite FTS5 over names, documents and comments; ranked with snippets |
+| 55 | Full-text search | ✅ | Substring match over names, text values, documents and comments; ranked with snippets |
 | 56 | CSV export | ✅ | display values, proper quoting |
 | 57 | CSV import | ✅ | typed coercion, atomic rows, error report |
 | 58 | JSON backup / restore | ✅ | JSON export and import, plus `weave backup`: one sealed tar of every workspace, attachments and keystore |
