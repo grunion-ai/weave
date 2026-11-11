@@ -503,7 +503,7 @@ test('detach stages sidecar writes and preserves source on a failed destination 
   detachHubRegistry(reopenedRoot, [reopenedMember]);
   assert.deepEqual(reopenedMember.readFileStorage(file.id).items, { saved: 'yes' });
   assert.equal(reopenedMember.readFile(file.id).bytes.toString(), 'page');
-  reopenedRoot.store.pushUndo({ kind: 'file-attach', entityId: row.id, data: { fileId: file.id } });
+  reopenedRoot.store.pushUndo({ actor: reopenedRoot.actor, kind: 'file-attach', entityId: row.id, data: { fileId: file.id } });
   const result = reopenedRoot.undo();
   assert.equal(result.undone[0].skipped, 'entity moved to its workspace');
   assert.throws(() => reopenedRoot.restoreEntity(row.id), /moved to its workspace/);

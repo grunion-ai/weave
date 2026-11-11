@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,
   actor TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS undo_log (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL, actor TEXT);
 CREATE TABLE IF NOT EXISTS doc_revisions (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
   at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
@@ -75,6 +75,21 @@ export const DOC_REVISION_CAP = 200;
 function addRestoredFrom(exec) {
   try { exec('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
   catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+}
+
+function undoByActor(db) {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('undo_log') WHERE name = 'actor'").get()) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec('ALTER TABLE undo_log ADD COLUMN actor TEXT');
+      db.exec("UPDATE undo_log SET actor = json_extract(json, '$.actor')");
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_undo_actor ON undo_log(actor, seq)');
 }
 
 function uniquePublicIds(db) {
@@ -214,6 +229,7 @@ export class Store {
     }
     db.exec(SCHEMA);
     addRestoredFrom((q) => db.exec(q));
+    undoByActor(db);
     uniquePublicIds(db);
     try {
       db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)");
@@ -261,26 +277,32 @@ export class Store {
   #memUndo = [];
 
   pushUndo(entry) {
+    const actor = entry.actor ?? null;
     if (!this.#db) {
       this.#memUndo.push(entry);
-      if (this.#memUndo.length > UNDO_CAP) this.#memUndo = this.#memUndo.slice(-UNDO_CAP);
+      const mine = this.#memUndo.filter((u) => (u.actor ?? null) === actor);
+      if (mine.length > UNDO_CAP) this.#memUndo.splice(this.#memUndo.indexOf(mine[0]), 1);
       return;
     }
-    this.#db.prepare('INSERT INTO undo_log (json) VALUES (?)').run(JSON.stringify(entry));
-    this.#db.prepare('DELETE FROM undo_log WHERE seq <= (SELECT MAX(seq) FROM undo_log) - ?').run(UNDO_CAP);
+    this.#db.prepare('INSERT INTO undo_log (json, actor) VALUES (?, ?)').run(JSON.stringify(entry), actor);
+    this.#db.prepare(`DELETE FROM undo_log WHERE actor IS ? AND seq <=
+      (SELECT seq FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT 1 OFFSET ?)`).run(actor, actor, UNDO_CAP);
   }
 
-  popUndo() {
-    if (!this.#db) return this.#memUndo.pop() ?? null;
-    const row = this.#db.prepare('SELECT seq, json FROM undo_log ORDER BY seq DESC LIMIT 1').get();
+  popUndo(actor = null) {
+    if (!this.#db) {
+      const at = this.#memUndo.findLastIndex((u) => (u.actor ?? null) === actor);
+      return at < 0 ? null : this.#memUndo.splice(at, 1)[0];
+    }
+    const row = this.#db.prepare('SELECT seq, json FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT 1').get(actor);
     if (!row) return null;
     this.#db.prepare('DELETE FROM undo_log WHERE seq = ?').run(row.seq);
     return JSON.parse(row.json);
   }
 
-  listUndo({ limit = 20 } = {}) {
-    if (!this.#db) return this.#memUndo.slice(-limit).reverse();
-    return this.#db.prepare('SELECT json FROM undo_log ORDER BY seq DESC LIMIT ?').all(limit)
+  listUndo({ limit = 20, actor = null } = {}) {
+    if (!this.#db) return this.#memUndo.filter((u) => (u.actor ?? null) === actor).slice(-limit).reverse();
+    return this.#db.prepare('SELECT json FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT ?').all(actor, limit)
       .map((r) => JSON.parse(r.json));
   }
 

@@ -686,14 +686,15 @@ test('search and undo answer the same on CLI, MCP and HTTP, each door with its o
     assert.deepEqual(hit(cliFound), hit(engine.search('zebra finch', { limit: 5 })), 'weave search still runs the record search');
     d.cli(['update', 'Task#1', '--values', '{"Points":2}']);
     d.mcp('weave_update_entity', { entity: idOf(d.mcpWeave), values: { Points: 2 } });
-    await d.http('PATCH', `/api/entities/${idOf(d.httpWeave)}`, { values: { Points: 2 } });
-    const history = { cli: d.cli(['undo', '--list']), mcp: d.mcp('weave_undo', { list: true }), http: await d.http('GET', '/api/undo') };
+    const seeder = { 'x-weave-actor': 'local' };
+    await d.http('PATCH', `/api/entities/${idOf(d.httpWeave)}`, { values: { Points: 2 } }, seeder);
+    const history = { cli: d.cli(['undo', '--list']), mcp: d.mcp('weave_undo', { list: true }), http: await d.http('GET', '/api/undo', undefined, seeder) };
     assert.ok(history.http.length >= 1);
     assert.deepEqual(hit(history.mcp.history), hit(history.http), 'weave_undo {list} and GET /api/undo answer alike');
     assert.deepEqual(hit(history.cli), hit(history.http), 'weave undo --list and GET /api/undo answer alike');
     assert.deepEqual(hit(d.cli(['undo', 'list'])), hit(history.http), 'weave undo list lists too');
-    assert.equal((await d.http('GET', '/api/undo?limit=1')).length, 1);
-    const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}) };
+    assert.equal((await d.http('GET', '/api/undo?limit=1', undefined, seeder)).length, 1);
+    const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}, seeder) };
     assert.deepEqual(hit(undone.mcp), hit(undone.http), 'weave_undo and POST /api/undo answer alike');
     assert.deepEqual(hit(undone.cli), hit(undone.http), 'weave undo and POST /api/undo answer alike');
     for (const [method, path, name] of [['GET', '/api/search', 'search'], ['GET', '/api/undo', 'undo.list'], ['POST', '/api/undo', 'undo.run']]) {
