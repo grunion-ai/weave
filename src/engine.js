@@ -8916,9 +8916,10 @@ export class Weave {
         let resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast && f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) resolved = lastNumber(resolved);
         if (isLast) {
-          results.push((undressed || numbers) && typeof resolved === 'number' ? resolved
-            : undressed && f.type === 'date' ? resolved
-            : undressed && f.type === 'daterange' ? DG.rangeKey(resolved)
+          const bare = undressed || numbers;
+          results.push(bare && typeof resolved === 'number' ? resolved
+            : bare && f.type === 'date' ? resolved
+            : bare && f.type === 'daterange' ? DG.rangeKey(resolved)
             : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
             : this.#displayValue(cdb, f, resolved, ce));
         } else {
