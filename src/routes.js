@@ -285,7 +285,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const viewerZone = rx.header('x-weave-zone') || null;
     let versionOf = null;
     const out = (status, data, headers = {}) => {
-      const isBin = data instanceof Uint8Array;
+      const isBin = data instanceof Uint8Array || typeof data?.pipe === 'function';
       const isStr = typeof data === 'string';
       let schemaVersion = null;
       try { schemaVersion = versionOf?.schemaVersion?.() ?? null; } catch {}
@@ -1144,12 +1144,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(200, { account: account.name, quota: cloudBackups.quota, used: backups.reduce((n, b) => n + b.bytes, 0), backups });
         }
         if (rx.method === 'GET') {
-          const bytes = await cloudBackups.get(account.id, archive);
-          return out(200, new Uint8Array(bytes), { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${archive}"`, 'Cache-Control': 'no-store' });
+          const { body, bytes } = await cloudBackups.open(account.id, archive);
+          return out(200, body, { 'Content-Type': 'application/octet-stream', ...(bytes == null ? {} : { 'Content-Length': String(bytes) }), 'Content-Disposition': `attachment; filename="${archive}"`, 'Cache-Control': 'no-store' });
         }
         if (rx.method === 'PUT' && archive) {
-          if (!rx.readBytes) return out(400, { error: 'This deployment cannot take an archive upload.', code: 'invalid' });
-          return out(201, await cloudBackups.put(account.id, archive, await rx.readBytes(cloudBackups.quota)));
+          if (!rx.bodyStream) return out(400, { error: 'This deployment cannot take an archive upload.', code: 'invalid' });
+          if (Number(rx.header('content-length')) > cloudBackups.quota) throw new WeaveError(`Body too large: ${cloudBackups.quota} bytes at most`, 'too-large');
+          return out(201, await cloudBackups.put(account.id, archive, rx.bodyStream()));
         }
         return out(405, { error: 'Backups answer GET /api/backups, GET /api/backups/<name> and PUT /api/backups/<name>', code: 'method-not-allowed' }, { Allow: 'GET, PUT' });
       }
