@@ -1,2 +1,0 @@
-- A write drops the cached sort orders, filter hits and bar scales of its own table and of the tables that read it through a relation or a table rollup, and a save that writes no row drops none. At 20,000 rows the first page sorted by a lookup after a write to another table takes 1.2 ms instead of 27 ms (Issue #1613).
-- Renewing a session no longer moves `X-Weave-Schema-Version`, so an open tab stops refetching the schema about once a minute for every signed-in session (Issue #1731).

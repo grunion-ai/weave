@@ -1,1 +1,0 @@
-- A field saved on the record page, docked or full, redraws only the rows whose value changed, from the entity its save returned: no re-read of the record and its references, and every open document keeps its editor, caret and undo history. The grid beside the dock repaints that row from the save queue the moment the save lands ([[Issue#1681]]).

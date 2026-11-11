@@ -1,1 +1,0 @@
-- A backup pushed to weave cloud goes to the bucket in 8 MiB parts as it arrives, and a download streams from the bucket to the caller, so a 200 MiB archive grows the server by under 64 MiB where it took 600 to 770 MiB before. A push that runs past the quota is refused the moment it does, and its uploaded parts are deleted (Issue #1636).

@@ -2,6 +2,22 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.135 (2026-11-11)
+
+- A backup pushed to weave cloud goes to the bucket in 8 MiB parts as it arrives, and a download streams from the bucket to the caller, so a 200 MiB archive grows the server by under 64 MiB where it took 600 to 770 MiB before. A push that runs past the quota is refused the moment it does, and its uploaded parts are deleted (Issue #1636).
+- An agent no longer overwrites a document change it never saw. Through MCP, a replace with `weave_set_doc`, or a document value in `weave_update_entity`, lands only on the text that agent last read with `weave_get_doc` or `weave_get_entity`, or on an empty document; otherwise nothing is written and the refusal names the current base. `weave_set_doc` takes that `base` and answers the next one, and an append still needs no base ([[Issue#1682]]).
+- The Tasks applet sends a base with every description write. The server answers each base; the phone hashes one itself only while a write is still out, so plain http without `crypto.subtle` works too. If someone changed the description first, nothing is written: the sheet says Not saved and keeps your text, and the toast offers Use mine ([[Issue#1682]]).
+- Tasks applet toasts show above the task detail and the description sheet, so a failed save is no longer silent ([[Issue#1733]]).
+- `docs/grid.md` names the function that owns each visible grid behaviour and the pure core that holds its logic, so a grid change starts from the map rather than a read of `renderTable` and a chain of greps. `test/grid-map.test.mjs` fails when the map names code that is gone ([[Issue#1695]]).
+- A grid redraw puts the cursor back on the field it left, not on whatever column now sits at that index, and the scroll snapshot reads the app's pane scrollers instead of every node in the document ([[Issue#1698]]).
+- A table wider than its pane shades its trailing edge, so the columns hiding to the right say they are there; the shade clears once the reader scrolls to the end ([[Issue#1371]]).
+- Opening a record no longer sends one document-history request per document field. The warm-up asked for two revisions of each document, a page nothing reads: the activity pane asks for its own ([[Issue#1691]]).
+- A field saved on the record page, docked or full, redraws only the rows whose value changed, from the entity its save returned: no re-read of the record and its references, and every open document keeps its editor, caret and undo history. The grid beside the dock repaints that row from the save queue the moment the save lands ([[Issue#1681]]).
+- Renaming a field rewrites every formula on its table that names it, bare when the new name allows and in brackets otherwise, and the rename's Activity entry lists each formula before and after; rolling the rename back renames it in those formulas too. While a formula reads the field, a name no formula can spell is refused, and the refusal names the formulas (Issue #1622).
+- A field can no longer be renamed onto a name another field of its table holds, which left two columns answering to one name (Issue #1732).
+- A write drops the cached sort orders, filter hits and bar scales of its own table and of the tables that read it through a relation or a table rollup, and a save that writes no row drops none. At 20,000 rows the first page sorted by a lookup after a write to another table takes 1.2 ms instead of 27 ms (Issue #1613).
+- Renewing a session no longer moves `X-Weave-Schema-Version`, so an open tab stops refetching the schema about once a minute for every signed-in session (Issue #1731).
+
 ## v0.4.134 (2026-11-11)
 
 - **Formula expression budget** (Issue #1605): a formula is refused past 8,192 characters, so one oversized expression can no longer make every read of its table cost milliseconds a row.
