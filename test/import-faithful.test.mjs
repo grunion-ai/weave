@@ -98,6 +98,7 @@ test('the repair resurrects nothing: a deleted column stays deleted across expor
   const w = source();
   const tasks = w.getTable('Product/Task');
   const estimate = Object.values(tasks.fields).find((f) => f.name === 'Estimate');
+  w.deleteField(tasks.id, 'Size');
   w.deleteField(tasks.id, estimate.id);
 
   const far = new Weave();

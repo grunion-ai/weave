@@ -3370,14 +3370,13 @@ export class Weave {
           }
         }
         nameTypeChange?.();
+        const dropped = (existing) => !existing.system && existing.id !== db.nameFieldId && !(existing.type === 'relation' && existing.inverseOf)
+          && !(tDoc.fields ?? []).some((f) => f.name === existing.name);
+        const going = new Set(Object.values(db.fields).filter(dropped).map((f) => f.id));
         for (const existing of Object.values(db.fields)) {
-          if (existing.system || existing.id === db.nameFieldId) continue;
-          if (existing.type === 'relation' && existing.inverseOf) continue;
-          const still = (tDoc.fields ?? []).some((f) => f.name === existing.name);
-          if (!still) {
-            if (!allowDestructive) throw new WeaveError(`Applying this document would delete '${qualified}.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
-            act('delete-field', `${qualified}.${existing.name}`, () => this.deleteField(db.id, existing.id));
-          }
+          if (!dropped(existing)) continue;
+          if (!allowDestructive) throw new WeaveError(`Applying this document would delete '${qualified}.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
+          act('delete-field', `${qualified}.${existing.name}`, () => this.deleteField(db.id, existing.id, { going }));
         }
         if ((tDoc.fields ?? []).length) {
           const wanted = [];
@@ -6510,6 +6509,65 @@ export class Weave {
     return out;
   }
 
+  #wherePaths(db, node, field, to) {
+    let hit = false;
+    const walk = (n) => {
+      if (Array.isArray(n) && n.length === 3 && typeof n[0] === 'string') {
+        const parts = n[0].split('.');
+        let at = db;
+        for (let i = 0; i < parts.length && at; i++) {
+          const f = this.findField(at, parts[i]);
+          if (!f) break;
+          if (f === field) { hit = true; if (to != null) parts[i] = to; }
+          at = f.type === 'relation' && i < parts.length - 1 ? this.state.tables[f.config.targetDb] : null;
+        }
+        return [parts.join('.'), n[1], n[2]];
+      }
+      if (Array.isArray(n)) return n.map(walk);
+      if (n && typeof n === 'object' && (n.and || n.or)) return n.and ? { ...n, and: n.and.map(walk) } : { ...n, or: n.or.map(walk) };
+      return n;
+    };
+    const node2 = walk(node);
+    return { hit, node: node2 };
+  }
+
+  #fieldSettings(field, to = null) {
+    const out = [];
+    for (const t of Object.values(this.state.tables)) {
+      for (const f of Object.values(t.fields)) {
+        if (f.type === 'rollup' && f.config.via && f.config.where) {
+          const via = this.#tableAnywhere(f.config.via)?.table;
+          const where = via ? this.#wherePaths(via, f.config.where, field, to) : null;
+          if (where?.hit) out.push({ t, f, setting: 'where', paths: true, before: f.config.where, after: where.node });
+        }
+        const sub = f.type === 'relation' ? f.config.subtable : null;
+        const target = sub && this.state.tables[f.config.targetDb];
+        if (!target) continue;
+        const named = (n) => this.findField(target, n) === field;
+        const filter = sub.filter ? this.#wherePaths(target, sub.filter, field, to) : null;
+        if (!filter?.hit && !(sub.fields ?? []).some(named) && !(sub.sort ?? []).some((s) => named(s.field))) continue;
+        const after = { ...sub };
+        if (sub.fields) after.fields = sub.fields.map((n) => (named(n) ? to : n));
+        if (filter) after.filter = filter.node;
+        if (sub.sort) after.sort = sub.sort.map((s) => (named(s.field) ? { ...s, field: to } : s));
+        out.push({ t, f, setting: 'subtable', paths: !!filter?.hit, before: sub, after });
+      }
+    }
+    return out;
+  }
+
+  #fieldReaders(db, field, going = null) {
+    const reads = (name) => this.findField(db, name) === field;
+    const formulas = Object.values(db.fields).filter((f) => {
+      if (f.type !== 'formula' || f === field || going?.has(f.id)) return false;
+      let hit = false;
+      renameReferences(f.config.expression ?? '', (name) => { if (reads(name)) hit = true; return false; }, field.name);
+      return hit;
+    }).map((f) => `${db.name}.${f.name}`);
+    const settings = this.#fieldSettings(field).filter((s) => !going?.has(s.f.id)).map((s) => `${s.t.name}.${s.f.name}`);
+    return [...this.#targetFieldReaders(field.id, going), ...formulas, ...settings];
+  }
+
   updateField(dbRef, fieldRef, patch) {
     this.#mayShape(dbRef);
     return this.#updateField(dbRef, fieldRef, patch, null).field;
@@ -6531,16 +6589,24 @@ export class Weave {
     const nextRecipe = recipeSent && !field.config.via ? this.#repoint(db, field, patch.config) : null;
     let renamed = false;
     let rewritten = [];
+    let settings = [];
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
       const holder = this.findField(db, patch.name);
       if (holder && holder !== field) throw new WeaveError(`Field '${patch.name}' already exists`, 'conflict');
       rewritten = this.#formulaRenames(db, field, patch.name);
+      settings = this.#fieldSettings(field, patch.name);
+      const pathed = settings.filter((s) => s.paths).map((s) => `${s.t.name}.${s.f.name}`);
+      if (patch.name.includes('.') && pathed.length) {
+        const one = pathed.length === 1;
+        throw new WeaveError(`A filter path splits on '.', so it cannot name a field '${patch.name}': ${pathed.join(', ')} ${one ? 'reads' : 'read'} '${field.name}'. Pick a name without '.', or change ${one ? 'that filter' : 'those filters'} first`, 'invalid');
+      }
       for (const v of db.tableViews ?? []) {
         if (v.filters?.[field.name]) { v.filters[patch.name] = v.filters[field.name]; delete v.filters[field.name]; }
         for (const s of v.sort ?? []) if (s.field === field.name) s.field = patch.name;
       }
       for (const r of rewritten) r.f.config.expression = r.after;
+      for (const s of settings) s.f.config[s.setting] = s.after;
       field.name = patch.name;
       renamed = true;
     }
@@ -6603,7 +6669,7 @@ export class Weave {
       }
     }
     this.#syncFieldRow(db, field);
-    for (const r of rewritten) this.#syncFieldRow(db, r.f);
+    for (const r of [...rewritten, ...settings]) this.#syncFieldRow(r.t ?? db, r.f);
     if (renamed) this.#syncTableRow(db);
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
@@ -6613,7 +6679,7 @@ export class Weave {
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
         ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
-        ...(rewritten.length ? { rewritten: rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })) } : {}),
+        ...(rewritten.length || settings.length ? { rewritten: [...rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })), ...settings.map(({ t, f, setting, before, after }) => ({ field: `${t.name}.${f.name}`, setting, before, after }))] } : {}),
         ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
@@ -6977,7 +7043,7 @@ export class Weave {
     return { rows: snapshot, counts };
   }
 
-  deleteField(dbRef, fieldRef, { hard = false } = {}) {
+  deleteField(dbRef, fieldRef, { hard = false, going = null } = {}) {
     this.#mayShape(dbRef);
     const db = this.getTable(dbRef);
     const binned = this.findField(db, fieldRef) ? null : this.#trashedField(db, fieldRef);
@@ -6989,9 +7055,10 @@ export class Weave {
     if (field.id === db.nameFieldId) throw new WeaveError('Cannot delete the Name field', 'invalid');
     if (field.type === 'view') throw new WeaveError(`Cannot delete '${field.name}': every record has a ${field.config.shape} by existing — hide it instead`, 'invalid');
     if (field.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
-    const readers = this.#targetFieldReaders(field.id);
+    const readers = this.#fieldReaders(db, field, going);
     if (readers.length) {
-      throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${readers.length === 1 ? 's' : ''} it — delete ${readers.length === 1 ? 'that field' : 'those fields'} first`, 'invalid');
+      const one = readers.length === 1;
+      throw new WeaveError(`Cannot delete '${field.name}': ${readers.join(', ')} read${one ? 's' : ''} it. Change or delete ${one ? 'that' : 'those'} first`, 'invalid');
     }
     const entry = hard || db.system ? null : this.#fieldTrashEntry(db, field);
     const touched = this.#spacesTouching(db, field);
@@ -7172,11 +7239,11 @@ export class Weave {
     }
   }
 
-  #targetFieldReaders(fieldId) {
+  #targetFieldReaders(fieldId, going = null) {
     const out = [];
     for (const t of Object.values(this.state.tables)) {
       for (const f of Object.values(t.fields)) {
-        if ((f.type === 'lookup' || f.type === 'rollup') && f.config.targetField === fieldId) out.push(`${t.name}.${f.name}`);
+        if ((f.type === 'lookup' || f.type === 'rollup') && f.config.targetField === fieldId && !going?.has(f.id)) out.push(`${t.name}.${f.name}`);
       }
     }
     return out;
