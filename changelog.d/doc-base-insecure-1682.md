@@ -1,0 +1,1 @@
+- The web editor sends a document base over plain http too. Browsers withhold `crypto.subtle` outside https and localhost, so the editor hashes the text it opened with its own SHA-256. A save over a change made elsewhere is refused and keeps its draft instead of overwriting it ([[Issue#1682]]).
