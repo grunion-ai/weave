@@ -1244,7 +1244,7 @@ function nowISO() {
 function schemaFingerprint(state) {
   const { spaces = {}, tables = {}, automations = {}, entities, ...meta } = state ?? {};
   const drop = (key, value) => (key === 'publicIdCounter' || key === 'activitySeq' ? undefined : value);
-  const parts = [JSON.stringify(meta, drop)];
+  const parts = [JSON.stringify({ ...meta, meta: meta.meta && { ...meta.meta, sessions: undefined } }, drop)];
   for (const collection of [spaces, tables, automations]) {
     for (const id of Object.keys(collection).sort()) parts.push(id, JSON.stringify(collection[id], drop));
   }
@@ -1255,6 +1255,17 @@ function schemaFingerprint(state) {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return `${text.length.toString(16)}${h.toString(16).padStart(8, '0')}`;
+}
+
+function tableReaders(tables) {
+  const readers = new Map();
+  for (const db of Object.values(tables)) {
+    for (const f of Object.values(db.fields ?? {})) {
+      const read = f.type === 'relation' ? f.config.targetDbs ?? [f.config.targetDb] : f.type === 'rollup' && f.config.via ? [f.config.via] : [];
+      for (const id of read) if (id) readers.set(id, (readers.get(id) ?? new Set()).add(db.id));
+    }
+  }
+  return readers;
 }
 
 export function templateDoc(spaceDoc, { name, rollups = [] } = {}) {
@@ -1565,7 +1576,6 @@ export class Weave {
   #detachedStorage = null;
 
   #schemaVersion = null;
-  #scales = new Map();
   #rows = null;
   #query = null;
   #cutoffs = 0;
@@ -2001,8 +2011,6 @@ export class Weave {
       this.#dirtyAll = false;
     }
     this.#schemaVersion = null;
-    this.#scales.clear();
-    this.#forgetDerived();
   }
 
   #touching = null;
@@ -2039,7 +2047,7 @@ export class Weave {
     }
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
-    this.#forgetDerived();
+    for (const w of this.#engines()) w.#forgetDerived(e?.dbId ?? null);
     this.#touching?.add(id);
     if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; }
   }
@@ -2062,7 +2070,6 @@ export class Weave {
       this.#migrateAutomations();
     }
     this.#schemaVersion = null;
-    this.#scales.clear();
     this.#forgetDerived();
     return true;
   }
@@ -7194,19 +7201,45 @@ export class Weave {
   #rowIndex() {
     const entities = this.state.entities;
     if (this.#rows?.entities !== entities) {
-      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), liveCounts: null };
+      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), scales: new Map(), cached: new Set(), schema: null, readers: null, reach: null, liveCounts: null };
       for (const e of Object.values(entities)) this.#indexRow(e);
     }
     return this.#rows;
   }
 
-  #forgetDerived() {
+  #derived() {
+    const index = this.#rowIndex();
+    const schema = this.schemaVersion();
+    if (index.schema !== schema) {
+      this.#forgetDerived();
+      index.schema = schema;
+      index.readers = tableReaders(this.state.tables);
+      index.reach = new Map();
+    }
+    return index;
+  }
+
+  #forgetDerived(dbId = null) {
     const index = this.#rows;
     if (!index) return;
-    index.sortKeys.clear();
-    index.sortOrders.clear();
-    index.whereHits.clear();
     index.liveCounts = null;
+    if (!index.cached.size) return;
+    const maps = [index.sortKeys, index.sortOrders, index.whereHits, index.scales];
+    if (dbId == null) {
+      for (const map of maps) map.clear();
+      index.cached.clear();
+      return;
+    }
+    let reach = index.reach.get(dbId);
+    if (!reach) {
+      reach = new Set([dbId]);
+      for (const id of reach) for (const reader of index.readers.get(id) ?? []) reach.add(reader);
+      index.reach.set(dbId, reach);
+    }
+    let held = false;
+    for (const id of reach) if (index.cached.delete(id)) held = true;
+    if (!held) return;
+    for (const map of maps) for (const key of map.keys()) if (reach.has(key.slice(0, key.indexOf('\n')))) map.delete(key);
   }
 
   #derivedKey(db, ...parts) {
@@ -7218,11 +7251,12 @@ export class Weave {
   #remember(map, key, value) {
     if (map.size >= DERIVED_CACHE_CAP) map.delete(map.keys().next().value);
     map.set(key, value);
+    this.#rows.cached.add(key.slice(0, key.indexOf('\n')));
     return value;
   }
 
   #sortKeys(db, path) {
-    const index = this.#rowIndex();
+    const index = this.#derived();
     const key = this.#derivedKey(db, String(path));
     return index.sortKeys.get(key) ?? this.#remember(index.sortKeys, key, new Map());
   }
@@ -8576,7 +8610,6 @@ export class Weave {
     if (!loaded) return;
     this.state = loaded;
     this.#schemaVersion = null;
-    this.#scales.clear();
     this.#forgetDerived();
   }
 
@@ -8696,12 +8729,14 @@ export class Weave {
     const d = this.#numberDisplay(db, f);
     if (!d) return null;
     if (typeof d.scale === 'number') return d.scale;
-    const key = `${db.id}:${f.id}:${this.#hiddenKey()}`;
-    if (!this.#scales.has(key)) {
+    const index = this.#derived();
+    const key = this.#derivedKey(db, f.id);
+    if (!index.scales.has(key)) {
       const vals = this.listEntities(db.id).map((r) => this.#resolve(r, db, f, 0)).filter((v) => typeof v === 'number' && Number.isFinite(v));
-      this.#scales.set(key, vals.length ? aggregateValues('max', vals) : null);
+      index.scales.set(key, vals.length ? aggregateValues('max', vals) : null);
+      index.cached.add(db.id);
     }
-    return this.#scales.get(key);
+    return index.scales.get(key);
   }
 
   #ratingOf(db, f) {
@@ -8791,7 +8826,7 @@ export class Weave {
     const trashed = trashCount ? table.length - live : null;
     const filtered = where && (Array.isArray(where) ? where.length : true);
     if (filtered) {
-      const index = this.#rowIndex();
+      const index = this.#derived();
       const whereKey = this.#derivedKey(db, JSON.stringify(where));
       const hits = index.whereHits.get(whereKey);
       if (hits) rows = rows.filter((e) => hits.has(e.id));
@@ -8804,7 +8839,7 @@ export class Weave {
       }
     }
     const orderKey = sort.length && !inWs && !filtered && !String(search ?? '').trim() ? this.#derivedKey(db, JSON.stringify(sort), String(!!includeDeleted)) : null;
-    const ordered = orderKey ? this.#rowIndex().sortOrders.get(orderKey) : undefined;
+    const ordered = orderKey ? this.#derived().sortOrders.get(orderKey) : undefined;
     if (ordered) rows = ordered;
     else {
       if (sort.length) rows = [...rows].sort((a, b) => a.publicId - b.publicId);
