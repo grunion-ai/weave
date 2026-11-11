@@ -1,13 +1,14 @@
 import {
-  readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync,
-  openSync, readSync, writeSync, closeSync, mkdtempSync, rmSync, renameSync, createReadStream,
+  readFileSync, mkdirSync, existsSync, readdirSync, statSync,
+  openSync, readSync, writeSync, closeSync, fsyncSync, mkdtempSync, rmSync, renameSync, createReadStream, createWriteStream,
 } from 'node:fs';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, scryptSync, createCipheriv, createDecipheriv } from 'node:crypto';
-import { WeaveError, writeFileDurable } from './store.js';
+import { WeaveError } from './store.js';
 import { openKeyStore, keystoreFilePath } from './keystore.js';
 
 let DatabaseSync = null;
@@ -18,6 +19,7 @@ const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.u
 export const ARCHIVE_PREFIX = 'weave-backup-';
 export const RETAIN = 30;
 const CHUNK = 1024 * 1024;
+const STREAM_CHUNK = 16 * 1024;
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
 const BLOCK = 512;
@@ -195,6 +197,28 @@ export function encryptFile(src, dst, passphrase, { salt, iv } = {}) {
   } finally { closeSync(s); closeSync(d); }
 }
 
+const cannotDecrypt = () => new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
+const SEALED_HEAD = MAGIC.length + 16 + 12;
+
+async function* unsealed(path, passphrase) {
+  const size = statSync(path).size;
+  if (size < SEALED_HEAD + 16) throw new WeaveError('Not an encrypted weave archive', 'invalid');
+  const head = Buffer.alloc(SEALED_HEAD), tag = Buffer.alloc(16);
+  const fd = openSync(path, 'r');
+  try {
+    readSync(fd, head, 0, SEALED_HEAD, 0);
+    readSync(fd, tag, 0, 16, size - 16);
+  } finally { closeSync(fd); }
+  const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), head.subarray(MAGIC.length, MAGIC.length + 16), 32), head.subarray(MAGIC.length + 16), { authTagLength: 16 });
+  decipher.setAuthTag(tag);
+  if (size > SEALED_HEAD + 16) {
+    for await (const chunk of createReadStream(path, { start: SEALED_HEAD, end: size - 17, highWaterMark: STREAM_CHUNK })) yield decipher.update(chunk);
+  }
+  let last;
+  try { last = decipher.final(); } catch { throw cannotDecrypt(); }
+  yield last;
+}
+
 export function decryptFile(src, dst, passphrase) {
   const size = statSync(src).size;
   const headLen = MAGIC.length + 16 + 12;
@@ -214,7 +238,7 @@ export function decryptFile(src, dst, passphrase) {
     try { writeSync(d, decipher.final()); } catch {
       closeSync(d); d = null;
       rmSync(dst, { force: true });
-      throw new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
+      throw cannotDecrypt();
     }
   } finally { closeSync(s); if (d != null) closeSync(d); }
 }
@@ -284,7 +308,7 @@ export function inspect(path) {
 const stamp = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
 const fileStream = (path) => Readable.toWeb(createReadStream(path, { highWaterMark: CHUNK }));
 const opened = (res) => {
-  const length = res.headers.get('content-length');
+  const length = res.headers.has('content-encoding') ? null : res.headers.get('content-length');
   return { body: res.body ? Readable.fromWeb(res.body) : Readable.from([]), bytes: length == null ? null : Number(length) };
 };
 
@@ -399,6 +423,48 @@ function refuseLive(dataDir) {
   if (held) throw new WeaveError(`${held} is held open by a running process: weave serve, weave mcp or another weave command. Stop the server first, then restore. --force does not override this, because that process would keep writing to the file the restore replaces`, 'conflict');
 }
 
+const LANDS = /^(?:[^/]+\.db|files\/[^/.][^/]*|_hub\.json|keystore\.json)$/;
+const READS = new Set(['manifest.json', 'keys.json']);
+
+async function unpack(chunks, dir) {
+  mkdirSync(dir);
+  const entries = [];
+  await streamTar(chunks, (name, bytes) => {
+    const e = { name, bytes, path: join(dir, String(entries.length)), sha256: null };
+    entries.push(e);
+    const fd = openSync(e.path, 'w');
+    const hash = createHash('sha256');
+    return {
+      write: (buf) => { writeSync(fd, buf); hash.update(buf); },
+      close: () => { closeSync(fd); e.sha256 = hash.digest('hex'); },
+    };
+  });
+  return entries;
+}
+
+function fileSha256(path) {
+  const hash = createHash('sha256');
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(CHUNK);
+    for (let n; (n = readSync(fd, buf, 0, CHUNK, null)) > 0;) hash.update(buf.subarray(0, n));
+  } finally { closeSync(fd); }
+  return hash.digest('hex');
+}
+
+function landFile(from, to, mode) {
+  mkdirSync(dirname(to), { recursive: true });
+  const temporary = `${to}.${randomBytes(8).toString('hex')}.tmp`;
+  try {
+    const src = openSync(from, 'r'), dst = openSync(temporary, 'wx', mode);
+    try {
+      pump(src, dst, (c) => c);
+      fsyncSync(dst);
+    } finally { closeSync(src); closeSync(dst); }
+    renameSync(temporary, to);
+  } finally { rmSync(temporary, { force: true }); }
+}
+
 export async function restore({ source, dataDir, env = process.env, passphraseEnv = null, force = false, fetchImpl = fetch, keyStore = null }) {
   dataDir = resolve(dataDir);
   mkdirSync(dataDir, { recursive: true });
@@ -414,41 +480,52 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
         if (!backups.length) throw new WeaveError(`${source} holds no backups yet`, 'not-found');
         name = backups.at(-1).name;
       }
-      writeFileSync(local, await c.get(name));
+      await pipeline((await c.open(name)).body, createWriteStream(local));
     } else if (/^s3:\/\//.test(source)) {
       const { bucket, prefix: key } = s3.parse(source);
-      writeFileSync(local, await s3.client({ env, fetchImpl }).get(bucket, key));
+      await pipeline((await s3.client({ env, fetchImpl }).open(bucket, key)).body, createWriteStream(local));
     } else if (/^https?:\/\//.test(source)) {
       const res = await fetchImpl(source);
       if (!res.ok) throw new WeaveError(`GET ${source} → ${res.status}`, 'not-found');
-      writeFileSync(local, Buffer.from(await res.arrayBuffer()));
+      await pipeline(opened(res).body, createWriteStream(local));
     } else {
       if (!existsSync(source)) throw new WeaveError(`Archive not found: ${source}`, 'not-found');
       local = resolve(source);
     }
-    let tarPath = local;
-    if (isEncrypted(local)) {
-      const passphrase = resolvePassphrase({ env, dataDir, passphraseEnv });
-      if (!passphrase) throw new WeaveError('The archive is encrypted — set WEAVE_BACKUP_PASSPHRASE (or WEAVE_KEYSTORE_PASSPHRASE, or --passphrase-env NAME) to the passphrase it was sealed with', 'invalid');
-      tarPath = join(scratch, 'plain.tar');
-      decryptFile(local, tarPath, passphrase);
+    const sealed = isEncrypted(local);
+    const passphrase = sealed ? resolvePassphrase({ env, dataDir, passphraseEnv }) : null;
+    if (sealed && !passphrase) throw new WeaveError('The archive is encrypted — set WEAVE_BACKUP_PASSPHRASE (or WEAVE_KEYSTORE_PASSPHRASE, or --passphrase-env NAME) to the passphrase it was sealed with', 'invalid');
+    let entries;
+    try {
+      entries = await unpack(sealed ? unsealed(local, passphrase) : createReadStream(local, { highWaterMark: STREAM_CHUNK }), join(scratch, 'entries'));
+    } catch (err) {
+      throw sealed && err instanceof WeaveError && err.code === 'invalid' ? cannotDecrypt() : err;
     }
-    const entries = readTar(tarPath);
-    const mf = entries.find((e) => e.name === 'manifest.json');
+    const byName = new Map();
+    for (const e of entries) {
+      if (byName.has(e.name)) throw new WeaveError(`The archive carries ${e.name} twice`, 'invalid');
+      byName.set(e.name, e);
+    }
+    const mf = byName.get('manifest.json');
     if (!mf) throw new WeaveError('Not a weave backup: the archive has no manifest.json', 'invalid');
-    const manifest = JSON.parse(mf.data.toString('utf8'));
+    const manifest = JSON.parse(readFileSync(mf.path, 'utf8'));
+    const foreign = entries.find((e) => !READS.has(e.name) && !LANDS.test(e.name));
+    if (foreign) throw new WeaveError(`The archive carries ${foreign.name}, which weave backup never writes: restore lands only workspaces, files/, _hub.json and keystore.json`, 'invalid');
+    const listed = new Set((manifest.entries ?? []).map((m) => m.name));
+    const unlisted = entries.find((e) => e.name !== 'manifest.json' && !listed.has(e.name));
+    if (unlisted) throw new WeaveError(`The archive carries ${unlisted.name}, which its manifest does not list`, 'invalid');
     let verified = 0;
     for (const m of manifest.entries ?? []) {
-      const e = entries.find((x) => x.name === m.name);
+      const e = byName.get(m.name);
       if (!e) throw new WeaveError(`The archive is missing ${m.name} that its manifest lists`, 'invalid');
-      if (sha256(e.data) !== m.sha256) throw new WeaveError(`sha256 mismatch on ${m.name}: the archive does not match its manifest`, 'invalid');
+      if (e.sha256 !== m.sha256) throw new WeaveError(`sha256 mismatch on ${m.name}: the archive does not match its manifest`, 'invalid');
       verified += 1;
     }
-    const landing = entries.filter((e) => e.name !== 'manifest.json' && e.name !== 'keystore.key' && e.name !== 'keys.json' && !e.name.split('/').includes('..') && !e.name.startsWith('/'));
-    const named = entries.find((e) => e.name === 'keys.json');
+    const landing = entries.filter((e) => LANDS.test(e.name));
+    const named = byName.get('keys.json');
     let keys = null;
     if (named) {
-      const { names = [] } = JSON.parse(named.data.toString('utf8'));
+      const { names = [] } = JSON.parse(readFileSync(named.path, 'utf8'));
       const held = (keyStore ?? openKeyStore({ path: keystorePath(env, dataDir), env })).read().keys;
       keys = { store: 'keychain', names, missing: names.filter((n) => !Object.hasOwn(held, n)) };
     }
@@ -456,7 +533,7 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
     const clash = force ? null : landing.find((e) => {
       const target = join(dataDir, e.name);
       if (!existsSync(target)) return false;
-      return /^[^/]+\.db$/.test(e.name) || e.name === 'keystore.json' || !readFileSync(target).equals(e.data);
+      return /^[^/]+\.db$/.test(e.name) || e.name === 'keystore.json' || statSync(target).size !== e.bytes || fileSha256(target) !== e.sha256;
     });
     if (clash) throw new WeaveError(`${join(dataDir, clash.name)} exists: pass --force to overwrite it`, 'conflict');
 
@@ -464,7 +541,7 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
     for (const e of landing) {
       const target = join(dataDir, e.name);
       if (e.name.endsWith('.db')) for (const s of ['-wal', '-shm']) rmSync(target + s, { force: true });
-      writeFileDurable(target, e.data, e.name === 'keystore.json' ? { mode: 0o600 } : {});
+      landFile(e.path, target, e.name === 'keystore.json' ? 0o600 : undefined);
       landed.push(e.name);
     }
     return {
@@ -587,7 +664,6 @@ export const s3 = {
     return {
       send: (bucket, key, chunks, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, chunks, partBytes),
       upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, createReadStream(path, { highWaterMark: CHUNK }), partBytes),
-      get: async (bucket, key) => Buffer.from(await (await call('GET', bucket, key)).arrayBuffer()),
       open: async (bucket, key) => opened(await call('GET', bucket, key)),
       delete: (bucket, key) => call('DELETE', bucket, key),
       list: async (bucket, prefix) => (await objects(bucket, prefix)).map((o) => o.key),
@@ -679,7 +755,7 @@ export const cloud = {
       ...d,
       put: async (name, body) => (await call('PUT', name, body)).json(),
       list: async () => (await call('GET')).json(),
-      get: async (name) => Buffer.from(await (await call('GET', name)).arrayBuffer()),
+      open: async (name) => opened(await call('GET', name)),
       migrate: async ({ name = null, slug = null, archive, key, workspace = null }) => {
         const url = `${d.origin}/api/workspaces`;
         const res = await fetchImpl(url, {
@@ -748,9 +824,6 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
         pruned.push(gone.name);
       }
       return { name, bytes, used, quota, kept: kept.length, pruned };
-    },
-    async get(account, name) {
-      return client().get(bucket, base(account) + named(name));
     },
     async open(account, name) {
       return client().open(bucket, base(account) + named(name));

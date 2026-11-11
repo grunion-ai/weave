@@ -1641,7 +1641,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
           const caller = bearer ? weave.verifyToken(bearer) : ownSession(weave);
           if (!caller) return deny(401, 'Migrating a backup needs an account on this workspace');
-          const archive = await cloudBackups.get(caller.id, source[1]);
+          const { body: archive } = await cloudBackups.open(caller.id, source[1]);
           const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
           const { owner, headers } = ownCreated(w);
           return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities, ...(owner ? { owner } : {}) }, headers);
