@@ -15,8 +15,6 @@ An expression over this record's own fields, recomputed on read.
 
 Field names go in bare when they are plain identifiers; anything else — a space, a keyword, a name that reads as a function — rides in `[brackets]`.
 
-Renaming a field rewrites every formula on its table that names it, bare or bracketed by the same rule, and the rename's Activity entry lists each formula before and after; Undo renames it back in those formulas too. While a formula reads the field, a new name no formula can spell (one holding `]`, or a space at either end) is refused, and the refusal names the formulas.
-
 ```
 Price * Count
 concat(upper(Category), " · ", Priority)

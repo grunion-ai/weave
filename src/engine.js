@@ -28,7 +28,7 @@ import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhauste
 import * as Shares from './shares.js';
 import { ANONYMOUS, RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
 import { nearestIcons } from './vocabulary.js';
-import { evaluate, check as checkExpression, references as formulaReferences, renameReferences } from './formula.js';
+import { evaluate, check as checkExpression, references as formulaReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
 import { FORMS_DESCRIPTION, ensureFormColumns, refuseOnDocs, adoptForms, normalizeFormValues } from './forms.js';
@@ -6492,24 +6492,6 @@ export class Weave {
     });
   }
 
-  #formulaRenames(db, field, to) {
-    const reads = (name) => name !== 'Name' && name !== field.id && this.findField(db, name) === field;
-    const out = [];
-    const stuck = [];
-    for (const f of Object.values(db.fields)) {
-      if (f.type !== 'formula') continue;
-      const before = f.config.expression ?? '';
-      const after = renameReferences(before, reads, to);
-      if (after == null) stuck.push(f.name);
-      else if (after !== before) out.push({ f, before, after });
-    }
-    if (stuck.length) {
-      const one = stuck.length === 1;
-      throw new WeaveError(`A formula cannot name a field '${to}': ${stuck.join(', ')} ${one ? 'reads' : 'read'} '${field.name}'. Pick a name with no ']' and no space at either end, or change ${one ? 'that formula' : 'those formulas'} first`, 'invalid');
-    }
-    return out;
-  }
-
   updateField(dbRef, fieldRef, patch) {
     this.#mayShape(dbRef);
     return this.#updateField(dbRef, fieldRef, patch, null).field;
@@ -6530,17 +6512,12 @@ export class Weave {
     if (recipeSent && field.config.via) this.#refuseSpaceRepoint(field, patch.config);
     const nextRecipe = recipeSent && !field.config.via ? this.#repoint(db, field, patch.config) : null;
     let renamed = false;
-    let rewritten = [];
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name) {
-      const holder = this.findField(db, patch.name);
-      if (holder && holder !== field) throw new WeaveError(`Field '${patch.name}' already exists`, 'conflict');
-      rewritten = this.#formulaRenames(db, field, patch.name);
       for (const v of db.tableViews ?? []) {
         if (v.filters?.[field.name]) { v.filters[patch.name] = v.filters[field.name]; delete v.filters[field.name]; }
         for (const s of v.sort ?? []) if (s.field === field.name) s.field = patch.name;
       }
-      for (const r of rewritten) r.f.config.expression = r.after;
       field.name = patch.name;
       renamed = true;
     }
@@ -6603,7 +6580,6 @@ export class Weave {
       }
     }
     this.#syncFieldRow(db, field);
-    for (const r of rewritten) this.#syncFieldRow(db, r.f);
     if (renamed) this.#syncTableRow(db);
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
@@ -6613,7 +6589,6 @@ export class Weave {
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
         ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
-        ...(rewritten.length ? { rewritten: rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })) } : {}),
         ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
