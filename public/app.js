@@ -716,10 +716,12 @@ const markStuckHeads = () => {
     if (th) grid.parentElement.classList.toggle('wv-head-stuck', th.getBoundingClientRect().top - grid.getBoundingClientRect().top > 0.5);
   }
 };
+const atSideEnd = (wrap) => wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 1;
 addEventListener('scroll', (e) => {
   const wrap = e.target;
   if (wrap instanceof HTMLElement && wrap.classList.contains('table-wrap')) {
     wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft >= 1);
+    wrap.classList.toggle('wv-at-end-x', atSideEnd(wrap));
   }
   headCheck ||= requestAnimationFrame(markStuckHeads);
 }, { capture: true, passive: true });
@@ -6371,6 +6373,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     wrap.classList.toggle('wv-fit', fit);
     wrap.classList.toggle('wv-overflow-x', !fit);
     wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
+    wrap.classList.toggle('wv-at-end-x', atSideEnd(wrap));
     fitGridScroller(wrap);
     settle();
     rewindow();
