@@ -87,7 +87,7 @@ test('a one-line public/app.js pull request runs this repository\'s whole gating
 test('this repository\'s browser helpers take in the shared browser driver and what it imports, and leave the unit-only server fixture out (Feature #368)', () => {
   const groups = gating(lanes(testFiles(ROOT), ROOT));
   const helpers = browserHelpers(groups.browser, (file) => readFileSync(join(ROOT, file), 'utf8'));
-  for (const file of ['test/lib/browser.mjs', 'test/lib/bug-report.mjs', 'test/lib/journeys.mjs', 'test/lib/states.mjs']) assert.ok(helpers.includes(file), file);
+  for (const file of ['test/lib/browser.mjs', 'test/lib/bug-report.mjs', 'test/lib/journeys.mjs', 'test/lib/view-pane.mjs']) assert.ok(helpers.includes(file), file);
   assert.ok(!helpers.includes('test/lib/fixtures.mjs'));
   assert.ok(helpers.every((file) => file.startsWith('test/lib/') && existsSync(join(ROOT, file))));
 });
