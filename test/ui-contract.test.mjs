@@ -268,6 +268,23 @@ test('every grid redraw remembers where focus was before it runs (Issue #83)', (
   }
 });
 
+test('the restore finds the cell by field name, not by column index (Issue #1698)', () => {
+  const remember = APP.slice(APP.indexOf('function rememberGridFocus'));
+  const rbody = remember.slice(0, remember.indexOf('\n}\n') + 2);
+  assert.match(rbody, /field: cell\.dataset\.field/, 'the field name is what identifies the cell');
+  const restore = APP.slice(APP.indexOf('function restoreGridFocus'));
+  const sbody = restore.slice(0, restore.indexOf('\n}\n') + 2);
+  assert.match(sbody, /td\[data-field="\$\{CSS\.escape\(want\.field\)\}"\]/, 'the restore selects the field, not children[col]');
+});
+
+test('a redraw snapshots the panes it replaces, not every node in the document (Issue #1698)', () => {
+  const fn = APP.slice(APP.indexOf('async function keepScroll'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.doesNotMatch(body, /querySelectorAll\('\*'\)/, 'walking the document reads every node on every redraw');
+  assert.match(body, /SCROLL_PANES/, 'the snapshot reads the named pane scrollers');
+  assert.match(APP, /const SCROLL_PANES = '[^']*#main[^']*\.table-wrap[^']*'/, 'the grid scroller and the main pane are both named');
+});
+
 test('the focused popover row is as visible as the hovered one', () => {
   assert.ok(rulesFor('.chip-pop-row:focus').background, 'focus must be styled, not only hover');
   assert.equal(rulesFor('.chip-pop-row:focus-visible')['outline-offset'], '-2px');

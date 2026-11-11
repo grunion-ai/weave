@@ -2012,7 +2012,7 @@ function rememberGridFocus() {
   try {
     if (at.selectionStart != null) caret = [at.selectionStart, at.selectionEnd];
   } catch {}
-  state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
+  state.refocus = { eid: cell.parentElement.dataset.eid, field: cell.dataset.field ?? null, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
 }
 
 function restoreGridFocus({ now = false } = {}) {
@@ -2020,7 +2020,8 @@ function restoreGridFocus({ now = false } = {}) {
   state.refocus = null;
   if (!want) return;
   (now ? (fn) => fn() : requestAnimationFrame)(() => {
-    const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
+    const tr = $(`tr[data-eid="${want.eid}"]`);
+    const td = (want.field ? tr?.querySelector(`:scope > td[data-field="${CSS.escape(want.field)}"]`) : null) ?? tr?.children[want.col];
     if (!td) return;
     if (want.open === false) return td.focus();
     const box = td.querySelector('button,input,select,textarea,[tabindex]');
@@ -8424,9 +8425,10 @@ function rolledBackText(out, verb) {
   return `${out.field.name} ${verb}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }
 
+const SCROLL_PANES = '#nav, #main, #dock, #side, #share-pane, #view-pane, #view-pane .vp-scroll, .share-scroll, .table-field-list, .filter-scroll, .table-wrap';
 async function keepScroll(redraw) {
   const x = window.scrollX, y = window.scrollY;
-  const boxes = [...document.querySelectorAll('*')]
+  const boxes = [...document.querySelectorAll(SCROLL_PANES)]
     .filter((e) => e.scrollTop || e.scrollLeft)
     .map((e) => ({ el: e, top: e.scrollTop, left: e.scrollLeft }));
   const left = document.querySelector('.wv-grid')?.parentElement?.scrollLeft ?? 0;

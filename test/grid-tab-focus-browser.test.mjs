@@ -87,6 +87,53 @@ if (s) {
     await page.close();
   });
 
+  test('a column dropped between the remember and the restore leaves focus on the same field (Issue #1698)', async () => {
+    const page = await browser.newPage();
+    await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Tail"]`);
+
+    const landed = await page.evaluate((eid) => {
+      const tr = document.querySelector(`tr[data-eid="${eid}"]`);
+      tr.querySelector('td[data-field="Tail"]').focus();
+      rememberGridFocus();
+      tr.querySelector('td[data-field="Note"]').remove();
+      restoreGridFocus({ now: true });
+      const cell = document.activeElement?.closest?.('tr[data-eid] > td');
+      return { eid: cell?.parentElement.dataset.eid ?? null, field: cell?.dataset.field ?? null };
+    }, second.id);
+
+    assert.deepEqual(landed, { eid: second.id, field: 'Tail' },
+      'the restore follows the field name, not the column index');
+
+    await page.close();
+  });
+
+  test('the grid scroller keeps its sideways position across the redraw an edit causes (Issue #1698)', async () => {
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 820, height: 400 });
+    await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
+
+    const wanted = await page.evaluate(() => {
+      const wrap = document.querySelector('.table-wrap');
+      wrap.scrollLeft = 80;
+      return wrap.scrollLeft;
+    });
+
+    await page.click(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.type('!');
+    const landed = commitLands(page);
+    await page.keyboard.press('Tab');
+    await landed;
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+    assert.equal(await page.evaluate(() => document.querySelector('.table-wrap').scrollLeft), wanted,
+      'the snapshot still restores the scroller the redraw replaced');
+
+    await page.close();
+  });
+
   test('the cursor comes back however long the redraw takes', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
