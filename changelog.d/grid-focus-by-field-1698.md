@@ -1,0 +1,1 @@
+- A grid redraw puts the cursor back on the field it left, not on whatever column now sits at that index, and the scroll snapshot reads the app's pane scrollers instead of every node in the document ([[Issue#1698]]).

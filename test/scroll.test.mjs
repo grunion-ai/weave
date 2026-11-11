@@ -105,9 +105,10 @@ test('the scroll animates unless the reader or the tab says otherwise', () => {
     'and instant in a hidden tab, which never runs the frames the animation rides on');
 });
 
-test('keepScroll restores every box that was scrolled, not one hard-coded scroller', () => {
+test('keepScroll restores every pane that was scrolled, not one hard-coded scroller', () => {
   const body = fnBody('keepScroll');
-  assert.match(body, /querySelectorAll\('\*'\)/, 'it looks at every box on the page');
+  assert.match(body, /querySelectorAll\(SCROLL_PANES\)/, 'it looks at every pane a redraw replaces, which the whole-document walk cost every node to find (Issue #1698)');
+  assert.match(CODE, /const SCROLL_PANES = '[^']*#main[^']*\.table-wrap[^']*'/, 'the main pane and the grid scroller are both named');
   assert.match(body, /scrollTop\s*\|\|\s*\w+\.scrollLeft/, 'a box resting at the origin has nothing to restore');
   assert.match(body, /isConnected/, 'a box the redraw replaced cannot be restored on the old node');
   assert.match(body, /window\.scrollTo\(\{ left: x, top: y, behavior: 'instant' \}\)/, 'and the page itself still holds its place — instantly, a restore is not a scroll the reader asked for (Issue #271)');
