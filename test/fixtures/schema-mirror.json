@@ -2061,9 +2061,17 @@
     "name": "Tags",
     "type": "multiselect",
     "options": [
+     "A",
      "B"
     ],
     "optionsFull": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
      {
       "id": "b",
       "name": "B",
