@@ -312,6 +312,10 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid { --wv-head-rule: color-mix(in srgb, var(--tblr-border-color), var(--tblr-body-color) 12%); }
 .table-wrap { overflow-x: auto; position: relative; }
 .table-wrap.wv-fit { overflow-x: clip; }
+.table-wrap.wv-overflow-x { display: grid; grid-template-columns: max-content; }
+.table-wrap.wv-overflow-x > .wv-grid { grid-area: 1 / 1; }
+.table-wrap.wv-overflow-x::after { content: ''; grid-area: 1 / 1; justify-self: start; position: sticky; left: calc(100% - 24px); width: 24px; pointer-events: none; background: linear-gradient(to right, transparent, var(--tblr-bg-surface)); }
+.table-wrap.wv-overflow-x.wv-at-end-x::after { opacity: 0; }
 .table-wrap.wv-grid-scroll { box-sizing: border-box; }
 .wv-grid thead th { position: sticky; top: 0; z-index: 4; background: var(--tblr-bg-surface); cursor: pointer; user-select: none; white-space: nowrap;
   text-transform: none; letter-spacing: normal; font-size: var(--fs-secondary); font-weight: 500; color: var(--tblr-secondary); border-bottom-color: var(--wv-head-rule); }

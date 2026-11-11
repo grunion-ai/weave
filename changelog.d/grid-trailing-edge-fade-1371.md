@@ -1,0 +1,1 @@
+- A table wider than its pane shades its trailing edge, so the columns hiding to the right say they are there; the shade clears once the reader scrolls to the end ([[Issue#1371]]).

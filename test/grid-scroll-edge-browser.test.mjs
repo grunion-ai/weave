@@ -137,4 +137,47 @@ if (s) {
       assert.equal(edge.events, 'none', 'and never catches a click');
     } finally { await page.close(); }
   });
+  const fadeState = (page) => page.evaluate(() => {
+    const w = document.querySelector('.table-wrap');
+    const a = getComputedStyle(w, '::after');
+    return {
+      overflow: w.classList.contains('wv-overflow-x'),
+      atEnd: w.classList.contains('wv-at-end-x'),
+      drawn: a.content !== 'none' && a.display !== 'none' && Number(a.opacity) > 0,
+    };
+  });
+  const openNarrow = async (db) => {
+    const page = await browser.newPage({ viewport: { width: 800, height: 700 }, deviceScaleFactor: 2 });
+    await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-grid tbody tr.entity-row');
+    await frame(page);
+    return page;
+  };
+
+  test('a table wider than its pane shades its trailing edge until the reader reaches the end (Issue #1371)', async () => {
+    const page = await openNarrow(issueTable());
+    try {
+      assert.deepEqual(await fadeState(page), { overflow: true, atEnd: false, drawn: true },
+        'at rest the trailing edge says more columns sit to the right');
+      await page.evaluate(() => { const w = document.querySelector('.table-wrap'); w.scrollLeft = w.scrollWidth; });
+      await frame(page);
+      assert.deepEqual(await fadeState(page), { overflow: true, atEnd: true, drawn: false },
+        'scrolled to the end there is nothing left to point at');
+      await scrollTo(page, 0);
+      assert.deepEqual(await fadeState(page), { overflow: true, atEnd: false, drawn: true },
+        'scrolling back brings it again');
+    } finally { await page.close(); }
+  });
+
+  test('a table that fits its pane shades nothing (Issue #1371)', async () => {
+    const db = weave.createTable({ space: 'Development', name: `Narrow ${++n}` });
+    weave.addField(db, { name: 'Note', type: 'text' });
+    weave.createEntity(db, { name: 'only row', values: { Note: 'a' } });
+    const page = await openNarrow(db);
+    try {
+      assert.deepEqual(await fadeState(page), { overflow: false, atEnd: true, drawn: false },
+        'a table that ends inside its pane is already at its end, and nothing is drawn');
+    } finally { await page.close(); }
+  });
+
 }
