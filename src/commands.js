@@ -853,12 +853,12 @@ export const COMMANDS = [
     writes: 'none',
     tool: {
       name: 'weave_activity',
-      description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
+      description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. To read only what is new since a past read, pass sinceSeq instead of since: the page holds the entries after that seq, oldest first, and nextSeq is the seq to hand back next time. since compares wall-clock timestamps, which many entries share, so it cannot page without a repeat or a gap. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
       inputSchema: {
         type: 'object',
         properties: {
           id: { type: 'string' }, entity: { type: 'string' }, table: { type: 'string' },
-          kinds: { type: 'array', items: { type: 'string' } }, since: { type: 'string' },
+          kinds: { type: 'array', items: { type: 'string' } }, since: { type: 'string' }, sinceSeq: { type: 'number' },
           limit: { type: 'number' }, offset: { type: 'number' },
         },
       },
@@ -870,6 +870,7 @@ export const COMMANDS = [
         table: flags.table ?? null,
         kinds: flags.kinds ? list(flags.kinds) : null,
         since: flags.since ?? null,
+        sinceSeq: cliNumber('since-seq', flags['since-seq']),
         limit: cliNumber('limit', flags.limit),
       }),
     },
@@ -877,12 +878,13 @@ export const COMMANDS = [
       method: 'GET', path: '/api/activity/:id*?',
       args: (a, body, q) => (a.id ? { id: a.id } : {
         entity: q.get('entity'), table: q.get('table'), kinds: q.getAll('kind'), since: q.get('since'),
+        sinceSeq: q.get('sinceSeq') == null ? null : nonNegativeInteger('sinceSeq', q.get('sinceSeq')),
         limit: boundedLimit(q.get('limit')), offset: nonNegativeInteger('offset', q.get('offset')),
       }),
     },
     run: (w, a) => (a.id ? w.getActivity(a.id) : w.activityFeed({
       entityId: a.entity ?? null, tableRef: a.table ?? null, kinds: a.kinds ?? null, since: a.since ?? null,
-      limit: a.limit ?? null, offset: a.offset ?? 0,
+      sinceSeq: a.sinceSeq ?? null, limit: a.limit ?? null, offset: a.offset ?? 0,
     })),
   },
   {

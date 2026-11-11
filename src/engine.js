@@ -9116,7 +9116,10 @@ export class Weave {
     return this.#framed(() => this.#activityFeed(opts));
   }
 
-  #activityFeed({ entityId = null, tableRef = null, kinds = null, since = null, limit = null, offset = 0 } = {}) {
+  #activityFeed({ entityId = null, tableRef = null, kinds = null, since = null, sinceSeq = null, limit = null, offset = 0 } = {}) {
+    const after = sinceSeq == null ? null : Number(sinceSeq);
+    if (after != null && !Number.isFinite(after)) throw new WeaveError('sinceSeq is the seq a page ended on, a number', 'invalid');
+    if (after != null && since) throw new WeaveError('Read the feed by sinceSeq or by since, not both: sinceSeq pages it, since cuts it at a timestamp', 'invalid');
     const wanted = kinds?.length ? new Set(kinds) : null;
     const dbId = tableRef ? this.getTable(tableRef).id : null;
     const tableOnly = entityId && own(this.state.tables, entityId) ? entityId : null;
@@ -9129,7 +9132,7 @@ export class Weave {
         if ((tableOnly ?? dbId) && r.dbId !== (tableOnly ?? dbId)) continue;
         if (hidden && this.#tableHidden(this.state.tables[r.dbId], hidden)) continue;
         if (wanted && !wanted.has(r.kind)) continue;
-        if (since && r.ts < since) continue;
+        if (after != null ? (r.seq ?? 0) <= after : since && r.ts < since) continue;
         rows.push(r);
       }
     }
@@ -9142,7 +9145,7 @@ export class Weave {
       const db = this.state.tables[e.dbId];
       (e.activity ?? []).forEach((a, i) => {
         if (wanted && !wanted.has(a.kind)) return;
-        if (since && a.ts < since) return;
+        if (after != null ? (a.seq ?? 0) <= after : since && a.ts < since) return;
         rows.push({
           id: `${e.id}:${i}`,
           seq: a.seq,
@@ -9162,14 +9165,16 @@ export class Weave {
     }
     rows.sort((x, y) => {
       const xs = x.seq ?? Infinity, ys = y.seq ?? Infinity;
-      if (xs !== ys) return ys - xs;
-      return x.ts < y.ts ? 1 : (x.ts > y.ts ? -1 : 0);
+      if (xs !== ys) return after != null ? xs - ys : ys - xs;
+      return (x.ts < y.ts ? 1 : (x.ts > y.ts ? -1 : 0)) * (after != null ? -1 : 1);
     });
     const page = limit ?? ACTIVITY_PAGE;
+    const items = page < 0 ? rows.slice(offset) : rows.slice(offset, offset + page);
     return {
       total: rows.length,
       dropped,
-      items: (page < 0 ? rows.slice(offset) : rows.slice(offset, offset + page)).map((r) => this.#namedActivity(r)),
+      ...(after != null ? { nextSeq: items.reduce((top, r) => Math.max(top, r.seq ?? 0), after) } : {}),
+      items: items.map((r) => this.#namedActivity(r)),
     };
   }
 

@@ -282,7 +282,7 @@ Removing an option or a state leaves the records that held it alone: they keep i
 
 Weave keeps the values of a field's newest type change only. When a field changes type again, the older entry keeps its two definitions but not its values, and its page says so: rolling it back cannot bring those values back.
 
-Agents reach the same history: `weave_activity {entity: <table id>}` lists a table's entries, and `weave_rollback_field` (`weave field rollback <table> <field> --activity <id>`) rolls one back. Rolling back needs the same permission as changing the field.
+Agents reach the same history: `weave_activity {entity: <table id>}` lists a table's entries, and `weave_rollback_field` (`weave field rollback <table> <field> --activity <id>`) rolls one back. Rolling back needs the same permission as changing the field. A sync that wants only what is new asks by cursor rather than by clock: `weave_activity {sinceSeq: <n>}`, `GET /api/activity?sinceSeq=<n>` or `weave activity --since-seq <n>` answers the entries after that seq, oldest first, and hands back `nextSeq` to pass next time. `since` compares timestamps, which many entries written in one tick share, so it cannot page without repeating an entry or skipping one.
 
 ## Costumes
 
