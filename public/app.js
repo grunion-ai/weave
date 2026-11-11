@@ -98,6 +98,7 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
       if (xhr.status >= 200 && xhr.status < 300) {
         noteRevisions('POST', path, data);
         noteUsage('POST', path, raw ? {} : body, data);
+        if (!raw) noteWrite(null, 'POST', path, data, { took: 0, date: Date.parse(xhr.getResponseHeader('Date')) });
         return end(resolve, data);
       }
       if (data.code === 'seat-required') seatToast(data);
@@ -292,6 +293,7 @@ function noteRevisions(method, path, data) {
   for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
   for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
     if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+    if (row?.id && (method === 'GET' || path.endsWith('/query'))) pinClaims(row);
   }
 }
 async function api(method, path, body, { signal, quiet = false, gesture = null } = {}) {
@@ -333,7 +335,7 @@ async function api(method, path, body, { signal, quiet = false, gesture = null }
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
   if (!quiet) noteUsage(method, path, body, data);
-  if (method !== 'GET' && gesture !== false) noteWrite(gesture, method, path, data, { seen, took: performance.now() - sent });
+  if (method !== 'GET' && gesture !== false) noteWrite(gesture, method, path, data, { seen, took: performance.now() - sent, date: Date.parse(res.headers.get('Date')) });
   return data;
 }
 
@@ -10393,12 +10395,11 @@ document.addEventListener('keydown', (e) => {
 const gestures = [];
 const GESTURE_CAP = 100;
 const UNDO_WINDOW = 200;
-const CLAIM_MS = 150;
+const CLAIM_CAP = 2000;
 const UNDO_REFUSED = 'Changed since, so nothing was undone';
 const undoKey = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
 const pendingClaims = [];
-let claimTimer = null;
-let claimRun = Promise.resolve();
+const looseIds = new Set();
 
 const ENTITY_UNDO = [
   [/^PATCH \/entities\/([^/?]+)$/, 'update'],
@@ -10408,7 +10409,7 @@ const ENTITY_UNDO = [
   [/^POST \/entities\/([^/?]+)\/restore$/, 'restore'],
   [/^POST \/entities\/([^/?]+)\/comments$/, 'comment-add'],
   [/^DELETE \/entities\/([^/?]+)\/comments\/[^/?]+$/, 'comment-delete'],
-  [/^POST \/entities\/([^/?]+)\/files$/, 'file-attach'],
+  [/^POST \/entities\/([^/?]+)\/(?:fields\/[^/?]+\/)?files$/, 'file-attach'],
 ];
 const BULK_UNDO = {
   set: (d) => (d.changed ?? []).map((id) => ['update', id]),
@@ -10434,31 +10435,40 @@ function newGesture(kind = null) {
   return g;
 }
 
-function noteWrite(g, method, path, data, { seen, took }) {
+function noteWrite(g, method, path, data, { seen, took, date }) {
   if (seen && data?.revision === seen) return;
   const entries = undoEntriesOf(method, path.split('?')[0], data);
   if (!entries.length) return;
   g ??= newGesture();
-  const at = Date.parse(data?.updatedAt);
-  const since = entries.length === 1 && entries[0][0] === 'update' && Number.isFinite(at) ? data.updatedAt : null;
-  const upto = since && new Date(at + took + 5).toISOString();
+  const one = entries.length === 1 ? entries[0][0] : null;
+  const stamp = Date.parse(one === 'create' ? data?.createdAt : ['update', 'delete', 'restore'].includes(one) ? data?.updatedAt : null);
+  const oldest = !Number.isFinite(stamp) && Number.isFinite(date);
+  const [lo, hi] = Number.isFinite(stamp) ? [stamp, stamp + took + 5]
+    : oldest ? [date - took - 2000, date + 3000] : [-Infinity, Infinity];
   for (const [kind, id] of entries) {
     g.ids.push(id);
-    pendingClaims.push({ g, kind, id, since, upto });
+    pendingClaims.push({ g, kind, id, lo, hi, oldest, took });
+    if (oldest) looseIds.add(id);
   }
-  clearTimeout(claimTimer);
-  claimTimer = setTimeout(() => { claimRun = claimRun.then(() => claimOwn()).catch(() => {}); }, CLAIM_MS);
+  if (pendingClaims.length > CLAIM_CAP) pendingClaims.splice(0, pendingClaims.length - CLAIM_CAP);
 }
 
-async function claimOwn(top = null) {
-  clearTimeout(claimTimer);
-  const want = pendingClaims.splice(0);
-  if (!want.length) return;
-  top ??= await api('GET', `/undo?limit=${Math.min(UNDO_WINDOW, want.length + 8)}`).catch(() => []);
+function pinClaims(row) {
+  const stamp = looseIds.has(row.id) ? Date.parse(row.updatedAt) : NaN;
+  if (!Number.isFinite(stamp)) return;
+  for (const w of pendingClaims) {
+    if (w.oldest && w.kind === 'update' && w.id === row.id) Object.assign(w, { lo: stamp, hi: stamp + w.took + 5, oldest: false });
+  }
+}
+
+function claimOwn(top) {
   const held = new Set(gestures.flatMap((g) => [...g.keys]));
-  for (const w of want.reverse()) {
-    const u = top.find((x) => x.kind === w.kind && x.entityId === w.id && !held.has(undoKey(x))
-      && (!w.since || (x.ts >= w.since && x.ts <= w.upto)));
+  const want = pendingClaims.splice(0);
+  looseIds.clear();
+  for (const w of [...want.filter((x) => !x.oldest).reverse(), ...want.filter((x) => x.oldest)]) {
+    const fits = top.filter((x) => x.kind === w.kind && x.entityId === w.id && !held.has(undoKey(x))
+      && Date.parse(x.ts) >= w.lo && Date.parse(x.ts) <= w.hi);
+    const u = w.oldest ? fits.at(-1) : fits[0];
     if (!u) continue;
     held.add(undoKey(u));
     w.g.keys.add(undoKey(u));
@@ -10475,11 +10485,9 @@ function undoOwn(only = null) {
 async function stepBackOwn(only) {
   const pool = only ? [only] : gestures;
   await Promise.allSettled(pool.map((g) => g.settled));
-  clearTimeout(claimTimer);
-  await claimRun;
   if (!pendingClaims.length && !pool.some((g) => g.keys.size)) return null;
   const top = await api('GET', `/undo?limit=${UNDO_WINDOW}`);
-  await claimOwn(top);
+  claimOwn(top);
   const live = new Set(top.map(undoKey));
   for (const g of pool) for (const k of g.keys) if (!live.has(k)) g.keys.delete(k);
   const owner = top.length ? pool.find((g) => g.keys.has(undoKey(top[0]))) : null;
