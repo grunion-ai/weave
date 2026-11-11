@@ -1,1 +1,0 @@
-- The Connect an agent guide gives each client its own section with the address, the sign-in step and the first call: the Claude Code plugin on weave cloud, Claude Code with a workspace address, the Claude.ai and ChatGPT connectors, Codex, and a self-hosted file over stdio (Issue #1248).
