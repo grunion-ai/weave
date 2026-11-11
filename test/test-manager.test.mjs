@@ -21,15 +21,19 @@ test('resource admission reports disk, memory and load reasons', () => {
   assert.match(resourceReason({ freeGB: 20, memoryPercent: 50, load: 100, cpus: 10 }), /load/);
   assert.equal(resourceReason({ freeGB: 20, memoryPercent: 50, load: 1, cpus: 10 }), null);
 });
-test('two requested test jobs execute serially and status names the running allocation', async () => {
+test('two unit jobs run side by side in the unit lane and status names each allocation', async () => {
   const events = join(scratch, 'events');
-  const file = fixture('serial', `import test from 'node:test'; import { appendFileSync } from 'node:fs'; test('owned allocation', async () => { appendFileSync(${JSON.stringify(events)}, 'start\\n'); await new Promise(r => setTimeout(r, 300)); appendFileSync(${JSON.stringify(events)}, 'end\\n'); });`);
-  const a = cli([file]); const b = cli([file]);
+  writeFileSync(events, '');
+  const file = fixture('side-by-side', `import test from 'node:test'; import { appendFileSync, readFileSync } from 'node:fs'; test('owned allocation', async () => { appendFileSync(${JSON.stringify(events)}, 'start\\n'); while (readFileSync(${JSON.stringify(events)}, 'utf8').split('start').length < 3) await new Promise(r => setTimeout(r, 20)); appendFileSync(${JSON.stringify(events)}, 'end\\n'); });`);
+  const a = cli(['--timeout=30000', file]); const b = cli(['--timeout=30000', file]);
+  const both = await running(s => s.unit.length === 2);
+  assert.equal(both.active, null, 'unit jobs leave the browser slot free');
+  assert.deepEqual(both.unit.map(job => job.lane), ['unit', 'unit']);
   const results = await Promise.all([a.done, b.done]);
   assert.ok(results.every(r => r.code === 0), JSON.stringify(results));
-  assert.equal(readFileSync(events, 'utf8'), 'start\nend\nstart\nend\n');
+  assert.equal(readFileSync(events, 'utf8'), 'start\nstart\nend\nend\n');
   const status = await request({ type: 'status' }, { directory: scratch });
-  assert.equal(status.active, null); assert.equal(status.queued.length, 0);
+  assert.equal(status.active, null); assert.equal(status.unit.length, 0); assert.equal(status.queued.length, 0);
 });
 test('empty named selection fails instead of expanding to broad discovery', async () => {
   const r = await cli(['--targeted']).done;
@@ -43,10 +47,10 @@ test('job timeout fails and the next queued job still completes', async () => {
   assert.notEqual(failed.code, 0); assert.match(failed.out, /timeout/i); assert.equal(passed.code, 0, passed.out);
 });
 
-async function running() {
-  for (let i = 0; i < 100; i++) {
+async function running(ready = s => s.active || s.unit.length) {
+  for (let i = 0; i < 200; i++) {
     const status = await request({ type: 'status' }, { directory: scratch }).catch(() => null);
-    if (status?.active) return status;
+    if (status && ready(status)) return { ...status, job: status.active || status.unit[0] };
     await new Promise(r => setTimeout(r, 30));
   }
   throw new Error('job never became active');
@@ -54,7 +58,7 @@ async function running() {
 test('active cancellation removes owned temporary files and admits the next job', async () => {
   const file = fixture('cancel', "import test from 'node:test'; test('wait', async () => { await new Promise(r => setTimeout(r, 10000)); });");
   const a = cli([file]); const state = await running();
-  assert.equal((await request({ type: 'cancel', id: state.active.id }, { directory: scratch })).code, 0);
+  assert.equal((await request({ type: 'cancel', id: state.job.id }, { directory: scratch })).code, 0);
   assert.notEqual((await a.done).code, 0);
   const { readdirSync } = await import('node:fs');
   assert.equal(readdirSync(scratch).filter(n => n.startsWith('job-')).length, 0);
@@ -71,7 +75,7 @@ test('disconnected clients cancel their allocation', async () => {
   const a = cli([file]); await running(); a.child.kill('SIGKILL'); await a.done;
   for (let i = 0; i < 100; i++) {
     const status = await request({ type: 'status' }, { directory: scratch });
-    if (!status.active) return;
+    if (!status.active && !status.unit.length) return;
     await new Promise(r => setTimeout(r, 30));
   }
   assert.fail('disconnected client retained allocation');
