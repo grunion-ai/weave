@@ -7509,7 +7509,8 @@ export class Weave {
     return e;
   }
 
-  updateEntity(id, valuesByName, { depth = 0, expectedRevision = null } = {}) {
+  updateEntity(id, valuesByName, { depth = 0, expectedRevision = null, viewerZone = null } = {}) {
+    if (viewerZone != null) return this.#inViewerZone(viewerZone, () => this.updateEntity(id, valuesByName, { depth, expectedRevision }));
     this.#mayWriteRow(id);
     if (expectedRevision != null) return this.#updateAtRevision(id, valuesByName, expectedRevision);
     const e = this.getEntity(id);
@@ -7884,7 +7885,8 @@ export class Weave {
     return e;
   }
 
-  setState(entityId, fieldRef, stateRef, { depth = 0 } = {}) {
+  setState(entityId, fieldRef, stateRef, { depth = 0, viewerZone = null } = {}) {
+    if (viewerZone != null) return this.#inViewerZone(viewerZone, () => this.setState(entityId, fieldRef, stateRef, { depth }));
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
     const db = this.state.tables[e.dbId];
@@ -10427,10 +10429,11 @@ export class Weave {
   }
 
   #runAction(rule, name, action, db, e, event, depth, run, steps = {}) {
+    const zone = rule.trigger?.zone ?? null;
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
       if (!f) return null;
-      const value = templated(action.value) ? this.#template(action.value, e, db, steps, event.trigger) : action.value;
+      const value = templated(action.value) ? this.#template(action.value, e, db, steps, event.trigger, zone) : action.value;
       const before = this.#undoBefore(e, db, [f]);
       this.#applyValues(e, db, { [f.name]: value }, { depth: depth + 1 });
       if (this.#undoChanged(e, before)) this.#recordUndo('update', e, { before });
@@ -10440,7 +10443,7 @@ export class Weave {
       if (docField) {
         e.docs = e.docs ?? {};
         const before = e.docs[docField.id] ?? '';
-        const text = stripEmptyEmbeds(this.#template(action.text, e, db, steps, event.trigger));
+        const text = stripEmptyEmbeds(this.#template(action.text, e, db, steps, event.trigger, zone));
         const after = (before ? before.replace(/\n*$/, '\n\n') : '') + text;
         const prior = { at: e.updatedAt, by: e.modifiedBy };
         this.#recordUndo('update', e, { before: { values: {}, docs: { [docField.id]: before } } });
@@ -10452,7 +10455,7 @@ export class Weave {
         return { field: docField.name, text };
       }
     } else if (action.type === 'add-comment') {
-      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db, steps, event.trigger), createdAt: nowISO() };
+      const comment = { id: uuid(), author: action.author ?? this.actor, text: this.#template(action.text, e, db, steps, event.trigger, zone), createdAt: nowISO() };
       e.comments.push(comment);
       this.#recordUndo('comment-add', e, { commentId: comment.id });
       return { id: comment.id, text: comment.text };
@@ -10471,13 +10474,13 @@ export class Weave {
       return { [OUTBOUND]: { kind: 'webhook', method: 'POST', url: action.url, headers: { 'Content-Type': 'application/json' }, body, ...(action.signWith ? { signWith: action.signWith } : {}), delivery: uuid() } };
     } else if (action.type === 'http-request') {
       if (this.#noWebhooks) return { status: null, ok: false, body: null };
-      return { [OUTBOUND]: this.#httpRequest(action, e, db, steps, event.trigger) };
+      return { [OUTBOUND]: this.#httpRequest(action, e, db, steps, event.trigger, zone) };
     }
     return null;
   }
 
-  #httpRequest(action, e, db, steps, trigger) {
-    const fill = (text) => this.#template(text, e, db, steps, trigger);
+  #httpRequest(action, e, db, steps, trigger, zone = null) {
+    const fill = (text) => this.#template(text, e, db, steps, trigger, zone);
     const headers = Object.fromEntries(Object.entries(action.headers ?? {}).map(([k, v]) => [k, fill(v)]));
     let body;
     if (typeof action.body === 'string') body = fill(action.body);
@@ -10594,7 +10597,7 @@ export class Weave {
     };
   }
 
-  #template(text, e, db, steps = {}, trigger = undefined) {
+  #template(text, e, db, steps = {}, trigger = undefined, zone = null) {
     return text.replace(/\{\{([^}]+)\}\}/g, (_, name) => {
       const key = name.trim();
       if (key.startsWith('steps.')) {
@@ -10608,8 +10611,9 @@ export class Weave {
       }
       if (key === 'PublicId') return String(e.publicId);
       if (key === 'Today' || key === 'Today:iso') {
-        const iso = this.now().toISOString().slice(0, 10);
-        return key === 'Today' ? dressDate({ now: this.now(), viewerZone: this.viewerZone ?? 'UTC' }, iso) : iso;
+        const read = zone ?? this.viewerZone ?? 'UTC';
+        const iso = (DG.fromInstant(this.now().toISOString(), read) ?? this.now().toISOString()).slice(0, 10);
+        return key === 'Today' ? dressDate({ now: this.now(), viewerZone: read }, iso) : iso;
       }
       const f = this.findField(db, key);
       if (!f) return '';
