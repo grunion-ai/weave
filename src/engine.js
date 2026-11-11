@@ -6449,6 +6449,7 @@ export class Weave {
     let recipeBefore = null;
     if (patch.type != null && patch.type !== field.type) {
       migrated = this.#migrateFieldType(db, field, patch.type, patch.config ?? {}, { force: !!undo, restore });
+      for (const e of this.listEntities(db.id, { includeDeleted: true })) this.#mark(e);
       if (!undo) {
         patch = { ...patch, config: Object.fromEntries(Object.entries(patch.config ?? {}).filter(([k]) => ['width', 'default'].includes(k))) };
         if (!Object.keys(patch.config).length) delete patch.config;
@@ -6784,7 +6785,6 @@ export class Weave {
     if (width) field.config.width = width;
     if (description) field.config.description = description;
     if (term) field.config.term = term;
-    if (toType === 'formula' && field.id === db.nameFieldId) for (const e of rows) this.#mark(e);
     if (!db.system) this.#audit('field-migrated', { table: db.name, name: field.name, from, to: toType, rows: rows.length }, db.spaceId);
     return { rows: snapshot, counts };
   }
