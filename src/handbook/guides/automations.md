@@ -182,7 +182,7 @@ When a row of the target table already holds that key, the action updates it; ot
 
 ## Placeholders and step outputs
 
-Text in an action reads the firing row through placeholders: `{{Name}}`, `{{PublicId}}`, `{{Today}}` in the workspace date format, `{{Today:iso}}` as 2026-10-06. An empty field reads `(no Field)`.
+Text in an action reads the firing row through placeholders: `{{Name}}`, `{{PublicId}}`, `{{Today}}` in the workspace date format, `{{Today:iso}}` as 2026-10-06. An empty field reads `(no Field)`. Both forms of `{{Today}}` name the same day, read on the clock of the run: a schedule rule reads it in the rule's own `zone`, and any other rule reads it in the zone of the person or agent whose write fired it, the `X-Weave-Zone` header on the request. With neither, the day is UTC.
 
 Each action also yields an output the later ones can read:
 

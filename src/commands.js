@@ -960,7 +960,7 @@ export const COMMANDS = [
     },
     cli: { command: 'state', positional: ['entity', 'field'], rest: 'state', args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, state: a.state.join(' ') }) },
     http: { method: 'POST', path: '/api/entities/:entity/state' },
-    run: (w, a, ctx) => { w.setState(a.entity, a.field, a.state); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+    run: (w, a, ctx) => { w.setState(a.entity, a.field, a.state, zoned(ctx)); return w.readEntity(a.entity, zoned(ctx)); },
   },
   {
     name: 'entity.link',
@@ -1042,7 +1042,7 @@ export const COMMANDS = [
     },
     run: (w, a, ctx) => {
       const expectedRevision = ctx?.expectedRevision ?? null;
-      const { touched } = w.touching(() => w.updateEntity(a.entity, a.values, { expectedRevision }));
+      const { touched } = w.touching(() => w.updateEntity(a.entity, a.values, { expectedRevision, ...zoned(ctx) }));
       return { ...w.readEntity(a.entity, zoned(ctx)), affected: w.affectedBy(a.entity, touched) };
     },
   },
