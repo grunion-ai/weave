@@ -1,0 +1,1 @@
+- The Agent access (MCP) and Environment reference guides describe the lean `weave_query` rows and the 2,000-record cap on MCP, which pages on `nextOffset` where it used to take `limit: -1` (Issue #1558).
