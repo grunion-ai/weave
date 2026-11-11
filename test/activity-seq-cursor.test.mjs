@@ -115,10 +115,9 @@ test('GET /api/activity?sinceSeq= pages without a repeat or a gap, and hands bac
 
 test('the CLI prints the same page and the same nextSeq as the route', async () => {
   const { execFileSync } = await import('node:child_process');
-  const { mkdtempSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const data = join(mkdtempSync(join(tmpdir(), 'wv-activity-')), 'w.db');
+  const { tempDir } = await import('./lib/temp.mjs');
+  const data = join(tempDir('wv-activity-'), 'w.db');
   const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['bin/weave.js', '--data', data, ...args], { encoding: 'utf8' }));
   execFileSync(process.execPath, ['bin/weave.js', '--data', data, 'space', 'create', 'S'], { stdio: 'ignore' });
   execFileSync(process.execPath, ['bin/weave.js', '--data', data, 'table', 'create', 'S', 'Task'], { stdio: 'ignore' });
