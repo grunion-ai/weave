@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testFiles, lanes } from './test.mjs';
 
@@ -106,7 +106,28 @@ export function touchedBrowser(changed, browser, read, diff = '') {
   return [...picked].sort();
 }
 
+const MONOLITHS = ['public/app.js', 'public/style.css', 'src/commands.js', 'src/engine.js', 'src/routes.js'];
+const RELATIVE_IMPORT = /(?:^|[\s({,;=])(?:from|import)\s*\(?\s*['"](\.\.?\/[^'"\n]+)['"]/gm;
+
+export function browserHelpers(browser, read) {
+  const seen = new Set();
+  const visit = file => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    let source = '';
+    try { source = read(file); } catch {}
+    for (const [, specifier] of source.matchAll(RELATIVE_IMPORT)) {
+      const next = posix.join(posix.dirname(file), specifier);
+      if (next.startsWith('test/')) visit(next);
+    }
+  };
+  for (const file of browser) visit(file);
+  return [...seen].filter(file => file.startsWith('test/lib/')).sort();
+}
+
 export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
+  const helpers = browserHelpers(browser, read);
+  if (changed.some(file => MONOLITHS.includes(file) || helpers.includes(file))) return plan([...unit, ...browser], { unit, browser: touchedBrowser(browser, browser, read) }, weight, 4);
   const touched = touchedBrowser(changed, browser, read, diff);
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }

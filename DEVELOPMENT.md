@@ -65,8 +65,14 @@ the dev soak.
 
 The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
-four shards, plus the browser tests the diff maps to, sharded at about twenty
-files each, four at most. A changed browser test runs itself. Any other changed
+four shards, plus the browser tests the diff maps to. A diff that touches
+`public/app.js`, `public/style.css`, `src/engine.js`, `src/routes.js`,
+`src/commands.js` or a `test/lib/` file that a browser test imports, directly or
+through another helper, maps to every gating browser test, spread over eight
+shards as on main and weighed by file size (Feature #368). The plan finds those
+helpers by following each browser test's import statements, so there is no list
+to keep up to date. Any other diff keeps the name and reach selection, sharded
+at about twenty files each. A changed browser test runs itself. Any other changed
 file maps to browser tests named for its module (`public/chip-core.js` maps to
 `test/chip-*-browser.test.mjs`) or whose source cites its file name. The diff
 also maps by what it names: the plan reads the changed blocks with
@@ -75,7 +81,7 @@ out of them (`sheet-grip`, `/api/tables/subtotals`), and adds each browser test
 whose source names one. A literal more than `REACH_SPREAD` browser tests name
 is too common to place a change, so it is dropped, and the reached tier stops
 at `REACH_CAP` files beyond the name matches, which holds the gate inside its
-fifteen-minute job timeout. A change to `public/app.js` or `src/routes.js`
+twenty-minute job timeout. A change to any other public or server module
 therefore runs the journeys that name the DOM classes and routes it touches,
 which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
 `scripts/ci-test.mjs`) always runs, so a diff nothing maps to still boots the
