@@ -182,7 +182,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
     const field = body.field ?? null;
     try {
-      weave.setDoc(e.id, text, field, { base: typeof body.base === 'string' ? body.base : EMPTY_DOC_BASE });
+      weave.setDoc(e.id, text, field, { base: typeof body.base === 'string' ? body.base : weave.getDoc(e.id, field) === text ? null : EMPTY_DOC_BASE });
     } catch (err) {
       if (err?.code !== 'stale') throw err;
       return out(412, { error: err.message, code: 'stale', doc: weave.getDoc(e.id, field), base: weave.docBase(e.id, field) });

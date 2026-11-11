@@ -61,6 +61,7 @@ test('an applet write from a stale base, or with none on a written document, is 
     const blind = await call('POST', `/t/entity/${task.id}/doc`, { doc: 'NO_BASE' });
     assert.equal(blind.status, 412, 'a write that names no base lands only on an empty document');
     assert.equal(w.getDoc(task.id), 'AGENT_TEXT');
+    assert.equal((await call('PUT', `/t/entity/${task.id}/doc`, { doc: 'AGENT_TEXT' })).status, 200, 'sending back the stored text is no overwrite');
     const mine = await call('PUT', `/t/entity/${task.id}/doc`, { doc: 'PHONE_TEXT', base: stale.json.base });
     assert.equal(mine.status, 200);
     assert.equal(w.getDoc(task.id), 'PHONE_TEXT');
