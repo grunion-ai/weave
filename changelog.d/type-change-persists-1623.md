@@ -1,1 +1,0 @@
-- A field type change writes every converted value to the workspace file. It used to convert the rows in memory only: after a restart, a field changed from text to number or select read its old text back, and rolling the change back counted every row as edited since (Issue #1623).

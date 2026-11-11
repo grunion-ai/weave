@@ -1,1 +1,0 @@
-- A formula result stops at 65,536 characters: `concat` and `+` count as they join and return `#ERR: Formula result is longer than 65536 characters` rather than building the string. A chain of concat fields no longer multiplies into megabytes a row, so a grid page, a record read and a `weave_check_formula` preview over one can no longer exhaust the server's heap (Issue #1604).

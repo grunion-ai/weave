@@ -1,1 +1,0 @@
-- The phone search sheet gives its field and each result's Copy link button a 44 px hit area, and the Copy link button stays visible on a touch screen (Issue #1190).

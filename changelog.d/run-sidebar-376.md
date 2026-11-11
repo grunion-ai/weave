@@ -1,1 +1,0 @@
-- Keep every System menu entry reachable above the sticky identity panel on phones after adding Runs (Feature #376).
