@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pipeline } from 'node:stream/promises';
 import { join, dirname, extname, basename } from 'node:path';
 import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -687,7 +688,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
       const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
       res.writeHead(fresh.status, secure(req, headers));
-      res.end(body);
+      if (typeof body?.pipe === 'function') await pipeline(body, res);
+      else res.end(body);
     } catch (err) {
       const { error, code, id } = errorBody(err);
       console.error(`weave: ${req.method} ${req.url} failed${id ? ` as request ${id}` : `: ${err?.message}`}`);

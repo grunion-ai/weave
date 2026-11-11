@@ -283,6 +283,10 @@ export function inspect(path) {
 
 const stamp = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
 const fileStream = (path) => Readable.toWeb(createReadStream(path, { highWaterMark: CHUNK }));
+const opened = (res) => {
+  const length = res.headers.get('content-length');
+  return { body: res.body ? Readable.fromWeb(res.body) : Readable.from([]), bytes: length == null ? null : Number(length) };
+};
 
 export async function backup({
   dataDir, out = process.cwd(), dest = null, env = process.env, passphraseEnv = null,
@@ -546,33 +550,45 @@ export const s3 = {
       if (!res.ok) throw new WeaveError(`${method} ${key || bucket} → ${res.status} ${(await res.text()).replace(/\s+/g, ' ').slice(0, 200)}`.trim(), res.status === 404 ? 'not-found' : 'invalid');
       return res;
     };
-    const parted = async (bucket, key, path, partBytes) => {
-      const started = await (await call('POST', bucket, key, { query: '?uploads' })).text();
-      const uploadId = started.match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
-      if (!uploadId) throw new WeaveError(`POST ${key}?uploads answered no UploadId`, 'invalid');
-      const held = `uploadId=${uriEncode(unxml(uploadId))}`;
+    const send = async (bucket, key, chunks, partBytes) => {
+      const part = Buffer.allocUnsafe(partBytes);
       const parts = [];
+      let fill = 0, held = null;
+      const flush = async () => {
+        if (!held) {
+          const started = await (await call('POST', bucket, key, { query: '?uploads' })).text();
+          const uploadId = started.match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
+          if (!uploadId) throw new WeaveError(`POST ${key}?uploads answered no UploadId`, 'invalid');
+          held = `uploadId=${uriEncode(unxml(uploadId))}`;
+        }
+        const number = parts.length + 1;
+        const res = await call('PUT', bucket, key, { query: `?partNumber=${number}&${held}`, body: part.subarray(0, fill) });
+        parts.push(`<Part><PartNumber>${number}</PartNumber><ETag>${xml(res.headers.get('etag') ?? '')}</ETag></Part>`);
+        fill = 0;
+      };
       try {
-        const fd = openSync(path, 'r');
-        try {
-          const buf = Buffer.alloc(partBytes);
-          for (let n, number = 1; (n = readSync(fd, buf, 0, partBytes, null)) > 0; number += 1) {
-            const res = await call('PUT', bucket, key, { query: `?partNumber=${number}&${held}`, body: buf.subarray(0, n) });
-            parts.push(`<Part><PartNumber>${number}</PartNumber><ETag>${xml(res.headers.get('etag') ?? '')}</ETag></Part>`);
+        for await (const chunk of chunks) {
+          for (let at = 0; at < chunk.length;) {
+            if (fill === partBytes) await flush();
+            const n = Math.min(partBytes - fill, chunk.length - at);
+            part.set(chunk.subarray(at, at + n), fill);
+            fill += n;
+            at += n;
           }
-        } finally { closeSync(fd); }
+        }
+        if (!held) return await call('PUT', bucket, key, { body: part.subarray(0, fill) });
+        await flush();
+        return await call('POST', bucket, key, { query: `?${held}`, body: `<CompleteMultipartUpload>${parts.join('')}</CompleteMultipartUpload>` });
       } catch (err) {
-        await call('DELETE', bucket, key, { query: `?${held}` }).catch(() => {});
+        if (held) await call('DELETE', bucket, key, { query: `?${held}` }).catch(() => {});
         throw err;
       }
-      return call('POST', bucket, key, { query: `?${held}`, body: `<CompleteMultipartUpload>${parts.join('')}</CompleteMultipartUpload>` });
     };
     return {
-      put: (bucket, key, body) => call('PUT', bucket, key, { body }),
-      upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => (statSync(path).size > partBytes
-        ? parted(bucket, key, path, partBytes)
-        : call('PUT', bucket, key, { body: readFileSync(path) })),
+      send: (bucket, key, chunks, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, chunks, partBytes),
+      upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, createReadStream(path, { highWaterMark: CHUNK }), partBytes),
       get: async (bucket, key) => Buffer.from(await (await call('GET', bucket, key)).arrayBuffer()),
+      open: async (bucket, key) => opened(await call('GET', bucket, key)),
       delete: (bucket, key) => call('DELETE', bucket, key),
       list: async (bucket, prefix) => (await objects(bucket, prefix)).map((o) => o.key),
       objects,
@@ -682,6 +698,22 @@ export const cloud = {
   },
 };
 
+const notSealed = () => new WeaveError('weave cloud keeps encrypted archives only: this body is not one. Back up with WEAVE_BACKUP_PASSPHRASE set', 'invalid');
+
+async function* sealedWithin(body, quota, counted) {
+  let bytes = 0;
+  for await (const chunk of Buffer.isBuffer(body) ? [body] : body) {
+    const head = Math.min(MAGIC.length - bytes, chunk.length);
+    if (head > 0 && !MAGIC.subarray(bytes, bytes + head).equals(chunk.subarray(0, head))) throw notSealed();
+    bytes += chunk.length;
+    if (bytes > quota) throw new WeaveError(`The archive runs past this account's quota of ${quota} bytes`, 'too-large');
+    yield chunk;
+  }
+  if (!bytes) throw new WeaveError('The archive is empty', 'invalid');
+  if (bytes < MAGIC.length) throw notSealed();
+  counted(bytes);
+}
+
 export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } = {}) {
   const bucket = String(env.WEAVE_BACKUP_BUCKET ?? '').trim();
   if (!bucket) return null;
@@ -702,13 +734,11 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
     list,
     async put(account, name, body) {
       named(name);
-      if (!body?.length) throw new WeaveError('The archive is empty', 'invalid');
-      if (!body.subarray(0, MAGIC.length).equals(MAGIC)) throw new WeaveError('weave cloud keeps encrypted archives only: this body is not one. Back up with WEAVE_BACKUP_PASSPHRASE set', 'invalid');
-      if (body.length > quota) throw new WeaveError(`The archive is ${body.length} bytes, past this account's quota of ${quota} bytes`, 'too-large');
       const c = client();
-      await c.put(bucket, base(account) + name, body);
+      let bytes = 0;
+      await c.send(bucket, base(account) + name, sealedWithin(body, quota, (n) => { bytes = n; }));
       const others = (await list(account)).filter((o) => o.name !== name);
-      const kept = [...others, { name, bytes: body.length, at: null }];
+      const kept = [...others, { name, bytes, at: null }];
       const pruned = [];
       let used = kept.reduce((n, o) => n + o.bytes, 0);
       while (kept.length > 1 && (kept.length > RETAIN || used > quota)) {
@@ -717,10 +747,13 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
         used -= gone.bytes;
         pruned.push(gone.name);
       }
-      return { name, bytes: body.length, used, quota, kept: kept.length, pruned };
+      return { name, bytes, used, quota, kept: kept.length, pruned };
     },
     async get(account, name) {
       return client().get(bucket, base(account) + named(name));
+    },
+    async open(account, name) {
+      return client().open(bucket, base(account) + named(name));
     },
   };
 }
