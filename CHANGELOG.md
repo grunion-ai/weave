@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.134 (2026-11-11)
+
+- **Formula expression budget** (Issue #1605): a formula is refused past 8,192 characters, so one oversized expression can no longer make every read of its table cost milliseconds a row.
+- **Formula nesting limit** (Issue #1612): nesting past 100 levels is refused with `Formula nests more than 100 levels deep` rather than V8's `Maximum call stack size exceeded`.
+- `POST /api/undo` takes `expect`, the `kind|entityId|ts` key of each step as `undo.list` answered them, and reverts only while the caller's stack still reads that way; a write by the same actor that landed since answers 409 with the entry on top now and reverts nothing. Cmd+Z and the record activity panel's tray Undo send it, so a write landing between their read of the stack and their undo is no longer undone in place of the gesture ([[Issue#1727]]).
+
 ## v0.4.133 (2026-11-11)
 
 - The activity feed pages by cursor. `weave_activity {sinceSeq: <n>}`, `GET /api/activity?sinceSeq=<n>` and `weave activity --since-seq <n>` answer the entries after that seq, oldest first, and hand back `nextSeq` to pass next time, so a sync reads every entry exactly once. `since` compares wall-clock timestamps, which many entries written in one tick share, so it repeated the cursor entry or skipped the rest of its timestamp; it keeps its meaning and its order for the UI (Issue #953).
