@@ -251,13 +251,15 @@ test('writeFileDurable removes its temp file when the rename cannot land', () =>
   assert.deepEqual(readdirSync(dir), ['occupied'], 'the failed write left its temp file behind');
 });
 
-test('every blob and restore write goes through writeFileDurable', () => {
-  const firstArgs = (file) => [...readFileSync(new URL(file, import.meta.url), 'utf8')
-    .matchAll(/writeFileSync\(([^,)]+)/g)].map((m) => m[1].trim());
+test('every blob write goes through writeFileDurable, and every restore write lands through a synced rename', () => {
+  const source = (file) => readFileSync(new URL(file, import.meta.url), 'utf8');
+  const firstArgs = (file) => [...source(file).matchAll(/writeFileSync\(([^,)]+)/g)].map((m) => m[1].trim());
   assert.deepEqual(firstArgs('../src/engine.js'), [],
     'a bare writeFileSync in the engine: blob bytes land before their record commits, so they go through writeFileDurable');
-  assert.deepEqual(firstArgs('../src/backup.js'), ['local', 'local', 'local'],
-    'a bare writeFileSync in backup: a restore lands a whole data directory, so its entries go through writeFileDurable');
+  assert.deepEqual(firstArgs('../src/backup.js'), [],
+    'a bare writeFileSync in backup: a restore lands a whole data directory, so its entries go through landFile');
+  assert.match(source('../src/backup.js'), /function landFile[\s\S]*?fsyncSync\(dst\)[\s\S]*?renameSync\(temporary, to\)/,
+    'landFile syncs a staged entry before it renames it into place');
 });
 
 test('an attachment at the file cap round-trips through the durable write', () => {

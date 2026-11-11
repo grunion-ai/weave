@@ -1,6 +1,6 @@
 import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
-import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pipeline } from 'node:stream/promises';
 import { join, dirname, extname, basename } from 'node:path';
@@ -455,7 +455,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
       try {
         const sealed = join(scratch, 'archive.tar.enc');
-        writeFileSync(sealed, archive);
+        await pipeline(archive, createWriteStream(sealed));
         if (!isEncrypted(sealed)) throw new WeaveError('A migration takes a sealed archive only', 'invalid');
         const landed = join(scratch, 'data');
         const r = await restoreArchive({ source: sealed, dataDir: landed, env: { WEAVE_BACKUP_PASSPHRASE: String(key) } });
