@@ -3,7 +3,7 @@ import { nonNegativeInteger, errorBody } from './errors.js';
 import { Weave, ONTOLOGY, inviteUrl } from './engine.js';
 import { guided } from './field-hints.js';
 import { leaveWorkspace } from './forms.js';
-import { vocabularyView } from './vocabulary.js';
+import { vocabularyView, FIELD_TYPE_VOCABULARY } from './vocabulary.js';
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
@@ -26,6 +26,32 @@ const cliNumber = (name, raw, fallback = null) => {
 };
 
 const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+const FLAT_CONFIG = new Set([...FIELD_TYPE_VOCABULARY.flatMap((v) => v.config ?? []), 'width', 'to', 'createMissing']);
+function flatConfig(a) {
+  const flat = Object.keys(a).filter((k) => FLAT_CONFIG.has(k));
+  if (!flat.length || (a.config != null && (typeof a.config !== 'object' || Array.isArray(a.config)))) return a;
+  const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !FLAT_CONFIG.has(k)));
+  return { ...rest, config: { ...Object.fromEntries(flat.map((k) => [k, a[k]])), ...a.config } };
+}
+function relationTo({ to, ...a }) {
+  if (a.type === 'relation') delete a.type;
+  if (to === undefined) return a;
+  return a.targetDb != null || a.targetDbs != null ? { ...a, to } : { ...a, [Array.isArray(to) ? 'targetDbs' : 'targetDb']: to };
+}
+const SPEC_KEYS = ['workspace', 'description', 'spaces'];
+function bareSpec(a) {
+  if (a.spec !== undefined || !SPEC_KEYS.some((k) => k in a)) return a;
+  const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !SPEC_KEYS.includes(k)));
+  return { ...rest, spec: Object.fromEntries(SPEC_KEYS.filter((k) => k in a).map((k) => [k, a[k]])) };
+}
+const sortPart = (s) => {
+  if (typeof s !== 'string') return s;
+  const t = s.trim();
+  const m = t.match(/^(.+)\s+(asc|desc)$/i);
+  if (m) return { field: m[1].trim(), dir: m[2].toLowerCase() };
+  return /^[-+]\S/.test(t) ? { field: t.slice(1).trim(), dir: t[0] === '-' ? 'desc' : 'asc' } : t;
+};
+const sorted = (o) => ({ ...o, sort: (o.sort == null ? [] : typeof o.sort === 'string' ? o.sort.split(',').filter((s) => s.trim()) : [o.sort].flat()).map(sortPart) });
 
 function spaceUpdate(w, a) {
   if (a.member != null) w.setSpaceMember(a.space, a.member, { role: a.role ?? null });
@@ -266,6 +292,7 @@ export const COMMANDS = [
       },
     },
     http: { method: 'POST', path: '/api/tables/:db/fields', status: 201 },
+    toolArgs: flatConfig,
     run: (w, a) => guided(w, 'field', w.addField(a.db, { name: a.name, type: a.type, config: a.config ?? {} }), a.config),
   },
   {
@@ -288,6 +315,7 @@ export const COMMANDS = [
       },
     },
     http: { method: 'PATCH', path: '/api/tables/:db/fields/:field' },
+    toolArgs: flatConfig,
     run: fieldUpdate,
   },
   {
@@ -356,6 +384,7 @@ export const COMMANDS = [
       args: (a, flags) => ({ ...a, targetDbs: list(flags['target-dbs']), cardinality: flags.cardinality, inverseName: flags.inverse }),
     },
     http: { method: 'POST', path: '/api/tables/:db/relations', status: 201 },
+    toolArgs: relationTo,
     run: (w, a) => w.addRelation(a.db, { name: a.name, targetDb: a.targetDb, targetDbs: a.targetDbs, cardinality: a.cardinality ?? 'many-to-one', inverseName: a.inverseName }),
   },
   {
@@ -497,6 +526,7 @@ export const COMMANDS = [
           icon: { type: 'string' }, noun: { type: 'string' },
           systemFields: { type: 'array', items: { type: 'string' } },
           fieldOrder: { type: 'array', items: { type: 'string' } },
+          hiddenFields: { type: 'array', items: { type: 'string' } },
           hideRollups: { type: 'boolean' },
           position: { type: 'number', description: 'Its place inside its space: 0 is the first table' },
         },
@@ -519,7 +549,7 @@ export const COMMANDS = [
         properties: {
           view: { type: 'string' }, fields: { type: 'array' }, show: { type: 'array' }, hide: { type: 'array' },
           move: { type: 'object' }, filters: { type: 'object' }, sort: { type: 'array' }, search: {},
-          position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' },
+          position: { type: 'number' }, name: { type: 'string' }, from: { type: 'string' }, delete: { type: 'boolean' }, default: { type: 'boolean' },
           widths: { type: 'object' }, frozen: { type: 'number' }, density: { type: 'string' }, deleted: { type: 'boolean' }, rollups: { type: ['boolean', 'null'] },
           layout: { type: 'string' }, subtotals: {}, groups: {}, picture: {}, fit: {}, frame: {}, flow: {}, group: {}, completedBy: {}, collapsed: {}, hideEmpty: {}, order: {}, phoneRow: {},
         },
@@ -1053,7 +1083,7 @@ export const COMMANDS = [
       }),
     },
     http: { method: 'POST', path: '/api/tables/:db/query', args: (a, body) => ({ db: a.db, options: { ...body, limit: body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit) } }) },
-    run: (w, a, ctx) => w.query(a.db, { ...(a.options ?? queryOptions(a)), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace }),
+    run: (w, a, ctx) => w.query(a.db, { ...sorted(a.options ?? queryOptions(a)), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace }),
   },
   {
     name: 'entity.trash',
@@ -1679,6 +1709,7 @@ export const COMMANDS = [
       },
     },
     http: { method: 'POST', path: '/api/build', status: (built) => (built.ok ? 200 : 400) },
+    toolArgs: bareSpec,
     run: (w, a) => {
       const { spec, dryRun, skipExistingRows, ...bare } = a;
       return w.build(spec ?? bare, { dryRun: Boolean(dryRun), skipExistingRows: Boolean(skipExistingRows) });

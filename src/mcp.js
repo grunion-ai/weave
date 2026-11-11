@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
 import { toolCommand, toolDefinition } from './commands.js';
 import { guided } from './field-hints.js';
-import { Weave } from './engine.js';
+import { Weave, WeaveError } from './engine.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
@@ -295,6 +295,7 @@ const envOrigin = () => process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? 
 
 function callTool(weave, name, rawArgs, caller) {
   if (name === 'weave_call') {
+    checkArgs('weave_call', rawArgs);
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
@@ -335,13 +336,20 @@ const mayCall = (caller, name) => {
 const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+const toolProps = (name) => TOOLS.find((t) => t.name === name)?.inputSchema.properties;
+const unknownArgs = (props, args) => (isMap(args) ? Object.keys(args) : []).filter((k) => !Object.hasOwn(props, k) && k !== 'verbose');
+const quoted = (keys) => keys.map((k) => `'${k}'`).join(', ');
+function checkArgs(name, args, tail = '') {
+  const props = toolProps(name);
+  const unknown = props ? unknownArgs(props, args) : [];
+  if (unknown.length) throw new WeaveError(`${name} takes ${Object.keys(props).join(', ') || 'no arguments'}; unknown ${quoted(unknown)}${tail}`, 'invalid');
+}
 function checkRowArgs(name, args, required) {
-  const props = TOOLS.find((t) => t.name === name).inputSchema.properties;
-  const unknown = Object.keys(args).filter((k) => !Object.hasOwn(props, k) && k !== 'verbose');
-  const extra = unknown.length ? `; unknown ${unknown.map((k) => `'${k}'`).join(', ')}` : '';
-  if (required && !isMap(args.values)) throw new Error(`values is required: a map of field name to value, e.g. {"Name": "…"}${extra}`);
-  if (!required && args.values != null && !isMap(args.values)) throw new Error(`values is a map of field name to value, e.g. {"Name": "…"}${extra}`);
-  if (unknown.length) throw new Error(`${name} takes ${Object.keys(props).join(', ')}${extra}; field values go in values`);
+  const unknown = unknownArgs(toolProps(name), args);
+  const extra = unknown.length ? `; unknown ${quoted(unknown)}` : '';
+  if (required && !isMap(args.values)) throw new WeaveError(`values is required: a map of field name to value, e.g. {"Name": "…"}${extra}`, 'invalid');
+  if (!required && args.values != null && !isMap(args.values)) throw new WeaveError(`values is a map of field name to value, e.g. {"Name": "…"}${extra}`, 'invalid');
+  checkArgs(name, args, '; field values go in values');
 }
 
 const ROW_GUARDS = {
@@ -370,8 +378,10 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
   weave.maybeRefresh?.();
   ROW_GUARDS[name]?.(weave, args, caller);
   const command = toolCommand(name, args);
+  const given = command?.toolArgs?.(args) ?? args;
+  checkArgs(name, given);
   if (command) {
-    const result = command.run(weave, args, { caller, origin: envOrigin(), door: 'mcp' });
+    const result = command.run(weave, given, { caller, origin: envOrigin(), door: 'mcp' });
     return command.toolResult ? command.toolResult(result) : result;
   }
   switch (name) {

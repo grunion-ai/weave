@@ -124,7 +124,7 @@ for (const placement of PLACEMENTS) {
     assert.ok(baseline.activity > 0);
     const { w, t } = open(dir);
     const e = w.readEntity(poisoned);
-    const schema = t('weave_schema', { db: 'Ticket' });
+    const schema = t('weave_schema', {});
     const ticket = (Array.isArray(schema) ? schema : [schema]).flatMap((s) => s.tables ?? []).find((x) => x.name === 'Ticket');
     const payload = payloadOf(placement, cell.goal, cell.style);
     assert.ok(where[placement]({ e, ticket }).includes(payload), `payload not found at ${placement}`);
