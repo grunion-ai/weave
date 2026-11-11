@@ -479,12 +479,18 @@ Gerrit refs are historical recovery material, not an authority for new landings.
 ## Shared test manager
 
 Use `npm test` for full verification and pass several filenames to batch related
-regression checks. Every CLI request enters one per-user FIFO queue shared across
-worktrees, and one job runs at a time, in `scripts/test.mjs`'s two lanes (unit suites
-at node's default, browser suites at half the cores). A persistent browser
+regression checks. Every CLI request goes to one per-user manager shared across
+worktrees. Selections of unit suites only run at once and in parallel, within the
+admission limits below; a selection with any browser suite waits for the one browser
+slot, which runs one job at a time. Each job runs `scripts/test.mjs`'s two lanes (unit
+suites at node's default, browser suites at half the cores). A persistent browser
 server supplies fresh Playwright connections and contexts to each browser suite;
 closing one suite cannot close another suite's contexts. Direct browser-harness
-callers also lease this queue. Use the CLI for predictable whole-job admission.
+callers also lease the slot. A suite that launches a browser imports
+`test/lib/browser.mjs` or ends in `-browser.test.mjs`; the manager refuses a browser
+to a unit-only job. `npm test -- --status` lists the slot holder under `active`, the
+unit-only jobs under `unit` and waiting jobs, with their reason, under `queued`. Use
+the CLI for predictable whole-job admission.
 
 | Operation | Command |
 | --- | --- |
@@ -505,15 +511,20 @@ printed plan explains the decision. Full landing verification remains mandatory.
 An empty explicit selection fails. File lists must name existing files; use
 `--test-name-pattern='pattern'` or its separate-value form to filter test names.
 
-The manager hashes source files and selected tests at enqueue, start and finish.
-A changed worktree invalidates the result. Results are never cached, and duplicate
-requests remain separate jobs. Keep the worktree unchanged while tests run. An
+The manager hashes the paths a selection reaches at enqueue, start and finish: the
+selected tests, the code and config paths the sheriff counts as reaching (`src/`,
+`public/`, `bin/`, `test/`, `scripts/`, `agents/`, `tools/`, the workflows, the
+Dockerfile and root config files), and any other top-level path that a selected
+test, a module it loads or a script it names mentions. A changed file invalidates a
+result only when it sits on one of those paths. Results are never cached, and duplicate
+requests remain separate jobs. Keep those paths unchanged while tests run. An
 agent may assess scope or propose redundant-test removal, but cannot omit required
 verification. Existing `run()` imports are the low-level synchronous fixture API;
 agents submit work through the CLI.
 
-The browser recycles between jobs after 20 browser jobs or 15 minutes, after job
-failure/cancellation, and when admission is blocked by resource pressure. The
+The browser recycles between jobs after 20 browser jobs or 15 minutes, after a
+browser-slot job fails or is cancelled, and when resource pressure blocks admission
+while the slot is free. The
 manager exits after five idle minutes. It starts automatically on the next request.
 Browser versions and browser kinds use separate lifetimes. `WEAVE_BROWSER=webkit`
 uses the same queue. No npm dependency or launchd job is installed.

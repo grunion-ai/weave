@@ -19,7 +19,7 @@ export function testFiles(root = ROOT) {
     .sort();
 }
 
-const BROWSER = /^(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
+const BROWSER = /(?:^|;)\s*(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
 export function lanes(files, root = ROOT) {
   const browser = [], unit = [];
   for (const f of files) {
@@ -156,8 +156,9 @@ if (!process.env.NODE_TEST_CONTEXT && process.argv[1] && resolve(process.argv[1]
     if (argv.includes('--plan')) { console.log(JSON.stringify(selection, null, 2)); process.exit(0); }
     if (process.env.WEAVE_TEST_JOB) process.exit(run(selection.files, flags));
     console.log(`# TEST SELECTION ${selection.mode}: ${selection.reasons.join(' ')}`);
-    const result = await request({ type: 'run', root: ROOT, node: process.execPath, files: selection.files, flags, timeout,
-      env: childEnv(), fingerprint: fingerprint(ROOT, selection.files) }, { start: true, onMessage(message) {
+    const lane = lanes(selection.files).browser.length ? 'browser' : 'unit';
+    const result = await request({ type: 'run', root: ROOT, node: process.execPath, files: selection.files, flags, timeout, lane, scope: 'reach',
+      env: childEnv(), fingerprint: fingerprint(ROOT, selection.files, 'reach') }, { start: true, onMessage(message) {
         if (message.stream) process[message.stream].write(Buffer.from(message.data, 'base64'));
         if (message.event) console.log(message.event);
       } });
