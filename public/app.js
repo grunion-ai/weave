@@ -98,6 +98,7 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
       if (xhr.status >= 200 && xhr.status < 300) {
         noteRevisions('POST', path, data);
         noteUsage('POST', path, raw ? {} : body, data);
+        if (!raw) noteWrite(null, 'POST', path, data, { took: 0, date: Date.parse(xhr.getResponseHeader('Date')) });
         return end(resolve, data);
       }
       if (data.code === 'seat-required') seatToast(data);
@@ -292,9 +293,10 @@ function noteRevisions(method, path, data) {
   for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
   for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
     if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+    if (row?.id && (method === 'GET' || path.endsWith('/query'))) pinClaims(row);
   }
 }
-async function api(method, path, body, { signal, quiet = false } = {}) {
+async function api(method, path, body, { signal, quiet = false, gesture = null } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
     warmGets.delete(path);
@@ -303,6 +305,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method !== 'GET') warmGets.clear();
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
+  const sent = performance.now();
   let res;
   try {
     res = await fetch(WS_PREFIX + '/api' + path, {
@@ -332,6 +335,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
   if (!quiet) noteUsage(method, path, body, data);
+  if (method !== 'GET' && gesture !== false) noteWrite(gesture, method, path, data, { seen, took: performance.now() - sent, date: Date.parse(res.headers.get('Date')) });
   return data;
 }
 
@@ -6461,17 +6465,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const last = Math.max(...ids.map((id) => drawn.indexOf(id)));
     const keep = (id) => !ids.includes(id);
     const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
-    const gesture = { kind: 'delete', ids };
-    lastGesture = gesture;
+    const gesture = newGesture('delete');
     clearChosen();
     if (dock && ids.includes(weaveEntitySurface.selectionId(dock.state))) { dockClose(); dockSyncUrl(); }
     dropRows(ids);
     const undo = toast(`${TRASHED} ${SEL().countLabel(ids.length, db.term)}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
     focusGridRow(next, main);
     gesture.settled = (async () => {
-      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`)));
-      gesture.ids = ids.filter((id, i) => results[i].status === 'fulfilled');
-      const failed = ids.length - gesture.ids.length;
+      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`, undefined, { gesture })));
+      const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed) {
         if (!gesture.ids.length) dropToastNode(undo);
         toast(`${TRASHED}: ${failed} of ${ids.length} failed`, true);
@@ -7651,16 +7653,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const relationOf = await relationRows(fields.slice(target.c0, target.c1 + 1));
     const plan = RG().plan({ block, rect: target, fields, rowIds, typeOf, optionsOf, relationOf });
     const results = [];
+    const gesture = newGesture('update');
     for (const g of RG().group(plan.writes)) {
-      try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values })); }
+      try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values }, { gesture })); }
       catch (err) { results.push({ done: [], failed: g.ids.map((id) => ({ id, error: err.message })) }); }
     }
-    const steps = results.reduce((n, r) => n + (r.changed?.length ?? 0), 0);
     const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, unmatched: plan.unmatched, results });
-    toast(t.msg, t.err, steps ? {
-      label: 'Undo',
-      run: async () => { await api('POST', '/undo', { steps }); await onSaved?.(); },
-    } : null);
+    toast(t.msg, t.err, gesture.ids.length ? { label: 'Undo', run: () => undoGesture(gesture) } : null);
     await onSaved?.();
   };
 
@@ -7841,10 +7840,9 @@ async function editPhoneField(anchor, db, eid, name) {
     const was = e.fields?.[f.name] ?? null;
     const raw = e.raw?.[f.name] ?? was;
     const write = async (value, shown) => {
-      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value });
-      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } });
-      const gesture = { kind: 'update', ids: [eid] };
-      lastGesture = gesture;
+      const gesture = newGesture('update');
+      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value }, { gesture });
+      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } }, { gesture });
       toast(`${f.name}: ${shown ?? (value == null || value === '' ? '—' : String(value))}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
       await refreshView();
     };
@@ -7870,10 +7868,9 @@ async function editPhoneField(anchor, db, eid, name) {
         return linkSearch(f, {
           linked: raw == null ? [] : Array.isArray(raw) ? raw : [raw],
           commit: async (add, drop) => {
-            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add });
-            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop });
-            const gesture = { kind: 'update', ids: [eid] };
-            lastGesture = gesture;
+            const gesture = newGesture('update');
+            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add }, { gesture });
+            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop }, { gesture });
             toast(`${f.name} changed`, false, { label: 'Undo', run: () => undoGesture(gesture) });
             await refreshView();
           },
@@ -10395,37 +10392,132 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-let lastGesture = null;
+const gestures = [];
+const GESTURE_CAP = 100;
+const UNDO_WINDOW = 200;
+const CLAIM_CAP = 2000;
+const UNDO_REFUSED = 'Changed since, so nothing was undone';
+const undoKey = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
+const pendingClaims = [];
+const looseIds = new Set();
 
-async function gestureTop(g) {
-  await g.settled;
-  if (!g.ids.length) return [];
-  const top = await api('GET', `/undo?limit=${g.ids.length}`);
-  const ours = [];
-  for (const u of top) {
-    if (u.kind !== g.kind || !g.ids.includes(u.entityId) || ours.includes(u.entityId)) break;
-    ours.push(u.entityId);
+const ENTITY_UNDO = [
+  [/^PATCH \/entities\/([^/?]+)$/, 'update'],
+  [/^POST \/entities\/([^/?]+)\/(?:state|link|unlink|doc|doc\/revisions\/[^/?]+\/restore)$/, 'update'],
+  [/^PUT \/entities\/([^/?]+)\/doc$/, 'update'],
+  [/^DELETE \/entities\/([^/?]+)$/, 'delete'],
+  [/^POST \/entities\/([^/?]+)\/restore$/, 'restore'],
+  [/^POST \/entities\/([^/?]+)\/comments$/, 'comment-add'],
+  [/^DELETE \/entities\/([^/?]+)\/comments\/[^/?]+$/, 'comment-delete'],
+  [/^POST \/entities\/([^/?]+)\/(?:fields\/[^/?]+\/)?files$/, 'file-attach'],
+];
+const BULK_UNDO = {
+  set: (d) => (d.changed ?? []).map((id) => ['update', id]),
+  link: (d) => (d.done ?? []).map((id) => ['update', id]),
+  move: (d) => (d.moved ?? []).flatMap((m) => [['create', m.to], ['delete', m.from]]),
+  rollup: (d) => [['create', d.parent?.id], ...(d.done ?? []).map((id) => ['update', id])].filter(([, id]) => id),
+};
+
+function undoEntriesOf(method, path, data) {
+  const call = `${method} ${path}`;
+  for (const [route, kind] of ENTITY_UNDO) {
+    const id = call.match(route)?.[1];
+    if (id) return [[kind, id]];
   }
-  return ours;
+  if (/^POST \/tables\/[^/?]+\/entities$/.test(call)) return data?.id ? [['create', data.id]] : [];
+  return call === 'POST /bulk' ? BULK_UNDO[data?.op]?.(data) ?? [] : [];
+}
+
+function newGesture(kind = null) {
+  const g = { kind, ids: [], keys: new Set() };
+  gestures.push(g);
+  if (gestures.length > GESTURE_CAP) gestures.shift();
+  return g;
+}
+
+function noteWrite(g, method, path, data, { seen, took, date }) {
+  if (seen && data?.revision === seen) return;
+  const entries = undoEntriesOf(method, path.split('?')[0], data);
+  if (!entries.length) return;
+  g ??= newGesture();
+  const one = entries.length === 1 ? entries[0][0] : null;
+  const stamp = Date.parse(one === 'create' ? data?.createdAt : ['update', 'delete', 'restore'].includes(one) ? data?.updatedAt : null);
+  const oldest = !Number.isFinite(stamp) && Number.isFinite(date);
+  const [lo, hi] = Number.isFinite(stamp) ? [stamp, stamp + took + 5]
+    : oldest ? [date - took - 2000, date + 3000] : [-Infinity, Infinity];
+  for (const [kind, id] of entries) {
+    g.ids.push(id);
+    pendingClaims.push({ g, kind, id, lo, hi, oldest, took });
+    if (oldest) looseIds.add(id);
+  }
+  if (pendingClaims.length > CLAIM_CAP) pendingClaims.splice(0, pendingClaims.length - CLAIM_CAP);
+}
+
+function pinClaims(row) {
+  const stamp = looseIds.has(row.id) ? Date.parse(row.updatedAt) : NaN;
+  if (!Number.isFinite(stamp)) return;
+  for (const w of pendingClaims) {
+    if (w.oldest && w.kind === 'update' && w.id === row.id) Object.assign(w, { lo: stamp, hi: stamp + w.took + 5, oldest: false });
+  }
+}
+
+function claimOwn(top) {
+  const held = new Set(gestures.flatMap((g) => [...g.keys]));
+  const want = pendingClaims.splice(0);
+  looseIds.clear();
+  for (const w of [...want.filter((x) => !x.oldest).reverse(), ...want.filter((x) => x.oldest)]) {
+    const fits = top.filter((x) => x.kind === w.kind && x.entityId === w.id && !held.has(undoKey(x))
+      && Date.parse(x.ts) >= w.lo && Date.parse(x.ts) <= w.hi);
+    const u = w.oldest ? fits.at(-1) : fits[0];
+    if (!u) continue;
+    held.add(undoKey(u));
+    w.g.keys.add(undoKey(u));
+  }
+}
+
+let undoQueue = Promise.resolve();
+function undoOwn(only = null) {
+  const run = undoQueue.then(() => stepBackOwn(only));
+  undoQueue = run.catch(() => {});
+  return run;
+}
+
+async function stepBackOwn(only) {
+  const pool = only ? [only] : gestures;
+  await Promise.allSettled(pool.map((g) => g.settled));
+  if (!pendingClaims.length && !pool.some((g) => g.keys.size)) return null;
+  const top = await api('GET', `/undo?limit=${UNDO_WINDOW}`);
+  claimOwn(top);
+  const live = new Set(top.map(undoKey));
+  for (const g of pool) for (const k of g.keys) if (!live.has(k)) g.keys.delete(k);
+  const owner = top.length ? pool.find((g) => g.keys.has(undoKey(top[0]))) : null;
+  let steps = 0;
+  while (owner && steps < top.length && owner.keys.has(undoKey(top[steps]))) steps++;
+  if (!steps) return { blocked: pool.some((g) => g.keys.size) };
+  const { undone } = await api('POST', '/undo', { steps });
+  for (const u of top.slice(0, steps)) owner.keys.delete(undoKey(u));
+  return { undone, popped: top.slice(0, steps) };
 }
 
 async function unlinkWithUndo(entityId, f, target, after = () => {}) {
-  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] });
-  const gesture = { kind: 'update', ids: [entityId] };
-  lastGesture = gesture;
+  const gesture = newGesture('update');
+  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] }, { gesture });
   toast(`Unlinked ${target.name ?? 'the row'} from ${f.name}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
   await after();
 }
 
 async function undoGesture(g) {
   g.undoing = true;
-  if (lastGesture === g) lastGesture = null;
   try {
     await saves.flush();
-    const ours = await gestureTop(g);
+    await g.settled;
     if (!g.ids.length) return;
-    if (ours.length) await api('POST', '/undo', { steps: ours.length });
-    for (const id of g.ids) if (!ours.includes(id)) await api('POST', `/entities/${id}/restore`);
+    const r = await undoOwn(g);
+    const back = new Set((r?.popped ?? []).map((u) => u.entityId));
+    if (g.kind === 'delete') {
+      for (const id of new Set(g.ids)) if (!back.has(id)) await api('POST', `/entities/${id}/restore`, undefined, { gesture: false });
+    } else if (!r?.undone) return toast(UNDO_REFUSED, true);
+    g.keys.clear();
     await refreshView();
     focusGridRow(g.ids[0]);
     toast('Restored');
@@ -10451,16 +10543,13 @@ document.addEventListener('keydown', async (e) => {
   if (e.target?.isContentEditable || e.target?.closest?.('input:not([type="checkbox"]), textarea, select, [contenteditable]')) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
   e.preventDefault();
-  const g = lastGesture;
-  lastGesture = null;
   try {
     await saves.flush();
-    const ours = g ? await gestureTop(g) : [];
-    const { undone } = await api('POST', '/undo', { steps: ours.length || 1 });
-    if (!undone.length) return toast('Nothing to undo');
+    const r = await undoOwn();
+    if (!r?.undone?.length) return r?.blocked ? toast(UNDO_REFUSED, true) : toast('Nothing to undo');
     await refreshView();
-    const first = undone[0].name || undone[0].entity;
-    toast(`Undone: ${first}${undone.length > 1 ? ` and ${undone.length - 1} more` : ''}`);
+    const first = r.undone[0].name || r.undone[0].entity;
+    toast(`Undone: ${first}${r.undone.length > 1 ? ` and ${r.undone.length - 1} more` : ''}`);
   } catch (err) { toast(err.message, true); }
 });
 
@@ -10470,7 +10559,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '?', does: 'this sheet, from anywhere outside a text field' },
   { keys: '⌘⇧E', does: 'expand the docked record to the page, or dock it again' },
   { keys: 'Esc', does: 'close the dock, a dialog or a menu' },
-  { keys: '⌘Z', does: 'undo the last change; a trash from the selection bar comes back whole' },
+  { keys: '⌘Z', does: 'undo the last change this tab made; a trash from the selection bar comes back whole' },
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
