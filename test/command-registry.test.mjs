@@ -563,11 +563,12 @@ test('query, trash, stats and bulk answer the same on CLI, MCP and HTTP, each do
   try {
     const queried = {
       cli: d.cli(['query', 'Task', '--where', JSON.stringify(where), '--relations', 'chip']),
-      mcp: d.mcp('weave_query', { db: 'Task', where }),
+      mcp: d.mcp('weave_query', { db: 'Task', where, shape: 'full' }),
       http: await d.http('POST', '/api/tables/Task/query', { where, relations: 'chip' }),
     };
     assert.equal(queried.http.items.length, 1);
-    assert.deepEqual(row(queried.mcp), row(queried.http), 'weave_query and POST /api/tables/Task/query answer alike');
+    assert.deepEqual(row(queried.mcp), row(queried.http), 'weave_query shape full and POST /api/tables/Task/query answer alike');
+    assert.deepEqual(d.mcp('weave_query', { db: 'Task', where }).items.map((r) => r.name), queried.http.items.map((r) => r.name), 'the lean default reads the same rows (Issue #1558)');
     assert.deepEqual(row(queried.cli), row(queried.http), 'weave query and POST /api/tables/Task/query answer alike');
     assert.equal((await d.raw('POST', '/api/tables/Task/query', { limit: 'many' })).status, 400, 'a bad HTTP limit is still a 400');
     const trashed = { cli: d.cli(['trash', 'Task']), mcp: d.mcp('weave_trash', { table: 'Task' }), http: await d.http('GET', '/api/tables/Task/trash') };

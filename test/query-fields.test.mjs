@@ -113,7 +113,7 @@ test('REST, MCP and CLI carry fields and relations', async () => {
   const { w, grid } = buildWorkspace();
   const props = TOOLS.find((t) => t.name === 'weave_query').inputSchema.properties;
   assert.ok(props.fields && props.relations, 'MCP query must advertise fields and relations');
-  const m = dispatchTool(w, 'weave_query', { db: 'Case', fields: ['Suite'], relations: 'chip', limit: 1 });
+  const m = dispatchTool(w, 'weave_query', { db: 'Case', fields: ['Suite'], relations: 'chip', shape: 'full', limit: 1 });
   assert.deepEqual(Object.keys(m.items[0].fields), ['Suite']);
   assert.ok(m.chips[grid.id]);
 

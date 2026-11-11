@@ -45,24 +45,25 @@ test('weave_query with no limit answers one page and says how to get the next', 
   assert.equal(rest.items[0].name, `Deal ${QUERY_PAGE}`, 'paging does not repeat or skip a row');
 });
 
-test('weave_query honours an explicit limit and keeps -1 as the whole-table read', () => {
+test('weave_query honours an explicit limit and refuses -1, naming the paged read (Issue #1558)', () => {
   const w = stocked();
   assert.equal(dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: null }).items.length, QUERY_PAGE, 'an explicit null limit answers the default page');
   assert.equal(dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 5 }).items.length, 5, 'a page size is honoured');
-  const whole = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: -1 });
-  assert.equal(whole.items.length, ROWS, '-1 still reads every row');
-  assert.equal(whole.nextOffset, undefined, 'a whole-table read names no next offset');
+  assert.throws(() => dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: -1 }), /at most 2000 rows[^]*nextOffset/, 'a whole-table read on MCP pages instead');
 });
 
 test('weave_query sends relation summaries once, in chips, unless the caller asks for full', () => {
   const w = stocked();
-  const chipped = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 3 });
-  assert.ok(chipped.chips, 'the default answer carries the chips map');
+  const chipped = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 3, shape: 'full' });
+  assert.ok(chipped.chips, 'a full answer carries the chips map');
   const value = chipped.items[0].fields.Company;
   const chip = Array.isArray(value) ? value[0] : value;
   assert.deepEqual(Object.keys(chip).sort(), ['id', 'name', 'publicId'], 'a chipped relation value is the reference alone');
+  const lean = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 3 });
+  assert.equal(lean.chips, undefined, 'the lean default sends no summaries (Issue #1558)');
+  assert.deepEqual(lean.items[0].fields.Company, value, 'and the same chip in the value');
 
-  const full = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 3, relations: 'full' });
+  const full = dispatchTool(w, 'weave_query', { db: 'Sales/Deal', limit: 3, shape: 'full', relations: 'full' });
   assert.equal(full.chips, undefined, 'relations: full keeps the embedded summaries');
   assert.ok(JSON.stringify(full).length > JSON.stringify(chipped).length, 'full is the larger answer');
 });
