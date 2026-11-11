@@ -187,7 +187,7 @@ const SET_DOC_TOOL = {
 const RECORDS = Symbol('records');
 const UNDO_TOOL = {
   name: 'weave_undo',
-  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting.',
+  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting. A field someone else wrote after the step is left alone and named in that step\'s kept, with the actor who holds it; a step whose every field is kept answers skipped "changed since" and writes nothing.',
   inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
 };
 const VIEWS_TOOL = {

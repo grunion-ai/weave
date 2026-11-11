@@ -368,6 +368,8 @@ const DG = globalThis.weaveDateGrain;
 const DEFAULTABLE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 const DOC_REVISION_WINDOW_MS = 10 * 60 * 1000;
+const docFingerprint = (text) => `${text.length}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`;
+
 function docChange(field, before, after) {
   const a = before.split('\n');
   const b = after.split('\n');
@@ -5223,6 +5225,7 @@ export class Weave {
     if (this.#inMetaSync || this.#inUndo) return;
     const db = this.state.tables[e.dbId];
     if (!db || db.system) return;
+    if (kind === 'update' && data.before) data = { ...data, after: this.#undoAfter(e, data.before) };
     this.store.pushUndo({
       ts: nowISO(),
       actor: this.#undoOwner ?? this.actor,
@@ -5244,6 +5247,22 @@ export class Weave {
       else before.values[f.id] = structuredClone(e.values[f.id] ?? null);
     }
     return before;
+  }
+
+  #undoAfter(e, before) {
+    const after = { values: {}, docs: {} };
+    for (const fid of Object.keys(before.values)) after.values[fid] = structuredClone(e.values[fid] ?? null);
+    for (const fid of Object.keys(before.docs)) after.docs[fid] = docFingerprint(e.docs?.[fid] ?? '');
+    return after;
+  }
+
+  #lastWriter(e, fieldName) {
+    for (let i = (e.activity ?? []).length - 1; i >= 0; i--) {
+      const a = e.activity[i];
+      if (a.kind === 'undo' || a.detail?.field !== fieldName) continue;
+      return this.actorName(a.actor ?? null);
+    }
+    return null;
   }
 
   #undoChanged(e, before) {
@@ -5278,10 +5297,16 @@ export class Weave {
             break;
           case 'update': {
             const before = entry.data.before ?? { values: {}, docs: {} };
+            const after = entry.data.after ?? null;
             const fields = [];
+            const kept = [];
             for (const [fid, prev] of Object.entries(before.values)) {
               const f = db.fields[fid];
               if (!f) continue;
+              if (after && JSON.stringify(e.values[fid] ?? null) !== JSON.stringify(after.values[fid] ?? null)) {
+                kept.push({ field: f.name, by: this.#lastWriter(e, f.name) });
+                continue;
+              }
               fields.push(f.name);
               if (f.type === 'relation') {
                 const ids = prev == null ? [] : Array.isArray(prev) ? prev : [prev];
@@ -5292,16 +5317,22 @@ export class Weave {
             }
             for (const [fid, text] of Object.entries(before.docs)) {
               if (!db.fields[fid]) continue;
-              fields.push(db.fields[fid].name);
               const was = e.docs[fid] ?? '';
+              if (after && docFingerprint(was) !== (after.docs[fid] ?? null)) {
+                kept.push({ field: db.fields[fid].name, by: this.#lastWriter(e, db.fields[fid].name) });
+                continue;
+              }
+              fields.push(db.fields[fid].name);
               e.docs[fid] = text;
               if (was !== text) this.#recordDocRevision(e, db.fields[fid], was, text, { fresh: true });
             }
+            if (!fields.length && kept.length) { undone.push({ ...summary, skipped: 'changed since', kept }); continue; }
             e.updatedAt = nowISO();
             e.modifiedBy = this.actor;
             this.#logActivity(e, 'undo', { fields });
             this.#mark(e);
             this.save();
+            if (kept.length) { undone.push({ ...summary, kept }); continue; }
             break;
           }
           case 'comment-add':
