@@ -6,7 +6,7 @@ import { Weave, WeaveError } from './engine.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
-export { QUERY_PAGE } from './commands.js';
+export { QUERY_PAGE, QUERY_CAP } from './commands.js';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const seal = (text) => text.replace(/<(?=\/?weave_data)/gi, '\\u003c');

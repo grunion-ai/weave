@@ -1,6 +1,6 @@
 import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
-import { Weave, ONTOLOGY, inviteUrl } from './engine.js';
+import { Weave, ONTOLOGY, inviteUrl, SYSTEM_SORT_KEYS } from './engine.js';
 import { guided } from './field-hints.js';
 import { leaveWorkspace } from './forms.js';
 import { vocabularyView, FIELD_TYPE_VOCABULARY } from './vocabulary.js';
@@ -10,6 +10,7 @@ const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).sp
 const nullable = (v, as = (x) => x) => (v === 'null' ? null : as(v));
 
 export const QUERY_PAGE = 200;
+export const QUERY_CAP = 2000;
 const MAX_ROWS = 500;
 const rowCap = () => Math.max(1, Number(process.env.WEAVE_MAX_ROWS) || MAX_ROWS);
 export const boundedLimit = (value, fallback = null) => {
@@ -127,12 +128,37 @@ const withSecret = (w, id, ctx) => {
 const withoutAffected = ({ affected, ...row }) => row;
 
 const queryOptions = (a) => ({
-  where: a.where ?? [], sort: a.sort ?? [], limit: a.limit ?? QUERY_PAGE,
-  offset: a.offset ?? 0, select: a.select ?? null, fields: a.fields ?? null, relations: a.relations ?? 'chip',
+  where: a.where ?? [], sort: a.sort ?? [], limit: toolLimit(a.limit),
+  offset: nonNegativeInteger('offset', a.offset), select: a.select ?? null, fields: a.fields ?? null, relations: a.relations ?? 'chip',
   includeDeleted: a.includeDeleted == null ? null : Boolean(a.includeDeleted),
   trashCount: Boolean(a.trashCount), countAll: Boolean(a.countAll), search: a.search ?? '', view: a.view ?? null,
-  groupBy: a.groupBy ?? null, shape: a.shape ?? 'full',
+  groupBy: a.groupBy ?? null, shape: a.shape ?? 'lean',
 });
+const TOOL_SHAPES = ['lean', 'row', 'full'];
+function toolLimit(value) {
+  if (value == null) return QUERY_PAGE;
+  const n = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  if (Number.isInteger(n) && n >= 0 && n <= QUERY_CAP) return n;
+  throw new WeaveError(`weave_query reads at most ${QUERY_CAP} rows a call (got limit ${JSON.stringify(value)}); read more as a cursor: pass each answer's nextOffset as offset until the answer has none`, 'invalid');
+}
+const leanFields = (w, ref) => {
+  const db = w.getTable(ref);
+  return db.fieldOrder.filter((id) => id !== db.nameFieldId && !['document', 'view'].includes(db.fields[id].type)).map((id) => db.fields[id].name);
+};
+const leanItem = (system) => ({ id, publicId, name, revision, fields, deletedAt, ...row }) => ({
+  id, publicId, name, revision, fields, ...Object.fromEntries(system.map((k) => [k, row[k]])), ...(deletedAt ? { deletedAt } : {}),
+});
+function toolQuery(w, a, ctx) {
+  const options = queryOptions(a);
+  if (!TOOL_SHAPES.includes(options.shape)) throw new WeaveError(`shape must be 'lean', 'row' or 'full' (got '${options.shape}')`, 'invalid');
+  const lean = options.shape === 'lean' && !options.select;
+  const engine = lean ? { ...options, shape: 'full', fields: options.fields ?? leanFields(w, a.db) } : { ...options, shape: options.shape === 'row' ? 'row' : 'full' };
+  const page = w.query(a.db, { ...sorted(engine), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace });
+  if (!lean) return page;
+  const system = (options.fields ?? []).filter((n) => Object.hasOwn(SYSTEM_SORT_KEYS, n) && SYSTEM_SORT_KEYS[n] !== 'publicId').map((n) => SYSTEM_SORT_KEYS[n]);
+  const { chips, ...rest } = page;
+  return { ...rest, items: rest.items.map(leanItem(system)) };
+}
 const csvList = (v) => (v ? String(v).split(',').map((s) => s.trim()) : null);
 const whereJson = (raw) => {
   if (!raw) return null;
@@ -1039,7 +1065,7 @@ export const COMMANDS = [
     writes: 'none',
     tool: {
       name: 'weave_query',
-      description: 'Query a table. 200 a page: `total` counts every match, `nextOffset` is the next page\'s `offset` while more remain, `limit: -1` reads the whole table. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
+      description: 'Query a table. 200 rows a page, at most 2000: `total` counts every match, and `nextOffset` is the next page\'s `offset` while more remain. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1048,16 +1074,16 @@ export const COMMANDS = [
           sort: { description: 'Array of field names or {field, dir} objects' },
           limit: { type: 'number' },
           offset: { type: 'number' },
-          select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return (omit for full entities)' },
-          fields: { type: 'array', items: { type: 'string' }, description: 'Keep the entity shape but only these fields (a system column name works too). Comments, activity and files are left out. Not with select.' },
-          relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name } and each related record\'s summary is sent once, in chips (keyed by id). full: every record embeds its related records\' summaries.' },
+          select: { type: 'array', items: { type: 'string' }, description: 'Field paths to return as flat rows' },
+          fields: { type: 'array', items: { type: 'string' }, description: 'Only these fields (a system column name works too); shape full keeps the envelope around them, without comments, activity and files. Not with select.' },
+          relations: { type: 'string', enum: ['full', 'chip'], description: 'Default chip: a relation value is { id, publicId, name }; shapes row and full send each related record\'s summary once, in chips (keyed by id). full: every record embeds its related records\' summaries.' },
           includeDeleted: { type: 'boolean', description: 'Also return soft-deleted (trashed) entities' },
           trashCount: { type: 'boolean', description: 'Also return trashCount: how many of the table\'s records are in the trash' },
           countAll: { type: 'boolean', description: 'Also return all: the table\'s undeleted records before where and search' },
           search: { type: 'string', description: 'Only the records weave_search finds here: name, publicId, text fields, documents, comments. Composes with where and sort; total counts them.' },
           view: { type: 'string', description: 'A saved view (id or name): its filters AND where; its sort and search apply unless you pass yours; grouped adds groups and groupTotal.' },
           groupBy: { type: 'string', description: 'Like view, groups only: no filters or search.' },
-          shape: { type: 'string', enum: ['full', 'row'], description: 'Default full: every row carries the whole entity envelope. row: a lean list row of id, publicId, name, fields and the raw values that differ from their display value.' },
+          shape: { type: 'string', enum: ['lean', 'row', 'full'], description: 'Default lean (about 0.3 KB a row): id, publicId, name, revision and the value fields, without documents or the Chip and Card views. row: id, publicId, name, every field and the raw values that differ from their display value. full: the whole entity envelope, 2 to 25 KB a row.' },
         },
         required: ['db'],
       },
@@ -1083,7 +1109,7 @@ export const COMMANDS = [
       }),
     },
     http: { method: 'POST', path: '/api/tables/:db/query', args: (a, body) => ({ db: a.db, options: { ...body, limit: body?.limit == null ? QUERY_PAGE : boundedLimit(body.limit) } }) },
-    run: (w, a, ctx) => w.query(a.db, { ...sorted(a.options ?? queryOptions(a)), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace }),
+    run: (w, a, ctx) => (a.options ? w.query(a.db, { ...sorted(a.options), viewerZone: ctx?.viewerZone, workspace: ctx?.workspace }) : toolQuery(w, a, ctx)),
   },
   {
     name: 'entity.trash',
