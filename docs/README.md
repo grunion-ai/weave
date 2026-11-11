@@ -17,6 +17,7 @@ weave is, the quickstart, self-hosting and the FAQ.
 | [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
 | [Screenshots](screenshots/) | Table, board, phone, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
+| [The grid](grid.md) | Which function owns each visible grid behaviour, which pure core holds its logic, and where a change goes |
 
 ## Elsewhere in the repo
 
