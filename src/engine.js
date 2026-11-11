@@ -7955,6 +7955,10 @@ export class Weave {
     const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
     if (!list.length) throw new WeaveError('ids is required: the records to act on', 'invalid');
     if (!BULK_OPS.includes(op)) throw new WeaveError(`Unknown bulk op '${op}' (${BULK_OPS.join(', ')})`, 'invalid');
+    return this.#batched(() => this.#bulkRows(list, op, params));
+  }
+
+  #bulkRows(list, op, params) {
     const out = { op, done: [], failed: [] };
     const each = (fn) => {
       for (const id of list) {
@@ -8492,6 +8496,15 @@ export class Weave {
       });
     } catch (err) {
       if (attempted) this.#adoptRolledBack();
+      throw err;
+    }
+  }
+
+  #batched(fn) {
+    try {
+      return this.store.batch(fn);
+    } catch (err) {
+      this.#adoptRolledBack();
       throw err;
     }
   }
@@ -11019,6 +11032,10 @@ export class Weave {
       if (!f || ['lookup', 'rollup', 'formula'].includes(f.type)) return null;
       return f;
     });
+    return this.#batched(() => this.#importRows(db, rows, writable));
+  }
+
+  #importRows(db, rows, writable) {
     let created = 0;
     const errors = [];
     for (const row of rows.slice(1)) {

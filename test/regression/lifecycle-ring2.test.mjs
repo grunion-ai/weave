@@ -16,15 +16,6 @@ const reopen = (w) => {
   return new Weave({ path });
 };
 
-const ftsIds = (path, word) => {
-  const db = new DatabaseSync(path);
-  try {
-    return db.prepare('SELECT id FROM entities_fts WHERE entities_fts MATCH ?').all(word).map((r) => r.id);
-  } finally {
-    db.close();
-  }
-};
-
 const rowCount = (path, dbId) => {
   const db = new DatabaseSync(path);
   try {
@@ -147,7 +138,7 @@ test('ring 2 reopen: workspace delete and restore hold across a server restart',
   }
 });
 
-test('ring 2 purge: an entity soft-deleted then purged is gone from rows, trash and the index', () => {
+test('ring 2 purge: an entity soft-deleted then purged is gone from rows, trash and search', () => {
   const dir = scratch();
   try {
     const path = join(dir, 'ws.db');
@@ -158,7 +149,7 @@ test('ring 2 purge: an entity soft-deleted then purged is gone from rows, trash 
     assert.throws(() => w.getEntity(cargo.id), { code: 'not-found' });
     assert.ok(!w.listTrash(load.id).some((e) => e.id === cargo.id));
     assert.equal(rowCount(path, load.id), 0);
-    assert.deepEqual(ftsIds(path, 'zephyr'), []);
+    assert.deepEqual(w.search('zephyr'), []);
     w.store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -386,7 +377,7 @@ test('ring 2 search: live rows under a trashed table or space are delisted from 
       hidden(w);
       w = reopen(w);
       hidden(w);
-      assert.deepEqual(ftsIds(path, 'zephyr'), [cargo.id], 'the index keeps the live row; the container filter delists it at read time');
+      hidden(w);
       const { server } = await startServer(w, { port: 0 });
       try {
         const call = api(`http://127.0.0.1:${server.address().port}`);

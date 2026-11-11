@@ -231,14 +231,7 @@ export class Store {
     addRestoredFrom((q) => db.exec(q));
     undoByActor(db);
     uniquePublicIds(db);
-    try {
-      db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)");
-    } catch (err) {
-      db.close();
-      throw new WeaveError(
-        `SQLite FTS5 is unavailable in this Node (${process.version}); weave needs Node >= 22.16 `
-        + `(24 LTS recommended). Underlying error: ${err.message}`, 'invalid');
-    }
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'entities_fts'").get()) db.exec('DROP TABLE entities_fts');
     this.#db = db;
     this.#dataVersion = this.#pragmaDataVersion();
     return this.#loadState();
@@ -472,25 +465,14 @@ export class Store {
           }
         }
       }
-      if (all) db.exec('DELETE FROM entities_fts');
       const dropEntity = db.prepare('DELETE FROM entities WHERE id = ?');
       const putEntity = db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
         updated_at = excluded.updated_at, json = excluded.json`);
-      const dropIndexed = db.prepare('DELETE FROM entities_fts WHERE id = ?');
-      const putIndexed = db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)');
       for (const id of [...ids].sort((a, b) => (entities[a] === undefined ? 0 : 1) - (entities[b] === undefined ? 0 : 1))) {
         const e = entities[id];
-        if (e === undefined) {
-          dropEntity.run(id);
-          if (!all) dropIndexed.run(id);
-        } else {
-          putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
-          if (!all) dropIndexed.run(id);
-          if (!e.deletedAt) {
-            putIndexed.run(id, this.#ftsText(state, e));
-          }
-        }
+        if (e === undefined) dropEntity.run(id);
+        else putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
       }
       if (!this.#batch) db.exec('COMMIT');
     } catch (err) {
@@ -498,14 +480,6 @@ export class Store {
       throw err;
     }
     return moved;
-  }
-
-  #ftsText(state, e) {
-    const table = state.tables[e.dbId];
-    const name = table ? String(e.values?.[table.nameFieldId] ?? '') : '';
-    const docs = Object.values(e.docs ?? {}).join('\n');
-    const comments = (e.comments ?? []).map((c) => c.text).join('\n');
-    return [name, docs, comments].filter(Boolean).join('\n');
   }
 
   sizeBytes() {

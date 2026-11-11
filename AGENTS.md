@@ -679,7 +679,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | --- | --- |
 | `bin/weave.js` | CLI entry point — every command, including `serve` and `mcp` |
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
-| `src/store.js` | `node:sqlite` persistence (WAL, FTS5, JSON→SQLite migration) |
+| `src/store.js` | `node:sqlite` persistence (WAL, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
 | `src/mcp.js` | MCP server: 65 tools over the engine, 17 listed by default |
 | `src/commands.js` | The command registry: one entry per operation names its MCP tool, CLI command, HTTP route, what it writes and how it runs; the three doors dispatch from it |
