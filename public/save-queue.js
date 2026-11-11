@@ -8,6 +8,7 @@
     const failed = new Map();
     const line = [];
     const listeners = new Set();
+    const hearers = new Set();
     let inFlight = 0;
     let pumping = null;
     let ticking = false;
@@ -56,6 +57,9 @@
             else refuse(e, again);
             return false;
           }
+        }
+        for (const fn of hearers) {
+          try { fn(result, e.job); } catch (err) { timers.setTimeout(() => { throw err; }, 0); }
         }
         answer(e, 'resolve', result);
         landed = true;
@@ -136,10 +140,16 @@
       return () => listeners.delete(fn);
     }
 
+    function onSaved(fn) {
+      hearers.add(fn);
+      return () => hearers.delete(fn);
+    }
+
     return {
       push,
       flush,
       subscribe,
+      onSaved,
       get pending() { return pending(); },
       get state() { return state(); },
     };

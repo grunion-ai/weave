@@ -1942,3 +1942,12 @@ test('undo sends only the steps this tab claimed: one POST /undo, in stepBackOwn
   assert.doesNotMatch(APP, /steps: [^}\n]*\|\| ?1\b/, 'no step count falls back to 1');
   assert.match(fnBody('api'), /noteWrite\(gesture, method, path, data, \{ seen, took/, 'every write through api() is noted for this tab');
 });
+
+test('a record page save applies the entity it returned, and the grid repaints from the save queue\'s saved event (Issue #1681)', () => {
+  const view = fnBody('renderEntityView');
+  assert.doesNotMatch(view, /labeledEditorFor\([^\n]*\(\) => refresh\(\)/, 'no field editor rebuilds the page after its save');
+  assert.match(view, /Object\.assign\(entity, fresh\);\s*\n\s*for \(const fill of repaints\) fill\(!field\);/, 'the view takes the saved entity and repaints the rows whose value changed');
+  assert.match(view, /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
+  assert.match(APP, /saves\.onSaved\(\(written, job\) => \{/, 'the save queue announces each landed write');
+  assert.match(fnBody('drawDatabase'), /queuedWrites\.has\(written\) \? null : onSaved\(written, field\)/, 'a cell leaves its repaint to the announcement, so its row repaints once');
+});
