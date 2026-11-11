@@ -1,0 +1,1 @@
+- `docs/grid.md` names the function that owns each visible grid behaviour and the pure core that holds its logic, so a grid change starts from the map rather than a read of `renderTable` and a chain of greps. `test/grid-map.test.mjs` fails when the map names code that is gone ([[Issue#1695]]).
