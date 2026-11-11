@@ -647,9 +647,7 @@ function holdRow(item) {
 }
 
 async function openEntity(id, { drill = false } = {}) {
-  const here = allTables().find((d) => d.id === state.route?.dbId);
-  const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
-  for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
+  for (const tail of ['/references', '/references-from']) warmGet(`/entities/${id}${tail}`);
   const fetching = warmGet(`/entities/${id}`);
   const held = heldRows.get(id);
   let entity = held && allTables().some((d) => d.id === held.dbId) ? held : null;
