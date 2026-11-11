@@ -1,6 +1,20 @@
+export const MAX_RESULT_CHARS = 65536;
+
+function joined(parts) {
+  const out = [];
+  let chars = 0;
+  for (const part of parts) {
+    const s = part == null ? '' : String(part);
+    chars += s.length;
+    if (chars > MAX_RESULT_CHARS) throw new Error(`Formula result is longer than ${MAX_RESULT_CHARS} characters`);
+    out.push(s);
+  }
+  return out.join('');
+}
+
 const FUNCS = {
   if: (c, a, b) => (truthy(c) ? a : b),
-  concat: (...xs) => xs.map((x) => (x == null ? '' : String(x))).join(''),
+  concat: (...xs) => joined(xs),
   round: (x, n = 0) => {
     const f = 10 ** n;
     return Math.round(Number(x) * f) / f;
@@ -180,7 +194,7 @@ export function evaluate(expression, getField) {
       const right = parseProd();
       if (op === '+') {
         left = typeof left === 'string' || typeof right === 'string'
-          ? String(left ?? '') + String(right ?? '')
+          ? joined([left, right])
           : Number(left) + Number(right);
       } else {
         left = Number(left) - Number(right);
