@@ -215,14 +215,14 @@ test('REST: POST /api/undo reverts, GET /api/undo lists, reader tokens are refus
     return { status: res.status, data: await res.json().catch(() => null) };
   };
   try {
-    const made = await api('POST', '/api/tables/T/entities', { name: 'row', values: { N: 1 } });
-    assert.equal(made.status, 201);
-    await api('PATCH', `/api/entities/${made.data.id}`, { values: { N: 9 } });
-    const hist = await api('GET', '/api/undo');
-    assert.equal(hist.status, 200);
-    assert.equal(hist.data[0].kind, 'update');
     const { token: admin } = (await api('POST', '/api/accounts', { name: 'boss', role: 'admin' })).data;
     const { token: reader } = (await api('POST', '/api/accounts', { name: 'ro', role: 'reader' }, admin)).data;
+    const made = await api('POST', '/api/tables/T/entities', { name: 'row', values: { N: 1 } }, admin);
+    assert.equal(made.status, 201);
+    await api('PATCH', `/api/entities/${made.data.id}`, { values: { N: 9 } }, admin);
+    const hist = await api('GET', '/api/undo', undefined, admin);
+    assert.equal(hist.status, 200);
+    assert.equal(hist.data[0].kind, 'update');
     const denied = await api('POST', '/api/undo', { steps: 1 }, reader);
     assert.equal(denied.status, 403, 'undo is a write');
     const ok = await api('POST', '/api/undo', { steps: 1 }, admin);

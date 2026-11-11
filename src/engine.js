@@ -5217,6 +5217,7 @@ export class Weave {
   }
 
   #inUndo = false;
+  #undoOwner = null;
 
   #recordUndo(kind, e, data = {}) {
     if (this.#inMetaSync || this.#inUndo) return;
@@ -5224,7 +5225,7 @@ export class Weave {
     if (!db || db.system) return;
     this.store.pushUndo({
       ts: nowISO(),
-      actor: this.actor,
+      actor: this.#undoOwner ?? this.actor,
       kind,
       entityId: e.id,
       table: this.qualifiedName(db),
@@ -5260,7 +5261,7 @@ export class Weave {
     this.#inUndo = true;
     try {
       for (let i = 0; i < steps; i++) {
-        const entry = this.store.popUndo();
+        const entry = this.store.popUndo(this.actor);
         if (!entry) break;
         const summary = { kind: entry.kind, entity: `${entry.table}#${entry.publicId}`, name: entry.name, ts: entry.ts };
         const e = this.state.entities[entry.entityId];
@@ -5326,7 +5327,7 @@ export class Weave {
   }
 
   listUndo({ limit = 20 } = {}) {
-    return this.store.listUndo({ limit })
+    return this.store.listUndo({ limit, actor: this.actor })
       .map(({ data, ...summary }) => ({ ...summary, actor: this.actorName(summary.actor), entity: `${summary.table}#${summary.publicId}` }));
   }
 
@@ -9882,6 +9883,8 @@ export class Weave {
     const { rule, event, depth, name } = run;
     let failure = null;
     const person = this.actor;
+    const owner = this.#undoOwner;
+    this.#undoOwner = run.owner ??= owner ?? person;
     this.actor = workflowActor(rule.row.id);
     try {
       for (; r < run.rows.length; r++, i = 0) {
@@ -9908,6 +9911,7 @@ export class Weave {
       run.failed = true;
     } finally {
       this.actor = person;
+      this.#undoOwner = owner;
     }
     this.#finishRun(run, failure);
   }
