@@ -1,0 +1,1 @@
+- Opening a record no longer sends one document-history request per document field. The warm-up asked for two revisions of each document, a page nothing reads: the activity pane asks for its own ([[Issue#1691]]).

@@ -1728,6 +1728,13 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   assert.doesNotMatch(opener, /state\.route\.dbId === db\.id/, 'the entity\'s own table never decides a navigation');
 });
 
+test('opening a record warms only the reads the record view makes: the entity and its two reference lists (Issue #1691)', () => {
+  const opener = fnBody('openEntity');
+  assert.match(opener, /for \(const tail of \['\/references', '\/references-from'\]\) warmGet\(`\/entities\/\$\{id\}\$\{tail\}`\);/, 'the reference lists entityRefs reads');
+  assert.match(opener, /warmGet\(`\/entities\/\$\{id\}`\)/, 'and the entity itself');
+  assert.doesNotMatch(opener, /revisions/, 'no document history: the activity pane asks for its own page of it');
+});
+
 test('dock: the panel is styled as the table\'s twin, its own scroller, and lights its row in both themes', () => {
   const rule = CSS.match(/^#dock \{[^}]+\}/m)?.[0];
   assert.ok(rule, '#dock has a rule');
