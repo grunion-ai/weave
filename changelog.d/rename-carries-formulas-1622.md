@@ -1,2 +1,0 @@
-- Renaming a field rewrites every formula on its table that names it, bare when the new name allows and in brackets otherwise, and the rename's Activity entry lists each formula before and after; rolling the rename back renames it in those formulas too. While a formula reads the field, a name no formula can spell is refused, and the refusal names the formulas (Issue #1622).
-- A field can no longer be renamed onto a name another field of its table holds, which left two columns answering to one name (Issue #1732).
