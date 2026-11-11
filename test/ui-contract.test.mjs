@@ -1913,7 +1913,8 @@ test('one meta tag style names a field type, in the sans face, with layout from 
 
 test('undo sends only the steps this tab claimed: one POST /undo, in stepBackOwn, and no count falls back to 1 (Issue #1692)', () => {
   assert.equal(read('public/app.js').match(/api\('POST', '\/undo'/g)?.length, 1, 'one call site in app.js sends POST /undo');
-  assert.match(fnBody('stepBackOwn'), /api\('POST', '\/undo', \{ steps \}\)/, 'stepBackOwn sends the steps it counted from this tab\'s own entries on top');
+  assert.match(fnBody('stepBackOwn'), /api\('POST', '\/undo', \{ steps, expect: run\.map\(undoKey\) \}\)/, 'stepBackOwn sends the steps it counted from this tab\'s own entries on top, and the key of each (Issue #1727)');
+  assert.match(fnBody('stepBackOwn'), /err\?\.status !== 409 \|\| !recount/, 'a refused undo is recounted once against a fresh read of the stack (Issue #1727)');
   assert.doesNotMatch(APP, /steps: [^}\n]*\|\| ?1\b/, 'no step count falls back to 1');
   assert.match(fnBody('api'), /noteWrite\(gesture, method, path, data, \{ seen, took/, 'every write through api() is noted for this tab');
 });

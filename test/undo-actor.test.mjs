@@ -67,6 +67,23 @@ for (const [label, make] of stores) {
     w.undo();
     assert.equal(w.readEntity(a.id).fields.N, 0);
   });
+
+  test(`${label}: expect pops only while the caller's own newest entries still read as it named them (Issue #1727)`, () => {
+    const w = make();
+    const { a, b } = twoWriters(w);
+    w.actor = 'A';
+    const key = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
+    const mine = key(w.listUndo({ limit: 1 })[0]);
+    w.updateEntity(b.id, { N: 7 });
+    assert.throws(() => w.undo({ steps: 1, expect: [mine] }), { code: 'conflict' }, "A's own later write sits on top of the entry it named");
+    assert.equal(w.readEntity(a.id).fields.N, 1, 'nothing was reverted');
+    assert.equal(w.readEntity(b.id).fields.N, 7);
+    assert.deepEqual(w.listUndo({ limit: 2 }).map((u) => u.name), ['b', 'a'], 'both entries stay on the stack');
+    const run = w.listUndo({ limit: 2 }).map(key);
+    assert.deepEqual(w.undo({ steps: 2, expect: run }).undone.map((u) => u.name), ['b', 'a'], 'naming both pops both');
+    assert.equal(w.readEntity(a.id).fields.N, 0);
+    assert.equal(w.readEntity(b.id).fields.N, 2, "B's own write is not A's to revert");
+  });
 }
 
 test('per-actor stacks survive a reopen', () => {

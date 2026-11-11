@@ -39,6 +39,7 @@ if (s) {
     return page;
   }
   const posts = (page) => page.undoCalls.filter((c) => c.POST).map((c) => c.POST);
+  const sent = (page) => posts(page).map((b) => ({ steps: b.steps, keys: b.expect?.length ?? 0 }));
   async function refusalShows(page) {
     const note = page.locator('#wv-toasts .wv-toast.err', { hasText: 'Changed since, so nothing was undone' }).last();
     assert.ok(await note.isVisible(), 'the refusal is on screen as an error toast');
@@ -74,12 +75,12 @@ if (s) {
       assert.equal(stored(alpha.id, 'Note'), 'from A', 'and so does A\'s');
 
       assert.equal(await undo(b), 'Undone: Beta');
-      assert.deepEqual(posts(b), [{ steps: 1 }], 'B undid one step: its own');
+      assert.deepEqual(sent(b), [{ steps: 1, keys: 1 }], 'B undid one step: its own, named by key (Issue #1727)');
       assert.equal(stored(beta.id, 'Note'), 'b0');
       assert.equal(stored(alpha.id, 'Note'), 'from A', 'B never touched A\'s write');
 
       assert.equal(await undo(a), 'Undone: Alpha', 'with B\'s write gone, A\'s own write is on top');
-      assert.deepEqual(posts(a), [{ steps: 1 }]);
+      assert.deepEqual(sent(a), [{ steps: 1, keys: 1 }]);
       assert.equal(stored(alpha.id, 'Note'), 'a0');
       assert.equal(stored(beta.id, 'Note'), 'b0');
     } finally { await a.close(); await b.close(); }
@@ -105,7 +106,7 @@ if (s) {
       assert.equal(stored(alpha.id, 'Note'), 'note by A', 'B\'s undo left A\'s edit alone');
 
       assert.equal(await undo(a), 'Undone: Alpha');
-      assert.deepEqual(posts(a), [{ steps: 1 }]);
+      assert.deepEqual(sent(a), [{ steps: 1, keys: 1 }]);
       assert.equal(stored(alpha.id, 'Note'), 'a0');
     } finally { await a.close(); await b?.close(); }
   });
@@ -143,7 +144,7 @@ if (s) {
       assert.equal(stored(alpha.id, 'Note'), 'p1');
       assert.equal(stored(beta.id, 'Note'), 'p2');
       assert.equal(await undo(a), 'Undone: Beta and 1 more');
-      assert.deepEqual(posts(a), [{ steps: 2 }], 'one cmd-z steps back both pasted rows');
+      assert.deepEqual(sent(a), [{ steps: 2, keys: 2 }], 'one cmd-z steps back both pasted rows, each named by key (Issue #1727)');
       assert.equal(stored(alpha.id, 'Note'), 'a0');
       assert.equal(stored(beta.id, 'Note'), 'b0');
 
@@ -153,7 +154,7 @@ if (s) {
       const action = a.locator('#wv-toasts .wv-toast', { hasText: 'Pasted' }).last().locator('.wv-toast-action');
       assert.equal(await said(a, () => action.click()), 'Changed since, so nothing was undone');
       await refusalShows(a);
-      assert.deepEqual(posts(a), [{ steps: 2 }], 'the paste\'s Undo sent nothing once B wrote after it');
+      assert.deepEqual(sent(a), [{ steps: 2, keys: 2 }], 'the paste\'s Undo sent nothing once B wrote after it');
       assert.equal(stored(beta.id, 'Owner'), 'after the paste');
       assert.equal(stored(alpha.id, 'Note'), 'q1');
     } finally { await a.close(); await b?.close(); }

@@ -5279,8 +5279,20 @@ export class Weave {
     return false;
   }
 
-  undo({ steps = 1 } = {}) {
+  #undoExpected(steps, expect) {
+    if (!Array.isArray(expect)) throw new WeaveError('expect must be a list of undo keys, one per step', 'invalid');
+    if (expect.length !== steps) throw new WeaveError(`expect carries one key per step: ${steps} step${steps === 1 ? '' : 's'} asked for, ${expect.length} key${expect.length === 1 ? '' : 's'} named`, 'invalid');
+    const top = this.store.listUndo({ limit: steps, actor: this.actor });
+    if (top.length === steps && top.every((u, i) => `${u.kind}|${u.entityId}|${u.ts}` === expect[i])) return;
+    throw Object.assign(
+      new WeaveError('Changed since, so nothing was undone', 'conflict'),
+      { detail: { top: this.listUndo({ limit: 1 })[0] ?? null } },
+    );
+  }
+
+  undo({ steps = 1, expect = null } = {}) {
     const undone = [];
+    if (expect != null) this.#undoExpected(steps, expect);
     this.#inUndo = true;
     try {
       for (let i = 0; i < steps; i++) {

@@ -283,4 +283,34 @@ if (s) {
       assert.equal(await page.locator('.doc-section .wv-act-view').count(), 0, 'Escape returns every document to its editor');
     } finally { await page.close(); }
   });
+
+  test('a write to another record landing while the tray notes its own entry is never undone in its place (Issue #1727)', async () => {
+    const page = await open();
+    const undos = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && new URL(r.url()).pathname.endsWith('/api/undo')) undos.push(JSON.parse(r.postData() || '{}'));
+    });
+    let landed = false;
+    await page.route(/\/api\/undo\?/, async (route) => {
+      if (!landed) { landed = true; weave.setDoc(lone, 'written by another tab of the same person'); }
+      await route.continue();
+    });
+    try {
+      await showDoc(page, 'Description');
+      await pick(page, `r${revs('Description').at(-1).seq}`);
+      await page.click('.wv-act-row.sel .wv-act-tray .btn-primary');
+      assert.equal(await eventually(() => doc(), 'first draft'), 'first draft', 'the restore wrote');
+      await page.locator('.wv-toast .wv-toast-action', { hasText: 'Undo' }).last().click();
+      await page.waitForSelector('.wv-toast.err');
+      assert.equal(doc(), 'first draft', 'the restore stands');
+      assert.equal(weave.getDoc(lone), 'written by another tab of the same person', 'the other record keeps its write');
+      assert.equal(undos.length, 1, 'one undo was sent');
+      assert.deepEqual(undos[0].expect, [`update|${id}|${weave.listUndo({ limit: 20 }).find((u) => u.entityId === id).ts}`], 'it named the entry of the record the panel shows');
+    } finally {
+      await page.unroute(/\/api\/undo\?/);
+      await page.close();
+      weave.setDoc(id, 'first draft\n\nsecond paragraph', 'Description');
+      weave.setDoc(lone, 'only text');
+    }
+  });
 }

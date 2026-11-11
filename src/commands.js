@@ -197,8 +197,8 @@ const SET_DOC_TOOL = {
 const RECORDS = Symbol('records');
 const UNDO_TOOL = {
   name: 'weave_undo',
-  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting. A field someone else wrote after the step is left alone and named in that step\'s kept, with the actor who holds it; a step whose every field is kept answers skipped "changed since" and writes nothing.',
-  inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' } } },
+  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting. Pass expect, the `kind|entityId|ts` key of each step as the preview answered them, to revert only while the stack still reads that way: a write of your own actor that landed since answers conflict with the entry on top now and reverts nothing. A field someone else wrote after the step is left alone and named in that step\'s kept, with the actor who holds it; a step whose every field is kept answers skipped "changed since" and writes nothing.',
+  inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' }, expect: { type: 'array', items: { type: 'string' }, description: 'The `kind|entityId|ts` key of each step, newest first, as undo.list answered them' } } },
 };
 const VIEWS_TOOL = {
   name: 'weave_views',
@@ -1358,9 +1358,9 @@ export const COMMANDS = [
     action: false,
     actionArg: 'list',
     toolDefault: true,
-    cli: { command: 'undo', use: (flags) => (flags.list ? 'undo.list' : null), args: (a, flags) => ({ steps: flags.steps }) },
+    cli: { command: 'undo', use: (flags) => (flags.list ? 'undo.list' : null), args: (a, flags) => defined({ steps: flags.steps, expect: flags.expect == null ? undefined : list(flags.expect) }) },
     http: { method: 'POST', path: '/api/undo' },
-    run: (w, a) => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)) }),
+    run: (w, a) => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)), expect: a.expect ?? null }),
   },
   {
     name: 'json.export',
