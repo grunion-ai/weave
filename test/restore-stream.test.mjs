@@ -75,12 +75,12 @@ function fileBucket() {
 }
 
 const PROBE = `data:text/javascript,${encodeURIComponent(`
-let base = 0, peak = 0;
+let base = 0, peak = 0, sweep = null;
 const look = () => { const now = process.memoryUsage.rss(); if (now > peak) peak = now; };
 setInterval(look, 2).unref();
 process.on('message', (m) => {
-  if (m?.rss === 'start') { globalThis.gc?.(); base = peak = process.memoryUsage.rss(); process.send({ rss: 'started', base }); }
-  if (m?.rss === 'read') { look(); process.send({ rss: 'read', base, peak }); }
+  if (m?.rss === 'start') { globalThis.gc(); base = peak = process.memoryUsage.rss(); clearInterval(sweep); sweep = setInterval(() => globalThis.gc(), 20); process.send({ rss: 'started', base }); }
+  if (m?.rss === 'read') { clearInterval(sweep); look(); process.send({ rss: 'read', base, peak }); }
 });
 `)}`;
 
