@@ -83,10 +83,12 @@ function truthy(v) {
 function tokenize(src) {
   const tokens = [];
   let i = 0;
-  const push = (type, value) => tokens.push({ type, value });
+  let at = 0;
+  const push = (type, value) => tokens.push({ type, value, at });
   while (i < src.length) {
     const ch = src[i];
     if (/\s/.test(ch)) { i++; continue; }
+    at = i;
     if (ch === '[') {
       const end = src.indexOf(']', i);
       if (end < 0) throw new Error('Unclosed [field] reference');
@@ -144,7 +146,13 @@ function tokensOf(expression) {
   return t;
 }
 
-export function evaluate(expression, getField) {
+function callFunction(name, args) {
+  const fn = FUNCS[name.toLowerCase()];
+  if (!fn) throw new Error(`Unknown function '${name}'`);
+  return fn(...args);
+}
+
+export function evaluate(expression, getField, call = callFunction) {
   const tokens = tokensOf(expression);
   let pos = 0;
   const peek = () => tokens[pos];
@@ -234,7 +242,7 @@ export function evaluate(expression, getField) {
     const t = next();
     if (!t) throw new Error('Unexpected end of formula');
     if (t.type === 'number' || t.type === 'string') return t.value;
-    if (t.type === 'field') return getField(t.value);
+    if (t.type === 'field') return getField(t.value, t);
     if (t.type === 'ident') {
       if (t.value === 'true') return true;
       if (t.value === 'false') return false;
@@ -250,11 +258,9 @@ export function evaluate(expression, getField) {
           }
         }
         expectOp(')');
-        const fn = FUNCS[t.value.toLowerCase()];
-        if (!fn) throw new Error(`Unknown function '${t.value}'`);
-        return fn(...args);
+        return call(t.value, args);
       }
-      return getField(t.value);
+      return getField(t.value, t);
     }
     if (t.type === 'op' && t.value === '(') {
       const v = nestedIn(parseOr);
@@ -296,4 +302,35 @@ export function references(expression) {
     });
   } catch {}
   return names;
+}
+
+const KEYWORDS = new Set(['and', 'or', 'true', 'false', 'null']);
+
+export function spelling(name) {
+  const s = String(name ?? '');
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && !KEYWORDS.has(s) && !FUNCS[s.toLowerCase()]) return s;
+  return s && s === s.trim() && !s.includes(']') ? `[${s}]` : null;
+}
+
+export function renameReferences(expression, reads, to) {
+  const source = String(expression ?? '');
+  const hits = [];
+  try {
+    evaluate(source, (name, token) => {
+      if (reads(name)) hits.push(token);
+      return 0;
+    }, () => 0);
+  } catch {
+    return source;
+  }
+  if (!hits.length) return source;
+  const spelled = spelling(to);
+  if (spelled == null) return null;
+  let out = '';
+  let from = 0;
+  for (const t of hits.sort((a, b) => a.at - b.at)) {
+    out += source.slice(from, t.at) + spelled;
+    from = t.type === 'field' ? source.indexOf(']', t.at) + 1 : t.at + t.value.length;
+  }
+  return out + source.slice(from);
 }
