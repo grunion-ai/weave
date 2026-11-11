@@ -618,7 +618,7 @@ test('documents, their revisions and comments answer the same on CLI, MCP and HT
   const ids = { mcp: idOf(d.mcpWeave), http: idOf(d.httpWeave) };
   try {
     assert.deepEqual(d.cli(['doc', 'set', 'Task#1', '--content', 'one']), { ok: true });
-    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3 }, 'weave_set_doc still answers the length');
+    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3, base: createHash('sha256').update('one').digest('hex') }, 'weave_set_doc answers the length and the base the next write starts from (Issue #1682)');
     assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true, base: createHash('sha256').update('one').digest('hex') }, 'HTTP names the base the next write starts from (Issue #1443)');
     assert.deepEqual(d.cli(['doc', 'append', 'Task#1', '--content', 'two']), { ok: true });
     assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'two', mode: 'append' }).ok, true);
