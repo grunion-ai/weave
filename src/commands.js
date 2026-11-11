@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
 import { Weave, ONTOLOGY, inviteUrl, SYSTEM_SORT_KEYS } from './engine.js';
@@ -189,10 +190,47 @@ const docWriteBody = (a, body) => {
   return { entity: a.entity, markdown: text, field: a.field ?? null, base: typeof body.base === 'string' ? body.base : null };
 };
 const docWritten = () => ({ ok: true });
+const EMPTY_DOC_BASE = createHash('sha256').update('').digest('hex');
+const AGENT_READS_CAP = 10000;
+const agentReads = new WeakMap();
+const docFieldOf = (w, entity, ref) => {
+  const db = w.state.tables[w.getEntity(entity).dbId];
+  const f = ref == null ? w.descriptionField(db) ?? w.documentFields(db)[0] : w.findField(db, ref);
+  return f?.type === 'document' ? f : null;
+};
+const readKey = (w, entity, f) => `${w.actor}\n${w.getEntity(entity).id}\n${f.id}`;
+function noteAgentRead(w, entity, fields) {
+  if (!agentReads.has(w)) agentReads.set(w, new Map());
+  const reads = agentReads.get(w);
+  for (const f of fields) {
+    const key = readKey(w, entity, f);
+    reads.delete(key);
+    reads.set(key, w.docBase(entity, f.id));
+    if (reads.size > AGENT_READS_CAP) reads.delete(reads.keys().next().value);
+  }
+}
+const agentRead = (w, entity, f) => agentReads.get(w)?.get(readKey(w, entity, f)) ?? null;
+const agentBase = (w, entity, f, text) => (w.getDoc(entity, f.id) === text ? null : agentRead(w, entity, f) ?? EMPTY_DOC_BASE);
+function agentStale(w, entity, f, read) {
+  const e = w.getEntity(entity);
+  const base = w.docBase(e.id, f.id);
+  const why = read ? `${f.name} changed since you read it` : `You have not read ${f.name}`;
+  return Object.assign(new WeaveError(`${why}, so nothing was written. Read it again with weave_get_doc or weave_get_entity and redo your edit, or replace what it holds now with weave_set_doc and base "${base}".`, 'stale'),
+    { detail: { base, revision: w.entityRevision(e.id), modifiedBy: w.actorName(e.modifiedBy ?? null) } });
+}
+function checkAgentDocs(w, entity, values) {
+  const db = w.state.tables[w.getEntity(entity).dbId];
+  for (const [key, text] of Object.entries(values ?? {})) {
+    const f = w.findField(db, key);
+    if (f?.type !== 'document') continue;
+    const base = agentBase(w, entity, f, text);
+    if (base != null && base !== w.docBase(entity, f.id)) throw agentStale(w, entity, f, agentRead(w, entity, f) != null);
+  }
+}
 const SET_DOC_TOOL = {
   name: 'weave_set_doc',
-  description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default.',
-  inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' } }, required: ['entity', 'markdown'] },
+  description: 'Write an entity document. mode "replace" (default) or "append". field picks a document field; omit for the default. A replace lands only on the text you last read with weave_get_doc or weave_get_entity, or on an empty document: otherwise nothing is written and the refusal names the current base. append needs no read.',
+  inputSchema: { type: 'object', properties: { entity: { type: 'string' }, markdown: { type: 'string' }, mode: { type: 'string', enum: ['replace', 'append'] }, field: { type: 'string' }, base: { type: 'string', description: 'Replace only while the document still has this base, the one a write or a refusal answered' } }, required: ['entity', 'markdown'] },
 };
 const RECORDS = Symbol('records');
 const UNDO_TOOL = {
@@ -1052,7 +1090,11 @@ export const COMMANDS = [
     },
     cli: { command: 'get', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db) }) },
     http: { method: 'GET', path: '/api/entities/:entity' },
-    run: (w, a, ctx) => w.readEntity(a.entity, zoned(ctx)),
+    run: (w, a, ctx) => {
+      const e = w.readEntity(a.entity, zoned(ctx));
+      if (ctx?.door === 'mcp') noteAgentRead(w, e.id, w.documentFields(w.state.tables[e.dbId]));
+      return e;
+    },
   },
   {
     name: 'entity.update',
@@ -1072,6 +1114,7 @@ export const COMMANDS = [
     },
     run: (w, a, ctx) => {
       const expectedRevision = ctx?.expectedRevision ?? null;
+      if (ctx?.door === 'mcp') checkAgentDocs(w, a.entity, a.values);
       const { touched } = w.touching(() => w.updateEntity(a.entity, a.values, { expectedRevision, ...zoned(ctx) }));
       return { ...w.readEntity(a.entity, zoned(ctx)), affected: w.affectedBy(a.entity, touched) };
     },
@@ -1224,7 +1267,11 @@ export const COMMANDS = [
     },
     cli: { command: 'doc', sub: 'get', positional: ['entity'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: docField(flags) }) },
     http: { method: 'GET', path: '/api/entities/:entity/doc', query: ['field'], result: (doc, a) => ({ field: a.field ?? null, doc }) },
-    run: (w, a) => w.getDoc(a.entity, a.field ?? null),
+    run: (w, a, ctx) => {
+      const doc = w.getDoc(a.entity, a.field ?? null);
+      if (ctx?.door === 'mcp') noteAgentRead(w, a.entity, [docFieldOf(w, a.entity, a.field ?? null)]);
+      return doc;
+    },
   },
   {
     name: 'doc.set',
@@ -1240,7 +1287,15 @@ export const COMMANDS = [
       result: (r, a, ctx, w) => ({ ok: true, base: w.docBase(a.entity, a.field ?? null) }),
       fail: (err, w, a, ctx) => (err?.code === 'stale' ? [412, { ...errorBody(err), entity: w.readEntity(a.entity, zoned(ctx)), base: w.docBase(a.entity, a.field ?? null) }] : null),
     },
-    run: (w, a) => { w.setDoc(a.entity, a.markdown, a.field ?? null, { base: a.base ?? null }); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
+    run: (w, a, ctx) => {
+      const f = ctx?.door === 'mcp' && a.markdown != null ? docFieldOf(w, a.entity, a.field ?? null) : null;
+      try {
+        w.setDoc(a.entity, a.markdown, a.field ?? null, { base: a.base ?? (f ? agentBase(w, a.entity, f, a.markdown) : null) });
+      } catch (err) {
+        throw f && err?.code === 'stale' ? agentStale(w, a.entity, f, a.base != null || agentRead(w, a.entity, f) != null) : err;
+      }
+      return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length, ...(f ? { base: w.docBase(a.entity, f.id) } : {}) };
+    },
   },
   {
     name: 'doc.append',

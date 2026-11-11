@@ -21,6 +21,7 @@ const defaultsOf = () => {
 };
 
 const tokenFor = (pass) => createHash('sha256').update(`wv-applet-v1:${pass}`).digest('hex');
+const EMPTY_DOC_BASE = createHash('sha256').update('').digest('hex');
 
 const sameSecret = (a, b) => {
   const enc = new TextEncoder();
@@ -168,6 +169,7 @@ export function handleApplet({ weave, rx, path, out, mount }) {
       doc: full.doc ?? '',
       docField: full.docField,
       docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }),
+      base: full.docField ? weave.docBase(e.id) : null,
       createdAt: full.createdAt,
       schema,
     });
@@ -178,9 +180,15 @@ export function handleApplet({ weave, rx, path, out, mount }) {
     if (!e) return out(404, { error: 'No such task', code: 'not-found' });
     const text = body.doc ?? body.markdown;
     if (text == null) throw new WeaveError('A document write carries its text under `doc` or `markdown`; this body has neither.', 'invalid');
-    weave.setDoc(e.id, text, body.field ?? null);
+    const field = body.field ?? null;
+    try {
+      weave.setDoc(e.id, text, field, { base: typeof body.base === 'string' ? body.base : EMPTY_DOC_BASE });
+    } catch (err) {
+      if (err?.code !== 'stale') throw err;
+      return out(412, { error: err.message, code: 'stale', doc: weave.getDoc(e.id, field), base: weave.docBase(e.id, field) });
+    }
     const full = weave.readEntity(e.id);
-    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }) });
+    return out(200, { ok: true, doc: full.doc ?? '', docHtml: renderMarkdown(full.doc ?? '', { rawHtml: false }), base: weave.docBase(e.id, field) });
   }
 
   if (path === '/t/file' && rx.method === 'POST') {
@@ -368,7 +376,7 @@ ${HUE_CSS}
 .wv-donebar .n{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--faint)}
 .wv-empty{text-align:center; color:var(--faint); font-size:13.5px; padding:38px 20px; line-height:1.6}
 
-.wv-toast{position:fixed; left:16px; right:16px; bottom:calc(84px + var(--safe-b)); z-index:40;
+.wv-toast{position:fixed; left:16px; right:16px; bottom:calc(84px + var(--safe-b)); z-index:60;
   background:var(--ink); color:var(--ground); border-radius:11px; padding:12px 15px;
   display:flex; align-items:center; gap:12px; font-size:14px; box-shadow:var(--shadow);
   transform:translateY(18px); opacity:0; pointer-events:none;
@@ -666,18 +674,24 @@ const CLIENT = `
       rec.record({ kind: 'api', method: (opts && opts.method) || 'GET', path, status: res.status, ms: Date.now() - started, t: Date.now() });
     }
     if (res.status === 401) { location.reload(); throw new Error('locked'); }
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const text = await res.text();
+      let body = null;
+      try { body = JSON.parse(text); } catch {}
+      throw Object.assign(new Error(text), { status: res.status, body });
+    }
     return res.status === 204 ? null : res.json();
   };
 
-  function say(msg, undo) {
+  function say(msg, undo, label) {
     toast.querySelector('.msg').textContent = msg;
     const b = toast.querySelector('button');
     b.hidden = !undo;
+    b.textContent = label || 'Undo';
     b.onclick = () => { undo && undo(); toast.classList.remove('up'); };
     toast.classList.add('up');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('up'), 2800);
+    toastTimer = setTimeout(() => toast.classList.remove('up'), label ? 6000 : 2800);
   }
   /* A sheet can have something to finish before it goes: the description
      sheet writes its text (Issue #247). Every way out (the scrim, Escape,
@@ -1078,6 +1092,35 @@ const CLIENT = `
       });
   }
 
+  const docBase = (text) => {
+    const bytes = new TextEncoder().encode(text);
+    const primes = [];
+    for (let n = 2; primes.length < 64; n++) if (primes.every((p) => n % p)) primes.push(n);
+    const frac = (x) => (x - Math.floor(x)) * 4294967296 | 0;
+    const k = primes.map((p) => frac(Math.cbrt(p)));
+    let state = primes.slice(0, 8).map((p) => frac(Math.sqrt(p)));
+    const len = bytes.length;
+    const words = new Int32Array((((len + 8) >> 6) + 1) * 16);
+    for (let i = 0; i < len; i++) words[i >> 2] |= bytes[i] << (24 - (i & 3) * 8);
+    words[len >> 2] |= 0x80 << (24 - (len & 3) * 8);
+    words[words.length - 2] = Math.floor(len / 536870912);
+    words[words.length - 1] = len * 8;
+    const rot = (x, r) => (x >>> r) | (x << (32 - r));
+    const w = new Int32Array(64);
+    for (let j = 0; j < words.length; j += 16) {
+      let [a, b, c, d, e, f, g, h] = state;
+      for (let i = 0; i < 64; i++) {
+        if (i < 16) w[i] = words[j + i];
+        else w[i] = (rot(w[i - 15], 7) ^ rot(w[i - 15], 18) ^ (w[i - 15] >>> 3)) + w[i - 7] + (rot(w[i - 2], 17) ^ rot(w[i - 2], 19) ^ (w[i - 2] >>> 10)) + w[i - 16];
+        const t1 = h + (rot(e, 6) ^ rot(e, 11) ^ rot(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i] | 0;
+        const t2 = (rot(a, 2) ^ rot(a, 13) ^ rot(a, 22)) + ((a & b) ^ (a & c) ^ (b & c)) | 0;
+        h = g; g = f; f = e; e = d + t1 | 0; d = c; c = b; b = a; a = t1 + t2 | 0;
+      }
+      state = [a, b, c, d, e, f, g, h].map((v, i) => v + state[i] | 0);
+    }
+    return state.map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
+  };
+
   /* The document, written where it is read. A full-height sheet rather than
      an inline caret: a phone keyboard takes half the screen, and markdown
      wants the other half.
@@ -1093,6 +1136,8 @@ const CLIENT = `
     const opened = full.doc || '';
     let saved = opened;           // what the server holds
     let sent = opened;            // the newest text asked of it
+    let held = t.docDraft != null && t.docDraftBase ? t.docDraftBase : full.base || docBase(opened);
+    let refused = null;
     let chain = Promise.resolve(true);
     let timer = null;
     let asked = 0, answered = 0;  // write numbers: the newest asked, the newest answered
@@ -1106,6 +1151,11 @@ const CLIENT = `
         const el = sh.querySelector('#docedit');
         const state = sh.querySelector('.wv-docstate');
         const show = (msg) => { state.textContent = msg; state.classList.toggle('bad', msg === 'Not saved'); };
+        const offerMine = () => say('The description changed elsewhere, so yours was not saved', () => {
+          if (!refused) return;
+          held = refused.base; t.docDraftBase = refused.base;
+          write(false).then((ok) => { if (ok && !sheet.classList.contains('up')) { openDetail(t); detail.classList.add('in'); } });
+        }, 'Use mine');
         /* Resolves true once the server holds what the box holds. Writes are
            chained so an older text can never land after a newer one; a write
            as the page goes away is the exception, because nothing queued
@@ -1114,27 +1164,34 @@ const CLIENT = `
           clearTimeout(timer);
           const md = el.value;
           if (md === sent) return chain.then(() => saved === md);
+          const from = sent;
           sent = md; t.docDraft = md;
           show('Saving…');
           const n = ++asked;
-          const put = () => api('/entity/' + t.id + '/doc', { method: 'PUT', body: JSON.stringify({ doc: md }), keepalive: !!leaving });
+          const put = (base) => {
+            t.docDraftBase = base;
+            return api('/entity/' + t.id + '/doc', { method: 'PUT', body: JSON.stringify({ doc: md, base }), keepalive: !!leaving });
+          };
           const landed = (res) => {
             /* A leaving write is not chained, so an older write's answer can
                arrive after a newer one's. The server already took the newer
                text, so the late answer says nothing about what it holds. */
             if (n < answered) return true;
             answered = n;
-            saved = md; full.doc = md; full.docHtml = res.docHtml;
-            if (t.docDraft === md) delete t.docDraft;
+            saved = md; held = res.base; refused = null; full.doc = md; full.docHtml = res.docHtml; full.base = res.base;
+            if (t.docDraft === md) { delete t.docDraft; delete t.docDraftBase; }
             if (sent === md) show('Saved');
             return true;
           };
-          const lost = () => {
+          const lost = (err) => {
+            const stale = err && err.status === 412 && err.body && err.body.code === 'stale' && n > answered ? err.body : null;
+            if (stale) { refused = stale; saved = stale.doc; full.doc = stale.doc; full.base = stale.base; }
             if (sent === md) { sent = saved; show('Not saved'); }
+            if (stale) offerMine();
             return false;
           };
-          if (leaving) { const now = put().then(landed, lost); chain = chain.then(() => now); return chain; }
-          chain = chain.then(put).then(landed, lost);
+          if (leaving) { const now = put(from === saved ? held : docBase(from)).then(landed, lost); chain = chain.then(() => now); return chain; }
+          chain = chain.then(() => put(held)).then(landed, lost);
           return chain;
         };
         el.addEventListener('input', () => {
@@ -1146,7 +1203,7 @@ const CLIENT = `
         sheetClosing = () => {
           flushDoc = () => {};
           write(false).then((ok) => {
-            if (!ok) say('Could not save the description');
+            if (!ok) { if (refused) offerMine(); else say('Could not save the description'); }
             if (saved !== opened) { openDetail(t); detail.classList.add('in'); }
           });
         };
