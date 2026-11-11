@@ -200,9 +200,9 @@ export function encryptFile(src, dst, passphrase, { salt, iv } = {}) {
 const cannotDecrypt = () => new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
 const SEALED_HEAD = MAGIC.length + 16 + 12;
 
-async function* unsealed(path, passphrase) {
+function decipherOf(path, passphrase) {
   const size = statSync(path).size;
-  if (size < SEALED_HEAD + 16) throw new WeaveError('Not an encrypted weave archive', 'invalid');
+  if (size < SEALED_HEAD + 16 || !isEncrypted(path)) throw new WeaveError('Not an encrypted weave archive', 'invalid');
   const head = Buffer.alloc(SEALED_HEAD), tag = Buffer.alloc(16);
   const fd = openSync(path, 'r');
   try {
@@ -211,6 +211,11 @@ async function* unsealed(path, passphrase) {
   } finally { closeSync(fd); }
   const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), head.subarray(MAGIC.length, MAGIC.length + 16), 32), head.subarray(MAGIC.length + 16), { authTagLength: 16 });
   decipher.setAuthTag(tag);
+  return { decipher, size };
+}
+
+async function* unsealed(path, passphrase) {
+  const { decipher, size } = decipherOf(path, passphrase);
   if (size > SEALED_HEAD + 16) {
     for await (const chunk of createReadStream(path, { start: SEALED_HEAD, end: size - 17, highWaterMark: STREAM_CHUNK })) yield decipher.update(chunk);
   }
@@ -220,21 +225,12 @@ async function* unsealed(path, passphrase) {
 }
 
 export function decryptFile(src, dst, passphrase) {
-  const size = statSync(src).size;
-  const headLen = MAGIC.length + 16 + 12;
-  if (size < headLen + 16 || !isEncrypted(src)) throw new WeaveError('Not an encrypted weave archive', 'invalid');
+  const { decipher, size } = decipherOf(src, passphrase);
   const s = openSync(src, 'r');
   let d = null;
   try {
-    const head = Buffer.alloc(headLen);
-    readSync(s, head, 0, headLen, 0);
-    const tag = Buffer.alloc(16);
-    readSync(s, tag, 0, 16, size - 16);
-    const salt = head.subarray(MAGIC.length, MAGIC.length + 16), iv = head.subarray(MAGIC.length + 16);
-    const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), salt, 32), iv, { authTagLength: 16 });
-    decipher.setAuthTag(tag);
     d = openSync(dst, 'w');
-    pump(s, d, (c) => decipher.update(c), { start: headLen, end: size - 16 });
+    pump(s, d, (c) => decipher.update(c), { start: SEALED_HEAD, end: size - 16 });
     try { writeSync(d, decipher.final()); } catch {
       closeSync(d); d = null;
       rmSync(dst, { force: true });
