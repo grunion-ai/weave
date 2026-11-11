@@ -57,4 +57,6 @@ A formula cannot reach its own field the long way round either. `Total` reading 
 
 A formula result stops at 65,536 characters. `concat` and `+` count the characters as they join and refuse the result once it passes the budget, so the cell reads `#ERR: Formula result is longer than 65536 characters` instead of building the string. A chain of concat fields, each joining the one before it, used to multiply into megabytes a row and exhaust the server's heap on the next grid read (Issue #1604).
 
+An expression itself stops at 8,192 characters and 100 levels of nesting. The check refuses a longer one with `Formula is longer than 8192 characters` and a deeper one with `Formula nests more than 100 levels deep`, naming the limit, so the field save, the CLI and the MCP tool all refuse it with that message. Before the caps, a 400 KB expression saved in under a second and then cost about 6 ms a row on every read, blocking the server for every workspace on it, and a formula nested thousands of levels deep answered with V8's own `Maximum call stack size exceeded` text (Issues #1605, #1612). Saved formulas that predate the caps keep computing: the limits apply when an expression is saved.
+
 A formula cannot cross a relation. That is what `lookup` and `rollup` are for.
