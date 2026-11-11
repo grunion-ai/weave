@@ -791,7 +791,7 @@ test('heldOpen sees a live WAL and a writer lock, and clears for a closed databa
   writer.close();
   assert.equal(heldOpen(db), false);
   writeFileSync(`${db}-wal`, '');
-  assert.equal(heldOpen(db), true, 'a leftover -wal sidecar counts');
+  assert.equal(heldOpen(db), false, 'a leftover -wal sidecar with no connection behind it does not count');
 });
 
 const FIXTURE = join(ROOT, 'test', 'fixtures', 'backup-v0.4.100.tar');
