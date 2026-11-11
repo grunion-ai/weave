@@ -317,10 +317,12 @@ test('the reached tier drops a token the whole lane names and stops at its file 
 test('the PR plan shards the reached browser suites beside the named ones', () => {
   const unit = Array.from({ length: 30 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
   const browser = [...Object.keys(sheetSources), ...SMOKE];
-  const shards = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  const shards = prPlan({ unit, browser }, ['public/chip-core.js'], sheetRead, () => 1, sheetDiff);
   const picked = shards.filter((s) => s.lane === 'browser').flatMap((s) => s.files);
   assert.ok(picked.includes('test/phone-picker-sheet-browser.test.mjs'));
   assert.equal(picked.length, SMOKE.length + 2);
+  const monolith = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  assert.equal(monolith.filter((s) => s.lane === 'browser').flatMap((s) => s.files).length, browser.length, 'a public/app.js diff plans the full browser lane (Feature #368)');
 });
 
 test('the sheet grabber tokens reach the phone sheet suites of this repository, which file names cannot', async () => {
@@ -346,8 +348,8 @@ test('the PR plan runs every unit file and the touched browser tests through the
   assert.deepEqual(small.filter(s => s.lane === 'unit').flatMap(s => s.files).sort(), unit);
   assert.deepEqual(small.filter(s => s.lane === 'browser').map(s => s.id), ['browser-1']);
   assert.deepEqual(small.filter(s => s.lane === 'browser').flatMap(s => s.files).sort(), [...SMOKE].sort());
-  const wide = prPlan({ unit, browser }, ['test/lib/browser.mjs'], () => "from './lib/browser.mjs'", () => 1);
-  assert.equal(wide.filter(s => s.lane === 'browser').length, 4);
+  const wide = prPlan({ unit, browser }, ['test/lib/browser.mjs'], file => (file.startsWith('test/lib/') ? '' : "from './lib/browser.mjs'"), () => 1);
+  assert.equal(wide.filter(s => s.lane === 'browser').length, 8);
   assert.equal(wide.filter(s => s.lane === 'browser').flatMap(s => s.files).length, browser.length);
   const mid = prPlan({ unit, browser }, many.slice(0, 30), read, () => 1);
   assert.equal(mid.filter(s => s.lane === 'browser').length, 3);
