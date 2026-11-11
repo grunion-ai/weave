@@ -376,13 +376,13 @@ export async function backup({
 }
 
 export function heldOpen(dbPath) {
-  if (existsSync(`${dbPath}-wal`) || existsSync(`${dbPath}-shm`)) return true;
-  if (!DatabaseSync) return false;
+  if (!DatabaseSync || !existsSync(dbPath)) return false;
   let db = null;
   try {
     db = new DatabaseSync(dbPath);
     db.exec('PRAGMA busy_timeout = 0');
-    db.exec('BEGIN IMMEDIATE');
+    db.exec('PRAGMA locking_mode = EXCLUSIVE');
+    db.exec('BEGIN EXCLUSIVE');
     db.exec('ROLLBACK');
     return false;
   } catch (err) {
@@ -390,9 +390,15 @@ export function heldOpen(dbPath) {
   } finally { db?.close(); }
 }
 
+function refuseLive(dataDir) {
+  const held = readdirSync(dataDir).filter((n) => n.endsWith('.db')).sort().map((n) => join(dataDir, n)).find(heldOpen);
+  if (held) throw new WeaveError(`${held} is held open by a running process: weave serve, weave mcp or another weave command. Stop the server first, then restore. --force does not override this, because that process would keep writing to the file the restore replaces`, 'conflict');
+}
+
 export async function restore({ source, dataDir, env = process.env, passphraseEnv = null, force = false, fetchImpl = fetch, keyStore = null }) {
   dataDir = resolve(dataDir);
   mkdirSync(dataDir, { recursive: true });
+  refuseLive(dataDir);
   const scratch = mkdtempSync(join(tmpdir(), 'weave-restore-'));
   try {
     let local = join(scratch, 'source');
@@ -442,14 +448,13 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
       const held = (keyStore ?? openKeyStore({ path: keystorePath(env, dataDir), env })).read().keys;
       keys = { store: 'keychain', names, missing: names.filter((n) => !Object.hasOwn(held, n)) };
     }
-    for (const e of landing.filter((x) => /^[^/]+\.db$/.test(x.name))) {
+    refuseLive(dataDir);
+    const clash = force ? null : landing.find((e) => {
       const target = join(dataDir, e.name);
-      if (!existsSync(target)) continue;
-      if (!force && heldOpen(target)) throw new WeaveError(`${target} is held open — a -wal/-shm sidecar is beside it or a writer holds its lock. Stop the server first (or pass --force)`, 'conflict');
-      if (!force) throw new WeaveError(`${target} exists — pass --force to overwrite it`, 'conflict');
-    }
-    const ks = join(dataDir, 'keystore.json');
-    if (!force && landing.some((e) => e.name === 'keystore.json') && existsSync(ks)) throw new WeaveError(`${ks} exists — pass --force to overwrite it`, 'conflict');
+      if (!existsSync(target)) return false;
+      return /^[^/]+\.db$/.test(e.name) || e.name === 'keystore.json' || !readFileSync(target).equals(e.data);
+    });
+    if (clash) throw new WeaveError(`${join(dataDir, clash.name)} exists: pass --force to overwrite it`, 'conflict');
 
     const landed = [];
     for (const e of landing) {
