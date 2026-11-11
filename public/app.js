@@ -10397,6 +10397,14 @@ const GESTURE_CAP = 100;
 const UNDO_WINDOW = 200;
 const CLAIM_CAP = 2000;
 const UNDO_REFUSED = 'Changed since, so nothing was undone';
+const keptLine = (kept) => kept.map((k) => (k.by ? `${k.field}, changed since by ${k.by}` : `${k.field}, changed since`)).join('; ');
+function undoToast(undone) {
+  const kept = undone.flatMap((u) => u.kept ?? []);
+  if (undone.every((u) => u.skipped === 'changed since')) return toast(`Kept: ${keptLine(kept)}`, true);
+  const first = undone[0].name || undone[0].entity;
+  const more = undone.length > 1 ? ` and ${undone.length - 1} more` : '';
+  return toast(`Undone: ${first}${more}${kept.length ? `. Kept: ${keptLine(kept)}` : ''}`);
+}
 const undoKey = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
 const pendingClaims = [];
 const looseIds = new Set();
@@ -10548,8 +10556,7 @@ document.addEventListener('keydown', async (e) => {
     const r = await undoOwn();
     if (!r?.undone?.length) return r?.blocked ? toast(UNDO_REFUSED, true) : toast('Nothing to undo');
     await refreshView();
-    const first = r.undone[0].name || r.undone[0].entity;
-    toast(`Undone: ${first}${r.undone.length > 1 ? ` and ${r.undone.length - 1} more` : ''}`);
+    undoToast(r.undone);
   } catch (err) { toast(err.message, true); }
 });
 
