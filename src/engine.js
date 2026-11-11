@@ -1,3 +1,5 @@
+import { RUN_COLUMNS, RUN_FIELD_KEYS, RUN_STATUSES, RUN_TERMINAL, RUN_MAIL_WINDOW_MS, RUN_MAIL_ATTEMPTS, runInput, runPatch, runOut } from './runs.js';
+import { runEmail } from './mail.js';
 import '../public/chip-core.js';
 import '../public/date-grain.js';
 import '../public/number-core.js';
@@ -426,7 +428,7 @@ function compileHook(trigger) {
 }
 const hookOut = (t) => Object.fromEntries(Object.keys(HOOK_PARTS).filter((k) => t[k] != null).map((k) => [k, t[k]]));
 const triggerOut = (t) => (t.type === 'schedule' ? scheduleOut(t) : t.type === 'listener-changed' ? listenerOut(t) : t.type === 'webhook-inbound' ? hookOut(t) : {});
-const LISTENER_ACTIONS = ['upsert-row', 'http-request'];
+const LISTENER_ACTIONS = ['upsert-row', 'http-request', 'start-run', 'update-run'];
 const HOOK_RECORD_ACTIONS = ['set-field', 'add-comment'];
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
@@ -444,6 +446,8 @@ function whenWords({ table, trigger: t }, hookPath = null) {
 function actionWords(a) {
   if (a.type === 'set-field') return a.value == null || a.value === '' ? `Clear ${a.field}` : `Set ${a.field} to ${JSON.stringify(a.value)}`;
   if (a.type === 'append-doc') return a.field ? `Append to ${a.field}` : 'Append to the document';
+  if (a.type === 'start-run') return 'Start an external run';
+  if (a.type === 'update-run') return 'Update an external run';
   if (a.type === 'add-comment') return 'Add a comment';
   if (a.type === 'upsert-row') return `Create or update a record in ${a.table} by ${a.key}`;
   if (a.type === 'http-request') return `Send a ${a.method} request to ${urlHost(a.url)}${a.integration ? ` with ${a.integration}` : ''}${a.signWith ? ', signed' : ''}`;
@@ -5501,6 +5505,10 @@ export class Weave {
     for (const [n, type, config] of [['Record', 'text'], ['Request', 'document', { kind: 'code' }], ['Attempts', 'document', { kind: 'code' }], ['Last Error', 'text'], ['Last Attempt', 'date', { time: true }]]) {
       if (!this.#sysField(deliveriesT, n)) this.addField(deliveriesT.id, { name: n, type, ...(config ? { config } : {}) }).system = true;
     }
+    const runsT = this.#sysTable('runs') ?? mkTable('Runs', 'runs', 'External task runs, their completion, deadline and HTML confirmation delivery. Start and update through the run API; a successful dispatch is not task completion.');
+    for (const [name, type, config] of RUN_COLUMNS) {
+      if (!this.#sysField(runsT, name)) this.addField(runsT.id, { name, type, ...(config ? { config } : {}) }).system = true;
+    }
     const usersT = this.#sysTable('users')
       ?? mkTable('Users', 'users', 'Every account and pending invite in this workspace, as a record. A record with an Email invites that person at its Role; a record with Kind Agent and no Email makes an agent account and shows its token once. Editing Role or Name changes the account; deleting the record revokes the invite or deletes the account.');
     for (const [n, type, config] of USER_COLUMNS) {
@@ -5510,7 +5518,7 @@ export class Weave {
       ?? mkTable('Workspaces', 'workspaces', 'This workspace as a record. Its spaces, tables, fields and workflows relate back to it. Workspaces are created and deleted through the hub, not as records.');
     const integrationsT = this.#sysTable('integrations') ?? mkTable('Integrations', 'integrations', INTEGRATIONS_DESCRIPTION);
     ensureIntegrationColumns(this, integrationsT);
-    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations'], [deliveriesT, 'Failed Deliveries']]) {
+    for (const [t, inverseName] of [[spacesT, 'Spaces'], [tablesT, 'Tables'], [fieldsT, 'Fields'], [wfT, 'Workflows'], [viewsT, 'Views'], [usersT, 'Users'], [integrationsT, 'Integrations'], [deliveriesT, 'Failed Deliveries'], [runsT, 'Runs']]) {
       if (this.#sysField(t, 'Workspace')) continue;
       const { field, inverse } = this.addRelation(t.id, { name: 'Workspace', targetDb: wsT.id, cardinality: 'many-to-one', inverseName });
       field.system = true;
@@ -6008,6 +6016,7 @@ export class Weave {
   #interceptCreate(db, input) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is created from the hub (POST /api/workspaces), not as a record', 'invalid');
+    if (db.system === 'runs') throw new WeaveError('Use the run API (run start) to create a run', 'invalid');
     if (db.system === 'users') return this.#createUserRow(db, input);
     if (db.system === 'workflows') {
       const values = { ...Object.fromEntries(Object.entries(input ?? {}).filter(([k]) => !CREATE_INPUT_KEYS.has(k))), ...(input?.values ?? {}) };
@@ -6091,6 +6100,7 @@ export class Weave {
       return this.getEntity(e.id);
     }
     if (db.system === 'workflows') { this.#guardWorkflowOn(e, db, valuesByName); return undefined; }
+    if (db.system === 'runs') throw new WeaveError('Use the run API (run update) to change a run', 'invalid');
     if (db.system === 'users') return this.#updateUserRow(e, db, valuesByName);
     if (db.system === 'integrations') return this.#updateIntegrationRow(e, db, valuesByName);
     if (db.system === 'deliveries') return this.#updateDeliveryRow(e, db, valuesByName);
@@ -6208,6 +6218,7 @@ export class Weave {
   #interceptDelete(e, db, hard) {
     if (!db.system || this.#inMetaSync) return undefined;
     if (db.system === 'workspaces') throw new WeaveError('A workspace is deleted from the hub (DELETE /api/workspaces/:id), not as a record', 'invalid');
+    if (db.system === 'runs') throw new WeaveError('Run records cannot be deleted: they retain completion and mail deduplication state', 'invalid');
     if (db.system === 'users') return this.#deleteUserRow(e);
     if (db.system === 'integrations') { this.#dropIntegrationKey(e, null); return undefined; }
     if (!['spaces', 'tables', 'fields', 'views'].includes(db.system)) return undefined;
@@ -7322,6 +7333,11 @@ export class Weave {
         const t = tableOf(e.sysId);
         return !!t && hidden.has(t.spaceId);
       }
+      case 'runs': {
+        const record = own(owner.state.entities, e.run?.record);
+        const workflow = own(owner.state.entities, e.run?.workflow);
+        return (!!record && hidden.has(owner.state.tables[record.dbId]?.spaceId)) || (!!workflow && owner.#sysRowHidden(workflow, owner.state.tables[workflow.dbId], depth + 1));
+      }
       case 'users':
       case 'workspaces': return false;
       default: {
@@ -7354,6 +7370,7 @@ export class Weave {
   }
 
   #readOnlyFor(db) {
+    if (db.system === 'runs') return true;
     const v = viewerOf(this);
     if (!v || v === ANONYMOUS || !this.#guarded(db)) return false;
     const role = spaceRole(this, v, this.state.spaces[db.spaceId]);
@@ -7816,6 +7833,7 @@ export class Weave {
   }
 
   #setRelationValue(e, db, field, newIds) {
+    if (!this.#inMetaSync && (db.system === 'runs' || this.state.tables[field.config.targetDb]?.system === 'runs')) throw new WeaveError('Run records are read-only: use the run API', 'invalid');
     if (!field.config.many && newIds.length > 1) {
       throw new WeaveError(`Field '${field.name}' holds a single entity`, 'invalid');
     }
@@ -9017,6 +9035,7 @@ export class Weave {
   }
 
   #writeDoc(entityId, markdown, fieldRef, verb, kind, compute) {
+    if (this.state.tables[this.getEntity(entityId).dbId]?.system === 'runs') throw new WeaveError('Run records are read-only: use the run update API', 'invalid');
     this.#mayWriteRow(entityId);
     const e = this.getEntity(entityId);
     const text = this.#docText(markdown, verb);
@@ -9366,6 +9385,7 @@ export class Weave {
     if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new WeaveError('The Script is not a rule: write {"table", "trigger", "actions"} as JSON', 'invalid');
     if (spec.table == null || spec.table === '') throw new WeaveError('The Script names no table', 'invalid');
     const db = this.getTable(spec.table);
+    if (db.system === 'runs') throw new WeaveError('Runs are read-only: bind the workflow to a job or event table and use run actions', 'invalid');
     const { trigger, actions } = spec;
     if (!trigger?.type || !['entity-created', 'field-updated', 'state-changed', 'schedule', 'listener-changed', 'webhook-inbound'].includes(trigger.type)) {
       throw new WeaveError(`Invalid automation trigger`, 'invalid');
@@ -9397,6 +9417,16 @@ export class Weave {
     }
     if (!Array.isArray(actions ?? [])) throw new WeaveError('The Script\'s actions are a list', 'invalid');
     const acts = (actions ?? []).map((a) => {
+      if (a?.type === 'start-run') {
+        const input = runInput({ name: a.name ?? 'Run', ...(a.recipient != null ? { recipient: templated(a.recipient) ? 'template@example.com' : a.recipient } : {}), ...(a.timeoutMinutes != null ? { timeoutMinutes: a.timeoutMinutes } : {}) });
+        return { type: a.type, name: a.name ?? 'Run', ...(a.recipient != null ? { recipient: a.recipient } : {}), timeoutMinutes: input.timeoutMinutes };
+      }
+      if (a?.type === 'update-run') {
+        if (typeof a.run !== 'string' || !a.run) throw new WeaveError('update-run needs a run id or a step placeholder', 'invalid');
+        const patch = Object.fromEntries(['status', 'summary', 'error', 'sessionUrl'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]]));
+        runPatch(Object.fromEntries(Object.entries(patch).filter(([, v]) => !templated(v))));
+        return { type: a.type, run: a.run, ...patch };
+      }
       if (a?.type === 'set-field') {
         const f = this.getField(db.id, a.field);
         if (!templated(a.value)) this.#checkFits(f, a.value);
@@ -9563,6 +9593,7 @@ export class Weave {
         trigger.toState = st.name;
       }
       const actions = c.actions.map((a) => {
+        if (a.type === 'start-run' || a.type === 'update-run') return { ...a };
         if (a.type === 'set-field') return { type: a.type, field: fname(a.fieldId), value: a.value };
         if (a.type === 'append-doc') return { type: a.type, ...(a.fieldId ? { field: fname(a.fieldId) } : {}), text: a.text };
         if (a.type === 'add-comment') return { type: a.type, text: a.text, ...(a.author ? { author: a.author } : {}) };
@@ -9897,6 +9928,187 @@ export class Weave {
     if (reg !== this) this.save();
   }
 
+  #runAccess(write = false) {
+    const viewer = viewerOf(this);
+    if (viewer?.space) throw new WeaveError('Runs need a workspace account, not a space-scoped token', 'forbidden');
+    const role = workspaceRole(this, viewer);
+    if (role == null || (write && RANK[role] < RANK.editor)) throw new WeaveError('Starting or updating runs needs a workspace editor', 'forbidden');
+  }
+
+  #runRow(id) {
+    const e = this.getEntity(id);
+    if (this.state.tables[e.dbId]?.system !== 'runs' || !e.run || e.deletedAt) throw new WeaveError(`No run '${id}' in this workspace`, 'not-found');
+    return e;
+  }
+
+  #saveRun(row) {
+    const db = this.state.tables[row.dbId];
+    this.#stamp(row, () => {
+      for (const [name, key] of Object.entries(RUN_FIELD_KEYS)) {
+        const f = this.#sysField(db, name);
+        if (f) row.values[f.id] = this.#validateValue(f, row.run[key] ?? null);
+      }
+    });
+    this.save();
+    return runOut(row);
+  }
+
+  startRun(input) {
+    this.#runAccess(true);
+    const a = runInput(input);
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      if (a.workflow) {
+        const wf = this.getEntity(a.workflow);
+        if (wf.deletedAt || this.state.tables[wf.dbId]?.system !== 'workflows') throw new WeaveError('workflow must name a workflow in this workspace', 'invalid');
+        a.workflow = wf.id;
+      }
+      if (a.record) {
+        this.#mayWriteRow(a.record);
+        const record = this.getEntity(a.record);
+        if (record.deletedAt) throw new WeaveError('The source record was deleted', 'not-found');
+        a.record = record.id;
+      }
+      if (a.key) {
+        const previous = Object.values(this.state.entities).find((e) => this.state.tables[e.dbId]?.system === 'runs' && e.run?.key === a.key);
+        if (previous) {
+          if (!this.canSee(previous.id)) throw new WeaveError('Run key belongs to an inaccessible record', 'forbidden');
+          if (previous.run.input !== JSON.stringify(a)) throw new WeaveError('Run key was already used for a different request', 'conflict');
+          return runOut(previous);
+        }
+      }
+      const table = this.#sysTable('runs');
+      const row = this.#metaSync(() => this.createEntity(table.id, { Name: a.name }));
+      const at = this.now();
+      row.run = {
+        ...a, input: JSON.stringify(a), status: 'queued', startedAt: at.toISOString(), finishedAt: null,
+        deadline: new Date(at.getTime() + a.timeoutMinutes * 60_000).toISOString(), summary: null, error: null, sessionUrl: null,
+        mailStatus: 'disabled', mailAttempts: 0, mailError: null, mailProviderId: null, mailNextAttempt: null,
+      };
+      return this.#saveRun(row);
+    });
+  }
+
+  updateRun(id, input) {
+    this.#runAccess(true);
+    const patch = runPatch(input);
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      const row = this.#runRow(id);
+      const data = row.run;
+      if (data.record) {
+        const record = own(this.state.entities, data.record);
+        if (record && !record.deletedAt) this.#mayWriteRow(record.id);
+      }
+      if (RUN_TERMINAL.has(data.status)) {
+        if (Object.entries(patch).every(([k, v]) => data[k] === v)) return runOut(row);
+        throw new WeaveError('A terminal run is immutable; a repeated completion must match the finished result', 'conflict');
+      }
+      if (data.status === 'running' && patch.status === 'queued') throw new WeaveError('A running run cannot return to queued', 'conflict');
+      Object.assign(data, patch);
+      if (RUN_TERMINAL.has(data.status)) {
+        data.finishedAt = this.now().toISOString();
+        data.mailStatus = data.recipient ? 'pending' : 'disabled';
+      }
+      return this.#saveRun(row);
+    });
+  }
+
+  listRuns({ limit = 100, status } = {}) {
+    this.#runAccess();
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new WeaveError('Run limit must be an integer from 1 to 1000', 'invalid');
+    if (status != null && !RUN_STATUSES.includes(status)) throw new WeaveError(`Unknown run status '${status}'`, 'invalid');
+    this.maybeRefresh();
+    return Object.values(this.state.entities)
+      .filter((e) => !e.deletedAt && e.run && this.state.tables[e.dbId]?.system === 'runs' && this.canSee(e.id) && (status == null || e.run.status === status))
+      .sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt) || b.publicId - a.publicId)
+      .slice(0, limit).map(runOut);
+  }
+
+  #mailingRuns = new Set();
+
+  async runMaintenance({ mail = null, origin = null, now = this.now() } = {}) {
+    this.#runAccess(true);
+    this.maybeRefresh();
+    const ids = Object.values(this.state.entities).filter((e) => !e.deletedAt && e.run && this.state.tables[e.dbId]?.system === 'runs').map((e) => e.id);
+    let sent = 0;
+    for (const id of ids) {
+      if (this.#mailingRuns.has(id)) continue;
+      const claimed = this.store.batch(() => {
+        this.maybeRefresh();
+        const row = this.#runRow(id);
+        const r = row.run;
+        if (!RUN_TERMINAL.has(r.status) && Date.parse(r.deadline) <= now.getTime()) {
+          Object.assign(r, { status: 'timed-out', finishedAt: now.toISOString(), error: 'The run did not report completion before its deadline.', mailStatus: r.recipient ? 'pending' : 'disabled' });
+          this.#saveRun(row);
+        }
+        if (!RUN_TERMINAL.has(r.status) || !['pending', 'sending'].includes(r.mailStatus)) return null;
+        if (r.mailFirstAttempt && now.getTime() - Date.parse(r.mailFirstAttempt) >= RUN_MAIL_WINDOW_MS) {
+          Object.assign(r, { mailStatus: 'failed', mailError: 'Delivery may be ambiguous: the provider deduplication window is nearly 24 hours old. No automatic resend.', mailNextAttempt: null });
+          this.#saveRun(row);
+          return null;
+        }
+        if (r.mailAttempts >= RUN_MAIL_ATTEMPTS) {
+          Object.assign(r, { mailStatus: 'failed', mailError: 'Email delivery stopped after eight attempts; delivery may be ambiguous.', mailNextAttempt: null });
+          this.#saveRun(row);
+          return null;
+        }
+        if (r.mailNextAttempt && Date.parse(r.mailNextAttempt) > now.getTime()) return null;
+        if (r.mailStatus === 'sending' && Date.parse(r.mailLeaseUntil) > now.getTime()) return null;
+        if (typeof mail !== 'function' || !origin) {
+          r.mailError = !mail ? 'Email transport is not configured.' : 'The public origin for email links is not configured.';
+          this.#saveRun(row);
+          return null;
+        }
+        let base;
+        try { base = new URL(origin); } catch {}
+        if (!base || !['https:', 'http:'].includes(base.protocol) || base.username || base.password) {
+          r.mailError = 'The public origin for email links is not configured correctly.';
+          this.#saveRun(row);
+          return null;
+        }
+        if (!r.mailMessage) {
+          const runUrl = `${base.origin}${this.permalink('entity', row.id)}`;
+          const { subject, html, text } = runEmail({ ...runOut(row), runUrl, origin: base.origin });
+          r.mailMessage = { to: r.recipient, subject, html, text, idempotencyKey: `weave-run-${id}` };
+        }
+        r.mailFirstAttempt ??= now.toISOString();
+        r.mailAttempts++;
+        r.mailStatus = 'sending';
+        r.mailLeaseUntil = new Date(now.getTime() + 60_000).toISOString();
+        r.mailNextAttempt = null;
+        this.#saveRun(row);
+        return { message: structuredClone(r.mailMessage), attempt: r.mailAttempts };
+      });
+      if (!claimed) continue;
+      this.#mailingRuns.add(id);
+      try {
+        const result = await mail(claimed.message);
+        this.store.batch(() => {
+          this.maybeRefresh();
+          const row = this.#runRow(id);
+          Object.assign(row.run, { mailStatus: 'sent', mailProviderId: String(result?.id ?? ''), mailError: null, mailLeaseUntil: null, mailNextAttempt: null });
+          this.#saveRun(row);
+        });
+        sent++;
+      } catch (err) {
+        this.store.batch(() => {
+          this.maybeRefresh();
+          const row = this.#runRow(id);
+          const r = row.run;
+          if (r.mailStatus !== 'sending' || r.mailAttempts !== claimed.attempt) return;
+          const status = Number(err?.status);
+          const permanent = status >= 400 && status < 500 && ![408, 409, 429].includes(status);
+          const stop = permanent || r.mailAttempts >= RUN_MAIL_ATTEMPTS;
+          Object.assign(r, { mailStatus: stop ? 'failed' : 'pending', mailError: String(err?.message ?? err).slice(0, 1000), mailLeaseUntil: null,
+            mailNextAttempt: stop ? null : new Date(now.getTime() + Math.min(60, 2 ** (r.mailAttempts - 1)) * 60_000).toISOString() });
+          this.#saveRun(row);
+        });
+      } finally { this.#mailingRuns.delete(id); }
+    }
+    return { sent };
+  }
+
   #runAutomations(db, e, event, depth) {
     return unrestricted(() => this.#runAutomationsIn(db, e, event, depth));
   }
@@ -9990,6 +10202,11 @@ export class Weave {
   #finishRun(run, failure) {
     const reg = this.#reg;
     const { ran, name, rule } = run;
+    if (failure) for (const link of run.externalRuns ?? []) {
+      if (link.record !== ran.at(-1)?.e.id) continue;
+      const row = own(this.state.entities, link.id);
+      if (row?.run && !RUN_TERMINAL.has(row.run.status)) this.updateRun(link.id, { status: 'failed', error: failure });
+    }
     ran.forEach(({ e, outs }, i) => {
       if (!own(this.state.entities, e.id)) return;
       this.#logActivity(this.#liveRow(e), 'automation-ran', {
@@ -10198,7 +10415,7 @@ export class Weave {
     return JSON.parse(JSON.stringify({
       workflow: run.rule.row.id, dbId: run.db.id, rows: run.rows.map((e) => (e.item !== undefined ? { id: e.id, key: e.key, item: e.item } : e.id)), event: run.event, depth: run.depth, at: run.at, r, i,
       ran: run.ran.map((x) => x && { id: x.e.id, steps: x.steps, outs: x.outs, ...(x.e.item !== undefined ? { key: x.e.key, item: x.e.item } : {}) }),
-      request,
+      request, externalRuns: run.externalRuns ?? [],
     }));
   }
 
@@ -10289,6 +10506,12 @@ export class Weave {
   }
 
   #reviveRun(d) {
+    const activeRecord = typeof d.rows[d.r] === 'object' ? d.rows[d.r].id : d.rows[d.r];
+    for (const link of d.externalRuns ?? []) {
+      if (link.record !== activeRecord) continue;
+      const tracked = own(this.state.entities, link.id)?.run;
+      if (tracked && (RUN_TERMINAL.has(tracked.status) || Date.parse(tracked.deadline) <= this.now().getTime())) return null;
+    }
     const reg = this.#reg;
     const rule = reg.#allRules().find((x) => x.owner === this && x.row.id === d.workflow);
     const db = own(this.state.tables, d.dbId);
@@ -10297,7 +10520,7 @@ export class Weave {
     const live = (id) => own(this.state.entities, id);
     const rows = d.rows.map((id, k) => (typeof id === 'object' ? itemRow(id.key, id.item) : live(id) ?? (k <= d.r ? { id } : null))).filter(Boolean);
     const ran = d.ran.map((x) => x && { e: x.item !== undefined ? itemRow(x.key, x.item) : live(x.id) ?? { id: x.id }, steps: x.steps, outs: x.outs });
-    return { failed: false, rule, db, rows, event: d.event, depth: d.depth, at: d.at, name: reg.entityName(rule.row), ran, waited: true };
+    return { failed: false, externalRuns: d.externalRuns ?? [], rule, db, rows, event: d.event, depth: d.depth, at: d.at, name: reg.entityName(rule.row), ran, waited: true };
   }
 
   runDeliveries({ now = this.now() } = {}) {
@@ -10466,6 +10689,22 @@ export class Weave {
 
   #runAction(rule, name, action, db, e, event, depth, run, steps = {}) {
     const zone = rule.trigger?.zone ?? null;
+    if (action.type === 'start-run') {
+      return this.store.batch(() => {
+        const made = this.startRun({ name: this.#template(action.name, e, db, steps, event.trigger, zone), ...(action.recipient != null ? { recipient: this.#template(action.recipient, e, db, steps, event.trigger, zone) } : {}), timeoutMinutes: action.timeoutMinutes, workflow: rule.row.id, ...(e.item === undefined ? { record: e.id } : {}) });
+        (run.externalRuns ??= []).push({ id: made.id, record: e.id });
+        if (rule.trigger.type === 'schedule') {
+          const reg = this.#reg;
+          reg.#stamp(rule.row, () => { rule.row.values[reg.#wfField('Last Run').id] = run.at; });
+          reg.save();
+        }
+        return made;
+      });
+    }
+    if (action.type === 'update-run') {
+      const patch = Object.fromEntries(['status', 'summary', 'error', 'sessionUrl'].filter((k) => action[k] !== undefined).map((k) => [k, this.#template(action[k], e, db, steps, event.trigger, zone)]));
+      return this.updateRun(this.#template(action.run, e, db, steps, event.trigger, zone), patch);
+    }
     if (action.type === 'set-field') {
       const f = db.fields[action.fieldId];
       if (!f) return null;

@@ -105,6 +105,7 @@ export const TOOLS = [
   toolDefinition('weave_views'),
   toolDefinition('weave_shares'),
   toolDefinition('weave_automations'),
+  toolDefinition('weave_runs'),
   toolDefinition('weave_activity'),
   toolDefinition('weave_audit'),
   toolDefinition('weave_workspace'),
@@ -187,6 +188,7 @@ export const SUMMARY = {
   weave_check_formula: 'validate and preview a formula',
   weave_create_automation: 'create an automation rule',
   weave_automations: 'list, describe, update or delete rules',
+  weave_runs: 'external run tracking',
   weave_export_csv: 'a table as CSV',
   weave_attach_file: 'attach or prepare raw upload',
   weave_files: 'read or delete an attached file',
@@ -221,7 +223,7 @@ export const SUMMARY = {
 TOOLS.push({
   name: 'weave_call',
   description: [
-    'Call any weave tool by name: {name, args}, where args is that tool\'s input. {name: "help", args: {tool}} returns its description and input schema; read it before the first call. The tools not listed on their own:',
+    'Call any weave tool: {name, args}. {name: "help", args: {tool}} returns its description and input schema; read before the first call. Other tools:',
     ...TOOLS.filter((t) => !CORE_TOOLS.has(t.name)).map((t) => `${t.name}: ${SUMMARY[t.name] ?? t.description.split(/[.:]\s/)[0].slice(0, 60)}`),
   ].join('\n'),
   inputSchema: {
@@ -249,7 +251,7 @@ const TITLES = {
   weave_restore_table: 'Restore table', weave_update_field: 'Update field', weave_rollback_field: 'Roll back field config',
   weave_delete_field: 'Delete field', weave_restore_field: 'Restore field', weave_apply_schema: 'Apply schema document',
   weave_build: 'Build workspace', weave_views: 'Manage saved views', weave_shares: 'Manage share links',
-  weave_automations: 'Manage automations', weave_activity: 'Read activity feed', weave_audit: 'Read audit log',
+  weave_runs: 'Track external runs', weave_automations: 'Manage automations', weave_activity: 'Read activity feed', weave_audit: 'Read audit log',
   weave_workspace: 'Read or update workspace', weave_accounts: 'Manage accounts', weave_keys: 'Manage credential keys',
   weave_files: 'Read or delete files', weave_registry: 'Check workspace registry', weave_relation_map: 'Draw relation map',
   weave_export_json: 'Export workspace as JSON', weave_forms: 'Manage forms', weave_form_submit: 'Submit form',
@@ -266,7 +268,7 @@ const DESTRUCTIVE = new Set([
   'weave_apply_schema', 'weave_import_json', 'weave_automations', 'weave_accounts', 'weave_keys', 'weave_files',
   'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
 ]);
-const OPEN_WORLD = new Set(['weave_create_automation', 'weave_automations', 'weave_call']);
+const OPEN_WORLD = new Set(['weave_runs', 'weave_create_automation', 'weave_automations', 'weave_call']);
 const IDEMPOTENT = new Set([
   ...READ_ONLY,
   'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity', 'weave_set_state', 'weave_link', 'weave_unlink',
@@ -323,12 +325,12 @@ export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
 const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'workspace', weave_shares: 'workspace' };
-export const SEATLESS_TOOLS = new Set(['weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
+export const SEATLESS_TOOLS = new Set(['weave_runs', 'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
 export const ROLE_TOOLS = {
   observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
   editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
 };
-const WORKSPACE_TOOLS = new Set(['weave_create_space', 'weave_build', 'weave_apply_schema', 'weave_template_use', 'weave_create_automation', 'weave_automations', 'weave_registry', 'weave_views', 'weave_workspace', 'weave_forms', 'weave_import_json', 'weave_export_json', 'weave_keys', 'weave_shares', 'weave_accounts', 'weave_undo']);
+const WORKSPACE_TOOLS = new Set(['weave_runs', 'weave_create_space', 'weave_build', 'weave_apply_schema', 'weave_template_use', 'weave_create_automation', 'weave_automations', 'weave_registry', 'weave_views', 'weave_workspace', 'weave_forms', 'weave_import_json', 'weave_export_json', 'weave_keys', 'weave_shares', 'weave_accounts', 'weave_undo']);
 const mayCall = (caller, name) => {
   const tier = WORKSPACE_TOOLS.has(name) ? caller?.workspaceTier ?? caller?.tier : caller?.tier;
   return !ROLE_TOOLS[tier] || ROLE_TOOLS[tier].has(name);
@@ -353,6 +355,9 @@ function checkRowArgs(name, args, required) {
 }
 
 const ROW_GUARDS = {
+  weave_runs: (weave, args, caller) => {
+    if (caller && args.action !== 'list' && (!['editor', 'architect'].includes(caller.role) || caller.seat)) throw new Error('Starting or updating runs needs an editor account on this workspace');
+  },
   weave_create_entity: (weave, args, caller) => {
     checkRowArgs('weave_create_entity', args, false);
     if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);

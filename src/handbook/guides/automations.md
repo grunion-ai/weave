@@ -2,7 +2,7 @@
 
 An automation is a rule bound to one table: something happens, and weave writes. The rule names a trigger and a list of actions, it lives as a row of `System/Workflows`, and it runs inside the engine, so a write from the CLI, the REST API, an MCP client or the grid fires it the same way.
 
-Nothing here reaches outside the workspace except the `webhook` and `http-request` actions.
+The `webhook` and `http-request` actions call external services. A run with a recipient sends a completion email through the configured mail provider.
 
 ## Rules in a build spec
 
@@ -86,7 +86,7 @@ The first poll records what the source holds and fires nothing, so switching a r
 
 A change that weave itself just sent to the source does not fire. When an `http-request` rule sends a JSON body through the same integration, and within ten minutes the poll sees an item whose changed fields hold exactly the values sent, weave treats that item as its own echo.
 
-A listener rule runs on items, not on a record of the table, so its actions are `upsert-row` and `http-request`, with no `response` map.
+A listener rule runs on items, not on a record of the table, so its actions are `upsert-row`, `http-request` (without a `response` map), `start-run` and `update-run`.
 
 A source that answers with changes is polled every minute. Each poll that finds nothing new doubles the wait, up to `maxInterval`, and the first change brings it back to every minute. A laptop that slept polls once when it wakes. Every rule on one integration shares its `Poll Budget`, the number of polls an hour, 60 when the field is blank; a rule that would go over waits for the hour to roll on. A 429 or 503 answer waits for its `Retry-After`, other failures wait 1, 2, 4 and up to 60 minutes, and while it waits the rule reads `Warning`, or `Failed` for a 4xx answer, with the reason and the next poll in Health Reason, as in `GET api.acme.com/v1/tasks answered HTTP 429; next poll 2026-11-09 12:06 UTC`. A rule whose url is not on the integration's Host reads `Setup incomplete` when it is saved, and so does a rule whose `items` path finds no list in an answer; it stops polling until its Script changes.
 
@@ -135,7 +135,7 @@ A sender proves itself one of two ways. A sender that can sign sends `X-Weave-Ti
 
 Every delivery is logged on the rule, newest first, with its time, status, size, outcome and the reason for a refusal: `weave automation describe` shows the last one as `hook.last`, and Health Reason reads `Last delivery 2026-11-09 12:03 UTC: refused: bad signature`. A refused delivery never runs, and it turns Health to Warning until the next one runs.
 
-The actions are `upsert-row` and `http-request`, with no `response` map, plus `set-field` and `add-comment` when the trigger names the record with `record`. Upsert-row source paths and placeholders read the body as `trigger.body.<path>` and each item as `trigger.item.<path>`.
+The actions are `upsert-row`, `http-request` (without a `response` map), `start-run` and `update-run`, plus `set-field` and `add-comment` when the trigger names the record with `record`. Upsert-row source paths and placeholders read the body as `trigger.body.<path>` and each item as `trigger.item.<path>`.
 
 A worked example: a GitHub-style issue event creates or updates a record of `Ops/Task`.
 
@@ -170,8 +170,10 @@ Actions run in order. A rule needs at least one.
 | `webhook` | a POST to an http(s) url, signed when the rule names a credential |
 | `upsert-row` | a row of another table, matched on a key |
 | `http-request` | a call to an outside API, with its answer mapped onto the firing row |
+| `start-run` | a queued external run with a deadline and optional email recipient |
+| `update-run` | the status, summary, error or session URL of an external run |
 
-`upsert-row` is the one that writes somewhere else:
+`upsert-row` writes to a chosen table:
 
 ```json
 { "type": "upsert-row", "table": "Billing/Account", "key": "Stripe Id",
@@ -194,6 +196,7 @@ Each action also yields an output the later ones can read:
 | `upsert-row` | `{id, publicId, name, created}` |
 | `webhook` | `{url, sent}` |
 | `http-request` | `{status, ok, body}`, the body parsed from JSON |
+| `start-run`, `update-run` | the run, including `id`, `status`, timing and mail state |
 
 A later action reads them as `{{steps.1.publicId}}` in its text or in a `set-field` string value, and as `steps.1.name` in an `upsert-row` source path. The number is the action's position, counted from 1. A step that has not run yet, or a path it has not got, reads empty.
 
@@ -370,6 +373,41 @@ weave activity --kind automation-ran --limit 20
 | MCP | `weave_create_automation`, and `weave_automations` with `action: list | describe | update | delete | replay` |
 | Grid | a new row of `System/Workflows`, its Script written as JSON |
 
-`weave_create_automation` and `weave_automations` carry the MCP open-world mark: a rule can call a webhook or an API, and no other tool leaves the workspace.
+`weave_create_automation`, `weave_automations` and `weave_runs` carry the MCP open-world mark: workflows can call APIs, and runs can send confirmation emails.
 
 Deleting a rule sends its Workflows row to the trash, where restoring it brings the rule back. Switching `On` off is the reversible way to stop one.
+
+## External runs and completion emails
+
+A cloud task can keep working after its launch request succeeds. **System › Runs** tracks that work separately from the workflow that launched it. Each run keeps its status, deadline, summary, error, session URL and email delivery state. Run records are read-only in the grid; the run operations below change them.
+
+Start a run before dispatching external work, then send its id to the worker. A start returns `queued`; the worker or dispatcher reports `running` after launch, and the worker reports `succeeded` or `failed` when finished. A successful launch response alone never completes the run. The server checks deadlines each minute and changes unfinished runs to `timed-out`. Timing is recorded in UTC.
+
+| Door | Start | Update | Read |
+| --- | --- | --- | --- |
+| REST | `POST /api/runs` | `PATCH /api/runs/:id` | `GET /api/runs` |
+| CLI | `weave run start "Daily review" --timeout-minutes 60` | `weave run update <id> --patch '{"status":"succeeded","summary":"Reviewed three items."}'` | `weave run list` |
+| MCP | `weave_runs {action:"start", name:"Daily review"}` | `weave_runs {action:"update", run:"<id>", patch:{status:"succeeded"}}` | `weave_runs {action:"list"}` |
+
+REST paths are relative to the workspace, such as `/w/work/api/runs`. Writes require an Editor or Architect in an authenticated workspace. An Observer can read runs. Use authenticated completion updates; a run id is not a credential.
+
+Start accepts `name`, optional `recipient`, `timeoutMinutes` (1 to 10080, default 60), `key`, `workflow` and `record`. A repeated `key` in the same workspace returns the original run, so a dispatcher can retry creating its record without creating another run. Update accepts `status`, `summary`, `error` and `sessionUrl`. An identical terminal callback is harmless; a conflicting outcome is refused. Use a new run for another attempt.
+
+A workflow can start the record with `{ "type": "start-run", "name": "Review {{Name}}", "timeoutMinutes": 60 }`. The output includes `id`, available as `{{steps.1.id}}` to the HTTP request that launches the worker. After that request, an `update-run` step can record its session URL:
+
+```json
+{
+  "type": "update-run",
+  "run": "{{steps.1.id}}",
+  "status": "running",
+  "sessionUrl": "{{steps.2.body.claude_code_session_url}}"
+}
+```
+
+Add `recipient` to the start call or `start-run` action to request a confirmation. Omit it to keep email off. A terminal outcome queues an HTML email with a plain-text alternative, result, summary and error, start and finish times, duration, and links to the run and external session. No real task or recipient is installed automatically.
+
+The server uses its existing `WEAVE_MAIL_KEY`, `WEAVE_MAIL_FROM` and public origin configuration. The minute sweep sends queued confirmations and retries failed attempts. Email state means provider acceptance, not proof of inbox delivery. Missing mail configuration remains visible on the run. Email uses a stable provider idempotency key and a saved payload across retries; an uncertain delivery beyond the provider's deduplication window is left failed for inspection rather than sent again. An email failure never changes the task's outcome.
+
+A scheduled `start-run` stamps that schedule slot before dispatch. If the
+server stops between those steps, the queued run times out instead of silently
+launching the same slot again. Starting a replacement is an explicit decision.

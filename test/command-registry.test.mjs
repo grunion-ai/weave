@@ -213,8 +213,10 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const base = `http://127.0.0.1:${server.address().port}`;
   const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
   const filed = w.attachFile(alpha, { name: 'gate.txt', mime: 'text/plain', bytes: Buffer.from('gate').toString('base64') }).id;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen, file: filed };
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen, file: filed, run: w.startRun({ name: 'Gate run' }).id };
   const bodies = {
+    'run.start': { name: 'Gate start' },
+    'run.update': { status: 'succeeded' },
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
     'entity.unlink': { field: 'Owner', targets: ['Pat'] },
