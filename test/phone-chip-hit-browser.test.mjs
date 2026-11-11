@@ -51,8 +51,7 @@ const apart = (a, b) => a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.
 if (s) {
   const { base, browser, id } = s;
   const engines = [['chromium', browser]];
-  const webkit = await engineOf('webkit');
-  if (webkit) engines.push(['webkit', webkit]);
+  engines.push(['webkit', await engineOf('webkit')]);
   const open = async (b) => {
     const page = await b.newPage(PHONE);
     await page.goto(`${base}/#/table/${id}`, { waitUntil: 'networkidle' });

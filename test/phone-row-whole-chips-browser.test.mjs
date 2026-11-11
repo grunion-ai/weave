@@ -24,8 +24,7 @@ const s = await launch('phone row whole chips', (weave) => {
 if (s) {
   const { base, browser, id } = s;
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   const write = (page, phoneRow) => page.evaluate(async ([id, phoneRow]) => (await fetch(`/api/tables/${id}/views/Standard`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phoneRow }),
   })).status, [id, phoneRow]);

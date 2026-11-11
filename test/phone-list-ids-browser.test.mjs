@@ -37,8 +37,7 @@ const measure = (page) => page.evaluate(() => [...document.querySelectorAll('#ma
 if (s) {
   const { base, browser, table } = s;
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   const open = async (b, profile, theme) => {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);

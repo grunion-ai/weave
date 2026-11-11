@@ -23,8 +23,7 @@ if (s) {
     assert.equal(res.ok, true, await res.text());
   };
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   for (const [engine, b, profile] of engines) {
     test(`on a phone Copy permalink keeps 44px clear of the header dots at every workspace name length (${engine}, Issue #853)`, async () => {
       const page = await b.newPage(profile);

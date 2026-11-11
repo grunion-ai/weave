@@ -31,8 +31,7 @@ if (s) {
   const { base, browser } = s;
   const engines = [['default', browser]];
   if (process.env.WEAVE_BROWSER !== 'webkit') {
-    const webkit = await engineOf('webkit');
-    if (webkit) engines.push(['webkit', webkit]);
+    engines.push(['webkit', await engineOf('webkit')]);
   }
 
   const open = async (b, { theme, viewport, docked }) => {

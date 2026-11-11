@@ -29,8 +29,7 @@ const s = await launch('phone table menu', (weave) => {
 if (s) {
   const { base, browser, table, id } = s;
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   const open = async (b, { profile = { viewport: { width: 1280, height: 844 } }, theme = 'light' } = {}) => {
     const page = await b.newPage(profile);
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
