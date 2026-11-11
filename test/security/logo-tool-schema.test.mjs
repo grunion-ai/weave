@@ -23,7 +23,6 @@ test('a logo set through the tool is typed from its bytes whatever the caller sa
   const w = new Weave();
   const set = dispatchTool(w, 'weave_workspace', { action: 'logo', name: 'mark.png', contentBase64: PNG });
   assert.equal(set.mime, 'image/png');
-  const lied = dispatchTool(w, 'weave_workspace', { action: 'logo', name: 'mark.png', mime: 'text/html', contentBase64: PNG });
-  assert.equal(lied.mime, 'image/png');
+  assert.throws(() => dispatchTool(w, 'weave_workspace', { action: 'logo', name: 'mark.png', mime: 'text/html', contentBase64: PNG }), /unknown 'mime'/);
   assert.equal(w.state.meta.logo.mime, 'image/png');
 });
