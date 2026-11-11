@@ -56,8 +56,7 @@ if (s) {
   }
 
   const phones = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) phones.push([`webkit ${PHONE}`, webkit, IPHONE]);
+  phones.push([`webkit ${PHONE}`, await engineOf('webkit'), IPHONE]);
   for (const [engine, b, profile] of phones) {
     {
       const theme = 'light';

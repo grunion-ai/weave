@@ -1,0 +1,1 @@
+- A browser engine that will not launch now fails the suites that need it, naming the engine and keeping the original launch error, instead of leaving them to register fewer cases and read green (Issue #1451).

@@ -128,8 +128,7 @@ if (s) {
   const { base, browser, table } = s;
   const surfaceOf = (state) => ({ name: state.name, url: ROUTES[state.route].url(s, 'phone'), ready: readyOf(state, 'phone'), roots: rootsOf(state), act: state.act });
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
   const open = async (b, profile, theme, surface) => {
     const page = await b.newPage(profile);

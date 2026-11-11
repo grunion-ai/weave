@@ -50,8 +50,7 @@ const rows = (page) => page.evaluate(() => {
 if (s) {
   const { base, browser, ids } = s;
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   const open = async (b, profile, theme, density) => {
     const id = ids[density];
     const page = await b.newPage(profile);
