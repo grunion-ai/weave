@@ -234,3 +234,68 @@ test('REST: POST /api/undo reverts, GET /api/undo lists, reader tokens are refus
     server.close();
   }
 });
+
+test('REST: POST /api/undo refuses when a write of the same actor landed since the caller read the stack (Issue #1727)', async () => {
+  const weave = new Weave();
+  weave.createSpace({ name: 'S' });
+  weave.createTable({ space: 'S', name: 'T' });
+  weave.addField('T', { name: 'Estimate', type: 'number' });
+  const x = weave.createEntity('T', { name: 'tab-1 row', values: { Estimate: 0 } });
+  const y = weave.createEntity('T', { name: 'tab-2 row', values: { Estimate: 0 } });
+  const { server } = await startServer(weave, { port: 0 });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const api = async (method, path, body) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, data: await res.json().catch(() => null) };
+  };
+  const key = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
+  const estimate = async (id) => (await api('GET', `/api/entities/${id}`)).data.fields.Estimate;
+  try {
+    await api('PATCH', `/api/entities/${x.id}`, { values: { Estimate: 1 } });
+    const read = await api('GET', '/api/undo?limit=200');
+    assert.equal(read.data[0].entityId, x.id, 'the caller read its own write on top');
+    const mine = key(read.data[0]);
+    await api('PATCH', `/api/entities/${y.id}`, { values: { Estimate: 2 } });
+    const refused = await api('POST', '/api/undo', { steps: 1, expect: [mine] });
+    assert.equal(refused.status, 409, 'the entry the caller named is no longer the top, so nothing is popped');
+    assert.equal(refused.data.code, 'conflict');
+    assert.equal(refused.data.top.entityId, y.id, 'the refusal names the entry that is on top now');
+    assert.equal(await estimate(x.id), 1, "the caller's own write is intact");
+    assert.equal(await estimate(y.id), 2, "the other tab's write is intact");
+    const stack = await api('GET', '/api/undo?limit=200');
+    assert.deepEqual(stack.data.map((u) => u.entityId), [y.id, x.id], 'both entries are still on the stack');
+    const ok = await api('POST', '/api/undo', { steps: 1, expect: [key(stack.data[0])] });
+    assert.equal(ok.status, 200, 'naming the current top pops it');
+    assert.deepEqual(ok.data.undone.map((u) => u.name), ['tab-2 row']);
+    assert.equal(await estimate(y.id), 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('expect names one key per step and an undo without expect still pops the newest (Issue #1727)', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'T' });
+  w.addField('T', { name: 'N', type: 'number' });
+  const a = w.createEntity('T', { name: 'a', values: { N: 0 } });
+  const b = w.createEntity('T', { name: 'b', values: { N: 0 } });
+  w.actor = 'A';
+  w.updateEntity(a.id, { N: 1 });
+  w.updateEntity(b.id, { N: 2 });
+  const key = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
+  const [top, under] = w.listUndo({ limit: 2 });
+  assert.throws(() => w.undo({ steps: 1, expect: [key(under)] }), /changed since/i, 'the entry under the top is not the top');
+  assert.throws(() => w.undo({ steps: 2, expect: [key(top)] }), { code: 'invalid' }, 'expect carries one key per step');
+  assert.throws(() => w.undo({ steps: 1, expect: 'a key' }), { code: 'invalid' }, 'expect is a list of keys');
+  assert.equal(w.readEntity(a.id).fields.N, 1, 'a refused undo writes nothing');
+  assert.equal(w.readEntity(b.id).fields.N, 2);
+  assert.deepEqual(w.undo({ steps: 2, expect: [key(top), key(under)] }).undone.map((u) => u.name), ['b', 'a'], 'a full match pops the run');
+  assert.deepEqual(w.listUndo(), [], 'and the stack is spent');
+  w.updateEntity(a.id, { N: 3 });
+  assert.deepEqual(w.undo().undone.map((u) => u.name), ['a'], 'a caller that names nothing keeps the old contract');
+});

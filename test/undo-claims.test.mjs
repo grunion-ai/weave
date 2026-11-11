@@ -8,16 +8,26 @@ const at = (s) => `2026-11-10T12:00:${s}Z`;
 const ms = (s) => Date.parse(at(s));
 const entry = (kind, entityId, ts) => ({ kind, entityId, ts: at(ts) });
 
-function tab(top = []) {
+function tab(top = [], { between = null, afterRefusal = null } = {}) {
   const gestures = [];
   const pendingClaims = [];
   const asked = [];
   const looseIds = new Set();
+  let land = between;
   const claimOwn = liftFunction('claimOwn', { pendingClaims, gestures, undoKey, looseIds });
   const pinClaims = liftFunction('pinClaims', { pendingClaims, looseIds });
   const api = async (method, path, body) => {
     asked.push(body ? `${method} ${path} ${JSON.stringify(body)}` : `${method} ${path}`);
-    return method === 'GET' ? top : { undone: top.slice(0, body.steps).map((u) => ({ kind: u.kind, name: u.entityId })) };
+    if (method === 'GET') {
+      const seen = top.slice();
+      if (land) { land(); land = null; }
+      return seen;
+    }
+    if (body.expect && body.expect.join() !== top.slice(0, body.steps).map(undoKey).join()) {
+      afterRefusal?.();
+      throw Object.assign(new Error('Changed since, so nothing was undone'), { status: 409, code: 'conflict' });
+    }
+    return { undone: top.slice(0, body.steps).map((u) => ({ kind: u.kind, name: u.entityId })) };
   };
   const stepBackOwn = liftAsync('stepBackOwn', { gestures, pendingClaims, api, claimOwn, undoKey, UNDO_WINDOW: 200 });
   const gesture = () => {
@@ -149,7 +159,7 @@ test('a gesture on top steps back exactly its own entries (Issue #1692)', async 
   t.wrote(paste, 'update', 'r1');
   t.wrote(paste, 'update', 'r2');
   const r = await t.stepBackOwn(null);
-  assert.deepEqual(t.asked, ['GET /undo?limit=200', 'POST /undo {"steps":2}'], 'two steps, not one and not the older third');
+  assert.deepEqual(t.asked, ['GET /undo?limit=200', `POST /undo {"steps":2,"expect":["${undoKey(b)}","${undoKey(a)}"]}`], 'two steps, not one and not the older third, named by key');
   assert.deepEqual(r.popped, [b, a]);
   assert.equal(paste.keys.size, 0, 'the gesture is spent');
 });
@@ -164,4 +174,37 @@ test('the first read of a pasted row pins its loose claim to the row\'s own writ
   t.pinClaims({ id: 'r1', updatedAt: at('09.000') });
   t.claimOwn();
   assert.deepEqual([...g.keys], [undoKey(pasted)], 'a write half a second before the paste, inside the coarse window, stays out');
+});
+
+test("a write of the same actor that lands between this tab's read and its POST is not undone in its place (Issue #1727)", async () => {
+  const mine = entry('update', 'r1', '01.000');
+  const stack = [mine];
+  const t = tab(stack, { between: () => stack.unshift(entry('update', 'r2', '02.000')) });
+  const g = t.gesture();
+  t.wrote(g, 'update', 'r1', ['00.999', '01.100']);
+  assert.deepEqual(await t.stepBackOwn(null), { blocked: true }, 'the tab refuses rather than undo the other write');
+  assert.deepEqual(t.asked, [
+    'GET /undo?limit=200',
+    `POST /undo {"steps":1,"expect":["${undoKey(mine)}"]}`,
+    'GET /undo?limit=200',
+  ], 'the POST named the entry it read, and the refusal sent it back to the stack once');
+  assert.deepEqual([...g.keys], [undoKey(mine)], "and the tab's own write stays its to undo");
+});
+
+test("a stack that settles while the refusal travels lets the recount step back the tab's own run (Issue #1727)", async () => {
+  const mine = entry('update', 'r1', '01.000');
+  const other = entry('update', 'r2', '02.000');
+  const stack = [mine];
+  const t = tab(stack, { between: () => stack.unshift(other), afterRefusal: () => stack.shift() });
+  const g = t.gesture();
+  t.wrote(g, 'update', 'r1', ['00.999', '01.100']);
+  const r = await t.stepBackOwn(null);
+  assert.deepEqual(r.popped, [mine], "the second read found the tab's own entry back on top");
+  assert.deepEqual(t.asked, [
+    'GET /undo?limit=200',
+    `POST /undo {"steps":1,"expect":["${undoKey(mine)}"]}`,
+    'GET /undo?limit=200',
+    `POST /undo {"steps":1,"expect":["${undoKey(mine)}"]}`,
+  ], 'one recount, no more');
+  assert.equal(g.keys.size, 0, 'the gesture is spent');
 });

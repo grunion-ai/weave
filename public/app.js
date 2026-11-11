@@ -10493,7 +10493,7 @@ function undoOwn(only = null) {
   return run;
 }
 
-async function stepBackOwn(only) {
+async function stepBackOwn(only, recount = true) {
   const pool = only ? [only] : gestures;
   await Promise.allSettled(pool.map((g) => g.settled));
   if (!pendingClaims.length && !pool.some((g) => g.keys.size)) return null;
@@ -10505,9 +10505,16 @@ async function stepBackOwn(only) {
   let steps = 0;
   while (owner && steps < top.length && owner.keys.has(undoKey(top[steps]))) steps++;
   if (!steps) return { blocked: pool.some((g) => g.keys.size) };
-  const { undone } = await api('POST', '/undo', { steps });
-  for (const u of top.slice(0, steps)) owner.keys.delete(undoKey(u));
-  return { undone, popped: top.slice(0, steps) };
+  const run = top.slice(0, steps);
+  let undone;
+  try {
+    ({ undone } = await api('POST', '/undo', { steps, expect: run.map(undoKey) }));
+  } catch (err) {
+    if (err?.status !== 409 || !recount) throw err;
+    return stepBackOwn(only, false);
+  }
+  for (const u of run) owner.keys.delete(undoKey(u));
+  return { undone, popped: run };
 }
 
 async function unlinkWithUndo(entityId, f, target, after = () => {}) {
