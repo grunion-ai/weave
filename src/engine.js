@@ -3180,11 +3180,30 @@ export class Weave {
 
   applySchema(doc, { dryRun = false, allowDestructive = false, partial = false } = {}) {
     if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
-    if (!dryRun) this.applySchema(doc, { dryRun: true, allowDestructive, partial });
+    const plan = this.#buildCopy().#applySchemaPass(doc, { allowDestructive, partial });
+    if (dryRun) return plan;
+    return this.#atomically(() => this.#applySchemaPass(doc, { allowDestructive, partial }));
+  }
+
+  #atomically(fn) {
+    const state = structuredClone(this.state);
+    const dirty = new Set(this.#dirty);
+    const dirtyAll = this.#dirtyAll;
+    try {
+      return this.store.batch(fn);
+    } catch (err) {
+      this.#adoptRolledBack(state);
+      this.#dirty = dirty;
+      this.#dirtyAll = dirtyAll;
+      throw err;
+    }
+  }
+
+  #applySchemaPass(doc, { allowDestructive, partial }) {
     const plan = [];
     const act = (action, subject, fn) => {
       plan.push({ action, subject });
-      if (!dryRun) fn();
+      fn();
     };
     const configFromDescriptor = (f, existing = null, as = f.type ?? existing?.type) => {
       const config = existing ? { ...existing.config } : {};
@@ -3239,7 +3258,6 @@ export class Weave {
           sp = this.createSpace({ name: spDoc.space, description: spDoc.description ?? '', template: spDoc.template === true });
           if (spDoc.icon) this.updateSpace(sp.id, { icon: spDoc.icon });
         });
-        if (dryRun) continue;
       } else {
         const patch = {};
         if (spDoc.description != null && spDoc.description !== (sp.description ?? '')) patch.description = spDoc.description;
@@ -3278,7 +3296,7 @@ export class Weave {
               this.addField(db.id, { name: f.name, type: f.type, config: configFromDescriptor(f) });
             }
           }));
-          if (!dryRun) created.push({ db, tDoc, named: (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name') });
+          created.push({ db, tDoc, named: (tDoc.fields ?? []).find((f) => f.role === 'name') ?? (tDoc.fields ?? []).find((f) => f.name === 'Name') });
           continue;
         }
         const tPatch = {};
@@ -3348,7 +3366,7 @@ export class Weave {
             act('delete-field', `${qualified}.${existing.name}`, () => this.deleteField(db.id, existing.id));
           }
         }
-        if (!dryRun && (tDoc.fields ?? []).length) {
+        if ((tDoc.fields ?? []).length) {
           const wanted = [];
           for (const fDoc of tDoc.fields) {
             const f = Object.values(db.fields).find((x) => x.name === fDoc.name);
@@ -3370,7 +3388,7 @@ export class Weave {
         const body = this.#bodyOrderFrom(db, tDoc);
         if (body) act('update-table', qualified, () => this.updateTable(db.id, { bodyOrder: body }));
       }
-      if (sp && !dryRun || sp) {
+      if (sp) {
         for (const db of this.listTables(sp?.id)) {
           if (db.system) continue;
           const still = (spDoc.tables ?? []).some((t) => t.name === db.name);
@@ -3450,7 +3468,7 @@ export class Weave {
         act('delete-space', sp.name, () => this.deleteSpace(sp.id));
       }
     }
-    if (!dryRun && plan.length) this.#audit('schema-applied', { changes: plan.length });
+    if (plan.length) this.#audit('schema-applied', { changes: plan.length });
     return plan;
   }
 
@@ -8477,8 +8495,7 @@ export class Weave {
     }
   }
 
-  #adoptRolledBack() {
-    const loaded = this.store.reload();
+  #adoptRolledBack(loaded = this.store.reload()) {
     if (!loaded) return;
     this.state = loaded;
     this.#schemaVersion = null;
