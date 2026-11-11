@@ -1,12 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { request, managerDirectory, resourceReason } from '../scripts/test-manager.mjs';
 import { managerHarness } from './lib/fixtures.mjs';
+import { tempDir } from './lib/temp.mjs';
 
-const { ROOT, scratch, cli, fixture } = managerHarness('weave-manager-test-');
+const { ROOT, scratch, env, cli, fixture } = managerHarness('weave-manager-test-');
+const driverless = realpathSync(tempDir('weave-manager-driverless-'));
+mkdirSync(join(driverless, 'scripts'));
+for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFileSync(join(driverless, 'scripts', name), readFileSync(join(ROOT, 'scripts', name)));
+execFileSync('git', ['init', '-q'], { cwd: driverless });
+const browserCli = args => {
+  const child = spawn(process.execPath, [join(driverless, 'scripts/test.mjs'), ...args], { cwd: driverless, env });
+  let out = '';
+  child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
+  return { child, done: new Promise(resolve => child.on('close', code => resolve({ code, out }))) };
+};
+const hold = release => `import test from 'node:test'; import { existsSync } from 'node:fs'; test('held', async () => { while (!existsSync(${JSON.stringify(release)})) await new Promise(r => setTimeout(r, 20)); });`;
 
 test('manager directory is per-user and independent of a worktree', () => {
   const before = managerDirectory({});
@@ -21,19 +33,44 @@ test('resource admission reports disk, memory and load reasons', () => {
   assert.match(resourceReason({ freeGB: 20, memoryPercent: 50, load: 100, cpus: 10 }), /load/);
   assert.equal(resourceReason({ freeGB: 20, memoryPercent: 50, load: 1, cpus: 10 }), null);
 });
-test('two unit jobs run side by side in the unit lane and status names each allocation', async () => {
+test('two browser jobs share the one slot, run one after the other, and status names the running allocation', async () => {
   const events = join(scratch, 'events');
-  writeFileSync(events, '');
-  const file = fixture('side-by-side', `import test from 'node:test'; import { appendFileSync, readFileSync } from 'node:fs'; test('owned allocation', async () => { appendFileSync(${JSON.stringify(events)}, 'start\\n'); while (readFileSync(${JSON.stringify(events)}, 'utf8').split('start').length < 3) await new Promise(r => setTimeout(r, 20)); appendFileSync(${JSON.stringify(events)}, 'end\\n'); });`);
-  const a = cli(['--timeout=30000', file]); const b = cli(['--timeout=30000', file]);
-  const both = await running(s => s.unit.length === 2);
-  assert.equal(both.active, null, 'unit jobs leave the browser slot free');
-  assert.deepEqual(both.unit.map(job => job.lane), ['unit', 'unit']);
+  const file = fixture('serial-browser', `import test from 'node:test'; import { appendFileSync } from 'node:fs'; test('owned allocation', async () => { appendFileSync(${JSON.stringify(events)}, 'start\\n'); await new Promise(r => setTimeout(r, 300)); appendFileSync(${JSON.stringify(events)}, 'end\\n'); });`);
+  const a = browserCli([file]); const b = browserCli([file]);
+  const first = await running(s => s.active?.files.includes(file));
+  assert.equal(first.job.lane, 'browser');
+  assert.equal(first.unit.length, 0, 'the second browser job waits for the slot, never beside it');
   const results = await Promise.all([a.done, b.done]);
-  assert.ok(results.every(r => r.code === 0), JSON.stringify(results));
-  assert.equal(readFileSync(events, 'utf8'), 'start\nstart\nend\nend\n');
+  assert.ok(results.every(r => r.code === 0 && /in the browser slot/.test(r.out)), JSON.stringify(results));
+  assert.equal(readFileSync(events, 'utf8'), 'start\nend\nstart\nend\n');
   const status = await request({ type: 'status' }, { directory: scratch });
   assert.equal(status.active, null); assert.equal(status.unit.length, 0); assert.equal(status.queued.length, 0);
+});
+test('a unit-only job is admitted beside an active browser job and never appears in status.active', async () => {
+  const slotRelease = join(scratch, 'release-slot'), unitRelease = join(scratch, 'release-unit');
+  const holder = fixture('slot-holder-browser', hold(slotRelease));
+  const unit = fixture('beside-the-slot', hold(unitRelease));
+  const slot = browserCli(['--timeout=30000', holder]);
+  try {
+    await running(s => s.active?.files.includes(holder));
+    const beside = cli(['--timeout=30000', unit]);
+    let finished = false;
+    const outcome = beside.done.then(r => { finished = true; return r; });
+    const seen = [];
+    for (let i = 0; !finished && i < 1500; i++) {
+      const status = await request({ type: 'status' }, { directory: scratch });
+      seen.push(status);
+      if (status.unit.some(job => job.files.includes(unit))) writeFileSync(unitRelease, '');
+      await new Promise(r => setTimeout(r, 20));
+    }
+    assert.ok(finished, 'the unit job finished while the browser job held the slot');
+    const r = await outcome;
+    assert.equal(r.code, 0, r.out); assert.match(r.out, /in the unit lane/);
+    assert.ok(seen.some(s => s.unit.some(job => job.files.includes(unit) && job.lane === 'unit')), 'status listed the job in the unit lane');
+    assert.ok(seen.every(s => !s.active?.files.includes(unit)), 'the unit job never held the slot');
+    assert.ok(seen.every(s => s.active?.files.includes(holder)), 'the browser job held the slot throughout');
+  } finally { writeFileSync(unitRelease, ''); writeFileSync(slotRelease, ''); }
+  assert.equal((await slot.done).code, 0);
 });
 test('empty named selection fails instead of expanding to broad discovery', async () => {
   const r = await cli(['--targeted']).done;

@@ -479,20 +479,18 @@ Gerrit refs are historical recovery material, not an authority for new landings.
 ## Shared test manager
 
 Use `npm test` for full verification and pass several filenames to batch related
-regression checks. Every CLI request enters one per-user queue shared across
-worktrees. A job that selects any browser suite takes the browser slot, and the slot
-runs one job at a time, first come first served. A job whose files are all unit suites
-runs in the unit lane beside the slot and starts as soon as admission allows, so a
-targeted unit check never waits behind another worktree's browser job (Issue #1666).
-Inside a job, `scripts/test.mjs` runs its two lanes (unit suites at node's default,
-browser suites at half the cores). A persistent browser
+regression checks. Every CLI request goes to one per-user manager shared across
+worktrees. Selections of unit suites only run at once and in parallel, within the
+admission limits below; a selection with any browser suite waits for the one browser
+slot, which runs one job at a time. Each job runs `scripts/test.mjs`'s two lanes (unit
+suites at node's default, browser suites at half the cores). A persistent browser
 server supplies fresh Playwright connections and contexts to each browser suite;
 closing one suite cannot close another suite's contexts. Direct browser-harness
-callers lease the browser slot. A suite that launches a browser imports
-`test/lib/browser.mjs` or ends in `-browser.test.mjs`, so its job takes the slot; a
-unit-lane job that asks for a browser is refused with that advice.
-`npm test -- --status` names the slot holder as `active` and the unit lane's jobs as
-`unit`. Use the CLI for predictable whole-job admission.
+callers also lease the slot. A suite that launches a browser imports
+`test/lib/browser.mjs` or ends in `-browser.test.mjs`; the manager refuses a browser
+to a unit-only job. `npm test -- --status` lists the slot holder under `active`, the
+unit-only jobs under `unit` and waiting jobs, with their reason, under `queued`. Use
+the CLI for predictable whole-job admission.
 
 | Operation | Command |
 | --- | --- |
@@ -513,14 +511,13 @@ printed plan explains the decision. Full landing verification remains mandatory.
 An empty explicit selection fails. File lists must name existing files; use
 `--test-name-pattern='pattern'` or its separate-value form to filter test names.
 
-The manager hashes what a run can read at enqueue, start and finish: the code and
-config paths the sheriff treats as reaching a test (`src/`, `public/`, `bin/`, `test/`,
-`scripts/`, `agents/`, `tools/`, the workflows, the Dockerfile and root config files),
-the selected tests, and any other top-level path that a selected test, a module it
-loads or a script it names mentions. A change to any of those invalidates the
-result; a changelog fragment, a note or a doc that no selected test reads does not
-(Issue #1677). Results are never cached, and duplicate
-requests remain separate jobs. Keep code unchanged while tests run. An
+The manager hashes the paths a selection reaches at enqueue, start and finish: the
+selected tests, the code and config paths the sheriff counts as reaching (`src/`,
+`public/`, `bin/`, `test/`, `scripts/`, `agents/`, `tools/`, the workflows, the
+Dockerfile and root config files), and any other top-level path that a selected
+test, a module it loads or a script it names mentions. A changed file invalidates a
+result only when it sits on one of those paths. Results are never cached, and duplicate
+requests remain separate jobs. Keep those paths unchanged while tests run. An
 agent may assess scope or propose redundant-test removal, but cannot omit required
 verification. Existing `run()` imports are the low-level synchronous fixture API;
 agents submit work through the CLI.
