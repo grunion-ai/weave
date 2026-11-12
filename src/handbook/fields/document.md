@@ -59,3 +59,5 @@ Headings that fold, tables, task lists, code blocks that detect their own langua
 ## Gotchas
 
 The editor renders as you type — there is no edit mode and no save button. A document written by an automation lands the same way a person's typing does.
+
+When a save is refused, or the tab closes before a long document gets out, the typing is written to this browser and offered back the next time you open the record: **Restore draft** puts it in the editor and saves it, **Discard draft** throws it away. The draft sits in that browser alone, so another device sees only what the server took.
