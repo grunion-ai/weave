@@ -54,7 +54,8 @@ if (s) {
       assert.match(await by.getAttribute('href'), new RegExp(`#/entity/${dana.id}$`), 'the chip opens the Users row');
       assert.equal(await by.locator('.k-label').textContent(), 'Dana Quinn');
       assert.equal(await by.locator('.actor-av').textContent(), 'DQ', 'a person wears initials');
-      assert.equal(await by.getAttribute('title'), 'Dana Quinn · Architect · dana@example.com');
+      assert.equal(await by.getAttribute('title'), 'Dana Quinn · Architect', 'a signed-out reader gets no address (Issue #1571)');
+      assert.doesNotMatch(await page.content(), /dana@example\.com/, 'nor anywhere else on the page');
 
       const mod = page.locator('.fieldrow-system[data-field="Modified By"] .k-actor a');
       await mod.waitFor();
