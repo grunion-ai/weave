@@ -1744,7 +1744,7 @@ export const COMMANDS = [
       },
     },
     cli: {
-      command: 'template', sub: 'use', positional: ['space'],
+      command: 'template', sub: 'use', positional: ['space'], helpFlags: ['into', 'name'],
       args: (a, flags) => {
         if (!a.space) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
         if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
