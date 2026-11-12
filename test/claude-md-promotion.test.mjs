@@ -5,25 +5,28 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const claude = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8');
-const hosted = claude.split('\n').find((l) => l.includes('The hosted instance'));
-const mainLanding = claude.split('\n').find((l) => l.startsWith('- Main lands through'));
+const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+const claude = read('CLAUDE.md');
+const dev = read('DEVELOPMENT.md');
+const promotion = dev.slice(dev.indexOf('\n### Production promotion\n'), dev.indexOf('\n## ', dev.indexOf('\n### Production promotion\n')));
+const releasing = dev.slice(dev.indexOf('\n## Releasing\n'), dev.indexOf('\n## ', dev.indexOf('\n## Releasing\n') + 1));
 
-test('CLAUDE.md names the promote workflow and the production branch for hosted updates', () => {
-  assert.ok(hosted, 'hosted instance line present');
-  assert.match(hosted, /promote\.yml/);
-  assert.match(hosted, /`production` branch/);
-  assert.match(hosted, /DEVELOPMENT\.md/);
+test('DEVELOPMENT.md owns the hosted update rule: production follows the branch promote.yml moves', () => {
+  assert.ok(promotion.length > 100, 'DEVELOPMENT.md has a Production promotion section');
+  assert.match(promotion, /Production follows the `production` branch/);
+  assert.match(promotion, /\.github\/workflows\/promote\.yml/);
+  assert.match(promotion, /Never hand-deploy Railway/);
+  assert.match(promotion, /Node, `Dockerfile` or `src\/supervisor\.js`/);
 });
 
-test('CLAUDE.md does not say release tags or release runs move production', () => {
-  assert.doesNotMatch(hosted, /updates itself from release tags/);
-  assert.doesNotMatch(hosted, /Cut a release instead/);
-  assert.doesNotMatch(mainLanding, /production takes an approved `release` workflow run/);
-  assert.match(mainLanding, /promote\.yml/);
+test('releases leave production alone, in the section that owns releases', () => {
+  assert.match(releasing, /never move production/);
 });
 
-test('CLAUDE.md agrees with DEVELOPMENT.md that releases leave production alone', () => {
-  assert.match(hosted, /releases? (?:publish|do not move)/i);
-  assert.match(readFileSync(join(ROOT, 'DEVELOPMENT.md'), 'utf8'), /Production follows the `production` branch/);
+test('CLAUDE.md routes hosted updates to Production promotion and restates none of it', () => {
+  assert.match(claude, /DEVELOPMENT\.md#production-promotion/);
+  assert.doesNotMatch(claude, /promote\.yml/, 'the workflow is named where the rule lives');
+  for (const [name, doc] of [['CLAUDE.md', claude], ['AGENTS.md', read('AGENTS.md')], ['DEVELOPMENT.md', dev]]) {
+    assert.doesNotMatch(doc, /updates itself from release tags|Cut a release instead|installs each new release\s+tag|production takes an approved `release` workflow run/, `${name} says release tags move production`);
+  }
 });

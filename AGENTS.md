@@ -729,45 +729,21 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/formula.js` | Formula parser/evaluator |
 | `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
 | `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
-| `test/` | `node --test` suites — the contract for every behavior above |
+| `test/` | Test suites, run through `npm test` (`scripts/test.mjs`): the contract for every behavior above |
 | `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`) |
 | `scripts/` | Dev tooling (seed data, README screenshots) |
 
 ### Rules for changing this repo
 
-1. **Tests first.** Run `npm test -- --targeted <file...>` for changed behavior
-   before committing.
-   New engine or server behavior lands with tests in the same change. Open a
-   GitHub PR, self-review and arm `gh pr merge --auto --squash`; `Dev gate` is the required check.
-   Hosted CI owns full verification; local workers keep checks targeted. Never
-   bypass branch protection or push main directly. See DEVELOPMENT.md.
-2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
-   is `node:sqlite`, built into Node. Third-party code is vendored and pinned
-   under `public/vendor/` and `src/vendor/`, never npm-installed:
-   `security/vendor.lock.json` holds each library's version and file hashes,
-   and the README's [Third-party](README.md#third-party-vendored-pinned) list
-   is generated from it. Dev-only tooling under `scripts/` and `brand/` may import a
-   package, but must do so with a **dynamic** `import()` so the test suite still
-   loads without it.
-3. **No build step.** The UI is vanilla JS served as-is. If a change would
-   require compiling, bundling, or transpiling, it is the wrong change.
-4. **Both themes.** UI changes are checked in light and dark (`data-bs-theme`),
-   styled on Tabler tokens (`--tblr-*`).
-5. **Never commit workspace data.** `*.db` (plus `-wal`/`-shm`), legacy
-   `*.json` workspaces, and `files/` are gitignored local state.
-6. **Node ≥ 22.16** is the floor (Node 24 LTS recommended); `node:sqlite`
-   requires it.
-7. **A landing is not a deploy.** A host that runs `weave supervise` with
-   `WEAVE_AUTO_UPDATE=1` (the hosted instance does) installs each new release
-   tag itself, with no restart and no failed request. Never redeploy it to ship
-   a change: a platform redeploy restarts the container, drops requests for up
-   to a minute and resets the supervisor. Redeploy only for a Node version, a
-   `Dockerfile` or a `src/supervisor.js` change. A landed fix reaches the host
-   with the next release.
-8. **No inline code comments.** weave's own code carries no `//`, `/* */` or
-   `<!-- -->` comments (Issue #661). Put the why in the commit message and the
-   Issue or Feature record, a `ponytail:` upgrade path included.
-   `test/no-inline-comments.test.mjs` enforces it; vendored code, `brand/` and
-   `docs/` are exempt.
+Each rule has one home, and this section points at it:
+
+- Repo shape (tests first, zero runtime dependencies, no build step, both
+  themes, no workspace data in git, no inline comments, a changelog fragment
+  per change): [CONTRIBUTING.md › The rules](CONTRIBUTING.md#the-rules). Run
+  tests with `npm test -- --targeted <file...>`.
+- Landing, required checks, test runs, releases and deploys:
+  [DEVELOPMENT.md](DEVELOPMENT.md). Never bypass branch protection or push main
+  directly.
+- Which file owns which rule, and the test that holds it: [CLAUDE.md](CLAUDE.md).
 
 External run lifecycle: `weave run start <name> --recipient <email> --timeout-minutes 60 --key <key>`, `weave run update <id> --patch '{"status":"succeeded","summary":"Done"}'`, and `weave run list --status succeeded`.
