@@ -8,11 +8,10 @@ main commit that passed both the `CI gate` and the dev soak.
 
 ## The tracker
 
-The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
-the one canonical tracker. Its Development space holds the Issue, Feature and
-Release rows, its Handbook and Wiki spaces hold the guides, and its Quality
-space mirrors the test suites. No work step happens without first checking, and
-afterwards updating, the rows it touches:
+The canonical tracker (below) keeps the Issue, Feature and Release rows in its
+Development space, the guides in its Handbook and Wiki spaces, and a mirror of
+the test suites in its Quality space. No work step happens without first
+checking, and afterwards updating, the rows it touches:
 
 1. **Before work**, query `Development/Issue` and `Development/Feature` for rows
    about the change, and read the `Handbook/Guide` and `Wiki/Article` pages
@@ -42,16 +41,38 @@ curl -s -X POST https://weave.grunion.ai/w/weave/api/tables/Issue/query \
   -d '{"where":[["Status","=","Open"]]}'
 ```
 
-The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
-manifest sync and logs one line saying so, so edits made on the tracker are
-never overwritten by an older build's manifest. A canonical server never
-forwards bug reports.
+### Canonical tracker
 
-Every other server, the local main instance and dev included, holds a read
-copy: boot syncs its Development rows from `docs/development.json`, the manifest
-the last release exported. That file is the offline read path for an agent with
-no canonical tracker in reach. Search it as it is, or query a copy a server
-built from it (the local main instance keeps one at `~/.weave/weave.db`):
+The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
+the one canonical tracker for Development/Issue, Feature and Release rows. Every
+other server holds a read copy that boot syncs from `docs/development.json`.
+
+- The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
+  manifest sync and logs one line saying so, so edits made on the tracker are
+  never overwritten by an older build's manifest. A canonical server never
+  forwards bug reports.
+- Every other Grunion server sets `WEAVE_BUG_FORWARD_URL` to the workspace base
+  (`https://weave.grunion.ai/w/weave`) and `WEAVE_BUG_FORWARD_TOKEN` to a bearer
+  token for it. `POST /api/bug-report` then posts the report to
+  `<url>/api/bug-report` with the instance's origin (`WEAVE_ORIGIN`, or the
+  request host) as `instance`, which the canonical report shows as its Instance
+  row. A forwarded report answers 201 with the canonical row and `forwardedTo`.
+  A network error, a 10 s timeout or a non-2xx answer files the report locally
+  as before, notes "Forward to <url> failed: <reason>" in it, and answers with
+  `forward: "failed"` and `forwardError`. With either variable unset nothing is
+  forwarded.
+- Export reads the canonical tracker over HTTP:
+  `node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
+  The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) reads
+  a local copy instead, and `--out <path>` writes somewhere other than
+  `docs/development.json`.
+
+### Offline reads
+
+`docs/development.json` is the manifest the last release exported, and the
+offline read path for an agent with no canonical tracker in reach. Search it as
+it is, or query a read copy built from it (the local main instance keeps one at
+`~/.weave/weave.db`):
 
 ```bash
 node bin/weave.js --data ~/.weave/weave.db query Issue --where '[["Name","contains","<words>"]]'
@@ -61,23 +82,6 @@ The manifest carries no public ids, so a read copy renumbers its rows, and its
 states are only as fresh as the last export. Treat a match there as a lead.
 Confirm the row on the canonical tracker and take from there the number that a
 commit subject or a changelog fragment names.
-
-Every other Grunion server sets `WEAVE_BUG_FORWARD_URL` to the workspace base
-(`https://weave.grunion.ai/w/weave`) and `WEAVE_BUG_FORWARD_TOKEN` to a bearer
-token for it. `POST /api/bug-report` then posts the report to
-`<url>/api/bug-report` with the instance's origin (`WEAVE_ORIGIN`, or the
-request host) as `instance`, which the canonical report shows as its Instance
-row. A forwarded report answers 201 with the canonical row and `forwardedTo`. A
-network error, a 10 s timeout or a non-2xx answer files the report locally as
-before, notes "Forward to <url> failed: <reason>" in it, and answers with
-`forward: "failed"` and `forwardError`. With either variable unset nothing is
-forwarded.
-
-Export reads the canonical tracker over HTTP:
-`node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
-The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) reads a
-local copy instead, and `--out <path>` writes somewhere other than
-`docs/development.json`.
 
 ## Daily flow
 
@@ -308,27 +312,28 @@ the same pull request cancels the running one.
 
 Every browser job installs through `node scripts/ci/install-browsers.mjs
 <browser...>`, the one copy the `pr`, `tests`, `budgets` and dev soak workflows
-share. It installs the browsers from the `~/.cache/ms-playwright` cache and then
-asks Playwright's own `install-deps --dry-run` whether every system package is
-present. A missing package installs from the `.deb` files kept in
-`~/.cache/weave-apt` with one `dpkg -i`, which never reaches an Ubuntu mirror
-and waits up to 300 seconds for a dpkg lock the runner's own `apt-get` holds
-(Issue #1438). `apt-get install --no-download` of the same files is the wrong
-tool: it re-resolves them against the image's package lists and asks to fetch.
-The cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the
-pinned `PLAYWRIGHT_VERSION` and the browser set, so a new runner image never
-installs another image's packages. Only when the cache is empty, or leaves a
-dependency missing, does the script run `playwright install --with-deps`
-against the mirror, behind an apt drop-in (twenty-second acquire timeout, three
-retries, a 300-second `DPkg::Lock::Timeout` that outlasts the runner's own
-boot-time `apt-get`; Issues #1230, #1141, #1107): three attempts with `dpkg
---configure -a` between them, after which the downloaded packages go into the
-cache for the next run. Every path ends on the `install-deps --dry-run` check,
-so a browser or system package that is still absent fails the step loudly, and
-the log line says no test ran. The step's own `timeout-minutes` is the only
-deadline, with no inner per-attempt `timeout` (Issue #1347).
-`test/ci-install-browsers.test.mjs` and `test/ci-test.test.mjs` hold these
-rules.
+share. It writes an apt drop-in (twenty-second acquire timeout, three retries, a
+300-second `DPkg::Lock::Timeout` so an attempt outlasts the runner's own
+boot-time `apt-get`, Issues #1230, #1141, #1107), installs the browsers from the
+`~/.cache/ms-playwright` cache, and then asks Playwright's own
+`install-deps --dry-run` whether every system package is present. When one is
+missing it installs the `.deb` files kept in `~/.cache/weave-apt` with one
+`dpkg -i`, which never reaches an Ubuntu mirror and waits up to 300 seconds
+for a dpkg lock the runner's own `apt-get` holds (Issue #1438). `apt-get install
+--no-download` of the same files is the wrong tool: it re-resolves them against
+the image's package lists and asks to fetch. That
+cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the pinned
+`PLAYWRIGHT_VERSION` and the browser set, so a new runner image never installs
+another image's packages. Only when the cache is empty, or leaves a dependency
+missing, does the script run `playwright install --with-deps` against the
+mirror: three attempts with `dpkg --configure -a` between them, reading its
+result, after which it copies the downloaded packages into the cache for the
+next run. Every path ends on the `install-deps --dry-run`
+check, so a browser or system package that is still absent fails the step
+loudly, and the log line says no test ran. The only deadline is the step's own
+`timeout-minutes`, 12 on the `pr` workflow and 14 elsewhere, with no inner
+per-attempt `timeout` (Issue #1347). `test/ci-install-browsers.test.mjs` and
+`test/ci-test.test.mjs` hold these rules.
 
 A shard that dies before any test records a result leaves the sheriff no file
 to name, so it opens or appends to a row named after the shard. That line names

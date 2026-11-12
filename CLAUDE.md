@@ -19,8 +19,10 @@ Shipped, and every Guide the change contradicts, after landing.
 
 - The canonical tracker is the `weave` workspace on production,
   https://weave.grunion.ai/w/weave. Row numbers and states come only from there.
-- Offline, read `docs/development.json`, the copy every other server loads at
-  boot, or query a copy a server built from it:
+- Offline, read `docs/development.json`, the manifest the last release exported,
+  or query a read copy built from it
+  ([DEVELOPMENT.md › Canonical tracker](DEVELOPMENT.md#canonical-tracker) says
+  which servers hold one):
   `node bin/weave.js --data ~/.weave/weave.db query Issue --where '[["Name","contains","<words>"]]'`.
   A match there is a lead to confirm on the canonical tracker before you cite it.
 
