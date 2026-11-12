@@ -23,7 +23,7 @@ const s = await launch('phone row fields', (weave) => {
 
 if (s) {
   const { base, browser, id } = s;
-  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
+  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
   engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
   const view = (page) => page.evaluate(async (id) => (await (await fetch(`/api/tables/${id}/views/Standard`)).json()), id);
   const write = (page, patch) => page.evaluate(async ([id, patch]) => {
