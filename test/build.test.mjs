@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { TOOLS, handleMcpMessage } from '../src/mcp.js';
 import { tempDir } from './lib/temp.mjs';
-import { withServer } from './lib/fixtures.mjs';
+import { unwrapData, withServer } from './lib/fixtures.mjs';
 
 const SPEC = () => ({
   workspace: 'personal-finance',
@@ -200,11 +200,11 @@ test('the reply is one line of compact JSON on MCP, and weave_build is listed wi
   const example = JSON.parse(tool.description.match(/(\{"workspace".*\})\s*$/m)[1]);
   assert.equal(w.build(example, { dryRun: true }).ok, true, 'the example in the description builds');
   const reply = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_build', arguments: { spec: SPEC() } } });
-  const text = reply.result.content[0].text;
+  const text = unwrapData(reply.result.content[0].text);
   assert.ok(!text.includes('\n'), 'one line');
   assert.deepEqual(JSON.parse(text).created, { spaces: 1, tables: 3, fields: 6, relations: 2, rows: 5 });
   const dry = handleMcpMessage(w, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'weave_build', arguments: { spec: { spaces: [{ name: 'X' }] }, dryRun: true } } });
-  assert.equal(JSON.parse(dry.result.content[0].text).dryRun, true);
+  assert.equal(JSON.parse(unwrapData(dry.result.content[0].text)).dryRun, true);
   assert.equal(w.findSpace('X'), undefined);
 });
 

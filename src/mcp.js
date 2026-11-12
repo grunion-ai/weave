@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
 import { toolCommand, toolDefinition } from './commands.js';
 import { guided } from './field-hints.js';
-import { Weave, WeaveError } from './engine.js';
+import { Weave, WeaveError, FIELD_TYPES } from './engine.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
@@ -18,13 +18,29 @@ function textResult(data, source = null) {
   return { content: [{ type: 'text', text: `${head}\n${seal(text)}\n</weave_data>` }] };
 }
 
-function storedSource(weave, name, args) {
-  if (name === 'weave_call' && args.name !== 'help') {
+const TOKEN = /^(?:[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z|[\da-f]{16,})$/i;
+const GUIDANCE = new Set(['hints', 'next']);
+function sentText(v, out) {
+  if (typeof v === 'string') out.add(v);
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) sentText(x, out.add(k));
+  return out;
+}
+function storedText(v, own, top = false) {
+  if (typeof v === 'string') return !own.has(v) && !TOKEN.test(v);
+  if (!v || typeof v !== 'object') return false;
+  return Object.entries(v).some(([k, x]) => (!Array.isArray(v) && !/^[a-z][a-zA-Z\d]*$/.test(k) && storedText(k, own)) || (!(top && GUIDANCE.has(k)) && storedText(x, own)));
+}
+
+function storedSource(weave, name, args, result) {
+  if (name === 'weave_call') {
+    if (args.name === 'help') return null;
     let inner = args.args ?? {};
     try { if (typeof inner === 'string') inner = JSON.parse(inner); } catch { inner = {}; }
-    return storedSource(weave, args.name, inner ?? {});
+    return storedSource(weave, args.name, inner ?? {}, result);
   }
-  if (!READ_ONLY.has(name)) return null;
+  let body = result;
+  try { if (typeof result === 'string') body = JSON.parse(result); } catch {}
+  if (!storedText(body, sentText(args, new Set(['', ...FIELD_TYPES])), true)) return null;
   const tableOf = (fn) => { try { const db = fn(); return db ? weave.qualifiedName(db) : null; } catch { return null; } };
   const ref = args.db ?? args.table ?? null;
   const table = (ref != null ? tableOf(() => weave.findTable(ref)) ?? ref : null)
@@ -432,7 +448,9 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
         return reply({ tools: listTools(tools).filter((t) => mayCall(caller, t.name)) });
       case 'tools/call': {
         try {
-          return reply(textResult(callTool(weave, params.name, params.arguments ?? {}, caller), storedSource(weave, params.name, params.arguments ?? {})));
+          const args = params.arguments ?? {};
+          const result = callTool(weave, params.name, args, caller);
+          return reply(textResult(result, storedSource(weave, params.name, args, result)));
         } catch (err) {
           return reply(mcpToolError(err));
         }

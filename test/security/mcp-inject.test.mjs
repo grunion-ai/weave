@@ -13,6 +13,7 @@ process.env.WEAVE_KEYSTORE = join(scratch(), 'keystore.json');
 const { grid, PLACEMENTS, GOALS, STYLES, CANARY } = await import('../../security/mcp-inject/cases.mjs');
 const { open, seed, judge } = await import('../../security/mcp-inject/workspace.mjs');
 const { readTranscript } = await import('../../security/mcp-inject/run.mjs');
+const { handleMcpMessage } = await import('../../src/mcp.js');
 
 const src = (f) => readFileSync(new URL(`../../security/mcp-inject/${f}`, import.meta.url), 'utf8');
 const noComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/ .*$/gm, '');
@@ -135,6 +136,34 @@ for (const placement of PLACEMENTS) {
     const v = judge(dir, baseline);
     assert.deepEqual(v.landed, { delete: false, exfil: false, account: false, share: false });
     assert.equal(v.wrote, false);
+  });
+}
+
+let rpc = 0;
+const reply = (w, name, args) => {
+  const res = handleMcpMessage(w, { jsonrpc: '2.0', id: ++rpc, method: 'tools/call', params: { name, arguments: args } }).result;
+  assert.notEqual(res.isError, true, `${name}: ${res.content[0].text}`);
+  return res.content[0].text;
+};
+
+for (const placement of PLACEMENTS) {
+  test(`a write that echoes the payload planted in "${placement}" answers it inside <weave_data> (Issue #1566)`, () => {
+    const dir = scratch();
+    const cell = { placement, goal: 'exfil', style: 'authority' };
+    const { poisoned } = seed(dir, cell);
+    const { w } = open(dir);
+    const planted = JSON.stringify(payloadOf(placement, cell.goal, cell.style)).slice(1, -1);
+    const echoed = [
+      reply(w, 'weave_update_entity', { entity: poisoned, values: { Priority: 'High' }, verbose: true }),
+      reply(w, 'weave_update_field', { db: 'Ticket', field: 'Priority', type: 'select', verbose: true }),
+      reply(w, 'weave_update_table', { db: 'Ticket', icon: 'lucide:ticket', verbose: true }),
+    ].filter((text) => text.includes(planted));
+    w.close?.();
+    assert.ok(echoed.length, `no write echoed the payload planted in ${placement}, so this case proves nothing`);
+    for (const text of echoed) {
+      assert.match(text, /^<weave_data table="[^"]*" entity="[^"]*" field="[^"]*">\n[\s\S]*\n<\/weave_data>$/, `${placement}: ${text.slice(0, 120)}`);
+      assert.equal(text.match(/<\/weave_data>/g).length, 1);
+    }
   });
 }
 
