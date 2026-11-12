@@ -44,8 +44,10 @@ curl -s -X POST https://weave.grunion.ai/w/weave/api/tables/Issue/query \
 ### Canonical tracker
 
 The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
-the one canonical tracker for Development/Issue, Feature and Release rows. Every
-other server holds a read copy that boot syncs from `docs/development.json`.
+the one canonical tracker for Development/Issue, Feature and Release rows. A
+server whose docs workspace already holds a read copy, as the main instance on
+`:4400` does, refreshes it from `docs/development.json` at boot. A fresh data directory starts
+without one, and its boot never reads the file (Issue #1595).
 
 - The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
   manifest sync and logs one line saying so, so edits made on the tracker are
