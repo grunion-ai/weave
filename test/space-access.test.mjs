@@ -160,19 +160,30 @@ test('registry: the System rows that mirror a private space stay hidden from a n
   }
 });
 
-test('MCP: query, search, get and ontology answer nothing from a private space to a non-member', async () => {
+test('MCP: query, search, get, CSV and ontology answer nothing from a private space to a non-member (Issue #1723)', async () => {
   const { call, t, secret } = build();
-  const rpc = async (name, args) => (await call('POST', '/api/mcp', { token: t.olive, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } } })).json.result;
-  const q = await rpc('weave_query', { db: 'Sales/Deal' });
-  assert.ok(q.isError && !leaks(q));
-  const s = await rpc('weave_search', { text: 'Acme' });
-  assert.ok(!leaks(s));
-  const g = await rpc('weave_get_entity', { id: secret.id });
-  assert.ok(g.isError && !leaks(g));
-  const o = await rpc('weave_ontology', {});
-  assert.ok(!JSON.stringify(o).includes('Sales/Deal'));
-  const csv = await rpc('weave_export_csv', { db: 'Ops/Task' });
-  assert.ok(!leaks(csv));
+  const rpc = async (token, name, args) => (await call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } } })).json.result;
+  const text = (res) => res.content[0].text;
+  const answered = (res, label) => {
+    assert.notEqual(res.isError, true, `${label} was refused: ${text(res)}`);
+    return res;
+  };
+  for (const [name, args, refusal] of [
+    ['weave_query', { db: 'Sales/Deal' }, /^Error: Table 'Sales\/Deal' not found$/],
+    ['weave_search', { query: 'Acme' }, null],
+    ['weave_get_entity', { entity: secret.id }, /^Error: Entity '[^']+' not found$/],
+    ['weave_export_csv', { db: 'Ops/Task' }, null],
+  ]) {
+    const label = `${name} ${JSON.stringify(args)}`;
+    assert.ok(leaks(answered(await rpc(t.sam, name, args), label)), `${label} misses the private row for a member, so it cannot guard it`);
+    const olive = await rpc(t.olive, name, args);
+    if (refusal) assert.match(text(olive), refusal, `${label} answers a non-member with something other than not found`);
+    else answered(olive, label);
+    assert.ok(!leaks(olive), `${label} leaks the private row`);
+  }
+  const outlinesPrivate = (res) => /^Sales\b|^\s+Deal:/m.test(text(answered(res, 'weave_ontology')));
+  assert.ok(outlinesPrivate(await rpc(t.sam, 'weave_ontology', {})), 'a member reads the private table in the outline');
+  assert.ok(!outlinesPrivate(await rpc(t.olive, 'weave_ontology', {})), 'the outline names the private space or its table');
 });
 
 test('export: CSV and markdown exports carry nothing from a private space', async () => {
