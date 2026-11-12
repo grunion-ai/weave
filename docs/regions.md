@@ -1,8 +1,8 @@
 # Region index
 
-`public/app.js` (11,972 lines) and `src/engine.js` (11,853 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
+`public/app.js` (11,976 lines) and `src/engine.js` (11,853 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
 
-`node scripts/region-index.mjs` generates this page at commit [`1eb2201`](https://github.com/grunion-ai/weave/tree/1eb2201b1f6b4a2ef0318c5ffa6abff9c9873860), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
+`node scripts/region-index.mjs` generates this page at commit [`bb69db6`](https://github.com/grunion-ai/weave/tree/bb69db61d84eb721ace0b08d63a39d1a3ae5e161), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
 
 ## Grid behaviours
 
@@ -16,10 +16,10 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | Which columns are drawn | `visibleCols` 6387-6391, `gridFields` 4940-4949, `fieldVisibilityPopover` 6195-6367, `dropDrawnColumn` 6369-6378 |
 | Only the rows near the viewport are in the DOM | `public/grid-window.js` 1-40, `rewindow` 7315-7326 in `renderTable`, `paint` 7281-7314 in `renderTable`, `renderTable` 6394-7866 (1,473 lines, 8 regions below) |
 | The next page is fetched as the reader scrolls | `gridPager` 4969-5015, `WeaveGridWindow.feedFor` public/grid-window.js 25-31 |
-| The loading state | `gridHold` 10920-10925, `paintGridWait` 10926-10943, `showGridLoader` 10960-10974, `hideGridLoader` 10975-10979, `resetGridWait` 10980-10985 |
+| The loading state | `gridHold` 10920-10925, `paintGridWait` 10931-10946, `showGridLoader` 10963-10977, `hideGridLoader` 10978-10982, `resetGridWait` 10983-10989 |
 | A cell rests, opens and commits | `activateCell` 2490-2510, `openCellPicker` 2481-2488, `editorFor` 4045-4380 (336 lines, 2 regions below) |
 | A commit writes and the grid catches up | `renderTable` 6394-7866 (1,473 lines, 8 regions below), `patchRows` 7363-7386 in `renderTable` |
-| A new row is added and takes focus | `newRowTray` 11192-11286, `focusNewRow` 2571-2593, `focusGridRow` 10695-10699 |
+| A new row is added and takes focus | `newRowTray` 11196-11290, `focusNewRow` 2571-2593, `focusGridRow` 10695-10699 |
 | Focus and scroll survive a redraw | `rememberGridFocus` 2040-2049, `restoreGridFocus` 2051-2065, `keepScroll` 8475-8494 |
 | The keyboard moves the cursor | `public/grid-keymap.js` 1-106, `gridMoves` 4934-4938 |
 | A range is selected, copied and filled | `public/grid-range.js` 1-192, `public/selection-core.js` 1-62, `repaintRange` 6423-6423 in `renderTable`, `paintSelection` 6434-6453 in `renderTable` |
@@ -33,7 +33,7 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | The view pane that configures all four | `renderViewPane` 5639-5708, `paneFilters` 5577-5597, `paneWrite` 5343-5354 |
 | Footer totals | `rollupCells` 5465-5467, `footStatLists` 5504-5529, `footRollupWrite` 5530-5555 |
 | A row becomes a card on a phone | `public/phone-row.js` 1-101, `phoneRowOf` 2797-2802, `phoneLeadEl` 2803-2814, `fitPhoneChipLines` 2823-2854 |
-| The phone action bar | `installPhoneBar` 11123-11136, `syncPhoneBar` 11287-11298 |
+| The phone action bar | `installPhoneBar` 11127-11140, `syncPhoneBar` 11291-11302 |
 | Which fields the card shows | `phoneRowPopover` 5237-5310 |
 | A related table on a record page | `relatedGrid` 10149-10273, `subtableOf` 10275-10283, `subtableChips` 10286-10294, `subtablePopover` 10296-10330 |
 
@@ -103,12 +103,12 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | 10339-10533 | `showView`, `homeReads`, `bootHomeReads`, `workspaceSystemCard`, `savedPagesCard`, `showHome`, `ROLE_LABELS`, `currentWsName`, `RECENT_KEY`, `RECENT_KEEP`, `readRecents`, `noteRecent`, `noteEntityRecent`, `marked`, `wireSearchButton`, `openPalette`, `relationTargets`, `linkSearch` |
 | 10534-10729 | `gestures`, `GESTURE_CAP`, `UNDO_WINDOW`, `CLAIM_CAP`, `UNDO_REFUSED`, `keptLine`, `undoToast`, `undoKey`, `pendingClaims`, `looseIds`, `ENTITY_UNDO`, `BULK_UNDO`, `undoEntriesOf`, `newGesture`, `noteWrite`, `pinClaims`, `claimOwn`, `undoQueue`, `undoOwn`, `stepBackOwn`, `unlinkWithUndo`, `undoGesture`, `refreshView`, `focusGridRow`, `KEY_SHEET_ANYWHERE`, `KEY_SHEET_TABLE` |
 | 10730-10925 | `openKeySheet`, `LOADER_CYCLE_MS`, `LOADER_SHOW_AFTER_MS`, `LOADER_POSE_FROM`, `LOADER_POSE_TO`, `LOADER_EXIT_RATE`, `LOADER_HOLD_MS`, `LOADER_FADE_MS`, `SKELETON_SHOW_AFTER_MS`, `LOADER_CAPTION_AFTER_MS`, `LOADER_RETRY_AFTER_MS`, `LOADER_CAPTION_TEXT`, `LOADER_RETRY_LABEL`, `loading`, `initPageLoader`, `showPageLoader`, `paintLoaderWait`, `paintLoaderRetry`, `clearLoaderWait`, `hidePageLoader`, `stillLoader`, `ropeAnimations`, `settleLoader`, `keepLoader`, `withPageLoader`, `gridWait`, `gridHold` |
-| 10926-11122 | `paintGridWait`, `gridLoaderNode`, `placeGridLoader`, `showGridLoader`, `hideGridLoader`, `resetGridWait`, `paintSkeleton`, `skeleton`, `scheduleSkeleton`, `cancelSkeleton`, `syncDocTitle`, `renderRoute`, `rememberRoute`, `navDraw`, `navOwns`, `dispatchRoute`, `paintRouteError`, `renderRouteSafely` |
-| 11123-11320 | `installPhoneBar`, `NEW_ROW_CHOICES`, `NEW_ROW_OPTIONS`, `rowNoun`, `sheetGrip`, `newRowTray`, `syncPhoneBar`, `ensureNavMenu`, `route`, `redock` |
-| 11321-11506 | `buildWsRail`, `servesBareRoot`, `bareRootWs`, `wsHref`, `wsApiPrefix`, `wsApi`, `wsLogoButton`, `uploadWorkspaceLogo`, `removeWorkspaceLogo`, `wireWsNew`, `narrowShell`, `navPeekDwell`, `closeNavPeek`, `setNavCollapsed` |
-| 11507-11705 | `wireNavCollapse`, `NAV_WIDTH`, `wireNavResize`, `NAV_KEY_OWNERS`, `wireNavHold`, `labelNavMenu`, `navMenuButton` |
-| 11706-11842 | `wireSkipLink`, `THEME_ICONS`, `THEME_LABELS`, `THEME_MEDIA`, `themePref`, `applyTheme`, `cycleTheme`, `wireTheme`, `syncSchema`, `bugGlyph`, `bugRecorder`, `bugDraft`, `installBugReporter`, `bugTrigger`, `closeBugPanel` |
-| 11843-11972 | `openBugPanel` |
+| 10926-11120 | `markGridWait`, `paintGridWait`, `gridLoaderNode`, `placeGridLoader`, `showGridLoader`, `hideGridLoader`, `resetGridWait`, `paintSkeleton`, `skeleton`, `scheduleSkeleton`, `cancelSkeleton`, `syncDocTitle`, `renderRoute`, `rememberRoute`, `navDraw`, `navOwns`, `dispatchRoute`, `paintRouteError` |
+| 11121-11311 | `renderRouteSafely`, `installPhoneBar`, `NEW_ROW_CHOICES`, `NEW_ROW_OPTIONS`, `rowNoun`, `sheetGrip`, `newRowTray`, `syncPhoneBar`, `ensureNavMenu`, `route` |
+| 11312-11510 | `redock`, `buildWsRail`, `servesBareRoot`, `bareRootWs`, `wsHref`, `wsApiPrefix`, `wsApi`, `wsLogoButton`, `uploadWorkspaceLogo`, `removeWorkspaceLogo`, `wireWsNew`, `narrowShell`, `navPeekDwell`, `closeNavPeek`, `setNavCollapsed` |
+| 11511-11709 | `wireNavCollapse`, `NAV_WIDTH`, `wireNavResize`, `NAV_KEY_OWNERS`, `wireNavHold`, `labelNavMenu`, `navMenuButton` |
+| 11710-11846 | `wireSkipLink`, `THEME_ICONS`, `THEME_LABELS`, `THEME_MEDIA`, `themePref`, `applyTheme`, `cycleTheme`, `wireTheme`, `syncSchema`, `bugGlyph`, `bugRecorder`, `bugDraft`, `installBugReporter`, `bugTrigger`, `closeBugPanel` |
+| 11847-11976 | `openBugPanel` |
 
 ## src/engine.js
 
