@@ -9120,12 +9120,16 @@ function scheduleDocSave(entityId, field, value, onSaved = null) {
   const key = `${entityId}::${field}`;
   const kept = (err) => `${err.message}. Your draft is kept and saves on your next edit or when you leave.`;
   pendingDocSaves.set(key, { value, write: () => saves.flush() });
+  WeaveDocDraft.keep(localStorage, entityId, field, value, new Date().toISOString());
   saves.push({
     key: `doc:${key}`, entityId, field, value, failText: kept, keep: true,
     onFail: (err) => (err.status ? docConflict(key, entityId, field, err) : toast(kept(err), true)),
     send: () => sendDoc(key, entityId, field, value),
   }).then(() => {
-    if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
+    if (pendingDocSaves.get(key)?.value === value) {
+      pendingDocSaves.delete(key);
+      WeaveDocDraft.drop(localStorage, entityId, field);
+    }
     onSaved?.();
   }, (err) => toast(kept(err), true));
 }
@@ -9429,6 +9433,35 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
     noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
+    let docEd = null;
+    const offerHeldDraft = () => {
+      if (locked || pendingDocSaves.has(`${id}::${f.name}`)) return;
+      const draft = WeaveDocDraft.settle(localStorage, id, f.name, entity.docs?.[f.name] ?? '');
+      if (!draft) return;
+      const bar = el('div', { class: 'alert alert-warning doc-draft-bar', role: 'status' },
+        el('span', {}, 'Draft from ', draft.at ? whenEl(draft.at) : 'an earlier visit', ' never reached the server.'));
+      bar.append(
+        el('button', {
+          type: 'button',
+          class: 'btn btn-sm btn-warning',
+          onclick: () => {
+            if (docEd) { try { docEd.setValue(draft.value); } catch {} } else if (sourceBox) sourceBox.value = draft.value;
+            scheduleDocSave(id, f.name, draft.value);
+            bar.remove();
+          },
+        }, 'Restore draft'),
+        el('button', {
+          type: 'button',
+          class: 'btn btn-sm',
+          onclick: () => {
+            WeaveDocDraft.drop(localStorage, id, f.name);
+            bar.remove();
+          },
+        }, 'Discard draft'),
+      );
+      section.insertBefore(bar, body);
+    };
+    offerHeldDraft();
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
@@ -9445,6 +9478,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           },
         });
         editors?.push(ed);
+        docEd = ed;
       };
       loadVditor().then(mount, (err) => {
         if (!host.isConnected) return;

@@ -1055,6 +1055,8 @@ body:has(#modal-back) #wv-toasts > .wv-toast:not(:last-child) { display: none; }
 .field-mark > .wv-icon, .field-mark > .wv-icon svg { width: var(--wv-icon-sm); height: var(--wv-icon-sm); }
 
 .doc-section { margin: 0 0 26px; position: relative; padding-left: 18px; }
+.doc-draft-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.doc-draft-bar > span { flex: 1 1 14rem; }
 .doc-section.deck-section { padding-left: 0; }
 @media (max-width: 600px) {
   .doc-section { padding-left: 0; }
