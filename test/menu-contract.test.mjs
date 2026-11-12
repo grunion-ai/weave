@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP as APP_JS, HTML, CSS, fnBody as fnBodyIn, read } from './lib/source.mjs';
+import { touchFloor } from './lib/touch.mjs';
 const APP = [APP_JS, read('public/settings-view.js'), read('public/invite-dialog.js')].join('\n');
 const fnBody = (name, src = APP) => fnBodyIn(name, src);
 
@@ -158,7 +159,7 @@ test('rows carry menu roles and the trigger reports its state', () => {
 
 test('the phone sheet reuses the picker sheet rules and gives rows 44px', () => {
   assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet, \.chip-pop\.table-group-popover \{ position: fixed;/, 'one sheet rule for pickers, menus and the group levels (Issue #809)');
-  assert.match(CSS, /\.wv-menu-sheet \.wv-menu-row \{ min-height: 44px;/);
+  assert.ok(touchFloor(CSS).targets.includes('.wv-menu-row'), 'a menu row, sheet or popover, takes the --wv-hit floor on a coarse pointer (Issue #1712)');
   assert.match(fnBody('menu'), /sheet = MENU_SHEET\.matches/, 'the sheet is the default under the phone breakpoint');
   assert.match(APP, /const MENU_SHEET = matchMedia\('\(max-width: 600px\)'\)/);
 });

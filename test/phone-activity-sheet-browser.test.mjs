@@ -31,7 +31,7 @@ const sheet = (page) => page.evaluate(() => {
 if (s) {
   const { base, browser, hash } = s;
   const phone = await phoneBrowser();
-  const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 } })]];
+  const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })]];
   if (phone) engines.push(['webkit iPhone 15', () => phonePage(phone)]);
   const open = async (make, theme = 'light') => {
     const page = await make();

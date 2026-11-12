@@ -13,7 +13,7 @@ const s = await launch('menu phone sheet', (weave) => {
 
 if (s) {
   const { base, browser, entity, space } = s;
-  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
+  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
   engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
   const open = async (b, profile, theme, hash) => {

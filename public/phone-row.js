@@ -60,8 +60,8 @@
   const REACH = 8;
   const AXES = [['left', 'right'], ['top', 'bottom']];
 
-  function grow(lo, hi, min, max) {
-    const pad = Math.max(REACH, (HIT - (hi - lo)) / 2);
+  function grow(lo, hi, min, max, hit) {
+    const pad = Math.max(REACH, (hit - (hi - lo)) / 2);
     let a = lo - pad, b = hi + pad;
     if (b - a >= max - min) return [Math.max(a, min), Math.min(b, max)];
     if (a < min) { b += min - a; a = min; }
@@ -85,10 +85,10 @@
     cuts.sort((x, y) => y.score - x.score || y.gap - x.gap)[0]?.apply();
   }
 
-  function hitBoxes(row, rects) {
+  function hitBoxes(row, rects, hit = parseFloat(globalThis.document && getComputedStyle(document.body).getPropertyValue('--wv-hit')) || HIT) {
     const boxes = rects.map((r) => {
-      const [left, right] = grow(r.left, r.right, row.left, row.right);
-      const [top, bottom] = grow(r.top, r.bottom, row.top, row.bottom);
+      const [left, right] = grow(r.left, r.right, row.left, row.right, hit);
+      const [top, bottom] = grow(r.top, r.bottom, row.top, row.bottom, hit);
       return { left, top, right, bottom };
     });
     for (let i = 0; i < boxes.length; i++) {

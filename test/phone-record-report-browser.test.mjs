@@ -13,7 +13,7 @@ const s = await launch('phone record report', (weave) => {
 if (s) {
   const { base, browser } = s;
   const phone = await phoneBrowser();
-  const engines = [['chromium 390x844', (o) => browser.newPage({ viewport: { width: 390, height: 844 }, ...o })]];
+  const engines = [['chromium 390x844', (o) => browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, ...o })]];
   if (phone) engines.push(['webkit iPhone 15', (o) => phonePage(phone, o)]);
 
   const panelBox = (page) => page.$eval('#bug-panel', (n) => {

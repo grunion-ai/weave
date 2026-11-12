@@ -8,6 +8,7 @@ import {
   loaderBootHtml, ropePose, ropeStops, strandPose, dashOffset,
 } from '../brand/build-logos.mjs';
 import { APP, HTML, CSS, px, rulesFor, fnBody } from './lib/source.mjs';
+import { touchFloor } from './lib/touch.mjs';
 import { FLASH_MS } from './lib/flicker.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -427,8 +428,8 @@ test('the caption stacks under the mark and fades in, except under reduced motio
   const wait = CSS.match(/#page-loader \.loader-wait \{([^}]*)\}/)[1];
   assert.match(wait, /animation: loader-in/, 'the caption fades in, it does not appear');
   assert.match(wait, /pointer-events: auto/, 'the host is pointer-events: none, so the retry would not take a click');
-  assert.match(CSS, /@media \(pointer: coarse\) \{ #page-loader \.loader-retry \{ min-height: 44px; \} \}/,
-    'a 28px way out on a phone is the defect Issue #805 just fixed for the list grip');
+  assert.ok(touchFloor(CSS).targets.includes('#page-loader .loader-retry'),
+    'a 28px way out on a phone is the defect Issue #805 just fixed for the list grip; the retry takes the --wv-hit floor on a coarse pointer (Issue #1712)');
   const block = CSS.match(/@media \(prefers-reduced-motion: reduce\) \{\s*#page-loader \{ animation: none; \}[\s\S]*?\n\}/)[0];
   assert.match(block, /#page-loader \.loader-wait \{ animation: none; \}/,
     'reduced motion drops the caption fade too, and only there');

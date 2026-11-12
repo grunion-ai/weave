@@ -52,7 +52,7 @@ if (s) {
   const { base, browser, ids } = s;
   const payload = fullPayload(ids);
   const recents = fullRecents(ids);
-  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
+  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
   engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
   const open = async (b, profile, { theme = 'light', load = payload, seen = recents, space = ids.sales, real = false } = {}) => {

@@ -34,7 +34,7 @@ const CREATE = '#tray .tray-actions button[type="submit"]';
 if (s) {
   const { base, browser, issues, guides, notes, tasks, todos } = s;
   const phone = await phoneBrowser();
-  const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 } })]];
+  const engines = [['chromium 390x844', () => browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })]];
   if (phone) engines.push(['webkit iPhone 15', () => phonePage(phone)]);
   const open = async (make, id, theme = 'light') => {
     const page = await make();
