@@ -1,1 +1,7 @@
 docs/architecture/*.html linguist-generated=true -diff
+/.claude export-ignore
+/.github export-ignore
+/brand export-ignore
+/docs/mockups export-ignore
+/docs/screenshots export-ignore
+/test export-ignore
