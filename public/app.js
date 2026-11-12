@@ -10969,10 +10969,10 @@ function syncDocTitle(pageName) {
 function renderRoute() {
   return Promise.resolve().then(() => {
     const body = dispatchRoute();
-    const seq = routeDraw;
+    const gen = navDraw;
     return Promise.resolve(body)
-      .catch((err) => { if (routeOwns(seq)) throw err; })
-      .finally(() => { if (routeOwns(seq)) cancelSkeleton(); });
+      .catch((err) => { if (navOwns(gen)) throw err; })
+      .finally(() => { if (navOwns(gen)) cancelSkeleton(); });
   });
 }
 
@@ -10983,11 +10983,8 @@ function rememberRoute() {
 
 let navDraw = 0;
 const navOwns = (gen) => navDraw === gen;
-let routeDraw = 0;
-const routeOwns = (seq) => routeDraw === seq;
 
 function dispatchRoute() {
-  routeDraw += 1;
   navDraw += 1;
   closeSharePanel?.();
   teardownDocEditors();
