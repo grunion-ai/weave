@@ -420,6 +420,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachTableKeys(host);
   attachListMarkers(host);
   attachHintClamp(host);
+  holdDocFrames(host);
   const editor = new Vditor(host, {
     mode: 'ir',
     cdn: '/vendor/vditor',
@@ -444,6 +445,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     },
     outline: { enable: false, position: 'left' },
     preview: {
+      markdown: { sanitize: true },
       hljs: { enable: true, style: t.hljs, lineNumber: false },
       theme: { current: t.content, path: '/vendor/vditor/dist/css/content-theme' },
       math: { engine: 'KaTeX' },
@@ -580,7 +582,7 @@ async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) 
       const mime = f.type || '';
       const md = /^image\/(png|jpeg|gif|webp)$/.test(mime) ? `![](${url})`
         : mime === 'application/pdf'
-          ? `\n<iframe class="wv-file" src="${url}" title="${f.name}"></iframe>\n`
+          ? `\n<iframe class="wv-file" src="${url}" title="${escapeHtmlText(f.name)}"></iframe>\n`
           : `[${f.name}](${url})`;
       getEditor().insertValue(md + '\n');
     },
@@ -589,6 +591,25 @@ async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) 
   };
   await runUploads(key, [...files]);
   return null;
+}
+
+const BARE_FILE_FRAME = /^(?:\/w\/[^/?#]+)?\/api\/files\/[\w-]+$/;
+function holdDocFrames(host) {
+  const hold = (frame) => {
+    frame.removeAttribute('allow');
+    if (BARE_FILE_FRAME.test(frame.getAttribute('src') ?? '') || frame.getAttribute('sandbox') === HTML_FRAME_SANDBOX) return;
+    frame.setAttribute('sandbox', HTML_FRAME_SANDBOX);
+    if (frame.hasAttribute('src')) frame.setAttribute('src', frame.getAttribute('src'));
+  };
+  new MutationObserver((records) => {
+    for (const { addedNodes } of records) {
+      for (const n of addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.tagName === 'IFRAME') hold(n);
+        else n.querySelectorAll('iframe').forEach(hold);
+      }
+    }
+  }).observe(host, { childList: true, subtree: true });
 }
 
 function attachFileTools(host, editor, onInput) {

@@ -1825,7 +1825,7 @@ let mermaidLoading = null;
 
 function expandDocument(grid, url, title) {
   grid.parentElement?.querySelector('.doc-expand')?.remove();
-  const frame = el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
+  const frame = el('iframe', { class: 'doc-expand-frame', src: url, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title });
   const collapse = () => { wrap.remove(); grid.classList.remove('hidden'); };
   const wrap = el('div', { class: 'doc-expand' },
     el('div', { class: 'doc-expand-bar' },
@@ -1845,7 +1845,7 @@ function expandDocument(grid, url, title) {
   return wrap;
 }
 
-function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null, fileId = null } = {}) {
+function fullscreenViewer(title, { url = null, mount = null, sandbox = '', prev = null, next = null, fileId = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
   const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined, dataset: fileId ? { fileId } : {} }) : null;
   const close = () => back.remove();
@@ -3733,6 +3733,7 @@ function toggleSwitch(f, val, patch) {
 }
 
 const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const FILE_FRAME_SANDBOX = { html: HTML_FRAME_SANDBOX, pdf: null, text: '', image: '' };
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
 async function streamUpload(path, { entity, field = null, file }, onProgress) {
@@ -3818,7 +3819,7 @@ function fileBodyEl(file, frameClass) {
   const kind = fileKind(file);
   const url = fileUrl(file);
   return kind === 'image' ? el('img', { src: url, alt: file.name })
-    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name })
+    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name, sandbox: FILE_FRAME_SANDBOX[kind] })
       : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX, dataset: { fileId: file.id } })
         : null;
 }
@@ -3898,7 +3899,7 @@ function fileLightbox(files, index) {
   if (kind === 'other') { window.open(fileUrl(file), '_blank'); return; }
   fullscreenViewer(`${file.name} · ${index + 1} / ${files.length}`, {
     url: fileUrl(file) + (kind === 'html' ? '?view' : ''),
-    sandbox: kind === 'html' ? HTML_FRAME_SANDBOX : null,
+    sandbox: FILE_FRAME_SANDBOX[kind],
     fileId: kind === 'html' ? file.id : null,
     prev: index > 0 ? () => fileLightbox(files, index - 1) : null,
     next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
