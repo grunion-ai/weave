@@ -1567,6 +1567,8 @@ const USER_COLUMNS = [
   ['Created', 'date', { time: true }],
 ];
 const USER_KEPT = ['Email', 'Status', 'Kind', 'Identities', 'Last Seen', 'Created'];
+const USER_PRIVATE = new Set(['Email', 'Identities']);
+const hidesChange = (withheld, a) => !!withheld && a.kind === 'field-updated' && withheld.has(a.detail?.field);
 const capital = (s) => String(s ?? '').charAt(0).toUpperCase() + String(s ?? '').slice(1);
 
 export class Weave {
@@ -7337,7 +7339,7 @@ export class Weave {
   #derivedKey(db, ...parts) {
     const d = this.now();
     const day = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-    return [db.id, ...parts, this.viewerZone ?? '', day, this.#hiddenKey()].join('\n');
+    return [db.id, ...parts, this.viewerZone ?? '', day, this.#hiddenKey(), this.#belowArchitect() ? 'withheld' : ''].join('\n');
   }
 
   #remember(map, key, value) {
@@ -7516,6 +7518,15 @@ export class Weave {
   }
   #guarded(db) {
     return !!viewerOf(this) && !db.system && !this.state.spaces[db.spaceId]?.system;
+  }
+
+  #belowArchitect() {
+    const v = viewerOf(this);
+    return !!v && workspaceRole(this, v) !== 'architect';
+  }
+
+  #withheld(db) {
+    return db?.system === 'users' && this.#belowArchitect() ? USER_PRIVATE : null;
   }
 
   #mayWriteRow(ref) {
@@ -8271,6 +8282,7 @@ export class Weave {
 
   #resolve(e, db, field, depth) {
     if (depth > MAX_COMPUTE_DEPTH) { this.#cutoffs++; return null; }
+    if (this.#withheld(db)?.has(field.name)) return null;
     if (field.type !== 'formula' && field.type !== 'lookup' && field.type !== 'rollup') {
       return this.#resolveValue(e, db, field, depth);
     }
@@ -8565,7 +8577,8 @@ export class Weave {
       rows = rows.filter((r) => this.#matchNode(r, db, Array.isArray(where) ? { and: where } : where));
     }
     const SKIP = new Set(['view', 'document', 'attachments', 'avatar', 'key', 'field']);
-    const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type) && (!only || f.id === only.id));
+    const withheld = this.#withheld(db);
+    const fields = db.fieldOrder.map((id) => db.fields[id]).filter((f) => f && !SKIP.has(f.type) && !withheld?.has(f.name) && (!only || f.id === only.id));
     const isBlank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
     const read = (f) => rows.map((e) => this.#resolve(e, db, f, 0));
     const dressAll = (f, vals) => rows.map((e, i) => this.#displayValue(db, f, vals[i], e));
@@ -8720,9 +8733,11 @@ export class Weave {
     const db = this.state.tables[e.dbId];
     const fields = {};
     const raw = {};
+    const withheld = this.#withheld(db);
     for (const fid of db.fieldOrder) {
       if (pick && !pick.ids.has(fid)) continue;
       const f = db.fields[fid];
+      if (withheld?.has(f.name)) continue;
       const resolved = this.#resolve(e, db, f, 0);
       raw[f.name] = resolved;
       const far = f.type === 'relation' ? { ids: resolved, many: f.config.many } : this.#lookupRelation(db, f, resolved);
@@ -8747,7 +8762,7 @@ export class Weave {
     for (const fid of db.fieldOrder) {
       if (pick && !pick.ids.has(fid)) continue;
       const f = db.fields[fid];
-      if (this.#numberDisplay(db, f)) scales[f.name] = this.#scaleOf(db, f);
+      if (!withheld?.has(f.name) && this.#numberDisplay(db, f)) scales[f.name] = this.#scaleOf(db, f);
     }
     if (pick) {
       const docNamed = defaultDocField && pick.ids.has(defaultDocField.id);
@@ -8791,7 +8806,7 @@ export class Weave {
       docs,
       ...(face ? { avatar: face } : {}),
       comments: e.comments.map((c) => ({ ...c, author: this.actorName(c.author) })),
-      activity: (e.activity ?? []).map((a) => this.#namedActivity(a)),
+      activity: (e.activity ?? []).filter((a) => !hidesChange(withheld, a)).map((a) => this.#namedActivity(a)),
       activityDropped: e.activityDropped ?? 0,
       files: e.files.map((f) => (this.#hasBlob(f.id) ? f : { ...f, missing: true })),
       createdAt: e.createdAt,
@@ -9301,8 +9316,9 @@ export class Weave {
       if (hidden && this.#rowHidden(e, hidden)) continue;
       dropped += e.activityDropped ?? 0;
       const db = this.state.tables[e.dbId];
+      const withheld = this.#withheld(db);
       (e.activity ?? []).forEach((a, i) => {
-        if (wanted && !wanted.has(a.kind)) return;
+        if ((wanted && !wanted.has(a.kind)) || hidesChange(withheld, a)) return;
         if (after != null ? (a.seq ?? 0) <= after : since && a.ts < since) return;
         rows.push({
           id: `${e.id}:${i}`,
@@ -11060,8 +11076,9 @@ export class Weave {
       const name = this.entityName(e);
       const docText = Object.values(e.docs ?? {}).join('\n');
       const comments = e.comments.map((c) => c.text).join('\n');
+      const withheld = this.#withheld(home);
       const textValues = Object.values(home.fields)
-        .filter((f) => SEARCHED_VALUE_TYPES.has(f.type) && f.id !== home.nameFieldId && typeof e.values?.[f.id] === 'string')
+        .filter((f) => SEARCHED_VALUE_TYPES.has(f.type) && f.id !== home.nameFieldId && !withheld?.has(f.name) && typeof e.values?.[f.id] === 'string')
         .map((f) => e.values[f.id]).join('\n');
       let score = e.id === exact ? 20 : 0;
       let snippet = '';
@@ -11724,8 +11741,13 @@ export class Weave {
       for (const i of a.identities ?? []) delete i.verifiedEmail;
     }
     const usersT = Object.values(out.tables).find((t) => t.system === 'users');
-    const emailF = usersT && Object.values(usersT.fields).find((f) => f.name === 'Email');
-    if (emailF) for (const e of Object.values(out.entities)) if (e.dbId === usersT.id) delete e.values[emailF.id];
+    const gone = new Set(['Email', ...(this.#withheld(usersT) ?? [])]);
+    const goneF = usersT ? Object.values(usersT.fields).filter((f) => gone.has(f.name)) : [];
+    for (const e of Object.values(out.entities)) {
+      if (e.dbId !== usersT?.id) continue;
+      for (const f of goneF) delete e.values[f.id];
+      if (e.activity) e.activity = e.activity.filter((a) => !hidesChange(gone, a));
+    }
     for (const v of [...Object.values(out.meta.views ?? {}), ...Object.values(out.meta.trashedViews ?? {})]) delete v.shareToken;
     Shares.redactTokens(out);
     delete out.meta.formReceipts;
@@ -11812,7 +11834,8 @@ export class Weave {
 
   exportCSV(dbRef) {
     const db = this.getTable(dbRef);
-    const fieldNames = db.fieldOrder.map((fid) => db.fields[fid]).filter((f) => f.type !== 'view').map((f) => f.name);
+    const withheld = this.#withheld(db);
+    const fieldNames = db.fieldOrder.map((fid) => db.fields[fid]).filter((f) => f.type !== 'view' && !withheld?.has(f.name)).map((f) => f.name);
     const header = ['Public Id', ...fieldNames, 'Created At', 'Updated At'];
     const esc = (v) => {
       if (v == null) return '';

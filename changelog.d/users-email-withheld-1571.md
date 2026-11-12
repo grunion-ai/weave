@@ -1,0 +1,2 @@
+- Only an architect reads the Email and Identities of a Users record. An editor, an observer or a signed-out reader gets every member and invite without those two columns in records, queries, search, cards, table stats, the activity feed and CSV and JSON exports, and a filter, sort, relation path or lookup that reaches them reads them empty (Issue #1571).
+- `weave export` leaves the address out of the Users records' change history too, where a sign-in that filled it in had recorded it; the Email column was already left out (Issue #1745).
