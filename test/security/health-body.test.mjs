@@ -56,11 +56,13 @@ test('a signed-in architect gets the full body: build, sizes, backup', async () 
   } finally { stop(); }
 });
 
-test('a signed-in observer gets the version the sidebar chip shows and no more', async () => {
+test('a signed-in observer gets the version the sidebar chip shows, the two doors the client must not probe, and no more (Issue #1707)', async () => {
   const { health, observer, stop } = await serve();
   try {
     const { body } = await health(observer);
-    assert.deepEqual(Object.keys(body).sort(), ['name', 'ok', 'version']);
+    assert.deepEqual(Object.keys(body).sort(), ['account', 'billing', 'name', 'ok', 'version']);
+    assert.equal(body.account, true);
+    assert.equal(body.billing, false);
   } finally { stop(); }
 });
 
