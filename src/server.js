@@ -151,19 +151,47 @@ export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) 
   return !ok.includes(String(from).toLowerCase());
 }
 
-export const CSP_REPORT_ONLY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+export const CSP_REPORT_PATH = '/csp-report';
+const CSP_FRAME_SOURCES = "'self' https://challenges.cloudflare.com https://*.protect.clerk.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com";
+export const CSP_ENFORCED = `frame-src ${CSP_FRAME_SOURCES}; object-src 'none'; base-uri 'self'; form-action 'self'`;
+export const CSP_REPORT_ONLY = `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; ${CSP_ENFORCED}; report-uri ${CSP_REPORT_PATH}`;
 export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
 export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
   const html = /^text\/html/i.test(headers['Content-Type'] ?? '');
+  const own = headers['Content-Security-Policy'];
+  const ancestors = ["frame-ancestors 'self'", ...frameAncestors].join(' ');
   return {
     ...headers,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    ...(html ? {
-      'Content-Security-Policy': [headers['Content-Security-Policy'], ["frame-ancestors 'self'", ...frameAncestors].join(' ')].filter(Boolean).join('; '),
+    ...(html && own ? { 'Content-Security-Policy': `${own}; ${ancestors}` } : {}),
+    ...(html && !own ? {
+      'Content-Security-Policy': `${CSP_ENFORCED}; ${ancestors}; report-uri ${CSP_REPORT_PATH}`,
       'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY,
     } : {}),
     ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
+  };
+}
+
+const CSP_REPORT_MAX = 16 * 1024;
+const CSP_DIRECTIVES = new Set(['default-src', 'script-src', 'script-src-elem', 'script-src-attr', 'style-src', 'style-src-elem', 'style-src-attr', 'img-src', 'font-src', 'connect-src', 'media-src', 'object-src', 'frame-src', 'child-src', 'worker-src', 'manifest-src', 'base-uri', 'form-action', 'frame-ancestors']);
+const cspReportOf = (bytes) => {
+  let report;
+  try { report = JSON.parse(bytes.toString('utf8'))?.['csp-report']; } catch { return null; }
+  return report && typeof report === 'object' && !Array.isArray(report) ? report : null;
+};
+function cspCount() {
+  const since = new Date().toISOString();
+  const tally = { blocked: {}, reported: {} };
+  return {
+    add(report) {
+      const name = [report['effective-directive'], report['violated-directive']].find((d) => typeof d === 'string')?.split(' ')[0];
+      const directive = CSP_DIRECTIVES.has(name) ? name : 'other';
+      const kind = report.disposition === 'enforce' ? 'blocked' : 'reported';
+      const n = tally[kind][directive] = (tally[kind][directive] ?? 0) + 1;
+      if (/^10*$/.test(String(n))) console.warn(`weave: content security policy ${kind} ${directive}: ${n} since ${since}`);
+    },
+    read: () => ({ since, blocked: { ...tally.blocked }, reported: { ...tally.reported } }),
   };
 }
 
@@ -648,6 +676,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   });
 
   const gzCache = new Map();
+  const violations = cspCount();
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code, id) => {
     if (res.headersSent) return res.destroy();
@@ -666,15 +695,27 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store' }));
         return res.end();
       }
-      if (path === '/_supervisor/workspaces' && deployToken) {
+      const supervised = !deployToken ? null
+        : path === '/_supervisor/workspaces' ? () => hub.list().map(({ name }) => ({ name, requireAuth: !!hub.get(name).state.meta.requireAuth }))
+        : path === '/_supervisor/csp' ? violations.read
+        : null;
+      if (supervised) {
         const given = Buffer.from(String(req.headers.authorization ?? ''));
         const want = Buffer.from(`Bearer ${deployToken}`);
         if (given.length !== want.length || !timingSafeEqual(given, want)) return fail(res, 401, 'unauthorized', 'unauthorized');
         if (req.method !== 'GET') return fail(res, 405, 'GET only', 'method-not-allowed');
         res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }));
-        return res.end(JSON.stringify(hub.list().map(({ name }) => ({ name, requireAuth: !!hub.get(name).state.meta.requireAuth }))));
+        return res.end(JSON.stringify(supervised()));
       }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
+      if (path === CSP_REPORT_PATH) {
+        if (req.method !== 'POST') return fail(res, 405, 'POST a violation report', 'method-not-allowed');
+        const report = cspReportOf(await readBytes(req, CSP_REPORT_MAX));
+        if (!report) return fail(res, 400, 'A violation report is JSON with a csp-report object', 'invalid');
+        violations.add(report);
+        res.writeHead(204, secure(req, { 'Cache-Control': 'no-store' }));
+        return res.end();
+      }
       const outcome = await handle({
         method: req.method,
         path,

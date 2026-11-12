@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { launch, eventually, styleOf } from './lib/browser.mjs';
 
 let tasks;
+let links;
 const s = await launch('dialog hold', (weave) => {
   weave.createSpace({ name: 'Product' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.createTable({ space: 'Product', name: 'Bluefin board' });
-  for (const name of ['Bluefin one', 'Bluefin two', 'Bluefin three']) weave.createEntity(tasks, { name });
+  const [first] = ['Bluefin one', 'Bluefin two', 'Bluefin three'].map((name) => weave.createEntity(tasks, { name }));
+  links = weave.attachFile(first.id, { name: 'links.html', mime: 'text/html', bytes: Buffer.from('<a href="#a">first</a> <a href="#b">second</a>') });
 });
 
 if (s) {
@@ -148,7 +150,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    const FRAME = `data:text/html,${encodeURIComponent('<a href="#a">first</a> <a href="#b">second</a>')}`;
+    const FRAME = `/api/files/${links.id}?view`;
     test(`the full-screen viewer is a labelled modal dialog; Tab cycles the toolbar and walks through the frame (${theme})`, async () => {
       const page = await open(theme);
       try {
