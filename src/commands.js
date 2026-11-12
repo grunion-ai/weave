@@ -146,6 +146,17 @@ const withSecret = (w, id, ctx) => {
   return { ...w.readEntity(id, zoned(ctx)), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(ctx?.origin ?? '', once.invite.code) } } : once ?? {}) };
 };
 const withoutAffected = ({ affected, ...row }) => row;
+const nameKey = (v) => String(v ?? '').trim().toLowerCase();
+function refuseDuplicate(w, dbRef, input, ctx) {
+  const db = w.getTable(dbRef);
+  const field = db.fields[db.nameFieldId]?.name ?? 'Name';
+  const name = nameKey(input.values?.[field] ?? input.values?.Name ?? input[field] ?? input.Name ?? input.name);
+  if (!name) throw new WeaveError('dedupe matches rows by name, so the new row needs one', 'invalid');
+  const held = w.listEntities(db.id).filter((e) => nameKey(w.entityName(e)) === name && w.canSee(e.id)).sort((x, y) => x.publicId - y.publicId)[0];
+  if (!held) return;
+  throw Object.assign(new WeaveError(`${w.qualifiedName(db)} already has a row named '${w.entityName(held)}' (#${held.publicId}), so no row was created. Update that row, or leave out dedupe to create a second one.`, 'conflict'),
+    { detail: { entity: w.readEntity(held.id, zoned(ctx)) } });
+}
 
 const queryOptions = (a) => ({
   where: a.where ?? [], sort: a.sort ?? [], limit: toolLimit(a.limit),
@@ -1087,7 +1098,12 @@ export const COMMANDS = [
     },
     cli: { command: 'create', positional: ['db', 'name'], args: (a, flags, { json }) => ({ db: a.db, input: { name: a.name, values: json('values') ?? {}, doc: flags.doc === true ? '' : flags.doc } }) },
     http: { method: 'POST', path: '/api/tables/:db/entities', status: 201, args: (a, body) => ({ db: a.db, input: body }) },
-    run: (w, a, ctx) => withSecret(w, w.createEntity(a.db, a.input ?? { name: a.name, values: a.values, doc: a.doc, docs: a.docs }, zoned(ctx)).id, ctx),
+    run: (w, a, ctx) => {
+      const { dedupe, ...input } = a.input ?? { name: a.name, values: a.values, doc: a.doc, docs: a.docs };
+      if (dedupe != null && typeof dedupe !== 'boolean') throw new WeaveError('dedupe takes true or false', 'invalid');
+      if (dedupe) refuseDuplicate(w, a.db, input, ctx);
+      return withSecret(w, w.createEntity(a.db, input, zoned(ctx)).id, ctx);
+    },
   },
   {
     name: 'entity.read',
