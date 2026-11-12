@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
-import { streak, verdict, SUSTAINED } from '../scripts/ci-trend.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -425,29 +424,19 @@ test('onboarding journeys are mandatory even for unrelated changes and cannot si
   assert.equal(ONBOARDING.length, 4);
 });
 
-test('the wall-clock budget suites leave every gating plan for the trend lane, and nothing else does', async () => {
-  const { testFiles, lanes } = await import('../scripts/test.mjs');
+test('render, vitals, feedback and query-volume budgets leave every gating plan for the trend lane, and nothing else does (Issue #1709)', () => {
   const all = lanes(testFiles());
-  assert.deepEqual(TREND.filter((f) => !all.browser.includes(f)), [], 'every trend suite is a browser test of this repository');
-  for (const f of ['test/click-budget-browser.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget.test.mjs', 'test/feedback-budget.test.mjs']) assert.ok(!TREND.includes(f), `${f} counts or checks reasons, never milliseconds, and stays on the gate`);
+  assert.deepEqual([...TREND].sort(), ['test/feedback-budget-browser.test.mjs', 'test/query-volume.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs']);
+  assert.deepEqual(TREND.filter((f) => ![...all.unit, ...all.browser].includes(f)), [], 'every trend suite is a test of this repository');
+  for (const f of ['test/click-budget-browser.test.mjs', 'test/render-budget.test.mjs', 'test/vitals-budget.test.mjs', 'test/feedback-budget.test.mjs']) assert.ok(!TREND.includes(f), `${f} counts clicks or checks raise reasons, never a reading of the runner, and stays on the gate`);
   const kept = gating(all);
-  assert.equal(kept.browser.length + TREND.length, all.browser.length);
-  assert.deepEqual(kept.unit, all.unit);
-  assert.ok(currentPlan().every((s) => s.files.every((f) => !TREND.includes(f))));
-  const pr = prPlan(kept, ['test/vitals-budget-browser.test.mjs', 'public/app.js'], () => '', () => 1);
-  assert.ok(pr.every((s) => s.files.every((f) => !TREND.includes(f))), 'a PR touching a trend suite does not pull it back onto the gate');
-});
-
-test('a budget red alerts only once it repeats on consecutive main pushes; cancelled runs neither count nor break the streak', () => {
-  const run = (id, conclusion, minute) => ({ id, conclusion, created_at: `2026-11-01T10:${String(minute).padStart(2, '0')}:00Z` });
-  assert.equal(streak([run(5, 'failure', 50), run(4, 'failure', 40), run(3, 'cancelled', 30), run(2, 'failure', 20), run(1, 'success', 10)], 5), 2);
-  assert.equal(streak([run(4, 'success', 40), run(3, 'failure', 30)], 9), 0);
-  assert.equal(streak([], 1), 0);
-  assert.equal(verdict(0, 7).level, 'held');
-  assert.equal(verdict(1, 0).level, 'warn');
-  assert.equal(verdict(1, SUSTAINED - 2).level, 'warn');
-  assert.equal(verdict(1, SUSTAINED - 1).level, 'alert');
-  assert.ok(SUSTAINED >= 2);
+  assert.equal(kept.unit.length + kept.browser.length + TREND.length, all.unit.length + all.browser.length);
+  assert.ok(!kept.unit.includes('test/query-volume.test.mjs'), 'the unit lane drops the query-volume ratio as well');
+  assert.ok(currentPlan().every((s) => s.files.every((f) => !TREND.includes(f))), 'the main CI gate plans no trend suite');
+  for (const changed of [[...TREND], [...TREND, 'public/app.js'], ['test/lib/journeys.mjs']]) {
+    const pr = prPlan(kept, changed, (file) => (file.includes('/lib/') ? '' : "from './lib/journeys.mjs'"), () => 1);
+    assert.ok(pr.every((s) => s.files.every((f) => !TREND.includes(f))), `a PR changing ${changed.join(', ')} asserts no millisecond on a shared runner`);
+  }
 });
 
 test('budgets.yml runs the trend lane on main pushes only, outside the tests workflow the sheriff, release and promotion read', async () => {
@@ -460,6 +449,26 @@ test('budgets.yml runs the trend lane on main pushes only, outside the tests wor
   assert.match(yml, /permissions:\n      contents: read\n      actions: read\n/);
   const sheriff = readFileSync('.github/workflows/sheriff.yml', 'utf8');
   assert.match(sheriff, /workflows: \[tests\]/, 'the sheriff judges the tests workflow alone, so a budget red never reaches it');
+});
+
+test('budgets.yml records each run as one point of the series and judges it against the points before it (Issue #1709)', () => {
+  const yml = readFileSync('.github/workflows/budgets.yml', 'utf8');
+  const step = (name) => yml.slice(yml.indexOf(`- name: ${name}`)).split(/\n(?=      - )/)[0];
+  const history = step('Series from the earlier budget runs');
+  assert.match(history, /gh run list -R "\$GITHUB_REPOSITORY" --workflow budgets\.yml --branch main --event push --status completed --limit \d+ --json databaseId -q '\.\[\]\.databaseId' \|\| true\)\n/, 'the earlier main pushes, and none at all on a first run');
+  assert.match(history, /gh run download "\$run" -R "\$GITHUB_REPOSITORY" -n trend-series -D "trend-history\/\$run" \|\| echo /, 'a run that kept no series is skipped in the shell');
+  assert.match(history, /GH_TOKEN: \$\{\{ github\.token \}\}\n/);
+  const judge = step('Run the timing budgets and judge the trend');
+  assert.match(judge, /WEAVE_TREND_HISTORY: trend-history\n/);
+  assert.match(judge, /WEAVE_TREND_SERIES: trend-series\n/);
+  assert.match(judge, /WEAVE_TRACKER_TOKEN: \$\{\{ secrets\.WEAVE_TRACKER_TOKEN \}\}\n/, 'a miss files its trend note on the tracker');
+  assert.ok(yml.indexOf('- name: Series from the earlier budget runs') < yml.indexOf('- name: Run the timing budgets and judge the trend'));
+  const keep = step('Keep this run\'s readings for the next runs');
+  assert.match(keep, /if: always\(\)\n/, 'a faulted run keeps the readings it took');
+  assert.match(keep, /uses: actions\/upload-artifact@[0-9a-f]{40}\n/);
+  assert.match(keep, /name: trend-series\n          path: trend-series\/\n/);
+  assert.match(keep, /overwrite: true\n/, 'a re-run replaces its own point rather than failing on the name');
+  assert.doesNotMatch(yml, /continue-on-error/);
 });
 
 test('the main plan spreads the browser lane over eight shards and runs every shard at once, so none meets the 20-minute job timeout (Issue #1351)', () => {

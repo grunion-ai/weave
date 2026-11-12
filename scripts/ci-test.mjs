@@ -8,7 +8,7 @@ import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
+export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/query-volume.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
 export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
 
 export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
