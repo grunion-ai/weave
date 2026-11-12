@@ -9,7 +9,7 @@ import { vocabularyView } from './vocabulary.js';
 import { renderDocumentPage, renderMarkdown, isHtmlDocument, escapeHtml } from './markdown.js';
 import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
-import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE, SEATLESS_TOOLS } from './mcp.js';
+import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE, toolWrites } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
 import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
@@ -1792,8 +1792,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (viewers.tokenWrite) {
             for (const msg of msgs) {
-              const tool = msg?.method === 'tools/call' ? (msg.params?.name === 'weave_call' ? msg.params?.arguments?.name : msg.params?.name) : null;
-              if (tool && !SEATLESS_TOOLS.has(tool)) weave.noteTokenWrite(viewers.tokenWrite.accountId, { method: 'MCP', path: tool, status: 200 });
+              const hatch = msg?.params?.name === 'weave_call';
+              const tool = msg?.method === 'tools/call' ? (hatch ? msg.params?.arguments?.name : msg.params?.name) : null;
+              if (tool && toolWrites(tool, (hatch ? msg.params?.arguments?.args : msg.params?.arguments) ?? {})) weave.noteTokenWrite(viewers.tokenWrite.accountId, { method: 'MCP', path: tool, status: 200 });
             }
           }
           if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));

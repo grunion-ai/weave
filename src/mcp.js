@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { mcpToolError, contractFor } from './errors.js';
-import { toolCommand, toolDefinition } from './commands.js';
+import { toolCommand, toolDefinition, COMMANDS, ROLES } from './commands.js';
 import { guided } from './field-hints.js';
 import { Weave, WeaveError, FIELD_TYPES } from './engine.js';
+import { RANK } from './access.js';
 import '../public/starter-core.js';
 import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
@@ -190,7 +191,7 @@ export const SUMMARY = {
   weave_restore_entity: 'restore a trashed record',
   weave_trash: 'list trashed records',
   weave_stats: 'summarise a table\'s columns',
-  weave_undo: 'revert the last record edits (list: true previews)',
+  weave_undo: 'revert your own last record edits (list: true previews)',
   weave_bulk: 'set, link, move or roll up many records in one write',
   weave_set_state: 'move a record to a workflow state',
   weave_link: 'link records through a relation field',
@@ -273,28 +274,19 @@ const TITLES = {
   weave_export_json: 'Export workspace as JSON', weave_forms: 'Manage forms', weave_form_submit: 'Submit form',
   weave_import_json: 'Replace workspace from JSON', weave_call: 'Call any weave tool',
 };
-const READ_ONLY = new Set([
-  'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_stats', 'weave_trash',
-  'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_export_json',
-  'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_audit', 'weave_relation_map',
-]);
-const DESTRUCTIVE = new Set([
-  'weave_delete_entity', 'weave_delete_comment', 'weave_delete_space', 'weave_delete_table', 'weave_delete_field',
-  'weave_bulk', 'weave_undo', 'weave_set_doc', 'weave_doc_restore', 'weave_update_field', 'weave_rollback_field',
-  'weave_apply_schema', 'weave_import_json', 'weave_automations', 'weave_accounts', 'weave_keys', 'weave_files',
-  'weave_views', 'weave_shares', 'weave_workspace', 'weave_call',
-]);
-const OPEN_WORLD = new Set(['weave_runs', 'weave_create_automation', 'weave_automations', 'weave_call']);
-const IDEMPOTENT = new Set([
-  ...READ_ONLY,
-  'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity', 'weave_set_state', 'weave_link', 'weave_unlink',
-  'weave_doc_restore', 'weave_delete_comment', 'weave_update_space', 'weave_delete_space', 'weave_restore_space',
-  'weave_update_table', 'weave_table_view', 'weave_move_table', 'weave_delete_table', 'weave_restore_table',
-  'weave_update_field', 'weave_rollback_field', 'weave_delete_field', 'weave_restore_field', 'weave_apply_schema',
-  'weave_automations', 'weave_workspace', 'weave_keys', 'weave_files', 'weave_registry', 'weave_import_json',
-]);
+const FORM_HINTS = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+const DOOR_TOOLS = {
+  weave_forms: { minRole: 'architect', bound: false, annotations: FORM_HINTS },
+  weave_form_submit: { minRole: 'architect', bound: true, annotations: FORM_HINTS },
+  weave_call: { minRole: 'observer', bound: true, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true } },
+};
+const ROWS = new Map(TOOLS.map((t) => [t.name, COMMANDS.filter((c) => c.tool?.name === t.name && !c.toolRefusal)]));
+const rowsOf = (name) => (ROWS.get(name)?.length ? ROWS.get(name) : DOOR_TOOLS[name] ? [DOOR_TOOLS[name]] : []);
 for (const t of TOOLS) {
-  t.annotations = { title: TITLES[t.name], readOnlyHint: READ_ONLY.has(t.name), destructiveHint: DESTRUCTIVE.has(t.name), idempotentHint: IDEMPOTENT.has(t.name), openWorldHint: OPEN_WORLD.has(t.name) };
+  const rows = rowsOf(t.name);
+  const every = (k) => rows.every((c) => c.annotations[k]);
+  const some = (k) => rows.some((c) => c.annotations[k]);
+  t.annotations = { title: TITLES[t.name], readOnlyHint: every('readOnlyHint'), destructiveHint: some('destructiveHint'), idempotentHint: every('idempotentHint'), openWorldHint: some('openWorldHint') };
 }
 
 export function toolTable() {
@@ -317,7 +309,7 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
-      const t = TOOLS.find((x) => x.name === inner.tool && mayCall(caller, x.name));
+      const t = TOOLS.find((x) => x.name === inner.tool && visible(caller, x.name));
       if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }
@@ -329,29 +321,34 @@ function callTool(weave, name, rawArgs, caller) {
   return verbose === true ? result : compactResult(name, result);
 }
 
-const systemWrite = (system) => new Error(system === 'users' ? 'Writing a Users record needs an architect token' : 'Writing a record of a system table needs an architect token');
-function refuseUsersWrite(weave, ref, caller) {
-  if (!caller || mayAdminister(weave, caller.role)) return;
-  let system = null;
-  try { system = weave.state.tables[weave.getEntity(ref).dbId]?.system; } catch {}
-  if (system) throw systemWrite(system);
+const systemWrite = (system) => new WeaveError(system === 'users' ? 'Writing a Users record needs an architect token' : 'Writing a record of a system table needs an architect token', 'forbidden');
+function systemTarget(weave, command, args) {
+  const sys = (fn) => { try { return fn()?.system ?? null; } catch { return null; } };
+  const ofEntity = (id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]);
+  if (command.name !== 'entity.bulk') return args.entity != null ? ofEntity(args.entity) : args.db != null ? sys(() => weave.findTable(args.db)) : null;
+  const ids = args.ids == null ? [] : [].concat(args.ids);
+  let into = [];
+  if (args.op === 'rollup' && args.table == null) try { into = weave.relationTargetDbIds(weave.getField(weave.getEntity(ids[0]).dbId, args.field)); } catch {}
+  return ids.map(ofEntity).find(Boolean) ?? (args.table != null ? sys(() => weave.getTable(args.table)) : null) ?? into.map((t) => weave.state.tables[t]?.system).find(Boolean) ?? null;
 }
 
 export function mayAdminister(on, role) {
   return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
 }
-const ADMIN_TOOLS = { weave_accounts: 'workspace', weave_import_json: 'workspace', weave_keys: 'workspace', weave_shares: 'workspace' };
-export const SEATLESS_TOOLS = new Set(['weave_runs', 'weave_ontology', 'weave_schema', 'weave_query', 'weave_get_entity', 'weave_search', 'weave_trash', 'weave_stats', 'weave_get_doc', 'weave_doc_revisions', 'weave_check_formula', 'weave_export_csv', 'weave_vocabulary', 'weave_template_list', 'weave_activity', 'weave_relation_map', 'weave_add_comment']);
-export const ROLE_TOOLS = {
-  observer: new Set([...SEATLESS_TOOLS, 'weave_call']),
-  editor: new Set([...SEATLESS_TOOLS, 'weave_call', 'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_attach_file']),
-};
-const WORKSPACE_TOOLS = new Set(['weave_runs', 'weave_create_space', 'weave_build', 'weave_apply_schema', 'weave_template_use', 'weave_create_automation', 'weave_automations', 'weave_registry', 'weave_views', 'weave_workspace', 'weave_forms', 'weave_import_json', 'weave_export_json', 'weave_keys', 'weave_shares', 'weave_accounts', 'weave_undo']);
-const mayCall = (caller, name) => {
-  const tier = WORKSPACE_TOOLS.has(name) ? caller?.workspaceTier ?? caller?.tier : caller?.tier;
-  return !ROLE_TOOLS[tier] || ROLE_TOOLS[tier].has(name);
-};
+const SPACE_PATH = /^\/api\/(?:tables|spaces|entities)\/:/;
+const bound = (c) => c.bound ?? (c.name === 'entity.bulk' || SPACE_PATH.test(c.http?.path ?? ''));
+const tierOf = (caller, c) => (bound(c) ? caller.tier : caller.workspaceTier ?? caller.tier);
+const ranks = (tier, c) => tier == null || RANK[Weave.roleName(tier)] >= RANK[c.minRole];
+const admits = (caller, c) => ranks(tierOf(caller, c) ?? caller.role, c);
+const OWNER = { minRole: 'observer' };
+const visible = (caller, name) => !caller || rowsOf(name).some((c) => ranks(tierOf(caller, c), c.owns ? OWNER : c));
+export const ROLE_TOOLS = Object.fromEntries(ROLES.filter((r) => r !== 'architect').map((role) => [role, new Set(TOOLS.filter((t) => visible({ tier: role }, t.name)).map((t) => t.name))]));
+export function toolWrites(name, args = {}) {
+  try { return !(toolCommand(name, args) ?? DOOR_TOOLS[name])?.annotations.readOnlyHint; } catch { return true; }
+}
 const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
+const label = (name, c) => (typeof c.action === 'string' ? `${name} ${c.action}` : !c.name || (c.tool?.name === name && c.action === undefined) ? name : `${name} (${c.name})`);
+const needs = (name, c) => new WeaveError(`${label(name, c)} needs an ${c.minRole} token on this workspace`, 'forbidden');
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 const toolProps = (name) => TOOLS.find((t) => t.name === name)?.inputSchema.properties;
@@ -370,35 +367,28 @@ function checkRowArgs(name, args, required) {
   checkArgs(name, args, '; field values go in values');
 }
 
-const ROW_GUARDS = {
-  weave_runs: (weave, args, caller) => {
-    if (caller && args.action !== 'list' && (!['editor', 'architect'].includes(caller.role) || caller.seat)) throw new Error('Starting or updating runs needs an editor account on this workspace');
-  },
-  weave_create_entity: (weave, args, caller) => {
-    checkRowArgs('weave_create_entity', args, false);
-    if (caller && !mayAdminister(weave, caller.role) && weave.findTable(args.db)?.system) throw systemWrite(weave.findTable(args.db).system);
-  },
-  weave_update_entity: (weave, args, caller) => {
-    checkRowArgs('weave_update_entity', args, true);
-    refuseUsersWrite(weave, args.entity, caller);
-  },
-  weave_delete_entity: (weave, args, caller) => refuseUsersWrite(weave, args.entity, caller),
-  weave_views: (weave, args, caller) => {
-    if (['share', 'unshare'].includes(args.action) && caller && !mayAdminister(weave, caller.role)) throw new Error('Sharing a view, or ending its link, needs an architect token');
-  },
+const ROW_ARGS = {
+  weave_create_entity: (args) => checkRowArgs('weave_create_entity', args, false),
+  weave_update_entity: (args) => checkRowArgs('weave_update_entity', args, true),
 };
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
-  if (!mayCall(caller, name)) throw unknownTool(name);
-  if (caller?.seat && !SEATLESS_TOOLS.has(name)) throw new Error(caller.seat);
-  if (caller && name === 'weave_keys' && !caller.role) throw new Error('Managing keys needs an account on this workspace');
-  if (caller && ADMIN_TOOLS[name]) {
-    if ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role)) throw new Error(`${name} needs an architect token on this workspace`);
+  if (!visible(caller, name)) throw unknownTool(name);
+  const command = toolCommand(name, args);
+  const row = command ?? DOOR_TOOLS[name];
+  if (caller && row) {
+    const own = !!row.owns?.(weave, args);
+    if ((!admits(caller, row) && !own) || (row.minRole === 'architect' && weave.state.meta.requireAuth && !caller.role)) throw needs(name, row);
+    if (caller.seat && row.minRole !== 'observer' && !own) throw new Error(caller.seat);
   }
+  if (caller && !caller.role && (name === 'weave_keys' || (name === 'weave_runs' && row.minRole !== 'observer'))) throw new WeaveError(`${label(name, row)} needs an account on this workspace`, 'forbidden');
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
-  ROW_GUARDS[name]?.(weave, args, caller);
-  const command = toolCommand(name, args);
+  ROW_ARGS[name]?.(args);
+  if (caller && command?.writes === 'entity' && command.minRole === 'editor' && !mayAdminister(weave, caller.role)) {
+    const system = systemTarget(weave, command, args);
+    if (system) throw systemWrite(system);
+  }
   const given = command?.toolArgs?.(args) ?? args;
   checkArgs(name, given);
   if (command) {
@@ -445,7 +435,7 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: listTools(tools).filter((t) => mayCall(caller, t.name)) });
+        return reply({ tools: listTools(tools).filter((t) => visible(caller, t.name)) });
       case 'tools/call': {
         try {
           const args = params.arguments ?? {};
