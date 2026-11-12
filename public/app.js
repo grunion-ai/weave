@@ -1084,7 +1084,7 @@ function registryWorkflows(dbId) {
 
 async function loadSchema() {
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
-  const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
+  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -1590,7 +1590,7 @@ function renderNav() {
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
-    (state.healthP ??= api('GET', '/health')).then((h) => {
+    healthNow().then((h) => {
       state.health = h;
       const warn = (cls, text, title) => {
         status.classList.add(cls);
@@ -1618,7 +1618,8 @@ function renderNav() {
   if (!state.trialChip) {
     const chip = state.trialChip = el('a', { class: 'nav-trial', href: `${WS_PREFIX}/billing` });
     chip.hidden = true;
-    api('GET', '/billing').then((b) => {
+    healthNow().then((h) => (h?.billing ? api('GET', '/billing') : null)).then((b) => {
+      if (!b) return;
       const left = b.trial?.daysLeft;
       if (!left || left > TRIAL_NOTICE_DAYS) return;
       chip.textContent = left === 1 ? 'Free trial ends today' : `Free trial ends in ${left} days`;
@@ -1649,11 +1650,25 @@ function accountWorkspaceName() {
   return state.wsCurrent || $('#ws-name')?.textContent || 'this workspace';
 }
 
+function healthNow() {
+  return state.healthP ??= api('GET', '/health');
+}
+
+function accountNow() {
+  return state.meP ??= healthNow().catch(() => null).then((h) => {
+    if (h && h.account === false) return null;
+    return api('GET', '/auth/me').catch((err) => {
+      if (err.status === 401) return null;
+      throw err;
+    });
+  });
+}
+
 async function refreshAccountChip() {
   const slot = accountSlot();
   let me = null;
-  try { me = await api('GET', '/auth/me'); } catch (err) {
-    if (err.status !== 401) return;
+  try { me = await accountNow(); } catch {
+    return;
   }
   closeAccountMenu();
   if (me?.analytics) globalThis.WeaveConsent?.identify(me.analytics.user);
@@ -1712,7 +1727,7 @@ function personalMenuButton() {
 }
 
 async function personalMenu(btn) {
-  const h = state.health ?? await (state.healthP ??= api('GET', '/health')).catch(() => null);
+  const h = state.health ?? await healthNow().catch(() => null);
   const version = h?.version ? `v${h.version}` : null;
   const signedIn = accountSlot().dataset.state === 'signed-in';
   const ws = accountWorkspaceName();
@@ -1750,7 +1765,10 @@ async function signOutEverywhere(prefixes) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.accountSlot) refreshAccountChip();
+  if (document.visibilityState !== 'visible' || !state.accountSlot) return;
+  state.healthP = null;
+  state.meP = null;
+  refreshAccountChip();
 });
 
 function fieldValueCell(value) {
@@ -2902,7 +2920,7 @@ function showIntroControls(controls) {
   controls.hidden = introControlsHidden ?? true;
   if (introControlsHidden !== null) return;
   controls.classList.add('intro-deciding');
-  api('GET', '/auth/me').catch(() => null)
+  accountNow().catch(() => null)
     .then(async (me) => { introControlsHidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; controls.hidden = introControlsHidden; })
     .catch(() => {})
     .finally(() => controls.classList.remove('intro-deciding'));
@@ -11899,7 +11917,7 @@ installPhoneBar();
 toastLayer();
 wireTheme();
 wireSkipLink();
-(state.healthP ??= api('GET', '/health')).catch(() => {});
+healthNow().catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();
