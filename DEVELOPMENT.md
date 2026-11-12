@@ -723,22 +723,33 @@ new reason under `raised[...]`, checked against `HEAD^1` by
 
 ### Trend lane
 
-The vitals and feedback suites (`TREND` in `scripts/ci-test.mjs`) time pages in
-milliseconds on shared GitHub runners, where the same code read an open-table
-INP of 88 to 216 ms (Issue #1215). As gates they turned main red on runner
-noise, and the sheriff reverted at least three PRs for it in the week to
-2026-11-01 (#505, #513 and #534). They now sit outside every gating plan: the
-`pr` and `tests` workflows never plan them, so the sheriff, release and
-promotion never read them. `.github/workflows/budgets.yml`
-runs them on every main push through `scripts/ci-trend.mjs`. A breach fails
-that run, which leaves a visible red on the commit; the third consecutive
-failed run (cancelled runs neither count nor break the streak, `SUSTAINED`)
-writes an error and posts one alert line to `SHERIFF_ALERT_URL`, since a
-breach that repeats is a regression and one that does not is the runner. The
-budget files, their `raised[...]` reasons and the `HEAD^1` checks in
-`test/vitals-budget.test.mjs` and `test/feedback-budget.test.mjs` still gate
-every PR. The click and render budgets count events, not milliseconds, and
-stay on the gate.
+The vitals, feedback, render and query-volume suites (`TREND` in
+`scripts/ci-test.mjs`) read how fast a page or a query runs on a shared GitHub
+runner, where the same code read an open-table INP of 88 to 216 ms (Issue
+#1215) and network timing splits a journey's writes across frames. As gates
+they turned main red on runner noise, and the sheriff reverted at least three
+PRs for it in the week to 2026-11-01 (#505, #513 and #534). They sit outside
+every gating plan: the `pr` and `tests` workflows never plan them, so the
+sheriff, release and promotion never read them.
+
+`.github/workflows/budgets.yml` runs them on every main push through
+`scripts/ci-trend.mjs`. It reads the reading line each suite logs and keeps,
+per suite and key, the fastest reading of the run's attempts with its budget
+and every walk. That point is the run's `trend-series` artifact, and each run
+downloads the points of the six main pushes before it.
+
+A reading over its budget is a trend note, not a red run: a warning on the run
+and one standing tracker row per suite and key, named `Slow: <suite> <key> over
+its budget on main` (`Looks broken:` for a layout shift or a render count). The
+row gets a line when a run of misses starts and again when it lasts
+`SUSTAINED` (three) main pushes, which also posts one alert line to
+`SHERIFF_ALERT_URL`; a Fixed row that misses again reopens. The streak judges
+earlier readings against today's budget. The run goes red only when the lane
+breaks: a suite that read nothing, a failing test that no miss explains, or a
+failed exit with no failing test. The budget files, their `raised[...]` reasons
+and the `HEAD^1` checks in `test/vitals-budget.test.mjs`,
+`test/feedback-budget.test.mjs` and `test/render-budget.test.mjs` still gate
+every PR. The click budget counts presses, not time, and stays on the gate.
 
 ## Feedback budget
 
@@ -758,8 +769,8 @@ loader visible sooner than `SKELETON_SHOW_AFTER_MS` after an action, or
 journey off that check only while it names the Issue that will fix it.
 
 Budgets hold the Linux runner's times with headroom, since a timing gate cannot
-ratchet down on every run the way clicks do. A time over its budget fails the
-trend lane (below), not the gate.
+ratchet down on every run the way clicks do. A time over its budget is a trend
+note (Trend lane, above), not a red gate.
 Raising a budget needs a new reason under `raised["<journey|cell>"]`, checked
 against `HEAD^1` by `test/feedback-budget.test.mjs`, the same rule as the click
 budget. Journeys that wait on the server today carry their measured time and the
@@ -774,7 +785,8 @@ of three walks is judged against `test/render-budget.json`
 (`renders["<journey|cell>"]`) and logged as
 `renders <journey|cell> <n> runs <a,b,c> budget <n>`. Budgets hold the Linux
 runner's largest median plus a quarter and one frame, since network timing
-splits writes across frames from run to run. A count over its budget fails.
+splits writes across frames from run to run. A count over its budget is a
+trend note in the trend lane, not a red gate.
 Batch the writes, or raise the budget with a new reason under
 `raised["<journey|cell>"]`, which `test/render-budget.test.mjs` checks against
 `HEAD^1`.

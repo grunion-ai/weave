@@ -50,9 +50,29 @@ jobs:
       - name: Install browsers and system dependencies
         timeout-minutes: 14
         run: node scripts/ci/install-browsers.mjs chromium webkit
-      - name: Run the timing budgets and judge the trend
+      - name: Series from the earlier budget runs
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow budgets.yml --branch main --event push --status completed --limit 6 --json databaseId -q '.[].databaseId' || true)
+          for run in $runs; do
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n trend-series -D "trend-history/$run" || echo "run $run kept no trend series"
+          done
+          echo "series: $(find trend-history -name '*.json' 2>/dev/null | wc -l) earlier points"
+      - name: Run the timing budgets and judge the trend
+        env:
+          WEAVE_TREND_HISTORY: trend-history
+          WEAVE_TREND_SERIES: trend-series
+          WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
           SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
         run: node scripts/ci-trend.mjs
+      - name: Keep this run's readings for the next runs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trend-series
+          path: trend-series/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 90
