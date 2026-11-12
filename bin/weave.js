@@ -232,7 +232,12 @@ async function main() {
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
+    const { server, port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
+    let stopped = null;
+    const stop = (why) => stopped ??= server.shutdown()
+      .then(({ workspaces, cut }) => console.log(`Weave stopped (${why}): ${workspaces} workspace${workspaces === 1 ? '' : 's'} closed${cut ? `, ${cut} unfinished request${cut === 1 ? '' : 's'} cut off` : ''}`))
+      .finally(() => process.exit(0));
+    for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => stop(sig));
     {
       const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
       const { armReleaseCheck, VERSION } = await import('../src/server.js');
@@ -257,7 +262,7 @@ async function main() {
     if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
     console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);
     if (process.send) {
-      process.on('disconnect', () => process.exit(0));
+      process.on('disconnect', () => stop('IPC channel closed'));
       if (deferred) {
         process.on('message', async (m) => {
           if (m?.weave !== 'migrate') return;

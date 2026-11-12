@@ -510,6 +510,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       for (const w of instances.values()) w.maybeRefresh();
       return [...instances.entries()];
     },
+    close() {
+      for (const w of instances.values()) w.store.close?.();
+      return instances.size;
+    },
   };
 }
 
@@ -582,6 +586,7 @@ export function createAssetVersions(dir) {
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const VENDOR_CACHE = 'public, max-age=3600';
+const SHUTDOWN_DRAIN_MS = 5000;
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
@@ -683,7 +688,13 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
     res.end(JSON.stringify({ error, code, ...(id ? { id } : {}) }));
   };
+  const inflight = new Set();
+  let stopping = null;
+  let settle = () => {};
   const server = createHttpServer(async (req, res) => {
+    inflight.add(res);
+    res.once('close', () => { inflight.delete(res); settle(); });
+    if (stopping) res.shouldKeepAlive = false;
     try {
       const url = new URL(req.url, 'http://localhost');
       let path;
@@ -737,7 +748,28 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       fail(res, statusFor(err), error, code, id);
     }
   });
-  server.on('close', () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); });
+  const stopTimers = () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); };
+  server.on('close', stopTimers);
+  server.shutdown = ({ drainMs = SHUTDOWN_DRAIN_MS } = {}) => stopping ??= new Promise((resolve) => {
+    let cut = 0;
+    const bound = setTimeout(() => {
+      cut = inflight.size;
+      inflight.clear();
+      server.closeAllConnections();
+      settle();
+    }, drainMs);
+    settle = () => {
+      if (inflight.size) return;
+      settle = () => {};
+      clearTimeout(bound);
+      stopTimers();
+      server.closeAllConnections();
+      resolve({ workspaces: hub.close(), cut });
+    };
+    server.close();
+    for (const res of inflight) if (!res.headersSent) res.shouldKeepAlive = false;
+    settle();
+  });
   return server;
 }
 
