@@ -18,6 +18,7 @@ weave is, the quickstart, self-hosting and the FAQ.
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
 | [Screenshots](screenshots/) | Table, board, phone, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
 | [The grid](grid.md) | Which function owns each visible grid behaviour, which pure core holds its logic, and where a change goes |
+| [Region index](regions.md) | `public/app.js` and `src/engine.js` cut into regions of at most 200 lines, with each grid behaviour placed by line at the commit the architecture map pins |
 
 ## Elsewhere in the repo
 
