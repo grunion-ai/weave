@@ -137,6 +137,9 @@ export function revalidateApi(outcome, { method, path, ifNoneMatch }) {
   return etagMatches(ifNoneMatch, etag) ? { status: 304, headers: tagged, body: '' } : { status, headers: tagged, body };
 }
 
+const sized = (status, headers, body) => (status < 200 || status === 204 || status === 304 || typeof body?.pipe === 'function' || headers['Content-Length'] != null
+  ? headers : { ...headers, 'Content-Length': Buffer.byteLength(body ?? '') });
+
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
   || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
@@ -685,8 +688,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code, id) => {
     if (res.headersSent) return res.destroy();
-    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
-    res.end(JSON.stringify({ error, code, ...(id ? { id } : {}) }));
+    const body = JSON.stringify({ error, code, ...(id ? { id } : {}) });
+    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }));
+    res.end(body);
   };
   const inflight = new Set();
   let stopping = null;
@@ -703,7 +707,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
       if (elsewhere.size && ['GET', 'HEAD'].includes(req.method) && elsewhere.has(hostnameOf(String(req.headers.host ?? ''))) && !NOT_A_PAGE.test(path)) {
-        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store' }));
+        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store', 'Content-Length': 0 }));
         return res.end();
       }
       const supervised = !deployToken ? null
@@ -715,8 +719,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         const want = Buffer.from(`Bearer ${deployToken}`);
         if (given.length !== want.length || !timingSafeEqual(given, want)) return fail(res, 401, 'unauthorized', 'unauthorized');
         if (req.method !== 'GET') return fail(res, 405, 'GET only', 'method-not-allowed');
-        res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }));
-        return res.end(JSON.stringify(supervised()));
+        const answer = JSON.stringify(supervised());
+        res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(answer) }));
+        return res.end(answer);
       }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
       if (path === CSP_REPORT_PATH) {
@@ -739,7 +744,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       });
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
       const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-      res.writeHead(fresh.status, secure(req, headers));
+      res.writeHead(fresh.status, secure(req, sized(fresh.status, headers, body)));
       if (typeof body?.pipe === 'function') await pipeline(body, res);
       else res.end(body);
     } catch (err) {

@@ -289,7 +289,7 @@ const raw = (port, path) => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
-test('a JSON reply answers as before now that the server also pipes streams: same status, same headers, no Content-Length (Issue #1636)', async () => {
+test('a JSON reply answers as before now that the server also pipes streams: same status, same headers, and its Content-Length instead of chunks (Issue #1636, Issue #1645)', async () => {
   const w = new Weave();
   w.createSpace({ name: 'Ops' });
   w.createTable({ space: 'Ops', name: 'Task' });
@@ -301,7 +301,7 @@ test('a JSON reply answers as before now that the server also pipes streams: sam
     const { date, etag, connection, 'keep-alive': alive, 'x-weave-schema-version': schema, ...rest } = r.headers;
     assert.deepEqual(rest, {
       'content-type': 'application/json', 'cache-control': 'private, no-cache', vary: 'Accept-Encoding',
-      'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', 'transfer-encoding': 'chunked',
+      'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', 'content-length': String(Buffer.byteLength(r.body)),
     });
     assert.match(etag, /^W\/"[\w-]{22}"$/);
     assert.match(schema, /^[0-9a-f]+$/);
