@@ -18,7 +18,7 @@ import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
 import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, trialEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import { BillingUnavailable, PAID_ROLES } from './billing.js';
-import { ANONYMOUS, viewerFor, spaceRole, workspaceRole, topRole, withViewers, unrestricted } from './access.js';
+import { ANONYMOUS, RANK, viewerFor, spaceRole, workspaceRole, topRole, withViewers, unrestricted } from './access.js';
 import '../public/starter-core.js';
 import '../public/prefill-core.js';
 const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
@@ -836,12 +836,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     if (cap && cap !== 'architect') {
       const m2 = rx.method;
       const hit = matchRoute(m2, path);
-      const read = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
+      const open = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
         || (m2 === 'POST' && path === '/api/mcp' && !!role)
-        || (m2 === 'POST' && path === '/api/markdown')
-        || hit?.cmd.writes === 'none';
-      const schemaWrite = !read && (hit ? hit.cmd.writes === 'schema' : path === '/api/onboarding');
-      const sysM = !read && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
+        || (m2 === 'POST' && path === '/api/markdown');
+      const need = hit && hit.cmd.writes !== 'keystore' && !hit.cmd.http.across ? hit.cmd.minRole : open ? 'observer' : path === '/api/onboarding' ? 'architect' : 'editor';
+      const sysM = (hit ? hit.cmd.writes !== 'none' : !open) && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
       const sysTouch = sysM && (() => {
         try {
           const ref = sysM[0].startsWith('/api/entities/')
@@ -850,17 +849,13 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return !!ref?.system;
         } catch { return false; }
       })();
-      const observer = cap !== 'editor';
-      const cm = observer && !read && path.match(/^\/api\/entities\/([^/]+)\/comments(?:\/([^/]+?))?$/);
-      const ownComment = cm && (cm[2] == null ? m2 === 'POST' : m2 === 'DELETE' && (() => {
-        try { return weave.isActor(weave.getEntity(cm[1]).comments.find((c) => c.id === cm[2])?.author); } catch { return false; }
-      })());
+      const owns = !!hit?.cmd.owns?.(weave, hit.params);
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
-      if (observer && !read && !ownComment && !submits) {
+      if (RANK[cap] < RANK[need] && !owns && !submits) {
         if (unseated) return out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
-        return role ? deny(403, 'An observer may read and comment, nothing else') : deny(401, 'This workspace has accounts: send a token or sign in to write');
+        return deny(role ? 403 : 401, `${m2} ${path} needs an ${need} on this workspace${role ? `; your role here is ${cap}` : ': send a token or sign in'}`);
       }
-      if (cap === 'editor' && (schemaWrite || sysTouch)) return deny(403, 'This token cannot change the schema');
+      if (cap === 'editor' && sysTouch) return deny(403, 'This token cannot change the schema');
     }
     const accountOn = (w) => {
       if (oauth) return w === oauth.engine ? oauth.account : null;
@@ -1739,11 +1734,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/organization', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
         }
 
-        if (path.startsWith('/api/accounts') || path.startsWith('/api/invites') || (route === 'PATCH /api/workspace' && ('requireAuth' in (body ?? {}) || 'linkPreview' in (body ?? {})))) {
-          if (!mayAdminister(weave, role)) {
-            return deny(role ? 403 : 401, 'Managing accounts needs an architect token');
-          }
-        }
         if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
           if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
           const make = { invite: inviteEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
@@ -1765,21 +1755,15 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (path.startsWith('/api/keys')) {
           if (!role) return deny(401, 'Managing keys needs an account on this workspace');
           const localRole = roleOn(weave);
-          const km = /^\/api\/keys\/([^/]+)(\/reveal)?$/.exec(path);
-          const reveal = !!km?.[2] && rx.method === 'POST';
-          const target = route === 'POST /api/keys' ? body?.name
-            : km && !km[2] && rx.method === 'DELETE' ? decodeURIComponent(km[1]) : null;
-          const owns = !!localRole && target != null && weave.ownsKey(target);
-          if (!mayAdminister(weave, localRole) && !(reveal && localRole) && !owns) {
-            return deny(localRole ? 403 : 401, 'Managing keys needs an architect on this workspace');
-          }
           const keyed = matchRoute(rx.method, path);
+          const need = keyed?.cmd.minRole ?? 'architect';
+          const target = keyed?.cmd.name === 'key.set' ? body?.name : keyed?.cmd.name === 'key.delete' ? keyed.params.name : null;
+          const owns = !!localRole && target != null && weave.ownsKey(target);
+          if (!mayAdminister(weave, localRole) && !(RANK[localRole] >= RANK[need]) && !owns) {
+            return deny(localRole ? 403 : 401, `${rx.method} ${path} needs an ${need} on this workspace${localRole ? `; your role here is ${localRole}` : ''}`);
+          }
           if (keyed) { const r = httpReply(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams); return out(r.status, r.data, r.headers); }
           if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
-        }
-        if (path.startsWith('/api/shares') && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Share links are minted, listed, renewed and revoked by an architect');
-        if (/^\/api\/views\/[^/]+\/share$/.test(path) && ['POST', 'DELETE'].includes(rx.method) && !mayAdminister(weave, role)) {
-          return deny(role ? 403 : 401, 'Sharing a view, or ending its link, needs an architect');
         }
         if (route === 'POST /api/uploads') {
           return out(201, prepareUpload({ entity: body.entity, field: body.field, name: body.name, mime: body.mime, size: body.size, preview: body.preview, sameOrigin: true }));
@@ -1801,7 +1785,6 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
           return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
         }
-        if (route === 'POST /api/import' && !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Replacing the workspace needs an architect token');
         if (route === 'POST /api/bulk' && role === 'editor') {
           const { ids, op, ...params } = body ?? {};
           const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };

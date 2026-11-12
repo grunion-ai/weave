@@ -1943,7 +1943,7 @@ export const COMMANDS = [
     action: 'move',
     cli: { command: 'workspace', sub: 'move', positional: ['name'], args: (a, flags) => ({ name: a.name, position: Number(flags.position) }) },
     http: {
-      method: 'PATCH', path: '/api/workspaces/:ref',
+      method: 'PATCH', path: '/api/workspaces/:ref', across: true,
       args: (a, body) => {
         if (body?.position == null) throw new WeaveError('position is required: 0 is the first place in the rail', 'invalid');
         return { name: a.ref, position: body.position };
