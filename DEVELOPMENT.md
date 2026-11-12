@@ -1,27 +1,105 @@
 # Weave development
 
-GitHub is the canonical repository. Pull requests replace the Gerrit review queue.
-Agents work in isolated branches and run targeted checks locally. A ready pull
-request lands on main after a fast `Dev gate` and deploys to dev.weave.grunion.ai
-within a minute. The full test inventory runs on main. The `promote` workflow
-moves production to the newest main commit that passed both the `CI gate` and
-the dev soak.
+GitHub is the canonical repository. Agents work in isolated branches and run
+targeted checks locally. A ready pull request lands on main once its required
+checks pass and deploys to dev.weave.grunion.ai within a minute. The full test
+inventory runs on main. The `promote` workflow moves production to the newest
+main commit that passed both the `CI gate` and the dev soak.
+
+## The tracker
+
+The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
+the one canonical tracker. Its Development space holds the Issue, Feature and
+Release rows, its Handbook and Wiki spaces hold the guides, and its Quality
+space mirrors the test suites. No work step happens without first checking, and
+afterwards updating, the rows it touches:
+
+1. **Before work**, query `Development/Issue` and `Development/Feature` for rows
+   about the change, and read the `Handbook/Guide` and `Wiki/Article` pages
+   whose documented behaviour it might contradict.
+2. **After landing**, mark the Issue Fixed or the Feature Shipped with its
+   Milestone, and update every Guide or Article the change contradicts. Guide
+   pages are files in `src/handbook/` (AGENTS.md, "Self-documenting workspace").
+3. A bug found along the way gets its own Issue row, Severity set, even when the
+   same change fixes it.
+4. Issue and Feature rows are enriched by default. Every screenshot, file,
+   snippet or log given with the work goes in as a copy, attachments through the
+   files API and text inline in the Description; a relative path or an outside
+   link is not a copy. A screenshot pasted in chat is saved and attached when the
+   row is created.
+5. Every release is a `Development/Release` row with its notes written
+   (Releasing, below).
+6. The `Quality/Suite` and `Quality/Case` rows are generated from the test files
+   by `src/quality-mirror.js`; never edit them by hand. The main watcher
+   re-syncs the live workspace after every landing, `weave quality sync --data
+   <weave.db>` does it on demand and `weave quality check` reports drift.
+
+Read and write the canonical tracker over REST with an editor bearer token:
+
+```bash
+curl -s -X POST https://weave.grunion.ai/w/weave/api/tables/Issue/query \
+  -H "Authorization: Bearer $WEAVE_TRACKER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"where":[["Status","=","Open"]]}'
+```
+
+The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
+manifest sync and logs one line saying so, so edits made on the tracker are
+never overwritten by an older build's manifest. A canonical server never
+forwards bug reports.
+
+Every other server, the local main instance and dev included, holds a read
+copy: boot syncs its Development rows from `docs/development.json`, the manifest
+the last release exported. That file is the offline read path for an agent with
+no canonical tracker in reach. Search it as it is, or query a copy a server
+built from it (the local main instance keeps one at `~/.weave/weave.db`):
+
+```bash
+node bin/weave.js --data ~/.weave/weave.db query Issue --where '[["Name","contains","<words>"]]'
+```
+
+The manifest carries no public ids, so a read copy renumbers its rows, and its
+states are only as fresh as the last export. Treat a match there as a lead.
+Confirm the row on the canonical tracker and take from there the number that a
+commit subject or a changelog fragment names.
+
+Every other Grunion server sets `WEAVE_BUG_FORWARD_URL` to the workspace base
+(`https://weave.grunion.ai/w/weave`) and `WEAVE_BUG_FORWARD_TOKEN` to a bearer
+token for it. `POST /api/bug-report` then posts the report to
+`<url>/api/bug-report` with the instance's origin (`WEAVE_ORIGIN`, or the
+request host) as `instance`, which the canonical report shows as its Instance
+row. A forwarded report answers 201 with the canonical row and `forwardedTo`. A
+network error, a 10 s timeout or a non-2xx answer files the report locally as
+before, notes "Forward to <url> failed: <reason>" in it, and answers with
+`forward: "failed"` and `forwardError`. With either variable unset nothing is
+forwarded.
+
+Export reads the canonical tracker over HTTP:
+`node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
+The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) reads a
+local copy instead, and `--out <path>` writes somewhere other than
+`docs/development.json`.
 
 ## Daily flow
 
-1. Query the weave Development tracker before work and add the regression test
-   before the fix. Keep one concern per worktree and coordinate file ownership.
-2. Push the feature branch to origin early and open a GitHub pull request; the
-   `PR gate` runs the tests on GitHub-hosted runners. Record the tracker
-   reference, changes and test evidence. Never push directly to main. Local runs
-   through the shared test manager are optional, for debugging a failure. Read
-   the complete diff, including lifecycle, undo, CLI, API and MCP parity. Check
-   both themes for UI changes and update the Handbook where behavior changes.
-3. Self-review, then arm auto-merge: `gh pr merge --auto --squash`. Two checks
-   are required: `Dev gate` (syntax plus a boot health check, under a minute)
-   and `PR gate` (the `pr` workflow, under six minutes). The branch does not
-   have to be up to date with main.
-4. Fix a red `PR gate` by pushing again; a new push cancels the superseded run.
+1. Read the tracker before work (The tracker, above), keep one concern per
+   worktree and coordinate file ownership, and write the regression test before
+   the fix.
+2. Push the feature branch to origin early and open a GitHub pull request that
+   records the tracker reference, the changes and the test evidence. Never push
+   directly to main. Read the complete diff, including lifecycle, undo, CLI, API
+   and MCP parity. Check both themes for UI changes and update the Handbook
+   where behavior changes.
+3. Self-review, then arm auto-merge: `gh pr merge --auto --squash`.
+   Three checks are required: `Dev gate` (the `dev` workflow: syntax and a
+   boot health check, about a minute), `PR gate` (the `pr` workflow: the planned
+   unit and browser shards, ten to twenty minutes, longest when the diff touches
+   a monolith or a `test/lib/` helper) and `security scan` (the `security`
+   workflow: the secret, workflow, Dockerfile and code scanners, about a minute).
+   `Dev gate` and `PR gate` skip draft pull requests. The branch does not have
+   to be up to date with main.
+4. Fix a red check by pushing again; a new push cancels the superseded run. A
+   red `security scan` says in its log whether it found something in the code
+   or could not fetch a scanner (Verification, below).
 5. Every main push swaps dev.weave.grunion.ai to that commit. The dev supervisor
    boots the new commit beside the serving one, moves traffic only after its
    health check passes, and keeps the old worker serving when it fails. A failed
@@ -34,7 +112,7 @@ the dev soak.
    `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
    bearer token checks main at once, which the `Deploy dev` job calls).
    `WEAVE_TRACK=branch:<name>` follows another branch, such as a `production`
-   promotion branch, with the same `c<sha>` folders and deploy hook. Migrated draft PRs stay drafts until their own review finishes.
+   promotion branch, with the same `c<sha>` folders and deploy hook.
 6. After every switch the supervisor watches the new release for
    `WEAVE_WATCH_MS` (default ten minutes). The serving worker exiting, three
    failed `/api/health` polls in a row, or a 5xx share of proxied responses at
@@ -61,76 +139,211 @@ the dev soak.
    nothing on Railway, so the one-volume container restarts only for an image
    or supervisor change; workers move through the supervisor swap.
 
+## Running tests
+
+Local runs are targeted. `npm test -- --targeted <file...>` runs the tests for
+the behaviour you changed before you commit, and reproduces a red shard.
+CI owns full verification: the `PR gate` runs the planned shards on every ready
+pull request and the `CI gate` runs the whole inventory on main (Verification,
+below). `npm test` with no file runs the whole
+inventory too, which a release candidate or a change to the test manager
+itself may want. Never invoke bare `node --test`; an empty selection fails
+before Node starts. File lists must name existing files; use
+`--test-name-pattern='pattern'` or its separate-value form to filter test names.
+
+| Operation | Command |
+| --- | --- |
+| Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
+| Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
+| Run affected selection | `npm test -- --affected --base=HEAD` |
+| Queue and browser status | `npm test -- --status` |
+| Cancel one queued or active job | `npm test -- --cancel=<id>` |
+| Stop owned jobs and browser | `npm test -- --stop` |
+| Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
+
+Affected selection includes staged, unstaged and untracked files relative to the
+base. Only changed tests narrow it; source, UI, configuration and unknown paths
+select the whole inventory, and the printed plan explains the decision.
+
+### Browser suites
+
+A suite that launches a browser imports `test/lib/browser.mjs` or ends in
+`-browser.test.mjs`; the manager refuses a browser to a unit-only job. Browser
+assertions use `styleOf`, `settled` or `atRest` from `test/lib/browser.mjs`,
+never fixed sleeps. `settled` reads the animations running right now, so it
+answers at once when the interaction has cleared an inline transform and the
+transition it starts has not been resolved yet. `atRest(locator)` is the wait
+for that: it holds until the element has no running animation, its transform is
+identity and its box has stayed put for a frame (Issue #901). A case runs in
+both themes only when it reads paint (Theme loops, below), and
+`WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
+
+Browser suites import `playwright` at the version `.github/test-tools/package.json`
+pins. CI installs it with `npm ci --ignore-scripts --prefix .github/test-tools`
+and links `node_modules` to `.github/test-tools/node_modules`. A worktree that
+runs browser suites locally needs the same link; without one, run unit files
+with `--targeted` and leave the browser lane to CI.
+
+### Scratch state
+
+A test that needs a scratch directory calls `tempDir(prefix)` from
+`test/lib/temp.mjs`, which removes every directory it opened when the process
+exits. `test/temp-dirs.test.mjs` refuses a bare `mkdtempSync(join(tmpdir(), ...))`
+anywhere under `test/`, because a suite run outside the manager keeps the
+caller's own `TMPDIR` and leaves those directories on the disk (Issue #1083).
+
+Each lane is spawned with `WEAVE_KEYSTORE` and `WEAVE_DATA` pinned into that
+lane's own temp directory, so a test that builds a `Weave` without a keystore
+path or runs the CLI without `--data` lands in the sandbox instead of the
+developer's `~/.weave` (Issue #949). `test/test-runner.test.mjs` fails when a
+lane resolves either default under the real home directory.
+
+### Ledgers
+
+Eleven JSON files in `test/` hold what a gate tolerates or expects today, and
+each one moves only in the change that earns the move.
+
+| Ledger | Gate | Rule |
+| --- | --- | --- |
+| `test/a11y-baseline.json` | `test/a11y-browser.test.mjs` | Axe violations tolerated today, each naming the Issue that tracks it. It only shrinks: a new violation fails, and so does an entry that no longer reproduces |
+| `test/byte-budget.json` | `test/byte-budget.test.mjs` | Bytes each served file costs, gzip and brotli. Over budget fails, a budget more than a tenth above the size fails until it is lowered, and a raise writes its reason under `raised[...]` |
+| `test/click-budget.json` | `test/click-budget-browser.test.mjs` | Clicks per journey, ratcheting down (Click budget) |
+| `test/cutoff-baseline.json` | `test/cutoff-gate-browser.test.mjs` | Cut-off counts per platform, a ceiling that only comes down (Cut-off loop) |
+| `test/feedback-budget.json` | `test/feedback-budget-browser.test.mjs` | Time to the first visible answer, read on the trend lane (Feedback budget) |
+| `test/flicker-fixed.json` | `test/flicker-gate-browser.test.mjs` | Fixed flicker fingerprints that must stay gone (Flicker loop) |
+| `test/onboarding-steps.json` | `test/onboarding-gate-browser.test.mjs` | Pages, sign-ins, consents and clicks per profile. It never goes up, and a run that got shorter lowers it in the same change |
+| `test/render-budget.json` | `test/render-budget-browser.test.mjs` | Renders per journey, read on the trend lane (Render budget) |
+| `test/touch-baseline.json` | `test/phone-touch-baseline-browser.test.mjs` | Phone hit areas under 44 px per platform. A recorded one may not shrink, and a new one is held to 44 px (Issue #1712) |
+| `test/touch-held.json` | `test/phone-touch-targets-browser.test.mjs` | Offenders of the held touch states, one entry per hold in `test/lib/states.mjs` (State catalog) |
+| `test/vitals-budget.json` | `test/vitals-budget-browser.test.mjs` | LCP, CLS and INP per journey, read on the trend lane (Vitals budget) |
+
+### Shared test manager
+
+Pass several filenames to batch related regression checks. Every CLI request
+goes to one per-user manager shared across worktrees. Selections of unit suites
+only run at once and in parallel, within the admission limits below; a
+selection with any browser suite waits for the one browser slot, which runs one
+job at a time. Each job runs `scripts/test.mjs`'s two lanes (unit suites at
+node's default, browser suites at half the cores). A persistent browser server
+supplies fresh Playwright connections and contexts to each browser suite;
+closing one suite cannot close another suite's contexts. Direct browser-harness
+callers also lease the slot. `npm test -- --status` lists the slot holder under
+`active`, the unit-only jobs under `unit` and waiting jobs, with their reason,
+under `queued`. Use the CLI for predictable whole-job admission, and cancel
+only your own job.
+
+The manager hashes the paths a selection reaches at enqueue, start and finish: the
+selected tests, the code and config paths the sheriff counts as reaching (`src/`,
+`public/`, `bin/`, `test/`, `scripts/`, `agents/`, `tools/`, the workflows, the
+Dockerfile and root config files), and any other top-level path that a selected
+test, a module it loads or a script it names mentions. A changed file invalidates a
+result only when it sits on one of those paths. Results are never cached, and duplicate
+requests remain separate jobs. Keep those paths unchanged while tests run. An
+agent may assess scope or propose redundant-test removal, but cannot omit required
+verification. Existing `run()` imports are the low-level synchronous fixture API;
+agents submit work through the CLI.
+
+The browser recycles between jobs after 20 browser jobs or 15 minutes, after a
+browser-slot job fails or is cancelled, and when resource pressure blocks admission
+while the slot is free. The
+manager exits after five idle minutes. It starts automatically on the next request.
+Browser versions and browser kinds use separate lifetimes. `WEAVE_BROWSER=webkit`
+uses the same queue. No npm dependency or launchd job is installed.
+
+Admission waits below 10 GB available disk, below 10% available memory, or above a
+one-minute load average of twice the CPU count. Status and waiting messages name
+the reason. An admitted job times out after one hour by default, the gate's 3600 s
+cap, which is also the maximum `--timeout`. Queue waiting expires after
+`WEAVE_TEST_QUEUE_WAIT_MS` (default 30 minutes). A job that is never admitted, because
+its wait ran out or the manager stopped first, prints
+`# TEST MANAGER NOT ADMITTED: <reason>` and exits 75: its tests did not run, so a gate
+skips its vote rather than rejecting. A disconnect cancels its job. A responsive
+supervisor reaps the owned process group if the manager dies. Job temp directories
+are removed after process cleanup; stale manager-owned temp directories older than
+24 hours are pruned on startup. Other agents' files and processes are untouched.
+
+`WEAVE_TEST_MIN_FREE_GB`, `WEAVE_TEST_MIN_MEMORY_PERCENT`, `WEAVE_TEST_MAX_LOAD` and
+`WEAVE_TEST_QUEUE_WAIT_MS` override admission for a deliberately sized CI machine, or
+for a caller that is already serial, such as a hosted CI runner. A raw `node --test`
+browser suite sends them with its lease. Keep the defaults for ad hoc runs on this
+shared workstation. One process holds one browser lease however many times its suites
+call `launch()`, and releases it when the last connection closes.
+`WEAVE_TEST_MANAGER_DIR` selects a private socket directory for isolated manager
+integration tests; ordinary jobs use the shared default, which is keyed on a hash of
+`scripts/test-manager.mjs`. Worktrees on the same manager code share one queue; a
+worktree with changed manager code gets its own manager, and the old one exits after
+five idle minutes. `--stop` cancels active work, so inspect `--status` first.
+
 ## Verification
 
 The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
-four shards, plus the browser tests the diff maps to. A diff that touches
-`public/app.js`, `public/style.css`, `src/engine.js`, `src/routes.js`,
-`src/commands.js` or a `test/lib/` file that a browser test imports, directly or
-through another helper, maps to every gating browser test, spread over eight
-shards as on main and weighed by file size (Feature #368). The plan finds those
-helpers by following each browser test's import statements, so there is no list
-to keep up to date. Any other diff keeps the name and reach selection, sharded
-at about twenty files each. A changed browser test runs itself. Any other changed
-file maps to browser tests named for its module (`public/chip-core.js` maps to
-`test/chip-*-browser.test.mjs`) or whose source cites its file name. The diff
-also maps by what it names: the plan reads the changed blocks with
-`git diff -W`, takes every dashed or slashed literal of six characters or more
-out of them (`sheet-grip`, `/api/tables/subtotals`), and adds each browser test
-whose source names one. A literal more than `REACH_SPREAD` browser tests name
-is too common to place a change, so it is dropped, and the reached tier stops
-at `REACH_CAP` files beyond the name matches, which holds the gate inside its
-twenty-minute job timeout. A change to any other public or server module
-therefore runs the journeys that name the DOM classes and routes it touches,
-which file names alone never reach (Issue #1075). A fixed smoke set (`SMOKE` in
-`scripts/ci-test.mjs`) always runs, so a diff nothing maps to still boots the
-app in a browser. `PR gate` succeeds only
-when every shard succeeded and `pr-aggregate` finds executed evidence for every
-planned file at the exact commit. A newer push to the same pull request cancels
-the running one. Every browser job installs through `node scripts/ci/install-browsers.mjs
-<browser...>`, the one copy the `pr`, `tests`, `budgets` and dev soak workflows
-share. It writes an apt drop-in (twenty-second acquire timeout, three retries, a
-300-second `DPkg::Lock::Timeout` so an attempt outlasts the runner's own
-boot-time `apt-get`, Issues #1230, #1141, #1107), installs the browsers from the
-`~/.cache/ms-playwright` cache, and then asks Playwright's own
-`install-deps --dry-run` whether every system package is present. When one is
-missing it installs the `.deb` files kept in `~/.cache/weave-apt` with one
-`dpkg -i`, which never reaches an Ubuntu mirror and waits up to 300 seconds
-for a dpkg lock the runner's own `apt-get` holds. `apt-get install
---no-download` of the same files is the wrong tool: it re-resolved them against
-the image's package lists and asked to fetch (PR run 42654813034). That
-cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the pinned
-`PLAYWRIGHT_VERSION` and the browser set, so a new runner image never installs
-another image's packages. Only when the cache is empty, or leaves a dependency
-missing, does the script run `playwright install --with-deps` against the
-mirror: three attempts with `dpkg --configure -a` between them, reading its
-result, after which it copies the downloaded packages into the cache for the
-next run. Before Issue #1438 every browser job took that mirror path, and a slow
-mirror hour timed the step out at 14 minutes on main 13 times between
-2026-11-05 and 2026-11-09. Every path ends on the `install-deps --dry-run`
-check, so a browser or system package that is still absent fails the step
-loudly, and the log line says no test ran. The only deadline is the step's own
-`timeout-minutes`, 12 on the `pr` workflow and 14 elsewhere; an inner
-per-attempt `timeout` was removed on 2026-11-04 because it killed attempt one
-mid-download (Issue #1347). `test/ci-install-browsers.test.mjs` and
-`test/ci-test.test.mjs` hold these rules.
+four shards, plus the browser tests the diff maps to.
 
-When a shard dies before any test records a result, the sheriff has no file to
-name, so it opens or appends to a row named after the shard. That line names the
-step the job died in, so an install timeout and a shard that crashed in its test
-step no longer read the same, and an install failure never adds a line to a
-per-file flake row (Issue #1353). The step name comes off the `steps` the jobs
-API already returns with each job, so it costs no extra call.
+- A diff that touches `public/app.js`, `public/style.css`, `src/engine.js`,
+  `src/routes.js`, `src/commands.js` or a `test/lib/` file that a browser test
+  imports, directly or through another helper, maps to every gating browser
+  test, spread over eight shards as on main and weighed by file size (Feature
+  #368). The plan finds those helpers by following each browser test's import
+  statements, so there is no list to keep up to date.
+- Any other diff keeps the name and reach selection, sharded at about twenty
+  files each. A changed browser test runs itself. Any other changed file maps to
+  browser tests named for its module (`public/chip-core.js` maps to
+  `test/chip-*-browser.test.mjs`) or whose source cites its file name.
+- The diff also maps by what it names. The plan reads the changed blocks with
+  `git diff -W`, takes every dashed or slashed literal of six characters or more
+  out of them (`sheet-grip`, `/api/tables/subtotals`), and adds each browser
+  test whose source names one, so a change to a public or server module runs
+  the journeys that name the DOM classes and routes it touches (Issue #1075). A
+  literal more than `REACH_SPREAD` browser tests name is too common to place a
+  change and is dropped, and the reached tier stops at `REACH_CAP` files beyond
+  the name matches, which holds the gate inside its twenty-minute job timeout.
+- A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) and the onboarding
+  inventory (`ONBOARDING`) always run, so a diff nothing maps to still boots the
+  app in a browser.
+
+`PR gate` succeeds only when every shard succeeded and `pr-aggregate` finds
+executed evidence for every planned file at the exact commit. A newer push to
+the same pull request cancels the running one.
+
+Every browser job installs through `node scripts/ci/install-browsers.mjs
+<browser...>`, the one copy the `pr`, `tests`, `budgets` and dev soak workflows
+share. It installs the browsers from the `~/.cache/ms-playwright` cache and then
+asks Playwright's own `install-deps --dry-run` whether every system package is
+present. A missing package installs from the `.deb` files kept in
+`~/.cache/weave-apt` with one `dpkg -i`, which never reaches an Ubuntu mirror
+and waits up to 300 seconds for a dpkg lock the runner's own `apt-get` holds
+(Issue #1438). `apt-get install --no-download` of the same files is the wrong
+tool: it re-resolves them against the image's package lists and asks to fetch.
+The cache is keyed on the runner image (`ImageOS` and `ImageVersion`), the
+pinned `PLAYWRIGHT_VERSION` and the browser set, so a new runner image never
+installs another image's packages. Only when the cache is empty, or leaves a
+dependency missing, does the script run `playwright install --with-deps`
+against the mirror, behind an apt drop-in (twenty-second acquire timeout, three
+retries, a 300-second `DPkg::Lock::Timeout` that outlasts the runner's own
+boot-time `apt-get`; Issues #1230, #1141, #1107): three attempts with `dpkg
+--configure -a` between them, after which the downloaded packages go into the
+cache for the next run. Every path ends on the `install-deps --dry-run` check,
+so a browser or system package that is still absent fails the step loudly, and
+the log line says no test ran. The step's own `timeout-minutes` is the only
+deadline, with no inner per-attempt `timeout` (Issue #1347).
+`test/ci-install-browsers.test.mjs` and `test/ci-test.test.mjs` hold these
+rules.
+
+A shard that dies before any test records a result leaves the sheriff no file
+to name, so it opens or appends to a row named after the shard. That line names
+the step the job died in, read off the `steps` the jobs API already returns with
+each job, so an install timeout and a shard that crashed in its test step read
+differently, and an install failure never adds a line to a per-file flake row
+(Issue #1353).
 
 The `security scan` check downloads gitleaks, actionlint and hadolint from the
 GitHub release CDN, and the release workflow downloads the MCP publisher the
-same way. Each download retries across 120 seconds
-(`--retry 6 --retry-delay 20`), because a four-attempt budget spread over six
-seconds fit entirely inside one 504 blip on 2026-11-09 and, since the check is
-required, took every pull request in the repository down with it (Issue #1490).
-The three scanner downloads run before the first checksum under an ERR trap, so
-a scanner that cannot be fetched is annotated as a network failure instead of
+same way. Each download retries across 120 seconds (`--retry 6 --retry-delay
+20`), long enough to outlast one CDN error burst, because a failed download of a
+required check stops every pull request in the repository (Issue #1490). The
+three scanner downloads run before the first checksum under an ERR trap, so a
+scanner that cannot be fetched is annotated as a network failure instead of
 reading as a finding in the code, and a bad SHA256 pin is still reported as
 itself. `test/security/workflows.test.mjs` holds that floor for every
 release-asset download in every workflow.
@@ -139,73 +352,36 @@ The `tests` workflow runs the full inventory on every main push. Its `plan` job
 downloads the `ci-results` artifacts of the most recent successful main run and
 weights each test file by the `duration_ms` the reporter recorded for it, so the
 eight browser shards balance on measured runtime and all ten shards start at
-once (`max-parallel: 10`). Four browser shards ran 15 to 19 minutes each by
-2026-11-08 and six of seven retried main runs that week were a shard killed at
-the test manager's 20-minute job timeout; eight bring each to about nine
-(Issue #1351); a file with no recorded
-duration keeps the byte-size weight, and a run with no usable history (expired
-artifacts, a first run, a download failure) plans entirely by byte size. Byte
-size is anti-correlated with runtime for the worst offenders, because the
-slowest browser files are small files that loop:
-`test/render-budget-browser.test.mjs` is 1,682 bytes and ran 164 seconds in run
-41959983156, where `test/setup-flows-browser.test.mjs` is 52,749 bytes and ran
-119. On that run's inventory the byte-weighted plan gave the browser shards
-1,171, 1,107, 1,939 and 1,622 seconds of work; the duration-weighted plan gives
-them 1,460 each (Issue #966). The shards and the `CI gate` rebuild the same
-manifest from the same weights: the plan job publishes what it downloaded as
-the run's `plan-history` artifact and both take their copy from there, so a
-divergence can only come from a failed download, and `aggregate` then refuses
-the shard whose `manifest` digest does not match rather than passing a plan
-nobody ran. Every step that reaches for the durations tolerates their absence in
-the shell rather than through `continue-on-error`, which a killed step never
-reaches. Its final
-`CI gate` succeeds only after every required job succeeds, and a release can
-only publish a main commit whose `CI gate` succeeded. Browser engines are installed on
-the browser lanes only, in both workflows: a unit shard opens no browser, and the
-two unit shards of run 39439094335 spent 46 and 37 seconds downloading Chromium
-and WebKit they never used (Issue #967). `test/ci-test.test.mjs` holds the lane
-condition and refuses a unit-lane test that reaches a browser at load.
-A missing browser or skipped required browser suite fails the gate. Parallel CI
-jobs have isolated runners and test data. Superseded branch runs are canceled.
-Each main push holds its own concurrency lane, keyed by the commit under test.
-A shared lane keeps one pending run at a time, so the next merge cancelled the
-gate queued behind it: eight merges in the half hour from 18:32Z on 2026-10-25
-left nine consecutive main gates cancelled and the deploy watcher two hours
-behind the tip (Issue #1181). A merge rate above the gate's nineteen-minute
-runtime now costs parallel runs instead of a stalled deploy.
+once (`max-parallel: 10`; Issues #1351, #966). A file with no recorded duration
+keeps the byte-size weight, and a run with no usable history (expired
+artifacts, a first run, a download failure) plans entirely by byte size, which
+balances poorly because the slowest browser files are small files that loop.
+The shards and the `CI gate` rebuild the same manifest from the same weights:
+the plan job publishes what it downloaded as the run's `plan-history` artifact
+and both take their copy from there, so a divergence can only come from a failed
+download, and `aggregate` then refuses the shard whose `manifest` digest does
+not match rather than passing a plan nobody ran. Every step that reaches for the
+durations tolerates their absence in the shell rather than through
+`continue-on-error`, which a killed step never reaches. The final `CI gate`
+succeeds only after every required job succeeds, and a release can only publish
+a main commit whose `CI gate` succeeded.
 
-Local runs are for debugging: `npm test -- --targeted <file...>` reproduces a
-red shard, and CI owns verification. Never invoke bare `node --test`; empty
-selections must fail before Node starts. The shared test manager serializes
-local browser work across worktrees.
-Use `npm test -- --status` to inspect the queue and cancel only your own job.
-Browser assertions use `styleOf`, `settled` or `atRest` from
-`test/lib/browser.mjs`, never fixed sleeps. `settled` reads the animations
-running right now, so it answers at once when the interaction has cleared an
-inline transform and the transition it starts has not been resolved yet.
-`atRest(locator)` is the wait for that: it holds until the element has no
-running animation, its transform is identity and its box has stayed put for a
-frame (Issue #901).
-`WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
+Browser engines are installed on the browser lanes only, in both workflows,
+since a unit shard opens no browser (Issue #967). `test/ci-test.test.mjs` holds
+the lane condition and refuses a unit-lane test that reaches a browser at load.
+A missing browser or skipped required browser suite fails the gate. Parallel CI
+jobs have isolated runners and test data, and superseded branch runs are
+cancelled. Concurrency lanes are keyed by the commit under test, one per main
+push: the next merge never cancels the gate queued behind it, and merging faster
+than the gate runs costs parallel runs instead of a stalled deploy
+(Issue #1181).
+
 A file that fails and then passes on its in-shard retry is recorded, not only
 printed. `scripts/test.mjs` writes it to the shard result's `retried` list, the
 CI and PR gates name it in their aggregate and annotate the run, and after every
 main run the sheriff workflow's `flakes` job appends a line to that file's
 `Error: <test file> flakes on main` row (Issue #1671). A row that keeps growing
 is a test to fix.
-A test that needs a scratch directory calls `tempDir(prefix)` from
-`test/lib/temp.mjs`, which removes every directory it opened when the process
-exits. `test/temp-dirs.test.mjs` refuses a bare
-`mkdtempSync(join(tmpdir(), ...))` anywhere under `test/`, because a suite run
-outside the manager, such as a bare `node --test` or a browser suite that only
-takes a browser lease, keeps the caller's own `TMPDIR` and leaves those
-directories on the disk (Issue #1083).
-
-Each lane is spawned with `WEAVE_KEYSTORE` and `WEAVE_DATA` pinned into that
-lane's own temp directory, so a test that builds a `Weave` without a keystore
-path or runs the CLI without `--data` lands in the sandbox instead of the
-developer's `~/.weave` (Issue #949). `test/test-runner.test.mjs` fails when a
-lane resolves either default under the real home directory.
 
 ### Sheriff
 
@@ -215,9 +391,9 @@ the rerun's `CI gate` conclusion decides guilt, and only `success` and `failure`
 count: a rerun that ends `cancelled`, `timed_out` or `skipped`, or whose
 `CI gate` job never ran, carries no verdict (Issue #1139). The sheriff reruns
 the failed jobs once more and, with still no verdict, skips the run and leaves
-the next red main run to judge that commit. The `tests` concurrency group
-cancels a rerun whenever a newer main commit pushes, and the cancelled rerun
-used to read as a second red.
+the next red main run to judge that commit, since the `tests` concurrency
+group cancels a rerun whenever a newer main commit pushes and a cancelled
+rerun is no second red.
 
 A green rerun is a flake: it appends a line to the Issue row
 `Error: <test file> flakes on main` and stops. Each file keeps one flake row: an
@@ -256,9 +432,7 @@ more `tests` dispatch at that green commit, inside the same four runs; the
 single-commit range is the usual case (Issue #1671). A parent that goes red on
 the same test file clears every commit in the range, and the sheriff
 escalates. Red on other files is no evidence: escalate. A green parent, or a
-probe that reaches no verdict, leaves the revert to the rerun's evidence.
-Revert PR #927 took PR #923 off main for a test that had failed once and
-passed on its retry in the green run just before. A revert that took no probe,
+probe that reaches no verdict, leaves the revert to the rerun's evidence. A revert that took no probe,
 as a dry run plans it, says so in its subject, so main's history shows how much
 evidence the revert carried. It never reverts a revert, never acts on a
 culprit that already has a revert branch, never pushes to main and never
@@ -328,19 +502,35 @@ page. Without it the smoke covers the anonymous read surface only. Run one smoke
 
 ## Releasing
 
-A release starts with a notes-bearing `Development/Release` row in the canonical
-weave workspace on `:4400`: name `v<version>`, Date, Commit, Fixes and Ships relations,
-and Description. Preserve this tracker contract before bumping `package.json`.
+A release lands in this order:
 
-```bash
-node scripts/export-development.mjs
-node scripts/changelog-fold.mjs
-node scripts/architecture.mjs
-```
+1. Write the notes-bearing `Development/Release` row on the canonical tracker:
+   name `v<version>`, Date, Commit, `Fixes` relations to Issues, `Ships`
+   relations to Features, and the release notes as its Description. The export
+   refuses a package version with no such row, and
+   `test/development-sync.test.mjs` refuses the build.
+2. Bump `package.json`.
+3. Export the tracker into `docs/development.json`:
+   `node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
+4. Run `node scripts/changelog-fold.mjs`. It moves every `changelog.d/` fragment
+   under `## v<version>` in CHANGELOG.md, deletes the fragments and stamps the
+   version into `server.json`.
+5. Run `node scripts/architecture.mjs` to re-pin the architecture map.
+6. Land the version, the exported manifest, the folded changelog and the map in
+   one pull request.
+7. The successful main `tests` run publishes the immutable `v<version>` tag and
+   the GitHub Release carrying that CHANGELOG section, through the
+   `release` workflow (below).
+8. Write the merged commit onto the Release row (below).
+9. Whoever landed the bump confirms that
+   `gh release list -R grunion-ai/weave --limit 1` names it as Latest.
 
-The fold also stamps the version into `server.json`. After the `publish` job tags
-the release, `release.yml` pushes `ghcr.io/grunion-ai/weave:<version>` and
-`:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
+The fragments come from each change (CONTRIBUTING.md, "The rules"); only a
+version bump edits CHANGELOG.md, and the changelog and development-sync tests
+enforce both contracts.
+
+After the `publish` job tags the release, `release.yml` pushes
+`ghcr.io/grunion-ai/weave:<version>` and `:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
 `mcp-publisher` signed in through GitHub OIDC.
 
 Once the version PR is merged, write the merged commit onto the Release row:
@@ -356,38 +546,6 @@ commit. A release whose notes are lost by its own run is caught by that run
 (Issue #1329). An older row that has lost its notes stops nothing: the export
 names it, keeps the notes `docs/development.json` already carries, and carries
 on.
-
-### Canonical tracker
-
-The `weave` docs workspace on production, https://weave.grunion.ai/w/weave, is
-the one canonical tracker for Development/Issue, Feature and Release rows. Every
-other server holds a read copy that boot syncs from `docs/development.json`.
-
-- The canonical server sets `WEAVE_TRACKER_CANONICAL=1`. Boot then skips the
-  manifest sync and logs one line saying so, so edits made on the tracker are
-  never overwritten by an older build's manifest. A canonical server never
-  forwards bug reports.
-- Every other Grunion server sets `WEAVE_BUG_FORWARD_URL` to the workspace base
-  (`https://weave.grunion.ai/w/weave`) and `WEAVE_BUG_FORWARD_TOKEN` to a bearer
-  token for it. `POST /api/bug-report` then posts the report to
-  `<url>/api/bug-report` with the instance's origin (`WEAVE_ORIGIN`, or the
-  request host) as `instance`, which the canonical report shows as its Instance
-  row. A forwarded report answers 201 with the canonical row and `forwardedTo`.
-  A network error, a 10 s timeout or a non-2xx answer files the report locally
-  as before, notes "Forward to <url> failed: <reason>" in it, and answers with
-  `forward: "failed"` and `forwardError`. With either variable unset nothing is
-  forwarded.
-- Export reads the canonical tracker over HTTP:
-  `node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
-  The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) still
-  works, and `--out <path>` writes somewhere other than `docs/development.json`.
-
-Land the version, exported manifest, folded changelog and architecture map in one
-PR. Between releases every change adds its own
-`changelog.d/<short-slug>-<Issue or Feature number>.md`; only a version bump edits
-CHANGELOG.md. The fold sorts and deletes fragments. A refactor or documentation
-change without a release bullet carries `No-changelog: <reason>` in its commit.
-The changelog and development-sync tests enforce these contracts.
 
 Releases publish automatically after successful same-repository main push `tests`
 runs and never move production. Retry publication by dispatching the
@@ -424,8 +582,8 @@ reads main itself instead of the event's SHA. The hourly schedule stays as the
 recovery path: a scheduled run acts when the newest `production` deployment is
 at least the repository variable `PROMOTION_EVERY_HOURS` (default 2) less half
 an hour old. GitHub delivers scheduled runs late or drops them under load, so
-that gate counts from the last promotion and never from the clock hour (Issue
-#1493). When the pick was committed to main more than `PROMOTION_EVERY_HOURS`
+that gate counts from the last promotion and never from the clock hour
+(Issue #1493). When the pick was committed to main more than `PROMOTION_EVERY_HOURS`
 ago, the promote job writes one alert line naming the lag before it moves
 production, since the completion triggers should have taken it sooner. The
 `promotion` concurrency group keeps one run at a time. `workflow_dispatch` acts
@@ -475,8 +633,26 @@ gh api repos/grunion-ai/weave/branches/production --jq .commit.sha
 curl -fsS https://weave.grunion.ai/api/health
 ```
 
-Never hand-deploy Railway after a routine landing. Container redeployment is
-reserved for Node, Dockerfile or supervisor changes.
+Never hand-deploy Railway after a routine landing, and never wait for a release
+to reach production: releases publish tags, images and the registry entry and
+never move it. Redeploy the container only for a
+Node, `Dockerfile` or `src/supervisor.js` change. A platform redeploy restarts
+the container, drops requests for up to a minute and resets the supervisor.
+
+## Local instance
+
+The main instance on `:4400` serves landed code from `~/.weave-serve`, which
+follows main once main's `CI gate` succeeds, and keeps every workspace in
+`~/.weave/`, one `.db` per workspace at `/w/<name>/`. Its `weave` workspace is
+a read copy of the tracker (The tracker, above), and its REST routes ask for a
+sign-in.
+
+A demo, showcase or example space for shipped behaviour goes there. Build it in
+a scratch `.db`, checkpoint its WAL, then drop the file into `~/.weave/`; the
+hub adopts it on the first `/w/<name>/` request, with no restart. Never start a
+second `weave serve` on another port for a demo. A scratch instance on its own
+port exists only to verify unlanded working-tree code, which `:4400` cannot
+show, and stops when that verification ends.
 
 ## Architecture map
 
@@ -487,93 +663,9 @@ commit named in `meta.repository.revision`. `test/architecture-map.test.mjs` goe
 when a cited file moves or is deleted, when a new `src/` or `bin/` module is not named
 on the map, or when the HTML no longer matches the JSON. The change that trips it
 updates the JSON and runs `node scripts/architecture.mjs`, which re-pins HEAD and
-re-renders. Release step 5 re-pins it too, so every tagged version carries a map of the
+re-renders. Releasing step 5 re-pins it too, so every tagged version carries a map of the
 code it shipped. archify is a dev tool, found at `$ARCHIFY` or
 `~/.claude/skills/archify/bin/archify.mjs`; weave never depends on it.
-
-## Retired Gerrit queue
-
-Gerrit and its review worker are retired from the landing path. Preserve their
-repositories and open-change exports until migrated draft PRs are reconciled.
-Do not run the old mirror or release publisher alongside GitHub delivery. Retained
-Gerrit refs are historical recovery material, not an authority for new landings.
-
-## Shared test manager
-
-Use `npm test` for full verification and pass several filenames to batch related
-regression checks. Every CLI request goes to one per-user manager shared across
-worktrees. Selections of unit suites only run at once and in parallel, within the
-admission limits below; a selection with any browser suite waits for the one browser
-slot, which runs one job at a time. Each job runs `scripts/test.mjs`'s two lanes (unit
-suites at node's default, browser suites at half the cores). A persistent browser
-server supplies fresh Playwright connections and contexts to each browser suite;
-closing one suite cannot close another suite's contexts. Direct browser-harness
-callers also lease the slot. A suite that launches a browser imports
-`test/lib/browser.mjs` or ends in `-browser.test.mjs`; the manager refuses a browser
-to a unit-only job. `npm test -- --status` lists the slot holder under `active`, the
-unit-only jobs under `unit` and waiting jobs, with their reason, under `queued`. Use
-the CLI for predictable whole-job admission.
-
-| Operation | Command |
-| --- | --- |
-| Batch targeted regressions | `npm test -- --targeted test/formula.test.mjs test/service.test.mjs` |
-| Inspect affected selection | `npm test -- --affected --base=HEAD --plan` |
-| Run affected selection | `npm test -- --affected --base=HEAD` |
-| Landing check | GitHub Actions `dev` runs `Dev gate` on ready pull requests |
-| Full verification | GitHub Actions `tests` runs every suite on main; `CI gate` reports the result |
-| Queue and browser status | `npm test -- --status` |
-| Cancel one queued or active job | `npm test -- --cancel=<id>` |
-| Stop owned jobs and browser | `npm test -- --stop` |
-| Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
-
-Affected selection includes staged, unstaged and untracked files relative to the
-base. Only changed tests narrow it; source, UI, configuration and unknown paths
-require the full suite. The
-printed plan explains the decision. Full landing verification remains mandatory.
-An empty explicit selection fails. File lists must name existing files; use
-`--test-name-pattern='pattern'` or its separate-value form to filter test names.
-
-The manager hashes the paths a selection reaches at enqueue, start and finish: the
-selected tests, the code and config paths the sheriff counts as reaching (`src/`,
-`public/`, `bin/`, `test/`, `scripts/`, `agents/`, `tools/`, the workflows, the
-Dockerfile and root config files), and any other top-level path that a selected
-test, a module it loads or a script it names mentions. A changed file invalidates a
-result only when it sits on one of those paths. Results are never cached, and duplicate
-requests remain separate jobs. Keep those paths unchanged while tests run. An
-agent may assess scope or propose redundant-test removal, but cannot omit required
-verification. Existing `run()` imports are the low-level synchronous fixture API;
-agents submit work through the CLI.
-
-The browser recycles between jobs after 20 browser jobs or 15 minutes, after a
-browser-slot job fails or is cancelled, and when resource pressure blocks admission
-while the slot is free. The
-manager exits after five idle minutes. It starts automatically on the next request.
-Browser versions and browser kinds use separate lifetimes. `WEAVE_BROWSER=webkit`
-uses the same queue. No npm dependency or launchd job is installed.
-
-Admission waits below 10 GB available disk, below 10% available memory, or above a
-one-minute load average of twice the CPU count. Status and waiting messages name
-the reason. An admitted job times out after one hour by default, the gate's 3600 s
-cap, which is also the maximum `--timeout`. Queue waiting expires after
-`WEAVE_TEST_QUEUE_WAIT_MS` (default 30 minutes). A job that is never admitted, because
-its wait ran out or the manager stopped first, prints
-`# TEST MANAGER NOT ADMITTED: <reason>` and exits 75: its tests did not run, so a gate
-skips its vote rather than rejecting. A disconnect cancels its job. A responsive
-supervisor reaps the owned process group if the manager dies. Job temp directories
-are removed after process cleanup; stale manager-owned temp directories older than
-24 hours are pruned on startup. Other agents' files and processes are untouched.
-
-`WEAVE_TEST_MIN_FREE_GB`, `WEAVE_TEST_MIN_MEMORY_PERCENT`, `WEAVE_TEST_MAX_LOAD` and
-`WEAVE_TEST_QUEUE_WAIT_MS` override admission for a deliberately sized CI machine, or
-for a caller that is already serial, such as a hosted CI runner. A raw `node --test`
-browser suite sends them with its lease. Keep the defaults for ad hoc runs on this
-shared workstation. One process holds one browser lease however many times its suites
-call `launch()`, and releases it when the last connection closes.
-`WEAVE_TEST_MANAGER_DIR` selects a private socket directory for isolated manager
-integration tests; ordinary jobs use the shared default, which is keyed on a hash of
-`scripts/test-manager.mjs`. Worktrees on the same manager code share one queue; a
-worktree with changed manager code gets its own manager, and the old one exits after
-five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
 ## Theme loops
 
@@ -593,8 +685,7 @@ cells and themes each probe measures, and `plan(probe)` is the list it walks:
 the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
 gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
 filtered views of it. A state that names no seed renders on every seed, so a
-surface added that way falls under every probe at once; the board and list
-views entered first.
+surface added that way falls under every probe at once.
 
 Every seed also carries the kitchen sink: a Lab/Sample table with all 22
 field types and adversarial values (a 112-character unbroken word as name,
@@ -644,8 +735,7 @@ node scripts/quality-scorecard.mjs --issues issues.json    # plus the probe answ
 | Probe answers, Probe answers none | The bug report's "Which probe would have caught this?" section on Issue rows updated in the window | None falls |
 
 The class-wide test reads file paths, and the repeat classes read subject
-keywords, so small counts are approximate. Over the 27 days to 24 Oct the script
-counts 18 class-wide fixes of 263, where the hand audit counted 23 of 247.
+keywords, so small counts are approximate.
 
 ## Flicker loop
 
@@ -725,10 +815,9 @@ new reason under `raised[...]`, checked against `HEAD^1` by
 
 The vitals, feedback, render and query-volume suites (`TREND` in
 `scripts/ci-test.mjs`) read how fast a page or a query runs on a shared GitHub
-runner, where the same code read an open-table INP of 88 to 216 ms (Issue
-#1215) and network timing splits a journey's writes across frames. As gates
-they turned main red on runner noise, and the sheriff reverted at least three
-PRs for it in the week to 2026-11-01 (#505, #513 and #534). They sit outside
+runner, where runner noise moves one commit's readings by more than a
+budget's headroom and network timing splits a journey's writes across frames.
+As gates they turned main red on noise (Issues #1215, #1237). They sit outside
 every gating plan: the `pr` and `tests` workflows never plan them, so the
 sheriff, release and promotion never read them.
 
@@ -795,7 +884,7 @@ Batch the writes, or raise the budget with a new reason under
 
 Weave never shows cut-off text. Cut-off text is glyphs sliced by a box edge: a
 line cut through its middle, a letter cut in half, a chip cut at its cell's
-edge. An ellipsis is not a cut-off (Kyle, 2026-11-06): a `text-overflow:
+edge. An ellipsis is not a cut-off: a `text-overflow:
 ellipsis` box or a `-webkit-line-clamp` box that ends on a whole line shows
 every glyph it draws, and its three dots say there is more. `test/lib/cutoff.mjs`
 is the probe: a page function that reports text cut by an overflow hidden or
@@ -822,9 +911,9 @@ sweep in the gate against `test/cutoff-baseline.json`, which holds today's count
 per platform, since system fonts differ between macOS and the Linux CI runner.
 The baseline is a ceiling. The gate fails on a fingerprint the baseline does not
 hold, or more instances than it holds. A count under the ceiling is a stale
-baseline: the gate prints it as `stale:` and passes, since the same commit
-measured one breadcrumb fingerprint 5, 7 and 8 times on loaded runners (Issue
-#1103). `test/cutoff-core.test.mjs` refuses a baseline that grows past its
+baseline: the gate prints it as `stale:` and passes, since one commit can
+measure a fingerprint a different number of times on a loaded runner
+(Issue #1103). `test/cutoff-core.test.mjs` refuses a baseline that grows past its
 committed version or past the base a pull request merges into, so the ceiling
 only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
 lower count holds, run it once with `--lower`, and commit the lowered counts in

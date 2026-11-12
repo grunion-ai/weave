@@ -147,8 +147,15 @@ test('the written release order ends with the tag and the GitHub Release', () =>
   assert.match(releasing, /gh release list -R grunion-ai\/weave/, 'the check a person or agent runs');
   assert.match(releasing, /exact tested SHA/, 'publication uses the tested commit');
   assert.doesNotMatch(releasing, /~\/Documents\/harness\.nosync/, 'not the shared harness checkout');
-  const rule5 = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8').split('\n').find((l) => l.startsWith('5. **Every release'));
-  assert.match(rule5, /land through a GitHub PR → .*`v<version>` tag.*GitHub Release/, 'CLAUDE.md rule 5 ends on the same step');
+  let at = -1;
+  for (const step of ['`Development/Release` row', '`package.json`', 'export-development.mjs', 'changelog-fold.mjs', 'architecture.mjs', 'pull request', '`v<version>` tag', 'gh release list']) {
+    const next = releasing.indexOf(step, at + 1);
+    assert.ok(next > at, `the release order names ${step} after the step before it`);
+    at = next;
+  }
+  const claude = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8');
+  assert.match(claude, /DEVELOPMENT\.md#releasing/, 'CLAUDE.md routes releases to the one written order');
+  assert.doesNotMatch(claude, /changelog-fold\.mjs|bump `package\.json`/, 'CLAUDE.md keeps no second copy of the order');
 });
 
 const WATCHER_INCIDENT = /^gerrit\/main @ [0-9a-f]+ did not reach\b/;
