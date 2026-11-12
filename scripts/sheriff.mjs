@@ -77,7 +77,7 @@ export function retriedFlakes(results, attempt) {
   const flakes = [];
   for (const result of results) {
     if (attempt && Number(result.attempt ?? 1) !== Number(attempt)) continue;
-    for (const file of result.retried ?? []) {
+    for (const file of (result.retried ?? []).filter((f) => (result.files ?? []).includes(f))) {
       const cases = [...new Set((result.cases ?? []).filter((c) => c.file === file && !c.pass).map((c) => c.name))];
       flakes.push({ file, shard: result.id, cases });
     }

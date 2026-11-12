@@ -67,6 +67,17 @@ test('a retry that saves one file and not another records the one it saved, and 
   assert.doesNotMatch(clean.said, /RETRIED/);
 });
 
+test('a lane nested inside a test writes nothing into the shard report it inherits, so a fixture never reads as a retried repo file (Issue #1671)', () => {
+  const { dir, paths } = fixtures({ good: 'good', flaky: 'flaky' });
+  const report = join(dir, 'events.jsonl');
+  writeFileSync(report, '');
+  const said = [];
+  const code = run(Object.values(paths), [], { out: (line) => said.push(line), env: { ...childEnv(), WEAVE_CI_REPORT: report } });
+  assert.equal(code, 0);
+  assert.match(said.join('\n'), /^# RETRIED and green: 1 file\(s\)/m, 'the nested lane still says what it retried');
+  assert.equal(readFileSync(report, 'utf8'), '', 'only a lane that runs the CI reporter adds to its report');
+});
+
 test('one shard result is pinned: every record it carried before, in the same order, then the retried list (Issue #1671)', () => {
   const failed = { success: false, counts: { tests: 1, failed: 1, passed: 0, cancelled: 0, skipped: 0, todo: 0, topLevel: 1, suites: 0 }, duration_ms: 12.5, file: 'test/a.test.mjs' };
   const passed = { ...failed, success: true, counts: { ...failed.counts, failed: 0, passed: 1 } };
@@ -107,12 +118,15 @@ test('one aggregate is pinned: the gate summary prints as it did, then one annot
 
 test('retried files are read off the attempt that completed, each with the cases that failed first (Issue #1671)', () => {
   const results = [
-    { id: 'unit-2', attempt: 1, retried: ['test/backup-stream.test.mjs'], cases: [{ file: 'test/backup-stream.test.mjs', name: 'a 200 MiB push grows the server by less than its budget', pass: false }, { file: 'test/backup-stream.test.mjs', name: 'a 200 MiB push grows the server by less than its budget', pass: true }, { file: 'test/backup-stream.test.mjs', name: 'download streams', pass: true }] },
-    { id: 'browser-3', attempt: 2, retried: ['test/phone-option-row-browser.test.mjs'], cases: [] },
+    { id: 'unit-2', attempt: 1, files: ['test/backup-stream.test.mjs'], retried: ['test/backup-stream.test.mjs'], cases: [{ file: 'test/backup-stream.test.mjs', name: 'a 200 MiB push grows the server by less than its budget', pass: false }, { file: 'test/backup-stream.test.mjs', name: 'a 200 MiB push grows the server by less than its budget', pass: true }, { file: 'test/backup-stream.test.mjs', name: 'download streams', pass: true }] },
+    { id: 'browser-3', attempt: 2, files: ['test/phone-option-row-browser.test.mjs'], retried: ['test/phone-option-row-browser.test.mjs'], cases: [] },
     { id: 'browser-1', attempt: 1 },
   ];
   assert.deepEqual(retriedFlakes(results, 1), [{ file: 'test/backup-stream.test.mjs', shard: 'unit-2', cases: ['a 200 MiB push grows the server by less than its budget'] }]);
   assert.deepEqual(retriedFlakes(results, 2).map((f) => f.file), ['test/phone-option-row-browser.test.mjs']);
+  const fixture = '../../../../../tmp/weave-test-manager-1001-a1a3ed4acef2/job-G4IjnO/weave-runner-58VBif/subject.test.mjs';
+  const polluted = [{ id: 'unit-1', attempt: 1, files: ['test/test-runner.test.mjs', 'test/backup-stream.test.mjs'], retried: [fixture, 'test/backup-stream.test.mjs'], cases: [] }];
+  assert.deepEqual(retriedFlakes(polluted, 1).map((f) => f.file), ['test/backup-stream.test.mjs'], 'a retried path the shard never ran, as run 43137735836 wrote, opens no row');
   assert.match(flakeLine({ at: '2026-11-11', sha: '5c898afaf531713099ebee4ffa4daa3317ce3a7e', url: 'https://github.com/grunion-ai/weave/actions/runs/43114912798', outcome: 'retried-green', shard: 'unit-2', cases: ['a 200 MiB push grows the server by less than its budget'] }),
     /^2026-11-11 5c898afaf5 failed, then passed on the in-shard retry, in unit-2 \(failing case: a 200 MiB push grows the server by less than its budget\): https:\/\/github\.com\/grunion-ai\/weave\/actions\/runs\/43114912798$/);
 });
@@ -213,8 +227,8 @@ const testsRun = (patch = {}) => ({ name: 'tests', path: '.github/workflows/test
 
 test('after every completed main tests run, each file that passed only on its retry gets one line, read off that attempt (Issue #1671)', async () => {
   const results = [
-    { id: 'unit-2', attempt: 1, retried: ['test/backup-stream.test.mjs'], cases: [] },
-    { id: 'browser-3', attempt: 2, retried: ['test/phone-option-row-browser.test.mjs'], cases: [] },
+    { id: 'unit-2', attempt: 1, files: ['test/backup-stream.test.mjs'], retried: ['test/backup-stream.test.mjs'], cases: [] },
+    { id: 'browser-3', attempt: 2, files: ['test/phone-option-row-browser.test.mjs'], retried: ['test/phone-option-row-browser.test.mjs'], cases: [] },
   ];
   for (const conclusion of ['success', 'failure']) {
     const f = fakeRuns([testsRun({ conclusion, run_attempt: 1 }), testsRun({ status: 'in_progress', conclusion: null, run_attempt: 2 })], results);

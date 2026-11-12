@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPORTER = pathToFileURL(join(ROOT, 'scripts/failed-files.mjs')).href;
+const CI_REPORTER = `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs')).href}`;
 
 export const RETRIES = 1;
 
@@ -93,9 +94,9 @@ export function sandboxHome(dir) {
   return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json') };
 }
 
-function recordRetried(files, out, env) {
+function recordRetried(files, out, env, extraArgs) {
   out(`# RETRIED and green: ${files.length} file(s) failed the first run and passed the second: ${files.join(' ')}`);
-  if (!env.WEAVE_CI_REPORT) return;
+  if (!env.WEAVE_CI_REPORT || !extraArgs.includes(CI_REPORTER)) return;
   appendFileSync(env.WEAVE_CI_REPORT, files.map((file) => `${JSON.stringify({ type: 'retried', data: { file: relative(ROOT, resolve(ROOT, file)).split('\\').join('/') } })}\n`).join(''));
 }
 
@@ -110,7 +111,7 @@ function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, 
         { cwd: ROOT, stdio: 'inherit', env: laneEnv }).status;
       const failed = status === 0 ? [] : readFailed(failedPath);
       const green = !i ? [] : status === 0 ? attempt : failed.length ? attempt.filter((f) => !failed.includes(f)) : [];
-      if (green.length) recordRetried(green, out, env);
+      if (green.length) recordRetried(green, out, env, extraArgs);
       if (status === 0) return 0;
       if (i >= retries || !failed.length) {
         if (i) out(`# RETRIED and still red: ${failed.join(' ') || 'the run failed without naming a file'}`);
