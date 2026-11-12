@@ -312,9 +312,23 @@ four shards, plus the browser tests the diff maps to.
 executed evidence for every planned file at the exact commit. A newer push to
 the same pull request cancels the running one.
 
-Every browser job installs through `node scripts/ci/install-browsers.mjs
-<browser...>`, the one copy the `pr`, `tests`, `budgets` and dev soak workflows
-share. It writes an apt drop-in (twenty-second acquire timeout, three retries, a
+The browser shards of the `pr` and `tests` workflows start from the Playwright
+image, `mcr.microsoft.com/playwright:v1.62.1-noble` pinned by its `@sha256`
+digest, which carries the engines and every system package the driver in
+`.github/test-tools` needs, so no shard installs a browser at test time
+(Feature #368). The container runs as uid 1001, the runner user that owns the
+checkout, because git refuses a repository another user owns, and it takes
+`--ipc=host` and `--init`. The image has no resolver
+for `*.localhost` names, so the container lists each host the journeys name
+with `--add-host`. The layout probes were measured on the runner's fonts, so it
+also mounts the runner's `/usr/share/fonts` read-only beside its own. A
+Playwright bump moves `.github/test-tools`, the image tag and its digest
+together. `test/security/workflow-images.test.mjs` refuses a workflow image not
+pinned by digest, and `test/ci-browser-image.test.mjs` holds the rest.
+
+The `budgets` and dev soak workflows still install on the runner, through
+`node scripts/ci/install-browsers.mjs <browser...>`, the one copy they share.
+It writes an apt drop-in (twenty-second acquire timeout, three retries, a
 300-second `DPkg::Lock::Timeout` so an attempt outlasts the runner's own
 boot-time `apt-get`, Issues #1230, #1141, #1107), installs the browsers from the
 `~/.cache/ms-playwright` cache, and then asks Playwright's own
@@ -333,8 +347,8 @@ result, after which it copies the downloaded packages into the cache for the
 next run. Every path ends on the `install-deps --dry-run`
 check, so a browser or system package that is still absent fails the step
 loudly, and the log line says no test ran. The only deadline is the step's own
-`timeout-minutes`, 12 on the `pr` workflow and 14 elsewhere, with no inner
-per-attempt `timeout` (Issue #1347). `test/ci-install-browsers.test.mjs` and
+`timeout-minutes`, 14 in both, with no inner per-attempt `timeout`
+(Issue #1347). `test/ci-install-browsers.test.mjs` and
 `test/ci-test.test.mjs` hold these rules.
 
 A shard that dies before any test records a result leaves the sheriff no file
@@ -373,9 +387,11 @@ durations tolerates their absence in the shell rather than through
 succeeds only after every required job succeeds, and a release can only publish
 a main commit whose `CI gate` succeeded.
 
-Browser engines are installed on the browser lanes only, in both workflows,
-since a unit shard opens no browser (Issue #967). `test/ci-test.test.mjs` holds
-the lane condition and refuses a unit-lane test that reaches a browser at load.
+Only the browser lanes start from the browser image, in both workflows, since a
+unit shard opens no browser (Issue #967). The container expression yields no
+image for a unit shard, which then runs on the bare runner.
+`test/ci-test.test.mjs` holds the lane condition and refuses a unit-lane test
+that reaches a browser at load.
 A missing browser or skipped required browser suite fails the gate. Parallel CI
 jobs have isolated runners and test data, and superseded branch runs are
 cancelled. Concurrency lanes are keyed by the commit under test, one per main
