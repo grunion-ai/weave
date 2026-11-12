@@ -81,7 +81,7 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
   assert.match(workflow, /max-parallel: 10/);
-  assert.match(workflow, /node scripts\/ci\/install-browsers\.mjs chromium webkit/);
+  assert.match(workflow, /image: \$\{\{ matrix\.lane == 'browser' && 'mcr\.microsoft\.com\/playwright:v[\d.]+-noble@sha256:[0-9a-f]{64}' \|\| '' \}\}\n/);
 });
 
 const RESULT = (id, lane, durations) => ({
@@ -170,23 +170,20 @@ test('every job that rebuilds the manifest reads the same durations (Issue #966)
   for (const [name, job] of Object.entries(jobs)) {
     assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, `the ${name} job weighs by the run's own durations`);
     assert.match(job, /node scripts\/ci-test\.mjs (plan|run|aggregate)/, `the ${name} job rebuilds the manifest`);
-    if (name !== 'plan') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, `the ${name} job takes the plan job's copy, and plans by byte size if it is not there`);
+    if (name === 'test') assert.match(job, /uses: actions\/download-artifact@[0-9a-f]{40}\n        with:\n          pattern: plan-history\n          path: ci-history\n/, 'the test job takes the plan job\'s copy, and a pattern that matches no artifact leaves it planning by byte size');
+    if (name === 'gate') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, 'the gate job takes the plan job\'s copy, and plans by byte size if it is not there');
   }
   assert.doesNotMatch(jobs.gate, /pattern: plan-\*|pattern: '?\*/, 'the shard results and the durations land in separate directories');
   assert.match(jobs.gate, /pattern: ci-\*\n          path: ci-results\n/,
     'the durations artifact is named plan-history so the ci-* pattern never mixes a past run\'s shard results into this run\'s evidence');
 });
 
-test('only the browser lanes of the full suite download browser engines (Issue #967)', () => {
+test('only the browser lanes of the full suite start from the browser image (Issue #967)', () => {
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
-  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/,
-    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open');
-  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/ms-playwright\n/,
-    'the engine cache is restored for the lanes that use it');
-  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/weave-apt\n/,
-    'the apt package cache is restored for the lanes that use it (Issue #1438)');
-  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 4,
-    'the lane condition guards the image version, the two caches and the install, and nothing else');
+  assert.match(workflow, /\n    container:\n      image: \$\{\{ matrix\.lane == 'browser' && '[^']+' \|\| '' \}\}\n/,
+    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open; an empty image runs a unit shard on the bare runner');
+  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 1,
+    'the lane condition picks the container, and nothing else');
 });
 
 const STATIC_PLAYWRIGHT = /^\s*import\s(?:[^;]*?from\s*)?['"]playwright['"]/m;
@@ -366,12 +363,11 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: PR gate\n    if: \$\{\{ always\(\) && !github.event.pull_request.draft \}\}\n    needs: \[plan, test\]/);
   assert.match(workflow, /node scripts\/ci-test.mjs pr-aggregate ci-results/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
-  assert.match(workflow, /node scripts\/ci\/install-browsers\.mjs chromium webkit/);
-  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
+  assert.match(workflow, /image: \$\{\{ matrix\.lane == 'browser' && 'mcr\.microsoft\.com\/playwright:v[\d.]+-noble@sha256:[0-9a-f]{64}' \|\| '' \}\}\n/);
 });
 
-test('every gating workflow bounds the browser install inside the job budget', () => {
-  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 20], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30], ['budgets.yml', '  trend:', null, 30]]) {
+test('every workflow that installs browsers on the runner bounds the install inside the job budget', () => {
+  for (const [file, from, to, jobBudget] of [['dev-soak.yml', '  soak:', null, 30], ['budgets.yml', '  trend:', null, 30]]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);

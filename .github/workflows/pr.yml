@@ -11,9 +11,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PLAYWRIGHT_VERSION: "1.62.1"
-
 jobs:
   plan:
     if: ${{ !github.event.pull_request.draft }}
@@ -38,6 +35,9 @@ jobs:
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    container:
+      image: ${{ matrix.lane == 'browser' && 'mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e' || '' }}
+      options: --user 1001 --ipc=host --init
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -54,24 +54,6 @@ jobs:
         run: |
           npm ci --ignore-scripts --prefix .github/test-tools
           ln -s .github/test-tools/node_modules node_modules
-      - if: matrix.lane == 'browser'
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
-      - name: Runner image
-        id: image
-        if: matrix.lane == 'browser'
-        run: echo "version=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
-      - if: matrix.lane == 'browser'
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
-        with:
-          path: ~/.cache/weave-apt
-          key: apt-${{ steps.image.outputs.version }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium-webkit
-      - name: Install browsers and system dependencies
-        if: matrix.lane == 'browser'
-        timeout-minutes: 12
-        run: node scripts/ci/install-browsers.mjs chromium webkit
       - name: Run fast shard
         env:
           SHARD: ${{ matrix.id }}

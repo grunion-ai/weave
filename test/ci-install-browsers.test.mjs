@@ -138,8 +138,8 @@ test('the apt drop-in bounds the mirror, waits out the runner\'s own apt-get and
   assert.ok(ATTEMPTS >= 3);
 });
 
-test('every gating workflow installs browsers through the one script, behind a cache keyed on the runner image (Issue #1438)', () => {
-  for (const [file, browsers] of [['pr.yml', 'chromium webkit'], ['test.yml', 'chromium webkit'], ['budgets.yml', 'chromium webkit'], ['dev-soak.yml', 'chromium']]) {
+test('every workflow that installs browsers on the runner goes through the one script, behind a cache keyed on the runner image (Issue #1438)', () => {
+  for (const [file, browsers] of [['budgets.yml', 'chromium webkit'], ['dev-soak.yml', 'chromium']]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     assert.match(workflow, new RegExp(`\\n        run: node scripts/ci/install-browsers\\.mjs ${browsers}\\n`), `${file} runs the shared install`);
     const gating = workflow.split('\n  compatibility:\n')[0];
