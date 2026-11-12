@@ -20,10 +20,10 @@ const s = await launch('grid scroll edge', (weave) => {
 });
 if (s) {
   const { base, browser, weave } = s;
-  const issueTable = ({ frozen = 0 } = {}) => {
+  const issueTable = ({ frozen = 0, rows = 8 } = {}) => {
     const db = weave.createTable({ space: 'Development', name: `Issue ${++n}` });
     for (const [name, type, config] of FIELDS) weave.addField(db, { name, type, ...(config ? { config } : {}) });
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < rows; i++) {
       weave.createEntity(db, { name: `Looks broken: row ${i}`, values: { Severity: 'Medium', Status: 'Open', Area: 'Grid', Reporter: 'Kyle', Points: i, Link: 'https://example.com' } });
     }
     if (frozen) weave.tableView(`${db.id}/${weave.tableView(db.id).views[0].id}`, { frozen });
@@ -167,6 +167,42 @@ if (s) {
       assert.deepEqual(await fadeState(page), { overflow: true, atEnd: false, drawn: true },
         'scrolling back brings it again');
     } finally { await page.close(); }
+  });
+
+  const shiftsInGrid = async (db, viewport) => {
+    const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
+    try {
+      await page.addInitScript(() => {
+        window.__wvShifts = [];
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.hadRecentInput) continue;
+            for (const source of entry.sources ?? []) {
+              if (source.node?.closest?.('.table-wrap')) window.__wvShifts.push({ value: entry.value, node: source.node.className });
+            }
+          }
+        }).observe({ type: 'layout-shift', buffered: true });
+      });
+      await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.waitForSelector('.table-wrap.wv-overflow-x, .table-wrap.wv-fit');
+      await frame(page);
+      await frame(page);
+      return await page.evaluate(() => window.__wvShifts);
+    } finally { await page.close(); }
+  };
+
+  test('shading the trailing edge moves nothing on the page (Issue #1735)', async () => {
+    assert.deepEqual(await shiftsInGrid(issueTable({ rows: 60 }), { width: 800, height: 700 }), [],
+      'a table wider than its pane settles into its shade without a layout shift');
+  });
+
+  test('a table that fits its pane settles without a layout shift (Issue #1735)', async () => {
+    const db = weave.createTable({ space: 'Development', name: `Steady ${++n}` });
+    weave.addField(db, { name: 'Note', type: 'text' });
+    weave.createEntity(db, { name: 'only row', values: { Note: 'a' } });
+    assert.deepEqual(await shiftsInGrid(db, { width: 1400, height: 900 }), [],
+      'a table that ends inside its pane never moves either');
   });
 
   test('a table that fits its pane shades nothing (Issue #1371)', async () => {
