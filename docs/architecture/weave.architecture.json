@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "0be600c81933a73be758e5bd70c453993e5c8a07"
+      "revision": "cd72b263aaf2dc5ebe7e3cc4c83d2ed350d9fb5f"
     },
     "views": [
       {
@@ -410,6 +410,7 @@
       "title": "Weave records itself",
       "items": [
         "src/handbook.js writes the Handbook into the weave workspace",
+        "src/env.js: every environment variable the code reads, its default and what breaks; the Environment reference guide is rendered from it",
         "src/documentation-presentation.js syncs owned native covers and introductions without overwriting reader edits",
         "src/weaver-seed.js and src/quality-mirror.js sync Development and Quality",
         "src/service.js, src/update-check.js and src/supervisor.js: launchd, newer releases, in-place swaps"

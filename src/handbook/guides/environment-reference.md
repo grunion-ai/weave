@@ -1,6 +1,10 @@
 # Environment reference
 
-Every deploy target takes the same variables. Precedence is the same everywhere: a CLI flag beats the environment, the environment beats the default. The `Dockerfile` and `compose.yaml` in the repo name exactly this set; `test/deploy-artifacts.test.mjs` refuses a build where they and this page disagree.
+Every variable weave reads, its default, and what breaks when it is wrong. Precedence is the same everywhere: a CLI flag beats the environment, the environment beats the default. This page is rendered from `src/env.js`, and `test/env-registry.test.mjs` refuses a build where the code reads a variable that file does not list or the page has drifted from it.
+
+## The deploy contract
+
+Every deploy target takes the same variables. The `Dockerfile` and `compose.yaml` in the repo name exactly this set; `test/deploy-artifacts.test.mjs` refuses a build where they and this table disagree.
 
 | Variable | Read by | Default | What breaks when it is wrong |
 | --- | --- | --- | --- |
@@ -39,6 +43,81 @@ Every deploy target takes the same variables. Precedence is the same everywhere:
 ## The container
 
 The `Dockerfile` bakes the container-shaped values: `PORT=4400`, `WEAVE_HOST=0.0.0.0`, `WEAVE_DATA=/data/workspace.db`, `WEAVE_KEYSTORE=/data/keystore.json`. A platform overrides `PORT`; you supply `WEAVE_KEYSTORE_PASSPHRASE`. `WEAVE_ORIGIN`, `WEAVE_TRUST_PROXY`, `WEAVE_BACKUP_DEST`, `WEAVE_ALLOWED_HOSTS`, `WEAVE_FRAME_ANCESTORS`, `WEAVE_INLINE_FILE_TYPES`, `WEAVE_APPLET_PASSCODE`, the four provider sign-in variables, the two mail variables and `WEAVE_WEBHOOK_ALLOW_PRIVATE` are listed as comments, each off unless set, `WEAVE_UPDATE_CHECK` is listed as the one that is on unless set to `off`, and `WEAVE_AUTO_UPDATE` as the switch `supervise` reads, so the contract is visible in one place.
+
+## Backups
+
+`WEAVE_BACKUP_DEST` in the deploy contract turns backups on. These decide how an archive is sealed, where it goes, and what a deployment that keeps archives for its accounts allows; the **Backup and restore** and **Backup to weave cloud** guides walk through both.
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_BACKUP_PASSPHRASE` | `weave serve`, `weave backup`, `weave restore`, `weave workspace migrate` | unset (falls back to `WEAVE_KEYSTORE_PASSPHRASE`, then `keystore.key`) | Seals each archive with AES-256-GCM under a key stretched from it. Unset, `WEAVE_KEYSTORE_PASSPHRASE` seals it, and without that the contents of `keystore.key`; with none of the three the archive is a plain tar, and a `weave://` destination is refused because the cloud keeps encrypted archives only. A restore needs the passphrase the archive was sealed with: a wrong one stops it with "Cannot decrypt the archive". Keep it somewhere that is not the server and not the bucket. |
+| `WEAVE_BACKUP_TOKEN` | `weave serve`, `weave backup`, `weave restore`, `weave workspace migrate` | unset | The `wv_` account token for a `weave://host/account` destination, printed once by `weave account create` on the deployment that keeps the archives. Unset, or not a `wv_` token, a `weave://` backup, restore or migration stops before it sends anything. A token the deployment does not know answers `401`; a token from another account than the one the destination names answers `403`. |
+| `WEAVE_BACKUP_KEY_ID` | `weave serve`, `weave backup`, `weave restore` | unset (falls back to `AWS_ACCESS_KEY_ID`) | The access key id for an `s3://` destination or source, and for the bucket a deployment keeps its accounts' archives in. Unset along with `AWS_ACCESS_KEY_ID`, every bucket call stops with "No bucket credentials"; a key the provider does not know fails the run, and on `weave serve` a `backup-failed` audit record says why. |
+| `WEAVE_BACKUP_SECRET` | `weave serve`, `weave backup`, `weave restore` | unset (falls back to `AWS_SECRET_ACCESS_KEY`) | The secret key that goes with `WEAVE_BACKUP_KEY_ID`; every request is signed with it under AWS Signature Version 4. Unset along with `AWS_SECRET_ACCESS_KEY`, every bucket call stops with "No bucket credentials"; a wrong secret fails every signed request. |
+| `WEAVE_BACKUP_ENDPOINT` | `weave serve`, `weave backup`, `weave restore` | unset (AWS S3) | An S3-compatible endpoint for R2, B2 or MinIO, addressed path-style as `endpoint/bucket/key`: `https://<account-id>.r2.cloudflarestorage.com`. Unset, requests go to AWS S3 in `WEAVE_BACKUP_REGION`. Wrong, every request reaches a host that does not hold the bucket and the run fails. |
+| `WEAVE_BACKUP_REGION` | `weave serve`, `weave backup`, `weave restore` | `AWS_REGION`, else `auto` with an endpoint and `us-east-1` without | The region every request is signed for. R2 takes `auto`; B2 wants its real region, such as `us-west-004`. A region the provider does not accept fails every signed request. |
+| `WEAVE_BACKUP_PART_BYTES` | `weave serve`, `weave backup` | `8388608` (8 MiB) | The part size of a multipart upload. An archive larger than one part goes up a part at a time, so a backup holds one part in memory however large the archive is. S3 requires 5 MiB for every part but the last, so a smaller value is raised to that; a value that is not a positive number keeps 8 MiB. |
+| `WEAVE_BACKUP_BUCKET` | `weave serve` | unset | Makes this deployment keep backups for its accounts: the bucket the `/api/backups` doors store archives in, as `<account id>/<archive>`, reached with the key, secret, endpoint and region above. Unset, every door answers `400`: this deployment keeps no backups. |
+| `WEAVE_BACKUP_QUOTA_BYTES` | `weave serve` | `5368709120` (5 GiB) | Each account's byte quota in that bucket. After each upload the oldest archives go until the account is under the quota and holds thirty at most, never the archive just stored; an archive larger than the whole quota is refused with `413`. A value that is not a positive number keeps 5 GiB. |
+| `AWS_ACCESS_KEY_ID` | `weave serve`, `weave backup`, `weave restore` | unset | The standard AWS spelling of `WEAVE_BACKUP_KEY_ID`, read only when that is unset. |
+| `AWS_SECRET_ACCESS_KEY` | `weave serve`, `weave backup`, `weave restore` | unset | The standard AWS spelling of `WEAVE_BACKUP_SECRET`, read only when that is unset. |
+| `AWS_REGION` | `weave serve`, `weave backup`, `weave restore` | unset | The standard AWS spelling of `WEAVE_BACKUP_REGION`, read only when that is unset. |
+
+## Agents and forms
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_MCP_TOOLS` | `weave mcp`, `weave serve` | `core` | `all` makes `tools/list` name every tool, for a client that wants each one in its picker; `weave mcp --tools all` does the same for one process. Anything else lists the core set, and `weave_call` runs the rest by name (the **Agent access (MCP)** guide). |
+| `WEAVE_OPENAI_APPS_CHALLENGE` | `weave serve` | unset | The token the ChatGPT apps directory issues to check that you control the domain. Set, `/.well-known/openai-apps-challenge` answers it as plain text without sign-in; unset, that path answers `404` and the directory's check fails (the **Door C: sign in with a provider** guide). |
+| `WEAVE_ANONYMOUS_FORMS` | `weave serve` | unset | `1` or `true` lets a form whose floor is **Anonymous** take a submission from a signed-out visitor. Unset, that floor is not enough: a signed-out visitor is asked to sign in first (the **Forms** guide). |
+
+## The task applet
+
+`WEAVE_APPLET_PASSCODE` in the deploy contract opens the applet at `/t`; these two decide what it lists and adds.
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_APPLET_TABLE` | `weave serve` | `Product/Task` | The table the applet lists and adds tasks to, as `Space/Table`; its workflow field holds the states a task moves through. A table the workspace does not have: every list and every add answers `404`. |
+| `WEAVE_APPLET_DEFAULTS` | `weave serve` | `{}` | A JSON object of field values every task the applet adds starts with, such as `{"Priority": "High"}`; the task's name and the values the applet sends win over it. A value that is not JSON is ignored and tasks start without defaults; a field the table does not have refuses every add with `404`. |
+
+## Analytics
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `POSTHOG_KEY` | `weave serve` | unset | A PostHog project key (`phc_`). Set, the app and its sign-in pages show a cookie choice and record nothing until a visitor accepts; after that, events reach PostHog through weave's own `/ingest` path. Unset, or not a `phc_` key, no page loads PostHog and `/ingest` answers `404`. |
+| `POSTHOG_HOST` | `weave serve` | `https://us.i.posthog.com` | The PostHog host `/ingest` forwards to: `https://eu.i.posthog.com` for a project in the EU region. A host that does not hold the key's project records nothing. |
+
+## The supervisor
+
+`weave supervise` with `WEAVE_AUTO_UPDATE=1` holds the port and swaps releases in place. These decide what it follows, how long it watches a new release before it keeps it, and when it declines to download one.
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_TRACK` | `weave supervise` | unset (tagged releases) | `main` follows every commit on `grunion-ai/weave` main, unpacked to `releases/c<sha>/`; `branch:<name>` follows another branch the same way, such as a `production` promotion branch. Unset, or any other value, the supervisor installs tagged releases only. A branch name with a character other than letters, digits, `.`, `_`, `-` and `/`, or with `..`, stops `supervise` at start. |
+| `WEAVE_DEPLOY_TOKEN` | `weave supervise`, `weave serve` | unset | A bearer token of 32 characters or more. With it, `POST /_supervisor/check` makes the supervisor check for a new release or commit at once, and `GET /_supervisor/workspaces` makes the worker list each workspace and whether it requires sign-in. Shorter or unset, neither path exists; a request with another token answers `401`. |
+| `WEAVE_WATCH_MS` | `weave supervise` | `600000` (ten minutes) | How long the supervisor watches a release after it switches to it. The worker exiting, three failed `/api/health` polls in a row, or a share of 5xx answers at or above `WEAVE_WATCH_5XX_RATE` swaps back to the kept rollback folder, or to the image when none is kept. `0`, or a value that is not a number, turns the watch off: a release that passes its first health check is kept. |
+| `WEAVE_WATCH_5XX_RATE` | `weave supervise` | `0.25` | The share of 5xx answers, over at least 20 proxied responses during the watch, that marks a release failed and swaps back. `1` trips only when every answer is a 5xx; above `1`, or a value that is not a number, no share trips the watch. |
+| `WEAVE_RELEASE_FREE_MB` | `weave supervise` | `128` | The free space, in MB, the releases volume must have before the supervisor downloads a release. Under it nothing is fetched, `lastSwap.ok` is `false` with the free space in the reason, and the next check tries again; `/api/health` shows `supervisor.disk`. |
+| `RAILWAY_GIT_COMMIT_SHA` | `weave supervise` | set by Railway | The commit the image was built from. The supervisor gives the image that commit, so `/api/health` names it and a supervisor that follows a branch does not download the commit it already serves. Off Railway it is unset: the image has no commit, and the first check fetches the branch tip even when the image is that commit. |
+| `WEAVE_DEFER_MIGRATIONS` | `weave serve` | unset | Set to `1` by `weave supervise` on each worker it starts beside the serving one. That worker opens its workspaces without migrating them; the supervisor holds writes until the old worker has exited, then has it migrate. Only a worker the supervisor spawned reads it; never set it by hand. |
+
+## Bug reports and the tracker
+
+For several weave servers that share one Development tracker: one server holds it, and the others forward the bug reports people file to it.
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_TRACKER_CANONICAL` | `weave serve` | unset | `1` marks the server whose `weave` docs workspace holds the canonical Development tracker. Boot then skips the sync from the `docs/development.json` the build ships and logs one line saying so, and the server never forwards a bug report. Unset, boot updates the Development rows from that manifest, over edits made on this server. |
+| `WEAVE_BUG_FORWARD_URL` | `weave serve` | unset | The workspace base of the canonical tracker: `https://weave.example.com/w/weave`. Set with `WEAVE_BUG_FORWARD_TOKEN`, `POST /api/bug-report` posts each report to `<url>/api/bug-report` with this server's origin as its instance and answers with the canonical row. A network error, a 10 s timeout or a refusal files the report here instead and answers `forward: "failed"`. Unset, or set without the token, reports stay on this server. |
+| `WEAVE_BUG_FORWARD_TOKEN` | `weave serve` | unset | The bearer token the canonical server accepts for bug reports. A token it refuses files the report here instead, with that server's answer in `forwardError`. |
+
+## The CLI and the key store
+
+| Variable | Read by | Default | What breaks when it is wrong |
+| --- | --- | --- | --- |
+| `WEAVE_ACTOR` | every verb | your login name, else `cli` | The name the activity feed and audit log give each write a CLI verb makes, `weave mcp` over stdio included. Wrong, the history credits someone else. A request to `weave serve` carries its own caller instead. |
+| `WEAVE_KEYCHAIN` | every verb | the default keychain | A keychain file the macOS keychain store reads and writes instead of the default one. Read only under the keychain store; a file `security` cannot open fails every credential read and write with the keychain's own message (the key field guide, Key store). |
+| `HOME` | every verb | set by the system | `~/.weave/` under it holds the default workspace and key store. In a container it is not on the volume, which is why the `Dockerfile` points `WEAVE_DATA` and `WEAVE_KEYSTORE` at `/data`. |
 
 ## How you know it worked
 
