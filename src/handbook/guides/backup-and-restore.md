@@ -62,7 +62,7 @@ node bin/weave.js backup --data ~/.weave --out ~/Desktop
 
 ## The nightly switch
 
-Set `WEAVE_BACKUP_DEST` (and the credentials) on the server and `weave serve` runs `backup` every day at 04:00 UTC — inside the process, on a timer re-armed after each run, not cron. Railway's cron services run in their own container and cannot mount the volume the data directory lives on, and a sidecar is one more thing to keep alive; a timer in the process that already holds the data needs neither. The archive is written to the temp directory, uploaded, and removed.
+Set `WEAVE_BACKUP_DEST` (and the credentials) on the server and `weave serve` runs `backup` every day at 04:00 UTC, on a timer in the server re-armed after each run, not cron. Railway's cron services run in their own container and cannot mount the volume the data directory lives on, and a sidecar is one more thing to keep alive; a timer in the process that already holds the data needs neither. Each run happens in a child process the timer starts, so the snapshot, the sealing and the upload do not hold up the requests and health checks the server answers meanwhile. The child writes the archive to the temp directory, uploads it, removes it, and reports the result back to the server.
 
 Each run writes one audit row: `backup-completed` with the archive name, its bytes and the orphan count, or `backup-failed` with the error. `weave audit` shows them. `/api/health` carries the last result:
 
