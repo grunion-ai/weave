@@ -2,14 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
-let tasks, alpha, beta;
+let tasks, people, alpha, beta, ana;
 const s = await launch('route race', (weave) => {
   weave.createSpace({ name: 'Net' });
   tasks = weave.createTable({ space: 'Net', name: 'Task' });
+  people = weave.createTable({ space: 'Net', name: 'Person' });
   weave.addField(tasks, { name: 'Owner', type: 'text' });
+  weave.addRelation(tasks, { name: 'Lead', targetDb: people.id, cardinality: 'many-to-one', inverseName: 'Tasks' });
+  ana = weave.createEntity(people, { name: 'Ana Reyes' });
   alpha = weave.createEntity(tasks, { name: 'Alpha', values: { Owner: 'ana' }, doc: '# Alpha\n\nThe body only the record read carries.\n' });
   beta = weave.createEntity(tasks, { name: 'Beta', values: { Owner: 'bo' }, doc: '# Beta\n\nAnother body.\n' });
   for (let i = 0; i < 8; i++) weave.createEntity(tasks, { name: `Filler ${i + 1}` });
+  weave.updateEntity(alpha.id, { Lead: ana.id });
 });
 
 if (s) {
@@ -132,25 +136,26 @@ if (s) {
     await page.close();
   });
 
-  test('on a phone, going back while the record reads are held closes the dock and throws nothing (Issue #1444)', async () => {
+  test('on a phone, stepping back in the dock keeps it on the record the step chose (Issue #1444)', async () => {
     const page = await collectThrown(await phonePage(await phoneBrowser(), { colorScheme: 'light' }));
-    const hold = await holdReadsOf(page, alpha.id, ['/references', '/references-from']);
+    const hold = await holdReadsOf(page, ana.id, ['/references', '/references-from']);
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, tasks.id);
     await page.waitForSelector(`#main tr[data-eid="${alpha.id}"] .list-name`);
-    await page.evaluate((h) => { location.hash = h; }, `#/table/${tasks.id}?e=${alpha.id}`);
-    await page.waitForFunction(() => !!dock);
+    const box = await page.locator(`#main tr[data-eid="${alpha.id}"] .list-name`).boundingBox();
+    await page.mouse.click(box.x + 20, box.y + 8);
+    await page.waitForFunction((id) => document.querySelector('#dock')?.dataset.eid === id, alpha.id);
+    await page.click(`#dock a[href="#/entity/${ana.id}"]`);
     await hold.first();
-    assert.equal(await dockUp(page), false, 'the dock has not painted yet');
-    await page.goBack();
-    await page.waitForFunction(() => !dock);
+    assert.equal(await dockEid(page), alpha.id, 'the related record has not painted yet');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction((id) => !!dock && dock.state.chain[dock.state.chain.length - 1]?.id === id, alpha.id);
     await hold.release();
     await page.waitForLoadState('networkidle');
     assert.deepEqual(await thrown(page), [], 'the released read threw');
+    assert.equal(await dockEid(page), alpha.id, 'the step back owns the dock, not the read it left behind');
+    assert.equal(await dockName(page), 'Alpha');
     assert.equal(await routeError(page), null, 'the released read must not paint the route error card');
-    assert.equal(await dockUp(page), false, 'the dock stays closed');
-    assert.equal(await page.evaluate(() => !!dock), false, 'no dock state is restored');
-    assert.ok(await page.locator(`#main tr[data-eid]`).count() > 0, 'the list is still on screen');
     await page.close();
   });
 }
