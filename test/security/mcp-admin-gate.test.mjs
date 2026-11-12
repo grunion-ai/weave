@@ -67,7 +67,7 @@ test('the role table: an observer holds the tools with a row it may run, an edit
   assert.equal(ROLE_TOOLS.architect, undefined, 'an architect is not narrowed');
 });
 
-test('tools/list holds the tools the caller\'s role may call; tools/call on any other answers as an unknown tool (Issue #508)', async () => {
+test('tools/list holds the tools the caller\'s role may call; tools/call on any other names the role it needs (Issue #508, Issue #1560)', async () => {
   const { root, call, reader, writer, admin } = build();
   root.createSpace({ name: 'Dev' });
   root.createTable({ space: 'Dev', name: 'Task' });
@@ -75,12 +75,13 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
   const spaces = () => root.listSpaces().length;
   const rpc = (token, method, params) => call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: ++seq, method, params } });
   const text = (r) => r.json.result.content[0].text;
-  const unknown = text(await rpc(admin, 'tools/call', { name: 'weave_nope', arguments: {} })).replace('weave_nope', '<name>');
-  const asUnknown = async (token, name, args, shown = name) => {
+  assert.equal(text(await rpc(admin, 'tools/call', { name: 'weave_nope', arguments: {} })), 'Error: Unknown tool: weave_nope', 'a name that is no tool stays unknown');
+  const asRefused = async (token, name, args, who, shown = name) => {
     const r = await rpc(token, 'tools/call', { name, arguments: args });
     assert.equal(r.status, 200, name);
     assert.equal(r.json.result.isError, true, name);
-    assert.equal(text(r), unknown.replace('<name>', shown), `${name} answers as an unknown tool`);
+    assert.match(text(r), new RegExp(`^Error: ${shown} needs an (?:editor|architect) token on this workspace; this token is ${who}$`), `${name} names the role it needs`);
+    assert.equal(r.json.result.structuredContent.code, 'forbidden', name);
   };
   const works = async (token, name, args) => {
     const r = await rpc(token, 'tools/call', { name, arguments: args });
@@ -99,19 +100,19 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
     await works(token, 'weave_add_comment', { entity: row.id, text: `from ${role}` });
   }
   for (const [name, args] of [['weave_create_entity', { db: 'Dev/Task', name: 'x' }], ['weave_delete_entity', { entity: row.id }], ['weave_create_space', { name: 'S' }], ['weave_accounts', { action: 'list' }], ['weave_bulk', { ids: [row.id], op: 'delete' }]]) {
-    await asUnknown(reader, name, args);
+    await asRefused(reader, name, args, 'observer');
   }
   const posed = await works(reader, 'weave_add_comment', { entity: row.id, text: 'posing', author: 'root-admin' });
   assert.notEqual(JSON.parse(unwrapData(text(posed))).author, 'root-admin', 'an observer comments under its own name, as over REST');
-  await asUnknown(reader, 'weave_call', { name: 'weave_create_entity', args: { db: 'Dev/Task', name: 'x' } }, 'weave_create_entity');
+  await asRefused(reader, 'weave_call', { name: 'weave_create_entity', args: { db: 'Dev/Task', name: 'x' } }, 'observer', 'weave_create_entity');
   const made = await works(writer, 'weave_create_entity', { db: 'Dev/Task', name: 'by the editor' });
   const id = JSON.parse(unwrapData(text(made))).id;
   await works(writer, 'weave_update_entity', { entity: id, values: { Name: 'renamed by the editor' } });
   await works(writer, 'weave_delete_entity', { entity: id });
   for (const [name, args] of [['weave_create_space', { name: 'S' }], ['weave_create_table', { space: 'Dev', name: 'T2' }], ['weave_add_field', { db: 'Dev/Task', name: 'Due', type: 'date' }], ['weave_accounts', { action: 'list' }], ['weave_keys', { action: 'list' }], ['weave_import_json', { state: root.exportJSON() }], ['weave_delete_table', { db: 'Dev/Task' }]]) {
-    await asUnknown(writer, name, args);
+    await asRefused(writer, name, args, 'editor');
   }
-  await asUnknown(writer, 'weave_call', { name: 'weave_create_space', args: { name: 'S' } }, 'weave_create_space');
+  await asRefused(writer, 'weave_call', { name: 'weave_create_space', args: { name: 'S' } }, 'editor', 'weave_create_space');
   const help = await rpc(writer, 'tools/call', { name: 'weave_call', arguments: { name: 'help', args: { tool: 'weave_create_space' } } });
   assert.equal(help.json.result.isError, true, 'help describes no tool the caller cannot call');
   const before = spaces();

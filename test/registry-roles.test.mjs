@@ -331,3 +331,35 @@ test('an observer deletes its own comment on either door, and nobody else\'s (Fe
   assert.equal((await call('DELETE', `/api/entities/${sample.entity}/comments/${sample.comment}`, { token: tokens.observer })).status, 403, 'another\'s comment, over HTTP');
   assert.ok(w.getEntity(sample.entity).comments.some((c) => c.id === sample.comment));
 });
+
+test('a tool the caller\'s role may not call answers which role it needs, and tools/list still leaves it out (Issue #1560)', async () => {
+  const { tokens, call } = world();
+  const rpc = async (who, method, params) => (await call('POST', '/api/mcp', { token: tokens[who], body: { jsonrpc: '2.0', id: 1, method, params } })).json.result;
+  const text = (r) => r.content[0].text;
+  const refused = await rpc('editor', 'tools/call', { name: 'weave_add_field', arguments: { db: 'Task', name: 'Due', type: 'date' } });
+  assert.equal(text(refused), 'Error: weave_add_field needs an architect token on this workspace; this token is editor');
+  assert.equal(refused.structuredContent.code, 'forbidden');
+  assert.equal(text(await rpc('observer', 'tools/call', { name: 'weave_create_entity', arguments: { db: 'Task', name: 'x' } })), 'Error: weave_create_entity needs an editor token on this workspace; this token is observer');
+  assert.equal(text(await rpc('editor', 'tools/call', { name: 'weave_call', arguments: { name: 'weave_add_field', args: { db: 'Task', name: 'Due', type: 'date' } } })), 'Error: weave_add_field needs an architect token on this workspace; this token is editor', 'the hatch answers alike');
+  assert.equal(text(await rpc('editor', 'tools/call', { name: 'weave_call', arguments: { name: 'help', args: { tool: 'weave_add_field' } } })), 'Error: weave_add_field needs an architect token on this workspace; this token is editor', 'help names the role too');
+  assert.equal(text(await rpc('editor', 'tools/call', { name: 'weave_views', arguments: { action: 'share', view: 'x' } })), 'Error: weave_views share needs an architect token on this workspace; this token is editor');
+  assert.equal(text(await rpc('editor', 'tools/call', { name: 'weave_nope', arguments: {} })), 'Error: Unknown tool: weave_nope', 'a name that is no tool stays unknown');
+  assert.equal((await rpc('editor', 'tools/list', {})).tools.some((t) => t.name === 'weave_add_field'), false, 'tools/list stays filtered by role');
+});
+
+test('an HTTP refusal names the route and the role that passes it, never the schema for an account write (Issue #1582)', async () => {
+  const { sample, tokens, call } = world();
+  for (const [who, method, path, body, status, error] of [
+    ['editor', 'POST', '/api/accounts', { name: 'x', role: 'observer' }, 403, 'POST /api/accounts needs an architect on this workspace; your role here is editor'],
+    ['editor', 'POST', '/api/invites', { email: 'x@example.test' }, 403, 'POST /api/invites needs an architect on this workspace; your role here is editor'],
+    ['observer', 'GET', '/api/accounts', undefined, 403, 'GET /api/accounts needs an architect on this workspace; your role here is observer'],
+    ['anonymous', 'GET', '/api/accounts', undefined, 401, 'GET /api/accounts needs an architect on this workspace: send a token or sign in'],
+    ['editor', 'POST', '/api/tables/Task/fields', { name: 'Due', type: 'date' }, 403, 'POST /api/tables/Task/fields needs an architect on this workspace; your role here is editor'],
+    ['observer', 'PATCH', `/api/entities/${sample.entity}`, { values: { Points: 1 } }, 403, `PATCH /api/entities/${sample.entity} needs an editor on this workspace; your role here is observer`],
+    ['editor', 'GET', '/api/shares', undefined, 403, 'GET /api/shares needs an architect on this workspace; your role here is editor'],
+    ['editor', 'GET', '/api/keys', undefined, 403, 'GET /api/keys needs an architect on this workspace; your role here is editor'],
+  ]) {
+    const res = await call(method, path, { token: tokens[who], body });
+    assert.deepEqual([res.status, res.json?.error], [status, error], `${who} ${method} ${path}`);
+  }
+});

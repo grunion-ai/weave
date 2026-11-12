@@ -309,8 +309,9 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
-      const t = TOOLS.find((x) => x.name === inner.tool && visible(caller, x.name));
+      const t = TOOLS.find((x) => x.name === inner.tool);
       if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
+      if (!visible(caller, t.name)) throw hidden(t.name, caller);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }
     if (!rawArgs.name || rawArgs.name === 'weave_call') throw new Error('weave_call needs name: a weave tool name, or "help"');
@@ -348,7 +349,10 @@ export function toolWrites(name, args = {}) {
 }
 const unknownTool = (name) => Object.assign(new Error(`Unknown tool: ${name}`), { code: -32601 });
 const label = (name, c) => (typeof c.action === 'string' ? `${name} ${c.action}` : !c.name || (c.tool?.name === name && c.action === undefined) ? name : `${name} (${c.name})`);
-const needs = (name, c) => new WeaveError(`${label(name, c)} needs an ${c.minRole} token on this workspace`, 'forbidden');
+const holds = (caller, c) => Weave.roleName(tierOf(caller, c) ?? caller.role) ?? 'none';
+const needs = (name, c, caller) => new WeaveError(`${label(name, c)} needs an ${c.minRole} token on this workspace; this token is ${holds(caller, c)}`, 'forbidden');
+const floor = (name) => rowsOf(name).map((c) => (c.owns ? { ...c, minRole: 'observer' } : c)).sort((a, b) => RANK[a.minRole] - RANK[b.minRole])[0];
+const hidden = (name, caller) => (rowsOf(name).length ? needs(name, { ...floor(name), action: undefined, tool: { name } }, caller) : unknownTool(name));
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 const toolProps = (name) => TOOLS.find((t) => t.name === name)?.inputSchema.properties;
@@ -373,12 +377,12 @@ const ROW_ARGS = {
 };
 
 export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
-  if (!visible(caller, name)) throw unknownTool(name);
+  if (!visible(caller, name)) throw hidden(name, caller);
   const command = toolCommand(name, args);
   const row = command ?? DOOR_TOOLS[name];
   if (caller && row) {
     const own = !!row.owns?.(weave, args);
-    if ((!admits(caller, row) && !own) || (row.minRole === 'architect' && weave.state.meta.requireAuth && !caller.role)) throw needs(name, row);
+    if ((!admits(caller, row) && !own) || (row.minRole === 'architect' && weave.state.meta.requireAuth && !caller.role)) throw needs(name, row, caller);
     if (caller.seat && row.minRole !== 'observer' && !own) throw new Error(caller.seat);
   }
   if (caller && !caller.role && (name === 'weave_keys' || (name === 'weave_runs' && row.minRole !== 'observer'))) throw new WeaveError(`${label(name, row)} needs an account on this workspace`, 'forbidden');

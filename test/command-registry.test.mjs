@@ -241,7 +241,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
         assert.deepEqual([res.status, json.code], [404, 'not-found'], `${c.http.method} ${c.http.path} writes no schema and looks the record up`);
       } else if (c.writes === 'schema') {
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
-        assert.equal(json.error, 'This token cannot change the schema');
+        assert.equal(json.error, `${c.http.method} ${path} needs an architect on this workspace; your role here is editor`, 'the refusal names the role that passes (Issue #1582)');
       } else {
         assert.equal(res.status, c.http.status ?? 200, `${c.http.method} ${c.http.path} writes no schema: ${JSON.stringify(json)}`);
       }
