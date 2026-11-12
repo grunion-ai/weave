@@ -170,8 +170,8 @@ test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', ()
     'the skeleton still comes before the rope');
   assert.match(APP, /function scheduleSkeleton\(kind, db, under = null\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db, under\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
     'renderRoute schedules the skeleton rather than painting it');
-  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(dispatchRoute\)\.finally\(cancelSkeleton\);/,
-    'every route path cancels the pending skeleton when it paints, so the old page holds');
+  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(\(\) => \{\s*const body = dispatchRoute\(\);\s*const gen = navDraw;[\s\S]*?\.finally\(\(\) => \{ if \(navOwns\(gen\)\) cancelSkeleton\(\); \}\);/,
+    'the route that still owns the navigation cancels the pending skeleton when it paints, so the old page holds (Issue #1437)');
   assert.match(APP, /function cancelSkeleton\(\) \{\s*clearTimeout\(skeleton\.timer\);/);
 });
 
@@ -183,7 +183,7 @@ test('the table skeleton draws the destination table\'s real columns', () => {
 });
 
 test('a cold table open paints its chrome before the rows and the skeleton beneath it (Issue #1056)', () => {
-  assert.match(APP, /if \(!again\) \{ renderNav\(\); paintTableChrome\(db\); \}\n\s*const release = again \? gridHold\(\) : \(\) => \{\};\n\s*try \{ await readAndDrawTable\(db, dbId, search, !again\); \}/,
+  assert.match(APP, /if \(!again\) \{ renderNav\(\); paintTableChrome\(db\); \}\n\s*const release = again \? gridHold\(\) : \(\) => \{\};\n\s*try \{ await readAndDrawTable\(db, dbId, search, !again, gen\); \}/,
     'showDatabase paints the table chrome from the schema before the rows request');
   const paint = APP.slice(APP.indexOf('function paintTableChrome'), APP.indexOf('function drawDatabase'));
   assert.match(paint, /main\.replaceChildren\(chrome\.header\);/, 'the header replaces the old page in the same frame');

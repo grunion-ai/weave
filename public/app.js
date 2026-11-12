@@ -4832,6 +4832,7 @@ function tableSearchBox(db) {
 }
 
 async function showDatabase(dbId, view) {
+  const gen = (navDraw += 1);
   const table = allTables().find((d) => d.id === dbId) ?? registryWorkflows(dbId);
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
@@ -4850,7 +4851,7 @@ async function showDatabase(dbId, view) {
   state.route = { page: 'db', dbId, view: db.view.id };
   if (!again) { renderNav(); paintTableChrome(db); }
   const release = again ? gridHold() : () => {};
-  try { await readAndDrawTable(db, dbId, search, !again); } finally { release(); }
+  try { await readAndDrawTable(db, dbId, search, !again, gen); } finally { release(); }
 }
 const FIRST_PAGES_KEPT = 24;
 const firstPages = new Map();
@@ -4867,8 +4868,8 @@ function tableGroup(db) {
 function serverSums(result) {
   return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
 }
-async function readAndDrawTable(db, dbId, search, cold = false) {
-  if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search);
+async function readAndDrawTable(db, dbId, search, cold = false, gen = navDraw) {
+  if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search, gen);
   if (db.system === 'workflows') await lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true));
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
@@ -4885,6 +4886,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
     relations: 'chip',
   };
   const paint = (result, domains) => {
+    if (!navOwns(gen)) return;
     tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
     const items = result.items;
     setFilterTotal(db, showDeleted ? (result.liveTotal ?? result.total) : result.total, result.all);
@@ -5989,7 +5991,7 @@ async function listTargetRows(f) {
   const at = new Map(first.order.map((p, i) => [p, i]));
   return rows.map((r, i) => ({ r, i })).sort((a, b) => (at.get(a.r.publicId) ?? Infinity) - (at.get(b.r.publicId) ?? Infinity) || a.i - b.i).map((x) => x.r);
 }
-async function readAndDrawBoard(db, dbId, search) {
+async function readAndDrawBoard(db, dbId, search, gen = navDraw) {
   const s = listSetup(db);
   const where = filterWhere(db);
   const sort = gridSort(db);
@@ -6007,6 +6009,7 @@ async function readAndDrawBoard(db, dbId, search) {
     filtered && !sort ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
   ]);
+  if (!navOwns(gen)) return;
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   const items = result.items;
   const live = items.filter((e) => !e.deleted);
@@ -10964,7 +10967,13 @@ function syncDocTitle(pageName) {
 }
 
 function renderRoute() {
-  return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
+  return Promise.resolve().then(() => {
+    const body = dispatchRoute();
+    const gen = navDraw;
+    return Promise.resolve(body)
+      .catch((err) => { if (navOwns(gen)) throw err; })
+      .finally(() => { if (navOwns(gen)) cancelSkeleton(); });
+  });
 }
 
 function rememberRoute() {
@@ -11033,17 +11042,12 @@ function paintRouteError(err) {
           }),
         }, iconEl('lucide:mail', 'wv-icon bug-mail-icon'), 'Report by email')))));
 }
-let renderChain = Promise.resolve();
-const renderRouteSafely = () => {
-  renderChain = renderChain
-    .catch(() => {})
-    .then(() => schemaFetch)
-    .then(renderRoute)
-    .catch(paintRouteError)
-    .then(ensureNavMenu)
-    .then(syncPhoneBar);
-  return renderChain;
-};
+const renderRouteSafely = () => Promise.resolve()
+  .then(() => schemaFetch)
+  .then(renderRoute)
+  .catch(paintRouteError)
+  .then(ensureNavMenu)
+  .then(syncPhoneBar);
 function installPhoneBar() {
   const label = el('span', { class: 'phone-search-label' }, 'Search');
   const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openPalette() }, lucideEl('search'), label);
