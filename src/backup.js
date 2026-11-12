@@ -4,6 +4,8 @@ import {
 } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { fork as forkChild } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +16,9 @@ import { openKeyStore, keystoreFilePath } from './keystore.js';
 let DatabaseSync = null;
 try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
 
-const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+const SELF = fileURLToPath(import.meta.url);
+const VERSION = JSON.parse(readFileSync(join(dirname(SELF), '..', 'package.json'), 'utf8')).version;
+const nightlyRun = new AsyncLocalStorage();
 
 export const ARCHIVE_PREFIX = 'weave-backup-';
 export const RETAIN = 30;
@@ -308,7 +312,26 @@ const opened = (res) => {
   return { body: res.body ? Readable.fromWeb(res.body) : Readable.from([]), bytes: length == null ? null : Number(length) };
 };
 
-export async function backup({
+export async function backup(options) {
+  const nightly = nightlyRun.getStore();
+  return nightly ? backupInChild(nightly.fork, options) : backupInProcess(options);
+}
+
+function backupInChild(fork, { env = process.env, ...options }) {
+  return new Promise((done, fail) => {
+    const child = fork(SELF, [JSON.stringify(options)], { env, execArgv: [], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    let answer = null;
+    child.on('message', (m) => { answer = m; });
+    child.on('error', fail);
+    child.on('close', (code, signal) => {
+      if (answer?.error) fail(new WeaveError(answer.error.message, answer.error.code));
+      else if (answer) done(answer.result);
+      else fail(new WeaveError(`The backup process ended (${signal ?? `exit code ${code}`}) before it reported a result`, 'invalid'));
+    });
+  });
+}
+
+async function backupInProcess({
   dataDir, out = process.cwd(), dest = null, env = process.env, passphraseEnv = null,
   workspace = null, now = () => new Date(), fetchImpl = fetch, keep = true, keyStore = null,
 }) {
@@ -675,7 +698,7 @@ export function nextFireAt(now = new Date(), hour = 4) {
   return d;
 }
 
-export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, log = console.log, hour = 4 }) {
+export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, log = console.log, hour = 4, fork = forkChild }) {
   const state = { lastAt: null, lastStatus: null, lastError: null, nextAt: null };
   let timer = null, stopped = false;
   const arm = () => {
@@ -688,7 +711,7 @@ export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = 
   const fire = async () => {
     state.lastAt = new Date(now()).toISOString();
     try {
-      const r = await run();
+      const r = await nightlyRun.run({ fork }, run);
       state.lastStatus = 'completed';
       state.lastError = null;
       const orphans = r?.orphans?.count ?? 0;
@@ -825,4 +848,12 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
       return client().open(bucket, base(account) + named(name));
     },
   };
+}
+
+if (process.send && process.argv[1] === SELF) {
+  const answer = await backupInProcess(JSON.parse(process.argv[2])).then(
+    (result) => ({ result }),
+    (err) => ({ error: { message: err.message, code: err.code } }),
+  );
+  process.send(answer, () => { if (process.connected) process.disconnect(); });
 }
