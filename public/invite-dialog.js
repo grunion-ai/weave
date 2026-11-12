@@ -2,7 +2,7 @@
 function seatNote(billing) {
   if (!billing || billing.plan === 'comped') return null;
   const lead = billing.plan === 'trial' ? `The free trial runs until ${new Date(billing.trial.endsAt).toLocaleDateString()}: everyone can create and edit. After it, Editors and Architects need a plan.`
-    : billing.plan === 'paid' ? 'Inviting an Editor or Architect adds a $4.99 seat.'
+    : billing.plan === 'paid' ? `Inviting an Editor or Architect adds ${billing.seatPrice ? `a ${billing.seatPrice} seat` : 'a paid seat'}.`
     : 'No seats are bought yet, so Editors and Architects work as Observers.';
   return el('div', { class: 'wv-invite-note wv-seat-note' }, `${lead} Observers stay free. `, el('a', { href: `${WS_PREFIX}/billing` }, 'Billing'));
 }

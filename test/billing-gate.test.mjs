@@ -9,10 +9,12 @@ const { Weave } = await import('../src/engine.js');
 const { createWorkspaceHub } = await import('../src/server.js');
 const { createBilling, CLERK_API } = await import('../src/billing.js');
 const { client } = await import('./lib/fixtures.mjs');
+const { read } = await import('./lib/source.mjs');
 
 const ISSUER = 'https://clerk.weave.example.com';
 const PUBLISHABLE = ['pk', 'test', Buffer.from('clerk.weave.example.com$').toString('base64')].join('_');
 const PERIOD_END = Date.now() + 20 * 86_400_000;
+const plans = (cents) => [200, { data: [{ id: 'cplan_x', slug: 'seat', fee: { amount: cents, amount_formatted: `$${(cents / 100).toFixed(2)}`, currency: 'USD', currency_symbol: '$' } }], total_count: 1 }];
 const active = (slug) => [200, { subscription_items: [{ status: 'active', plan: { slug }, period_end: PERIOD_END }] }];
 
 function clerk(routes) {
@@ -208,4 +210,29 @@ test('GET /api/billing leaves out the address of an account that has never signe
   const { call, t } = build();
   const res = await call('GET', '/api/billing', { token: t.arc });
   assert.deepEqual(res.json.members.map((m) => m.email), [undefined, undefined, undefined]);
+});
+
+test('GET /api/billing carries the seat price its Clerk plan holds (Issue #1556)', async () => {
+  const { call, t } = build({
+    'GET /billing/plans': plans(799),
+    'GET /organizations/org_1/billing/subscription': active('seat'),
+  });
+  const res = await call('GET', '/api/billing', { token: t.arc });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.seatPrice, '$7.99');
+});
+
+test('GET /api/billing answers with no seat price when Clerk names no such plan (Issue #1556)', async () => {
+  const { call, t } = build();
+  const res = await call('GET', '/api/billing', { token: t.arc });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.seatPrice, null);
+});
+
+test('the billing page and the invite note read the seat price and type no amount (Issue #1556)', () => {
+  for (const file of ['public/billing.js', 'public/invite-dialog.js']) {
+    const src = read(file);
+    assert.doesNotMatch(src, /\$\d+\.\d\d/, `${file} types a money amount instead of reading the plan`);
+    assert.match(src, /seatPrice/, `${file} reads seatPrice off the billing state`);
+  }
 });

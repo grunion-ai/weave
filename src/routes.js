@@ -1708,6 +1708,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
             const s = await billing.standing({ workspace: weave.billing(), accounts });
             return {
               plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, planSlug: billing.plan, publishableKey: billing.publishableKey,
+              seatPrice: s.plan === 'comped' ? null : await billing.seatPrice(),
               me: accountName, architect,
               members: accounts.map((a) => {
                 const mail = a.identities?.find((i) => i.verifiedEmail)?.verifiedEmail ?? null;
