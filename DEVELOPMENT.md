@@ -187,7 +187,12 @@ inline transform and the transition it starts has not been resolved yet.
 running animation, its transform is identity and its box has stayed put for a
 frame (Issue #901).
 `WEAVE_CPU_THROTTLE=4` helps reproduce gate-only browser failures.
-Retries remain visible in test output; repeated flakiness gets a tracker issue.
+A file that fails and then passes on its in-shard retry is recorded, not only
+printed. `scripts/test.mjs` writes it to the shard result's `retried` list, the
+CI and PR gates name it in their aggregate and annotate the run, and after every
+main run the sheriff workflow's `flakes` job appends a line to that file's
+`Error: <test file> flakes on main` row (Issue #1671). A row that keeps growing
+is a test to fix.
 A test that needs a scratch directory calls `tempDir(prefix)` from
 `test/lib/temp.mjs`, which removes every directory it opened when the process
 exits. `test/temp-dirs.test.mjs` refuses a bare
@@ -215,8 +220,10 @@ cancels a rerun whenever a newer main commit pushes, and the cancelled rerun
 used to read as a second red.
 
 A green rerun is a flake: it appends a line to the Issue row
-`Error: <test file> flakes on main`, creating it if none is open, and stops. A
-second red finds the commits since the last main run whose `CI gate` succeeded
+`Error: <test file> flakes on main` and stops. Each file keeps one flake row: an
+Open or In Progress row takes the line, a Fixed one reopens with it, and only a
+file with no row gets a new one. An In Progress row still counts as a tracked
+flake. A second red finds the commits since the last main run whose `CI gate` succeeded
 and bisects them by dispatching `tests` with its `ref` input, at most four
 runs. Completed runs for a commit are reused for free. A probe that goes red on
 a test file other than the one holding main red says nothing about this red, so
@@ -257,7 +264,9 @@ evidence the revert carried. It never reverts a revert, never acts on a
 culprit that already has a revert branch, never pushes to main and never
 forces a push. Replay a run without writing anything:
 `gh workflow run sheriff -f run_id=<id> -f dry_run=true`, or locally
-`node scripts/sheriff.mjs <id> --dry-run`.
+`node scripts/sheriff.mjs <id> --dry-run`. The `flakes` job replays locally as
+`node scripts/sheriff.mjs <id> --retries --dry-run`, reading the attempt
+`SHERIFF_RUN_ATTEMPT` names or else the newest one.
 
 Secrets: `SHERIFF_TOKEN` (fine-grained token with contents, pull requests,
 actions and workflows write, so the revert PR starts `Dev gate` and its merge

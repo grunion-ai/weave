@@ -59,3 +59,34 @@ jobs:
           SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
           SHERIFF_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
           SHERIFF_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+
+  flakes:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure') &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.12.0"
+      - name: Record each file that passed only on its in-shard retry
+        run: node scripts/sheriff.mjs --retries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
+          SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
+          SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
+          SHERIFF_RUN_ID: ${{ github.event.workflow_run.id }}
+          SHERIFF_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}

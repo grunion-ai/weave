@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPORTER = pathToFileURL(join(ROOT, 'scripts/failed-files.mjs')).href;
@@ -93,6 +93,12 @@ export function sandboxHome(dir) {
   return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json') };
 }
 
+function recordRetried(files, out, env) {
+  out(`# RETRIED and green: ${files.length} file(s) failed the first run and passed the second: ${files.join(' ')}`);
+  if (!env.WEAVE_CI_REPORT) return;
+  appendFileSync(env.WEAVE_CI_REPORT, files.map((file) => `${JSON.stringify({ type: 'retried', data: { file: relative(ROOT, resolve(ROOT, file)).split('\\').join('/') } })}\n`).join(''));
+}
+
 function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-test-'));
   const laneEnv = { ...env, ...sandboxHome(dir) };
@@ -102,11 +108,10 @@ function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, 
       const failedPath = join(dir, `failed-${i}`);
       const status = spawnSync(process.execPath, argsFor(attempt, failedPath, extraArgs, undefined, cap),
         { cwd: ROOT, stdio: 'inherit', env: laneEnv }).status;
-      if (status === 0) {
-        if (i) out(`# RETRIED and green: ${attempt.length} file(s) failed the first run and passed the second — ${attempt.join(' ')}`);
-        return 0;
-      }
-      const failed = readFailed(failedPath);
+      const failed = status === 0 ? [] : readFailed(failedPath);
+      const green = !i ? [] : status === 0 ? attempt : failed.length ? attempt.filter((f) => !failed.includes(f)) : [];
+      if (green.length) recordRetried(green, out, env);
+      if (status === 0) return 0;
       if (i >= retries || !failed.length) {
         if (i) out(`# RETRIED and still red: ${failed.join(' ') || 'the run failed without naming a file'}`);
         return status || 1;
