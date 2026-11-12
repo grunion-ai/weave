@@ -318,13 +318,13 @@ digest, which carries the engines and every system package the driver in
 `.github/test-tools` needs, so no shard installs a browser at test time
 (Feature #368). The container runs as uid 1001, the runner user that owns the
 checkout, because git refuses a repository another user owns, and it takes
-`--ipc=host` and `--init`. The image has no resolver
-for `*.localhost` names, so the container lists each host the journeys name
-with `--add-host`. The layout probes were measured on the runner's fonts, so it
-also mounts the runner's `/usr/share/fonts` read-only beside its own. A
-Playwright bump moves `.github/test-tools`, the image tag and its digest
-together. `test/security/workflow-images.test.mjs` refuses a workflow image not
-pinned by digest, and `test/ci-browser-image.test.mjs` holds the rest.
+`--ipc=host` and `--init`. The image has no resolver for `*.localhost` names,
+so the container lists each host the journeys name with `--add-host`. The
+layout probes were measured on the runner's fonts, so it also mounts the
+runner's `/usr/share/fonts` read-only beside its own. A Playwright bump moves
+`.github/test-tools`, the image tag and its digest together.
+`test/security/workflow-images.test.mjs` refuses a workflow image not pinned by
+digest, and `test/ci-browser-image.test.mjs` holds the rest.
 
 The `budgets` and dev soak workflows still install on the runner, through
 `node scripts/ci/install-browsers.mjs <browser...>`, the one copy they share.
