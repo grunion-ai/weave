@@ -284,7 +284,8 @@ test('a red held only by shards that hit the test manager timeout, with no faili
   assert.match(out.reason, /browser-1, browser-2 hit the test manager timeout/);
   assert.match(out.reason, /no test recorded a failure/);
   const issue = f.writes.find((w) => w[0] === 'issue')[1];
-  assert.match(issue.name, /^Error: tests shards browser-1, browser-2 time out on main at [0-9a-f]{10}$/);
+  assert.equal(issue.name, 'Error: tests shards time out on main');
+  assert.match(issue.description, /^Shards that hit the test manager timeout: browser-1, browser-2$/m);
   const named = fake({ files: ['test/grid.test.mjs'], timedOut: ['browser-1'] });
   assert.equal((await sheriff(900, named.io)).action, 'revert', 'a failing test beside the timeout is still a conviction');
   const unverdicted = fake({ files: [], unresolved: ['test/grid-browser.test.mjs'], timedOut: ['browser-4'] });
@@ -389,7 +390,7 @@ test('one commit since the last green run is the culprit: revert PR, PR comment,
   assert.doesNotMatch(spec.title, /\((Issue|Feature)s? #/);
   assert.equal(f.writes[3][1], 100);
   assert.match(f.writes[3][2], /pull\/500/);
-  assert.equal(f.writes[4][1].name, 'Error: test/grid.test.mjs fails on main after PR #100');
+  assert.equal(f.writes[4][1].name, 'Error: test/grid.test.mjs fails on main');
   assert.match(f.writes[4][1].description, /actions\/runs\/900/);
   assert.equal(f.kinds().filter((k) => k === 'alert').length, 1);
 });
@@ -488,7 +489,7 @@ test('past the cap of 4 bisect runs the remaining suspect range is reverted as o
   const spec = f.writes.find((w) => w[0] === 'revert')[1];
   assert.deepEqual(spec.shas, out.culprits);
   assert.equal(spec.branch, `sheriff/revert-${out.culprits[0].slice(0, 10)}-${out.culprits.at(-1).slice(0, 10)}`);
-  assert.match(f.writes.find((w) => w[0] === 'issue')[1].name, /after PRs #/);
+  assert.match(f.writes.find((w) => w[0] === 'issue')[1].description, /^Original PR: #\d+ \S+, #\d+ /m);
 });
 
 test('known results for a midpoint are reused and do not spend the cap', async () => {
@@ -575,7 +576,7 @@ test('a conflicting revert or a missing green base escalates instead of guessing
   const none = fake();
   none.io.lastGreen = async () => null;
   assert.equal((await sheriff(900, none.io)).action, 'escalate');
-  assert.equal(none.writes.find((w) => w[0] === 'issue')[1].name, `Error: test/grid.test.mjs fails on main after commit ${sha(100).slice(0, 10)}`);
+  assert.equal(none.writes.find((w) => w[0] === 'issue')[1].name, 'Error: test/grid.test.mjs fails on main');
 });
 
 test('a refused revert PR escalates with the pushed branch instead of failing silently', async () => {
@@ -608,7 +609,7 @@ test('helpers: probes, reverts, markers, failing files, titles and a push that n
   assert.equal(revertBranch([commit(1)]), `sheriff/revert-${sha(1).slice(0, 10)}`);
   assert.deepEqual(culpritsOf(`x\nSheriff-Culprit: ${sha(1)}\nSheriff-Culprit: ${sha(2)}\n`), [sha(1), sha(2)]);
   assert.deepEqual(failingFiles([{ summaries: [{ file: 'test/b.test.mjs', counts: { failed: 1 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }, { file: 'test/c.test.mjs', counts: { failed: 0 } }, { file: 'test/b.test.mjs', counts: { failed: 2 } }, { file: 'test/a.test.mjs', success: false, counts: { failed: 0 } }] }, {}]), ['test/a.test.mjs', 'test/b.test.mjs']);
-  assert.equal(issueName({ files: ['test/a.test.mjs', 'test/b.test.mjs'], prs: [{ number: 7 }], culprits: [commit(1)] }), 'Error: test/a.test.mjs (+1 more) fails on main after PR #7');
+  assert.equal(issueName({ files: ['test/a.test.mjs', 'test/b.test.mjs'], prs: [{ number: 7 }], culprits: [commit(1)] }), 'Error: test/a.test.mjs fails on main');
   assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }], probes: [{ sha: sha(1), conclusion: 'failure' }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red`);
   assert.equal(revertTitle({ culprits: [commit(1)], prs: [{ number: 7 }] }), `sheriff: revert ${sha(1).slice(0, 10)} (PR #7) after main went red (1 commit in range, no bisect probe)`);
   assert.match(revertTitle({ culprits: [commit(1), commit(2)], prs: [] }), /\(2 commits in range, no bisect probe\)$/);
