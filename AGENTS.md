@@ -67,7 +67,7 @@ workspace file (see
 ### Tool map
 
 <!-- tool-map:start (generated from src/mcp.js by scripts/agent-docs.mjs) -->
-17 listed by default, out of 66. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
+MCP server: 66 tools, 17 listed by default. `weave mcp --tools all` or `WEAVE_MCP_TOOLS=all` lists every one.
 
 | Job | Tool | What it does |
 | --- | --- | --- |
@@ -171,7 +171,7 @@ Each error is weave's text; the fix follows.
 | --- | --- |
 | `Icon 'lucide:dolar' is not in the inventory; nearest: lucide:dollar-sign (money)` | Use a `nearest` name, or `weave_vocabulary {section: "icons", query: "<word>"}`. `weave_build` drops a refused icon, lists it under `ignored` and goes on. |
 | `grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year` | Send `"grain": ["year", "month"]`, never `"month"`. |
-| `Workspace name must be alphanumeric` | Name the workspace as a slug: letters, digits and dashes, starting with a letter or digit (`personal-finance`). |
+| `Workspace names use lowercase letters, numbers and hyphens` | Use a letter or digit; `Personal Finance` becomes `personal-finance`. |
 | `Field 'Stage' not found in table 'Deal'` | The field was never made because an earlier step failed. Read the build's `errors` (each has a `path` such as `spaces[0].tables[1].fields[2]`), fix that entry and resend the whole spec. |
 | `Invalid number format 'currencyy' (number, currency, percent, compact)` | Pick a value the message lists. |
 | `Field 'When' not found in table 'Transaction'. Sort reads 'Field asc\|desc, Field2 asc\|desc', e.g. 'Date desc'` (a `Sort` on a `System/Tables` or `System/Views` record) | Name a field the table has; `-Date` and `[{field, dir}]` land too (Issue #626). |
@@ -332,12 +332,40 @@ Card, `description` is the description size (`none`, `small`, `medium`, `large`)
 
 **Read `weave_vocabulary` before configuring anything.** It returns every
 closed set a config value can come from *and what the choice looks like on
-screen*: every field type with how it renders in the grid and which
-config keys it takes, the option colors, the icon names (stored as `lucide:<name>`; a value stored as `iconly:<name>` before 2026-09-02 still resolves; anything else is refused — an emoji is not an icon), number
-and date formats, document kinds, relation cardinalities, workflow state
-categories, rollup aggregates, the system columns, the view kinds, and the
-column-width rules (60px floor, 260px cap when unset, a set width is a floor as
-well as a ceiling). Guessing a color that validates still reads wrong.
+screen*: each field type comes with how it renders in the grid and the config
+keys it takes. Guessing a color that validates still reads wrong. An icon is
+`lucide:<name>` from the inventory, a legacy `iconly:<name>` still resolves,
+and anything else is refused: an emoji is not an icon. The sections:
+
+<!-- vocabulary:start (generated from src/vocabulary.js by scripts/agent-docs.mjs) -->
+| Section | Values |
+| --- | --- |
+| `fieldTypes` | `text`, `number`, `rating`, `date`, `daterange`, `checkbox`, `toggle`, `url`, `email`, `select`, `multiselect`, `workflow`, `relation`, `lookup`, `rollup`, `formula`, `document`, `attachments`, `avatar`, `field`, `key`, `view` |
+| `optionColors` | `slate`, `blue`, `green`, `amber`, `red`, `purple`, `cyan`, `pink`, `teal`, `orange` |
+| `icons` | 163 names, stored as `lucide:<name>` and searched with `query` by name, category and synonym; 109 legacy `iconly:<name>` aliases; 26 mark characters that are their own value |
+| `numberFormats` | `number`, `currency`, `percent`, `compact` |
+| `numberDisplays` | `text`, `bar`, `ring`, `heat` |
+| `sparklineStyles` | `line`, `column`, `winloss` |
+| `cellColors` | `ink`, `icon`, `accent` |
+| `dateFormats` | `iso`, `us`, `eu`, `long`, `short`, `month`, `quarter`, `ordinal`, `relative` |
+| `dateGrains` | `year`, `month`, `day` |
+| `dateGrainForm` | a list of parts, e.g. ["year","month"] for a month or ["year"] for a year |
+| `dateStyleNeeds` | `month` needs `month`; `quarter` needs `month`; `ordinal` needs `day`; `relative` needs `year` |
+| `clocks` | `24h`, `12h` |
+| `zones` | `floating`, `fixed`, `instant` |
+| `documentKinds` | `markdown`, `html`, `code` |
+| `cardinalities` | `many-to-one`, `one-to-many`, `many-to-many`, `one-to-one` |
+| `stateCategories` | `not-started`, `in-progress`, `done`, `canceled` |
+| `aggregates` | `count`, `sum`, `avg`, `min`, `max`, `join`, `median`, `stdev`, `distinct`, `filled`, `empty`, `range` |
+| `systemFields` | `Created At`, `Modified At`, `Created By`, `Modified By` |
+| `viewKinds` | `table` |
+| `columnWidth` | 60px floor, 260px cap when unset; a set width is a floor as well as a ceiling |
+| `fieldDescription` | `config.description` on every field type but view: plain text the schema emits as the field's `description` |
+| `formulaFunctions` | `if`, `empty`, `contains`, `concat`, `upper`, `lower`, `trim`, `len`, `text`, `round`, `abs`, `min`, `max`, `number`, `sortby`, `today`, `now`, `days`, `dateadd`, `datediff`, `year`, `month`, `day` |
+| `formulaGroups` | `logic`, `text`, `number`, `date` |
+| `registries` | `System/Workspaces`: `Description`; `System/Spaces`: `Name`, `Description`; `System/Tables`: `Name`, `Description`, `Field Order`, `Hidden Fields`, `Filter`, `Sort`, `Hide Rollups`; `System/Fields`: `Name`, `Definition` |
+<!-- vocabulary:end -->
+
 `weave_vocabulary {section: "icons"}` returns that section alone, `{sections: ["icons", "optionColors", "formulaFunctions"]}` returns several keyed by name (REST `?section=icons,optionColors`, CLI `weave vocabulary icons,optionColors`), a comma list of queries searches several icon words at once, and `{section: "icons", query: "build"}` searches the icon names by name, category and synonym (REST `GET /api/vocabulary?section=icons&query=build`, CLI `weave vocabulary icons build`), so a guessed icon costs one small call, not the whole list. A refused icon names the three nearest inventory icons.
 
 **The registry records are the schema verbs.** `System/Spaces`,
@@ -467,22 +495,38 @@ weave_table_view {view: "Issue/Open bugs", move: {field: "Status", before: "Name
 
 ### The CLI mirrors all of it
 
-`node bin/weave.js help` prints the full list; `--data <path>` picks the
-workspace. Every MCP tool has a command:
+`node bin/weave.js help` prints every command with its arguments and
+`weave <command> --help` prints one; `--data <path>` picks the workspace. The
+registry gives each tool its commands, grouped here by the
+[Tool map](#tool-map) area of the tool each one runs:
 
-| Read | Schema | Data |
-| --- | --- | --- |
-| `weave ontology [--concept T] [--since E]` / `weave schema` | `weave space create` / `weave space list` / `weave space update` / `weave space members` / `weave space delete` / `weave space restore` | `weave create` / `weave get` / `weave query` |
-| `weave vocabulary` | `weave table create` / `weave table list` / `weave table update` / `weave table view` / `weave table move` / `weave table duplicate` / `weave table delete` / `weave table restore` | `weave update` / `weave delete` / `weave restore` / `weave trash` / `weave stats <table> [--by F] [--where J]` |
-| `weave map` | `weave field add` / `weave field update` / `weave field rollback` / `weave field delete` / `weave field restore` | `weave link` / `weave unlink` / `weave state` / `weave bulk` |
-| `weave template list` | `weave template use <space> --into <other.db> [--name N]` | |
-| `weave registry` / `weave registry report` / `weave registry rebuild` | `weave relation add` / `weave formula check` | `weave doc get` / `weave doc set` / `weave doc append` / `weave comment` / `weave comment delete` |
-| `weave activity` | `weave schema apply --file doc.json [--dry-run]` | `weave search` / `weave undo` / `weave undo list` |
-| `weave doc-revisions <ref> [--field F] [--seq n]` | `weave doc-restore <ref> --seq n [--field F]` | |
-| `weave audit` | `weave view` / `weave view list` / `weave view get` / `weave view create` / `weave view delete` / `weave view restore` / `weave view share` / `weave view unshare` / `weave share` / `weave share list` / `weave share mint` / `weave share renew` / `weave share revoke` / `weave share update` / `weave share regenerate` / `weave automation create` / `weave automation list` / `weave automation describe` / `weave automation update` / `weave automation delete` / `weave automation replay` / `weave automation secret` | `weave csv` / `weave csv export` / `weave csv import` / `weave export` / `weave import` |
-| `weave workspace` / `weave workspace get` / `weave workspace order` | `weave workspace set` / `weave workspace logo` / `weave workspace move <name> --position N` / `weave account` / `weave key` / `weave key list` / `weave key set` / `weave key share` / `weave key unshare` / `weave key delete` / `weave key migrate` | `weave file attach` / `weave file read` / `weave file delete` |
-| `weave form` / `weave form get` | `weave form create` / `weave form update` / `weave form config` / `weave workspace leave` | `weave form submit <form> --values '{json}'` |
-| `weave audit` | `weave account list` / `weave account create` / `weave account delete` / `weave workspace require-auth` / `weave workspace link-preview` / `weave account sessions` / `weave account revoke-session` / `weave account link` / `weave account unlink` | `weave invite <email>` / `weave invite list` / `weave invite revoke` |
+<!-- cli-map:start (generated from src/commands.js by scripts/agent-docs.mjs) -->
+| Area | Commands |
+| --- | --- |
+| Build | `weave build` |
+| Read and search | `weave ontology`, `weave space list`, `weave table list`, `weave schema`, `weave query`, `weave get`, `weave search` |
+| Write rows | `weave create`, `weave update`, `weave csv import` |
+| Change schema | `weave space create`, `weave table create`, `weave field add`, `weave field update`, `weave relation add`, `weave workspace get`, `weave workspace set`, `weave workspace logo`, `weave workspace order`, `weave workspace move`, `weave workspace link-preview`, `weave workspace leave` |
+| Look up allowed values | `weave vocabulary` |
+| Rows | `weave delete`, `weave restore`, `weave trash`, `weave undo list`, `weave undo`, `weave bulk`, `weave state`, `weave link`, `weave unlink` |
+| Documents and comments | `weave doc get`, `weave doc set`, `weave doc append`, `weave doc-revisions`, `weave doc-restore`, `weave comment`, `weave comment delete` |
+| Spaces and tables | `weave space update`, `weave space members`, `weave space delete`, `weave space restore`, `weave table update`, `weave table move`, `weave table duplicate`, `weave table delete`, `weave table restore`, `weave table view` |
+| Fields and formulas | `weave field rollback`, `weave field delete`, `weave field restore`, `weave formula check` |
+| Whole schema | `weave schema apply`, `weave registry report`, `weave registry rebuild`, `weave map` |
+| Templates | `weave template list`, `weave template use` |
+| Figures | `weave stats` |
+| Import and export | `weave csv export`, `weave export`, `weave import` |
+| Files | `weave file attach`, `weave file read`, `weave file delete` |
+| Automations | `weave automation create`, `weave automation list`, `weave automation describe`, `weave automation update`, `weave automation delete`, `weave automation replay`, `weave automation secret`, `weave run start`, `weave run update`, `weave run list` |
+| Share pages and forms | `weave view list`, `weave view get`, `weave view create`, `weave view delete`, `weave view restore`, `weave view share`, `weave view unshare`, `weave share list`, `weave share mint`, `weave share renew`, `weave share revoke`, `weave share update`, `weave share regenerate` |
+| History | `weave activity`, `weave audit` |
+| Accounts and secrets | `weave account list`, `weave account create`, `weave account set`, `weave account delete`, `weave workspace require-auth`, `weave account sessions`, `weave account revoke-session`, `weave account link`, `weave account unlink`, `weave invite`, `weave invite list`, `weave invite revoke`, `weave key list`, `weave key set`, `weave key reveal`, `weave key share`, `weave key unshare`, `weave key delete`, `weave key migrate` |
+<!-- cli-map:end -->
+
+`bin/weave.js` runs the forms itself: `weave_forms` is `weave form`,
+`weave form get`, `weave form config`, `weave form create` and
+`weave form update`, and `weave_form_submit` is
+`weave form submit <form> --values '{json}'`. `weave_call` has no command.
 
 The sidebar's order is stored, and every door reads and writes it through the
 same engine calls (Feature #284). `weave_schema`, `GET /api/schema`,
@@ -515,12 +559,11 @@ reference; `WEAVE_BACKUP_DEST` on `weave serve` arms the nightly and
 Notes that save round trips:
 
 - **Refs are flexible.** Anywhere an entity is expected, pass a UUID, `#12`,
-  `Table#12`, or `Space/Table#12`. Tables accept `Name` or `Space/Name`.
-  **One exception:** the *target* of a relation — `weave_link` / `weave_unlink`,
-  and relation values inside `weave_create_entity` / `weave_update_entity` —
-  currently takes a UUID, a bare `#12`, or an exact name, but **not** the
-  qualified `Table#12` form. Passing `Suite#18` there returns "not found" even
-  though `#18` resolves.
+  `Table#12`, or `Space/Table#12`. Tables accept `Name` or `Space/Name`. A
+  relation target takes the same forms and an exact name too (`weave_link`,
+  `weave_unlink`, and relation values in `weave_create_entity` and
+  `weave_update_entity`); a `Table#12` that names a different table is read
+  as a name, so it is not found.
 - **Formulas have a check step.** The loop is: `weave_check_formula` (or
   `POST /api/tables/:id/formula-check`, or `weave formula check`) until it
   returns `ok: true` — it also previews the value on a real record — then save
@@ -680,7 +723,7 @@ For agents changing weave itself: where the code lives and the rules every chang
 | `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
 | `src/store.js` | `node:sqlite` persistence (WAL, JSON→SQLite migration) |
 | `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server: 66 tools over the engine, 17 listed by default |
+| `src/mcp.js` | MCP server over the engine; the [Tool map](#tool-map) lists its tools |
 | `src/commands.js` | The command registry: one entry per operation names its MCP tool, CLI command, HTTP route, what it writes and how it runs; the three doors dispatch from it |
 | `src/errors.js` | The error contract: each code's HTTP status, MCP code and CLI exit |
 | `src/formula.js` | Formula parser/evaluator |
@@ -699,9 +742,11 @@ For agents changing weave itself: where the code lives and the rules every chang
    Hosted CI owns full verification; local workers keep checks targeted. Never
    bypass branch protection or push main directly. See DEVELOPMENT.md.
 2. **Zero runtime dependencies.** Never add a package to `dependencies`. Storage
-   is `node:sqlite`, built into Node. Third-party browser code is vendored and
-   pinned into `public/vendor/` (mermaid 11.4.1, @tabler/core 1.4.0) — never
-   npm-installed. Dev-only tooling under `scripts/` and `brand/` may import a
+   is `node:sqlite`, built into Node. Third-party code is vendored and pinned
+   under `public/vendor/` and `src/vendor/`, never npm-installed:
+   `security/vendor.lock.json` holds each library's version and file hashes,
+   and the README's [Third-party](README.md#third-party-vendored-pinned) list
+   is generated from it. Dev-only tooling under `scripts/` and `brand/` may import a
    package, but must do so with a **dynamic** `import()` so the test suite still
    loads without it.
 3. **No build step.** The UI is vanilla JS served as-is. If a change would

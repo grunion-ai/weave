@@ -8,11 +8,18 @@ import { TOOLS, listTools, primer } from '../src/mcp.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import { GUIDES, FIELD_DOCS } from '../src/handbook.js';
 import { Weave, FIELD_TYPES } from '../src/engine.js';
+import { renderBlocks, applyBlocks, FILES, LIBRARIES } from '../scripts/agent-docs.mjs';
+import { readLock } from '../scripts/vendor-lock.mjs';
+
+await import('../public/starter-core.js');
+const STARTERS = globalThis.WeaveStarters;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 const DOCS = ['README.md', 'AGENTS.md', 'llms.txt', 'src/mcp-primer.md',
   ...readdirSync(join(ROOT, 'docs'), { recursive: true }).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`)];
+const ALL_DOCS = [...DOCS, 'CLAUDE.md', 'DEVELOPMENT.md', 'CONTRIBUTING.md', 'SECURITY.md'];
+const HELP = execFileSync(process.execPath, [join(ROOT, 'bin/weave.js'), 'help'], { encoding: 'utf8' });
 
 const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
   'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
@@ -23,23 +30,29 @@ const number = (s) => (/^\d+$/.test(s) ? Number(s) : WORDS.get(s.toLowerCase()))
 
 const TOTAL = TOOLS.length;
 const CORE = listTools('core').length;
+const sectionWords = (key) => key.replace(/[A-Z]/g, (c) => ` ${c.toLowerCase()}`)
+  .replace(/colors$/, 'colou?rs').replace(/ies$/, '(?:y|ies)').replace(/s$/, 's?');
 const CLAIMS = [
-  [/(?<!about )\b([\w-]+) (?:MCP )?tools\b(?! by default)/gi, TOTAL],
-  [/\b([\w-]+) (?:MCP )?tools by default/gi, CORE],
-  [/\b([\w-]+) listed by default/gi, CORE],
-  [/\blists? all ([\w-]+)/gi, TOTAL],
-  [/\breaches the other ([\w-]+)/gi, TOTAL - CORE],
-  [/\b([\w-]+) field types\b/gi, FIELD_TYPES.length],
-  [/\b([\w-]+) view kinds?\b/gi, VOCABULARY.viewKinds.length],
-  [/\b([\w-]+) option colou?rs?\b/gi, VOCABULARY.optionColors.length],
+  [/(?<!about )\b([\w-]+) (?:MCP )?tools\b(?! by default)/gi, TOTAL, 'src/mcp.js tools'],
+  [/\b([\w-]+) (?:MCP )?tools by default/gi, CORE, 'src/mcp.js tools listed by default'],
+  [/\b([\w-]+) listed by default/gi, CORE, 'src/mcp.js tools listed by default'],
+  [/\blists ([\w-]+) by default/gi, CORE, 'src/mcp.js tools listed by default'],
+  [/\blists? all ([\w-]+)/gi, TOTAL, 'src/mcp.js tools'],
+  [/\b(?:reaches|runs) the other ([\w-]+)/gi, TOTAL - CORE, 'src/mcp.js tools outside the default list'],
+  [/\b([\w-]+) field types\b/gi, FIELD_TYPES.length, 'src/engine.js FIELD_TYPES'],
+  ...Object.entries(VOCABULARY).filter(([key, value]) => Array.isArray(value) && key !== 'fieldTypes')
+    .map(([key, value]) => [new RegExp(`\\b([\\w-]+) ${sectionWords(key)}\\b`, 'gi'), value.length, `src/vocabulary.js ${key}`]),
+  [/\b([\w-]+) icons\b/gi, VOCABULARY.icons.names.length, 'src/vocabulary.js icons.names'],
+  [/\b([\w-]+) starter templates?\b/gi, STARTERS.TEMPLATES.length, 'public/starter-core.js TEMPLATES'],
+  [/\btemplates? in ([\w-]+) categories\b/gi, STARTERS.CATEGORIES.length, 'public/starter-core.js CATEGORIES'],
 ];
 function countClaims(text) {
   const flat = text.replace(/\s+/g, ' ');
-  return CLAIMS.flatMap(([re, want]) => [...flat.matchAll(re)]
-    .map((m) => ({ phrase: m[0], said: number(m[1]), want }))
+  return CLAIMS.flatMap(([re, want, what]) => [...flat.matchAll(re)]
+    .map((m) => ({ phrase: m[0], said: number(m[1]), want, what }))
     .filter((c) => c.said !== undefined));
 }
-const codeHas = `src/mcp.js has ${TOTAL} tools, ${CORE} listed by default; src/engine.js has ${FIELD_TYPES.length} field types; src/vocabulary.js has ${VOCABULARY.viewKinds.length} view kinds and ${VOCABULARY.optionColors.length} option colors`;
+const codeHas = (c) => `${c.what} has ${c.want}`;
 
 test('a vocabulary count the docs state is read back and checked (Issue #1257)', () => {
   const kinds = countClaims(`weave_vocabulary returns the ${UNITS[VOCABULARY.viewKinds.length + 1]} view kinds`);
@@ -52,20 +65,163 @@ test('a vocabulary count the docs state is read back and checked (Issue #1257)',
     'naming the sets without a number is read as a count claim');
 });
 
-test('every tool and field-type count in the docs is the count the code has', () => {
+test('a count of any closed set is read back from the code: every vocabulary section, the starter templates and their categories (Issue #1591)', () => {
+  for (const [key, value] of Object.entries(VOCABULARY).filter(([, v]) => Array.isArray(v))) {
+    const phrase = key.replace(/[A-Z]/g, (c) => ` ${c.toLowerCase()}`);
+    assert.deepEqual(countClaims(`weave has ${value.length + 1} ${phrase}`).map((c) => [c.said, c.want]), [[value.length + 1, value.length]],
+      `a wrong count of the ${key} section passes the gate`);
+  }
+  assert.deepEqual(countClaims('Forty starter templates in twelve categories').map((c) => [c.said, c.want]),
+    [[40, STARTERS.TEMPLATES.length], [12, STARTERS.CATEGORIES.length]], 'a wrong starter or category count passes the gate');
+  assert.deepEqual(countClaims('It lists 18 by default and runs the other 50').map((c) => [c.said, c.want]),
+    [[18, CORE], [50, TOTAL - CORE]], 'the README FAQ counts pass the gate unread');
+});
+
+test('every count the docs state is the count the code has', () => {
   let seen = 0;
   for (const file of DOCS) {
     for (const c of countClaims(read(file))) {
       seen++;
-      assert.equal(c.said, c.want, `${file} says "${c.phrase}"; ${codeHas}`);
+      assert.equal(c.said, c.want, `${file} says "${c.phrase}"; ${codeHas(c)}`);
     }
   }
   assert.ok(seen >= 5, `only ${seen} counts found: the patterns no longer match the docs`);
 });
 
-test('every tool and field-type count in the Handbook is the count the code has (Issue #1246)', () => {
+test('every count the Handbook states is the count the code has (Issue #1246)', () => {
   for (const page of [...GUIDES, ...FIELD_DOCS]) {
-    for (const c of countClaims(page.doc)) assert.equal(c.said, c.want, `Handbook "${page.name}" says "${c.phrase}"; ${codeHas}`);
+    for (const c of countClaims(page.doc)) assert.equal(c.said, c.want, `Handbook "${page.name}" says "${c.phrase}"; ${codeHas(c)}`);
+  }
+});
+
+const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
+const unknownTools = (text) => [...text.matchAll(/(?<!<)\bweave_[a-z_]+/g)].map(([name]) => name)
+  .filter((name) => !TOOL_NAMES.has(name) && name !== 'weave_data');
+
+const VERBS = new Map([['help', new Set()]]);
+for (const [, command, rest] of HELP.split('\n').map((line) => line.match(/^ {2}([a-z][\w-]*)(.*)$/)).filter(Boolean)) {
+  const subs = VERBS.get(command) ?? new Set();
+  VERBS.set(command, subs);
+  for (const token of rest.trim().split(/\s{2,}/)[0].split(/\s+/).filter(Boolean)) {
+    if (/^\[?--/.test(token)) break;
+    for (const word of token.replace(/[[\]]/g, '').split('|')) if (/^[a-z][a-z-]*$/.test(word)) subs.add(word);
+  }
+}
+const unknownVerbs = (text) => [...text.matchAll(/`(?:node bin\/weave\.js|weave) ([a-z][\w-]*)(?=[\s`])(?: ([^`\s]+))?[^`]*`/g)]
+  .filter(([, command, next]) => {
+    const subs = VERBS.get(command);
+    return !subs || Boolean(next && /^[a-z][a-z-]*$/.test(next) && subs.size && !subs.has(next));
+  })
+  .map(([span]) => span);
+
+const LOCKED = readLock().libraries.filter((lib) => lib.version);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+function staleVersions(text) {
+  const flat = text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  return LOCKED.flatMap((lib) => {
+    const names = [...new Set([lib.name, lib.npm, LIBRARIES[lib.name]?.title].filter(Boolean))];
+    const re = new RegExp(`(?<![\\w@/.-])(?:${names.map(escapeRe).join('|')})\\s+v?(\\d+(?:\\.\\d+)+(?:\\+[0-9a-f]+)?)`, 'gi');
+    return [...flat.matchAll(re)]
+      .filter(([, said]) => said !== lib.version && !lib.version.startsWith(`${said}+`))
+      .map(([phrase]) => `"${phrase}" (security/vendor.lock.json pins ${lib.name} ${lib.version})`);
+  });
+}
+
+const blockOf = (doc, name) => doc.match(new RegExp(`<!-- ${name}:start[^>]*-->\\n?([\\s\\S]*?)<!-- ${name}:end -->`))?.[1];
+
+test('every block scripts/agent-docs.mjs generates is current in the doc that carries it (run node scripts/agent-docs.mjs)', () => {
+  assert.ok(FILES.includes('AGENTS.md') && FILES.includes('README.md'), `scripts/agent-docs.mjs writes ${FILES.join(', ')}`);
+  for (const file of FILES) {
+    const doc = read(file);
+    for (const name of Object.keys(renderBlocks(file))) assert.ok(blockOf(doc, name) !== undefined, `${file} has no ${name} block`);
+    assert.equal(applyBlocks(doc, renderBlocks(file), file), doc, `${file} is stale: run node scripts/agent-docs.mjs`);
+  }
+  for (const name of ['tool-map', 'cli-map', 'vocabulary']) assert.ok(name in renderBlocks('AGENTS.md'), `AGENTS.md has no generated ${name}`);
+  assert.ok('third-party' in renderBlocks('README.md'), 'README.md has no generated third-party list');
+});
+
+test('the drift gate fails when a doc names a tool, CLI verb, view kind, option colour, template count or vendored version the code does not have (Issues #1563, #1586, #1591)', () => {
+  const doctored = [
+    ['AGENTS.md', 'tool-map', '`weave_add_field`', '`weave_add_column`', 'a renamed tool'],
+    ['AGENTS.md', 'cli-map', '`weave space create`', '`weave space make`', 'a renamed CLI verb'],
+    ['AGENTS.md', 'vocabulary', '`viewKinds` | `table`', '`viewKinds` | `table`, `board`', 'a view kind the code lacks'],
+    ['AGENTS.md', 'vocabulary', '`slate`, ', '', 'a missing option colour'],
+    ['README.md', 'third-party', LOCKED.find((l) => l.name === 'mermaid').version, '11.4.1', 'a stale mermaid version'],
+  ];
+  for (const [file, name, from, to, what] of doctored) {
+    const doc = read(file);
+    const body = blockOf(doc, name);
+    assert.ok(body?.includes(from), `${file} ${name} block no longer carries ${from}`);
+    const edited = doc.replace(body, body.replace(from, to));
+    assert.notEqual(applyBlocks(edited, renderBlocks(file), file), edited, `${what} in ${file} passes the gate`);
+    assert.equal(applyBlocks(edited, renderBlocks(file), file), doc, `the generator does not restore ${file} after ${what}`);
+  }
+  assert.deepEqual(unknownTools('then call `weave_add_column`; replies come inside <weave_data>'), ['weave_add_column']);
+  assert.deepEqual(unknownVerbs('run `weave space make Ops`, `weave frobnicate`, `weave space create Ops` and `weave restore <archive>`'),
+    ['`weave space make Ops`', '`weave frobnicate`']);
+  assert.deepEqual(staleVersions('[mermaid](https://github.com/mermaid-js/mermaid) 11.4.1 and KaTeX 0.18.11, Vditor 3.x'),
+    [`"mermaid 11.4.1" (security/vendor.lock.json pins mermaid ${LOCKED.find((l) => l.name === 'mermaid').version})`]);
+  assert.equal(countClaims('the two view kinds').length, 1, 'a view-kind count is not read');
+});
+
+test('every tool, CLI verb and vendored version a doc names outside the generated blocks is one the code has (Issues #1563, #1586)', () => {
+  for (const file of ALL_DOCS) {
+    const text = read(file);
+    assert.deepEqual(unknownTools(text), [], `${file} names tools src/mcp.js does not register`);
+    assert.deepEqual(unknownVerbs(text), [], `${file} names CLI verbs weave help does not list`);
+    assert.deepEqual(staleVersions(text), [], `${file} names a vendored version security/vendor.lock.json does not pin`);
+  }
+  for (const page of [...GUIDES, ...FIELD_DOCS]) assert.deepEqual(unknownTools(page.doc), [], `Handbook "${page.name}" names tools src/mcp.js does not register`);
+});
+
+const PROBES = {
+  "Icon 'lucide:dolar' is not in the inventory; nearest: lucide:dollar-sign (money)": (w) => w.createSpace({ name: 'Money', icon: 'lucide:dolar' }),
+  'grain is a list of parts, e.g. ["year","month"] for a month or ["year"] for a year': (w) => w.addField('Deal', { name: 'Closed', type: 'date', config: { grain: 'month' } }),
+  'Workspace names use lowercase letters, numbers and hyphens': (w) => w.updateWorkspace({ name: '!!!' }),
+  "Field 'Stage' not found in table 'Deal'": (w) => w.createEntity('Deal', { Name: 'Acme renewal', Stage: 'Won' }),
+  "Invalid number format 'currencyy' (number, currency, percent, compact)": (w) => w.addField('Deal', { name: 'Value', type: 'number', config: { format: 'currencyy' } }),
+  "Field 'When' not found in table 'Transaction'. Sort reads 'Field asc|desc, Field2 asc|desc', e.g. 'Date desc'": (w) => {
+    const [row] = w.query('System/Tables', { where: [['Name', '=', 'Transaction']] }).items;
+    return w.updateEntity(row.id, { Sort: 'When desc' });
+  },
+  "Table 'Deals' not found": (w) => w.query('Deals'),
+};
+
+test('every error the AGENTS.md Pitfalls table quotes is the text the engine answers today (Issue #1563)', () => {
+  const agents = read('AGENTS.md');
+  const pitfalls = agents.slice(agents.indexOf('\n### Pitfalls\n'), agents.indexOf('\n## Reference\n'));
+  const quoted = pitfalls.split('\n').map((line) => line.match(/^\| `([^`]+)`/)?.[1]).filter(Boolean).map((s) => s.replace(/\\\|/g, '|'));
+  assert.ok(quoted.length >= 5, `only ${quoted.length} Pitfalls rows found: the table no longer parses`);
+  assert.deepEqual(quoted.filter((error) => !PROBES[error]), [], 'a Pitfalls row has no probe here: add one that provokes the error it quotes');
+  for (const error of quoted) {
+    const w = new Weave();
+    w.createSpace({ name: 'Pipeline' });
+    w.createTable({ space: 'Pipeline', name: 'Deal' });
+    w.createSpace({ name: 'Budget' });
+    w.createTable({ space: 'Budget', name: 'Transaction' });
+    assert.throws(() => PROBES[error](w), (err) => err.message.startsWith(error), `the engine no longer answers "${error}"`);
+  }
+});
+
+test('a relation target takes every ref form the Refs note names, with no exception (Issue #1563)', () => {
+  const note = read('AGENTS.md').split('**Refs are flexible.**')[1]?.split('\n- **')[0];
+  assert.ok(note, 'AGENTS.md has no Refs are flexible note');
+  assert.doesNotMatch(note, /exception/i, 'the note carves relation targets out again');
+  const w = new Weave();
+  w.createSpace({ name: 'Pipeline' });
+  w.createTable({ space: 'Pipeline', name: 'Company' });
+  w.createTable({ space: 'Pipeline', name: 'Deal' });
+  w.addRelation('Deal', { name: 'Company', targetDb: 'Company', cardinality: 'many-to-one' });
+  w.createEntity('Company', { Name: 'Initech' });
+  const acme = w.createEntity('Company', { Name: 'Acme' });
+  const forms = { UUID: acme.id, '`#12`': `#${acme.publicId}`, '`Table#12`': `Company#${acme.publicId}`, '`Space/Table#12`': `Pipeline/Company#${acme.publicId}` };
+  for (const [form, ref] of Object.entries(forms)) {
+    assert.ok(note.includes(form), `the note no longer names ${form}`);
+    const made = w.createEntity('Deal', { Name: `made with ${form}`, Company: ref });
+    assert.equal(w.readEntity(made.id).fields.Company?.id, acme.id, `a relation value written as ${form} does not link`);
+    const linked = w.createEntity('Deal', { Name: `linked with ${form}` });
+    w.link(linked.id, 'Company', [ref]);
+    assert.equal(w.readEntity(linked.id).fields.Company?.id, acme.id, `link with a ${form} target does not link`);
   }
 });
 
@@ -137,8 +293,7 @@ test('no agent-facing string offers a board view kind; Board is only a table lay
   for (const tool of TOOLS) assert.doesNotMatch(bare(JSON.stringify(tool)), offersBoard, `${tool.name} offers a board`);
   for (const g of [...GUIDES, ...FIELD_DOCS]) assert.doesNotMatch(bare(g.doc), offersBoard, `Handbook "${g.name}" offers a board`);
   assert.doesNotMatch(bare(primer()), offersBoard, 'the MCP primer offers a board');
-  const help = execFileSync(process.execPath, [join(ROOT, 'bin/weave.js'), 'help'], { encoding: 'utf8' });
-  assert.doesNotMatch(bare(help), offersBoard, 'weave help offers a board');
+  assert.doesNotMatch(bare(HELP), offersBoard, 'weave help offers a board');
   for (const file of ['AGENTS.md', 'llms.txt']) assert.doesNotMatch(bare(read(file)), offersBoard, `${file} offers a board`);
 });
 
