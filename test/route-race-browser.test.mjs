@@ -36,7 +36,7 @@ if (s) {
 
   const newPage = async () => collectThrown(await browser.newPage({ viewport: { width: 1400, height: 900 } }));
 
-  async function holdReadsOf(page, id, tails = ['', '/references', '/references-from']) {
+  async function holdPatterns(page, patterns) {
     const held = [];
     let mode = 'hold';
     let caught;
@@ -46,7 +46,7 @@ if (s) {
       held.push(route);
       caught();
     };
-    for (const tail of tails) await page.route(`**/api/entities/${id}${tail}`, take);
+    for (const pattern of patterns) await page.route(pattern, take);
     return {
       first: () => first,
       count: () => held.length,
@@ -54,6 +54,11 @@ if (s) {
       fail: async () => { mode = 'pass'; for (const r of held.splice(0)) await r.abort('failed'); },
     };
   }
+
+  const holdReadsOf = (page, id, tails = ['', '/references', '/references-from']) =>
+    holdPatterns(page, tails.map((tail) => `**/api/entities/${id}${tail}`));
+
+  const holdQueryOf = (page, id) => holdPatterns(page, [`**/api/tables/${id}/query`]);
 
   async function gridUp(page) {
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'commit' });
@@ -132,6 +137,44 @@ if (s) {
     await page.waitForLoadState('networkidle');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${tasks.id}`);
     assert.ok(await gridRows(page) > 0, 'the held record read painted over the newer table route');
+    assert.equal(await page.locator('#main .entity-values').count(), 0, 'no record page is left under the table route');
+    await page.close();
+  });
+
+  test('a table render that answers after the hash moved on does not paint over the newer route (Issue #1437)', async () => {
+    const page = await newPage();
+    const hold = await holdQueryOf(page, tasks.id);
+    await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'commit' });
+    await hold.first();
+    assert.ok(hold.count() > 0, 'the table query is held');
+    await page.evaluate((h) => { location.hash = h; }, `#/entity/${alpha.id}`);
+    await page.waitForSelector('#main .doc-editor', { timeout: 15000 });
+    await hold.release();
+    await page.waitForLoadState('networkidle');
+    assert.deepEqual(await thrown(page), [], 'the released table query threw');
+    assert.equal(await routeError(page), null, 'the released table query must not paint the route error card');
+    assert.equal(await page.evaluate(() => location.hash), `#/entity/${alpha.id}`);
+    assert.equal(await gridRows(page), 0, 'the held table query painted its rows over the newer record route');
+    assert.equal(await page.locator('#main .entity-values').count(), 1, 'the record page stays mounted');
+    assert.equal(await page.locator('#main .doc-editor').count(), 1, 'the document editor stays mounted');
+    await page.close();
+  });
+
+  test('a newer route paints while an older route still waits on a held read (Issue #1437)', async () => {
+    const page = await newPage();
+    const hold = await holdReadsOf(page, alpha.id);
+    await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
+    await page.evaluate((h) => { location.hash = h; }, `#/entity/${alpha.id}`);
+    await hold.first();
+    assert.ok(hold.count() > 0, 'the record read is held');
+    await page.evaluate((h) => { location.hash = h; }, `#/table/${tasks.id}`);
+    await page.waitForSelector(`#main tr[data-eid="${beta.id}"]`, { timeout: 15000 });
+    assert.ok(await gridRows(page) > 0, 'the newer table route waited behind the held record read');
+    await hold.release();
+    await page.waitForLoadState('networkidle');
+    assert.deepEqual(await thrown(page), [], 'the released record read threw');
+    assert.equal(await routeError(page), null, 'the released record read must not paint the route error card');
+    assert.ok(await gridRows(page) > 0, 'the released record read painted over the newer table route');
     assert.equal(await page.locator('#main .entity-values').count(), 0, 'no record page is left under the table route');
     await page.close();
   });
