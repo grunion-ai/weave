@@ -1564,9 +1564,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         }
         if (route === 'GET /api/health') {
           const auth = signIn();
-          if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version } : {}), ...(auth ? { auth: { ok: auth.ok } } : {}) });
+          const doors = { account: Boolean(accountName), billing: Boolean(billing) };
+          const fresh = { 'Cache-Control': 'no-store' };
+          if (!mayAdminister(weave, role)) return out(200, { ok: true, name: 'weave', ...(role ? { version, ...doors } : {}), ...(auth ? { auth: { ok: auth.ok } } : {}) }, fresh);
           const nightly = backup();
-          return out(200, { ok: true, name: 'weave', version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}), ...(auth ? { auth } : {}) });
+          return out(200, { ok: true, name: 'weave', ...doors, version, workspace: weave.state.meta.name, startedAt: STARTED_AT, uptime: Math.round(uptime()), ...(build() ?? {}), ...weave.storageStats(), ...(nightly ? { backup: nightly } : {}), ...(auth ? { auth } : {}) }, fresh);
         }
 
         const canOpen = (w) => !w.state.meta.requireAuth || roleOn(w) != null;
