@@ -10923,20 +10923,23 @@ function gridHold() {
   paintGridWait();
   return () => { if (gridWait.holds.delete(token)) paintGridWait(); };
 }
+function markGridWait(state) {
+  const wrap = $('#main')?.querySelector(':scope > .table-wrap');
+  if (!wrap || wrap.getAttribute('aria-busy') === state) return;
+  if (state === null) wrap.removeAttribute('aria-busy'); else wrap.setAttribute('aria-busy', state);
+}
 function paintGridWait() {
   const busy = gridWait.holds.size > 0;
-  const wrap = $('#main')?.querySelector(':scope > .table-wrap');
-  if (wrap && busy !== (wrap.getAttribute('aria-busy') === 'true')) {
-    if (busy) wrap.setAttribute('aria-busy', 'true'); else wrap.removeAttribute('aria-busy');
-  }
   if (busy) {
     clearTimeout(gridWait.hideTimer); gridWait.hideTimer = 0;
     if (gridWait.exit) keepLoader(gridLoaderNode(), gridWait);
+    markGridWait(gridWait.shownAt ? 'true' : 'false');
     if (!gridWait.shownAt && !gridWait.showTimer) {
-      gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; showGridLoader(); }, LOADER_SHOW_AFTER_MS);
+      gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; markGridWait('true'); showGridLoader(); }, LOADER_SHOW_AFTER_MS);
     } else if (gridWait.shownAt) placeGridLoader();
     return;
   }
+  markGridWait(null);
   if (gridWait.showTimer) { clearTimeout(gridWait.showTimer); gridWait.showTimer = 0; return; }
   if (!gridWait.shownAt || gridWait.hideTimer || gridWait.exit) return;
   settleLoader(gridLoaderNode(), gridWait, hideGridLoader);
@@ -10979,6 +10982,7 @@ function hideGridLoader() {
 }
 function resetGridWait() {
   gridWait.holds.clear();
+  markGridWait(null);
   clearTimeout(gridWait.showTimer); gridWait.showTimer = 0;
   clearTimeout(gridWait.hideTimer);
   hideGridLoader();
