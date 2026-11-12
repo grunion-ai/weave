@@ -1,0 +1,1 @@
+- `weave help` and `weave template --help` print `template use <space> [--into] [--name]`, the flags the command reads, instead of the `--workspace` key of the `weave_template_use` tool schema, which the CLI refuses. The synopsis for a command whose CLI reads flags of its own comes from `cli.helpFlags` (Issue #1767).

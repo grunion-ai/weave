@@ -1171,3 +1171,12 @@ test('the CLI help is built from the registry: every entry shows in weave help a
   assert.match(run('space', '--help').stdout, /space update <space> \[--name\]/);
   assert.match(run('help').stdout, /^ {2}serve \[--port 4400\]/m);
 });
+
+test('the template use synopsis names --into, the flag the command requires (Issue #1767)', () => {
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  assert.match(cliHelp('template'), /^ {2}template use <space> \[--into\] \[--name\]$/m);
+  assert.doesNotMatch(cliHelp('template'), /--workspace/);
+  assert.match(run('help').stdout, /^ {2}template use <space> \[--into\] \[--name\]$/m);
+  const refused = run('template', 'use', 'Showcase', '--workspace', 'other.db');
+  assert.match(`${refused.stdout}${refused.stderr}`, /template use needs --into <other\.db>/);
+});
