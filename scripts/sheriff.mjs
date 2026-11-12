@@ -160,7 +160,7 @@ function evidence(ctx) {
   const lines = [
     `Red run: ${run.html_url} (head ${short(run.head_sha)})`,
     `Rerun of the failed jobs: ${run.html_url}/attempts/2`,
-    ...probes.map((p) => `Bisect probe ${short(p.sha)}: ${p.conclusion} ${p.url}`),
+    ...probes.map((p) => `${p.parent ? 'Parent' : 'Bisect'} probe ${short(p.sha)}: ${p.conclusion} ${p.url}`),
     `Last green main: ${base.sha ? `${short(base.sha)} ${base.url}` : 'none found'}`,
     `Range: ${commits.length} commit(s) since the last green run; ${culprits.length === 1 ? 'one culprit' : `${culprits.length} suspects left`}`,
     '',
@@ -329,6 +329,15 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   const reverts = ctx.culprits.filter((c) => isRevert(c.message));
   if (reverts.length) return escalate(io, ctx, result, `the culprit range holds a revert (${reverts.map((c) => short(c.sha)).join(', ')}); the sheriff never reverts a revert`);
   if (!ctx.blamed.length) return escalate(io, ctx, result, `${NO_CULPRIT}: ${ctx.cleared.map((c) => `${short(c.sha)} ${c.why}`).join('; ')}`);
+  if (lo === -1) {
+    const parent = await probeParent(io, ctx, dispatched < cap);
+    if (parent.mismatch) return escalate(io, ctx, result, parent.mismatch);
+    if (parent.clears) {
+      ctx.cleared.push(...ctx.blamed.map((c) => ({ ...c, why: parent.clears })));
+      ctx.blamed = [];
+      return escalate(io, ctx, result, `${NO_CULPRIT}: ${parent.clears}`);
+    }
+  }
 
   const cleared = dryRun ? null : await io.greenAfter(run);
   if (cleared) return result('skip', { reason: `main went green at ${short(cleared.sha)} before the revert was opened; ${short(run.head_sha)} is cleared`, culprits: ctx.culprits.map((c) => c.sha) });
@@ -338,6 +347,31 @@ export async function sheriff(runId, io, { cap = BISECT_CAP, dryRun = false } = 
   if (opened.conflict) return escalate(io, ctx, result, `git revert conflicted: ${opened.error}`);
   if (opened.refused) return escalate(io, ctx, result, `revert branch ${opened.branch} is pushed but GitHub refused its PR (${opened.refused}); open it from ${opened.compare}`);
   return report(io, ctx, result, opened, `revert PR ${opened.html_url ?? opened.branch}${opened.armed === false ? ' (auto-merge not armed: SHERIFF_TOKEN missing)' : ''}`, 'revert');
+}
+
+async function probeParent(io, ctx, room) {
+  const { base, files } = ctx;
+  const at = short(base.sha);
+  if (!room) {
+    io.log(`the bisect cap is spent, so the last green run at ${at} alone stands for the parent`);
+    return {};
+  }
+  const probe = await io.probe(base.sha);
+  if (!probe) {
+    io.log(`dry run: would dispatch tests at ${base.sha}, the parent of the suspect range`);
+    return {};
+  }
+  ctx.probes.push({ sha: base.sha, parent: true, ...probe });
+  if (probe.conclusion !== 'failure') {
+    if (probe.conclusion !== 'success') io.log(`the parent probe at ${at} ended ${probe.conclusion}, so the rerun's red convicts alone`);
+    return {};
+  }
+  const red = files.length && probe.id ? await io.probeFiles(probe.id) : [];
+  const shared = red.filter((f) => files.includes(f));
+  if (!files.length || shared.length) return { clears: `the parent ${at} went red${shared.length ? ` on ${shared.join(', ')}` : ''} too in a probe after this red (${probe.url}), so the red predates the range` };
+  if (red.length) return { mismatch: `the parent probe at ${at} went red on ${red.join(', ')}, not on ${files.join(', ')}, so it neither clears nor convicts the range` };
+  io.log(`the parent probe at ${at} went red with no failing file recorded, so the rerun's red convicts alone`);
+  return {};
 }
 
 async function escalate(io, ctx, result, reason) {
