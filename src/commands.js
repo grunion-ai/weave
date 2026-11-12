@@ -55,6 +55,14 @@ const sortPart = (s) => {
 };
 const sorted = (o) => ({ ...o, sort: (o.sort == null ? [] : typeof o.sort === 'string' ? o.sort.split(',').filter((s) => s.trim()) : [o.sort].flat()).map(sortPart) });
 
+export const ROLES = ['observer', 'editor', 'architect'];
+const READ = Object.freeze({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+const ADD = Object.freeze({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
+const EDIT = Object.freeze({ ...ADD, idempotentHint: true });
+const REMOVE = Object.freeze({ ...EDIT, destructiveHint: true });
+const DESTROY = Object.freeze({ ...ADD, destructiveHint: true });
+const outward = (hints) => Object.freeze({ ...hints, openWorldHint: true });
+
 function spaceUpdate(w, a) {
   if (a.member != null) w.setSpaceMember(a.space, a.member, { role: a.role ?? null });
   if (a.removeMember != null) w.removeSpaceMember(a.space, a.removeMember);
@@ -75,6 +83,7 @@ function fieldUpdate(w, a) {
     activity: entry?.id ?? null,
     lossy: !!entry?.detail.lossy,
     ...(entry?.detail.formulas ? { formulas: entry.detail.formulas } : {}),
+    ...(entry?.detail.rewritten ? { rewritten: entry.detail.rewritten } : {}),
   };
 }
 
@@ -235,7 +244,7 @@ const SET_DOC_TOOL = {
 const RECORDS = Symbol('records');
 const UNDO_TOOL = {
   name: 'weave_undo',
-  description: 'Revert the last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting. Pass expect, the `kind|entityId|ts` key of each step as the preview answered them, to revert only while the stack still reads that way: a write of your own actor that landed since answers conflict with the entry on top now and reverts nothing. A field someone else wrote after the step is left alone and named in that step\'s kept, with the actor who holds it; a step whose every field is kept answers skipped "changed since" and writes nothing.',
+  description: 'Revert your own last entity mutation(s): field/doc/state/relation edits, creates, soft deletes, comments, file attachments. Schema changes and hard deletes are not undoable. Pass list:true to preview the stack without reverting. Pass expect, the `kind|entityId|ts` key of each step as the preview answered them, to revert only while the stack still reads that way: a write of your own actor that landed since answers conflict with the entry on top now and reverts nothing. A field someone else wrote after the step is left alone and named in that step\'s kept, with the actor who holds it; a step whose every field is kept answers skipped "changed since" and writes nothing.',
   inputSchema: { type: 'object', properties: { steps: { type: 'number' }, list: { type: 'boolean' }, expect: { type: 'array', items: { type: 'string' }, description: 'The `kind|entityId|ts` key of each step, newest first, as undo.list answered them' } } },
 };
 const VIEWS_TOOL = {
@@ -338,7 +347,7 @@ export const COMMANDS = [
   {
     name: 'schema.ontology',
     engine: ['ontology', 'spaceVersions'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_ontology',
       description: 'The schema, short; read it before weave_schema (the full JSON). Default outline: one line per table by space, [a|b] options or states, name -> Target (inverse) with * for many, name = lookup, rollup or formula, then the etag. concept: one table in full, field descriptions included. since: an etag; answers only the spaces changed since.',
@@ -351,7 +360,7 @@ export const COMMANDS = [
   {
     name: 'field.add',
     engine: ['addField', 'materializeField'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_add_field',
       description: 'Add a field. Every type, its config keys and what it looks like in the grid: weave_vocabulary. Types: text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect, workflow, document, attachments, field, key, lookup, rollup, formula (relation fields use weave_add_relation). config: {options:[...]} for selects; {max, icon} for rating (max 1-100, default 5; the value is a whole number 0..max); {on, off} for toggle (the value stays true/false); {states:[{name,category,default}]} for workflow (categories: not-started, in-progress, done, canceled); {relationField, targetField} for lookup; {relationField, targetField, aggregate} for rollup (count, sum, avg, min, max, join, median, stdev, distinct, filled, empty, range) — or, on the System/Spaces registry record only, {via: <table>, targetField, aggregate, where?} for a rollup over a WHOLE table, the figure under a grid column (where takes weave_query clauses); {expression} for formula. Any of text, number, rating, date, daterange, checkbox, toggle, url, email, select, multiselect may also carry {default}: the value a new entity starts with when the create does not name the field (a workflow uses its default state instead). Any field may carry {width} in px (60 minimum) to set its column, and {description}: plain text saying what the value represents and how it is written — read it back from weave_schema before filling a record. Replies list open settings in next[] (number: format currency, unit, display) and slips in hints[].',
@@ -372,7 +381,7 @@ export const COMMANDS = [
   {
     name: 'field.update',
     engine: ['updateField'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_update_field',
       description: 'Change a field: rename it, retype it (values are migrated; text to relation takes config:{targetDb, createMissing?} and links records by name), or edit its config. config keys ride their own lanes — width (px, 60 minimum, null resets to auto), description (plain text: what the value represents and how it is written; null clears; on a view field it is the description size instead), default (null clears), options/states (a full replacement), on/off (a toggle\'s state labels, one at a time), max/icon (a rating\'s scale and icon, one at a time), expression, and the costume keys for number, date, document and attachments. See weave_vocabulary for every legal value.',
@@ -395,7 +404,7 @@ export const COMMANDS = [
   {
     name: 'field.rollback',
     engine: ['rollbackFieldConfig'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_rollback_field',
       description: 'Put a field back the way one of its field-config-updated (or undo) Activity entries found it. Every change weave_update_field makes to a field\'s name or config (the column width aside) is an Activity entry on its table, with the definition before and after; list them with weave_activity {entity: <table id>}. The roll back is refused when the field changed after the entry. A type change rolls back with its values: records unchanged since are restored, a record edited since keeps its edit (converted back) and a record made since is converted; only the newest type change of a field keeps its values. It writes its own undo entry, which can itself be rolled back. Returns {field, activity}, plus {restored, left, converted} for a type change.',
@@ -408,7 +417,7 @@ export const COMMANDS = [
   {
     name: 'field.delete',
     engine: ['deleteField'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_delete_field',
       description: 'Move a field to the trash: the column leaves the table and its values leave the records, held in the trash with the column\'s place in every view. Pass hard: true to purge it for good (also purges a field already in the trash).',
@@ -421,7 +430,7 @@ export const COMMANDS = [
   {
     name: 'field.restore',
     engine: ['restoreField'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_restore_field',
       description: 'Restore a field out of the trash by name or id: the column, its values, its place in the field order and in every view, and for a relation its inverse and every link come back. Refused while a live field holds the name or the table is in the trash.',
@@ -434,7 +443,7 @@ export const COMMANDS = [
   {
     name: 'formula.check',
     engine: ['checkFormula'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_check_formula',
       description: 'Validate a formula expression against a table BEFORE saving it — syntax, function names, field names — and, when the table has records, preview the computed value on one real entity. The authoring loop: check → fix until ok:true → weave_add_field/weave_update_field with {expression} → read the cell back. Returns {ok, error?, preview?, previewEntity?, type?} — type is what the preview computed to (number, text, boolean, list, null, error); never throws on a bad expression. Pass excludeField (field name or id) when editing an existing formula field so it cannot reference itself; pass entity (id) to preview a specific record. scan: true evaluates over up to 200 records and adds scan: {records, capped, nulls, errors, sampleByOutcome: {ok, null, error}} — a formula valid on record 1 and null on a third of the table is the bug one preview cannot show; assert nulls and errors are what you expect before saving.',
@@ -447,7 +456,7 @@ export const COMMANDS = [
   {
     name: 'relation.add',
     engine: ['addRelation'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_add_relation',
       description: 'Create a relation field. One targetDb: bidirectional — the inverse field is created automatically on the target table. targetDbs (a list of 2+ tables, which may include System/Spaces and System/Tables): a target-set (polymorphic) relation — one field whose values may point at records of any member table, one-way, no inverse; lookups/rollups need a single target. Cardinality: many-to-one (this side holds one), one-to-many, many-to-many, one-to-one.',
@@ -464,7 +473,7 @@ export const COMMANDS = [
   {
     name: 'space.create',
     engine: ['createSpace'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_create_space',
       description: 'Create a space (top-level grouping of tables).',
@@ -477,7 +486,7 @@ export const COMMANDS = [
   {
     name: 'space.list',
     engine: ['listSpaces'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     via: { tool: 'weave_schema' },
     cli: { command: 'space', sub: 'list', default: true },
     http: { method: 'GET', path: '/api/spaces' },
@@ -486,7 +495,7 @@ export const COMMANDS = [
   {
     name: 'space.update',
     engine: ['updateSpace', 'spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_update_space',
       description: 'Rename a space, move it (position: 0 is the first space in the sidebar and in weave_schema) or change its description or icon, or mark it a template (template: true; weave_template_use copies a template\'s schema into another workspace). An icon is `lucide:<name>` from weave_vocabulary or a mark character; anything else is refused. access: private shows the space to its members and the workspace architects only; member (with an optional role that overrides the workspace role) and removeMember manage who belongs, which takes an architect of the workspace or of the space.',
@@ -509,7 +518,7 @@ export const COMMANDS = [
   {
     name: 'space.members',
     engine: ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     via: { tool: 'weave_update_space' },
     cli: { command: 'space', sub: 'members', positional: ['space', 'account'], flags: ['role', 'remove'] },
     http: { method: 'GET', path: '/api/spaces/:space/members', args: (a) => ({ space: a.space }) },
@@ -521,7 +530,7 @@ export const COMMANDS = [
   {
     name: 'space.member.set',
     engine: ['setSpaceMember'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     via: { tool: 'weave_update_space', cli: 'space.members' },
     http: { method: 'PUT', path: '/api/spaces/:space/members/:account', args: (a, body) => ({ space: a.space, account: a.account, role: body?.role ?? null }) },
     run: (w, a) => w.setSpaceMember(a.space, a.account, { role: a.role }),
@@ -529,7 +538,7 @@ export const COMMANDS = [
   {
     name: 'space.member.remove',
     engine: ['removeSpaceMember'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     via: { tool: 'weave_update_space', cli: 'space.members' },
     http: { method: 'DELETE', path: '/api/spaces/:space/members/:account' },
     run: (w, a) => w.removeSpaceMember(a.space, a.account),
@@ -537,7 +546,7 @@ export const COMMANDS = [
   {
     name: 'space.delete',
     engine: ['deleteSpace'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_delete_space',
       description: 'Move a space to the trash (recoverable — its tables and records go dark with it). Pass hard: true to purge it and every table in it for good.',
@@ -550,7 +559,7 @@ export const COMMANDS = [
   {
     name: 'space.restore',
     engine: ['restoreSpace'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_restore_space',
       description: 'Restore a trashed space; its tables and records come back with it.',
@@ -563,7 +572,7 @@ export const COMMANDS = [
   {
     name: 'table.create',
     engine: ['createTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_create_table',
       description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
@@ -580,7 +589,7 @@ export const COMMANDS = [
   {
     name: 'table.list',
     engine: ['listTables'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     via: { tool: 'weave_schema' },
     cli: { command: 'table', sub: 'list', default: true, result: (r) => r.map((t) => t.qualified) },
     http: { method: 'GET', path: '/api/tables', args: (a, body, q) => ({ space: q.get('space') }) },
@@ -589,7 +598,7 @@ export const COMMANDS = [
   {
     name: 'table.update',
     engine: ['updateTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_update_table',
       description: 'Change a table: name, description, icon (`lucide:<name>` from weave_vocabulary or a mark character; anything else is refused), noun (what one record is called — stored as the Name field\'s `term`; "invoice" makes the create action read "New invoice" and the puck count "3 invoices"), systemFields (Created At, Modified At, Created By, Modified By), fieldOrder (the schema order — every field exactly once; the grid\'s columns are per view, see weave_table_view), hideRollups (the Σ row of space rollups pinned under the field headers: off unless a table asks for it, so pass `false` to show it and `true` to put it away again), position (its place inside its space, 0 first; weave_move_table changes the space).',
@@ -614,7 +623,7 @@ export const COMMANDS = [
   {
     name: 'table.view',
     engine: ['tableView'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: EDIT,
     tool: {
       name: 'weave_table_view',
       description: 'A table\'s views, in order; the first (Standard) opens with the table. view "Task" lists them, "Task/Open" reads one, "Task/blank" is the raw table. Other keys write; a new name creates one (from: copy). fields: columns. show, hide. move: {field, before|after}. filters: {Field: [options]}. sort: [{field, dir}] ≤3. search. position: 0 first. widths: {field: px}. frozen. density: compact|comfortable|spacious. deleted: trash. rollups: Σ row. subtotals: all|top|none. layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side), fit: crop|fit|original|capped, frame: 4:3|1:1|3:4|16:9, flow: masonry|rows. group: ≤5 levels, field or {field, heading: label|chip, order: option|table|az, dir, grain}. completedBy: checkbox. collapsed: paths. hideEmpty: no empty groups. order: #ids. phoneRow: {lead, chips, labels, wrap}. null clears; name renames; delete: true.',
@@ -631,6 +640,7 @@ export const COMMANDS = [
       },
     },
     cli: { command: 'table', sub: 'view', positional: ['view'], args: (a, flags, { json }) => ({ view: a.view, ...viewPatch(flags, json) }) },
+    toolUse: (a) => (Object.keys(a).some((k) => k !== 'view') ? 'table.view.set' : null),
     http: { method: 'GET', path: '/api/tables/:db/views', also: ['/api/tables/:db/views/:name'], args: (a) => ({ view: a.name === undefined ? a.db : `${a.db}/${a.name}` }) },
     run: (w, a) => {
       const { view, ...patch } = a;
@@ -640,15 +650,15 @@ export const COMMANDS = [
   {
     name: 'table.view.set',
     engine: ['tableView'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     via: { tool: 'weave_table_view', cli: 'table.view' },
     http: { method: 'PATCH', path: '/api/tables/:db/views/:name', args: (a, body) => ({ view: `${a.db}/${a.name}`, patch: body ?? {} }) },
-    run: (w, a) => w.tableView(a.view, a.patch),
+    run: (w, { view, patch, ...flat }) => w.tableView(view, patch ?? flat),
   },
   {
     name: 'table.view.delete',
     engine: ['tableView'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     via: { tool: 'weave_table_view', cli: 'table.view' },
     http: { method: 'DELETE', path: '/api/tables/:db/views/:name', args: (a) => ({ view: `${a.db}/${a.name}` }) },
     run: (w, a) => w.tableView(a.view, { delete: true }),
@@ -656,7 +666,7 @@ export const COMMANDS = [
   {
     name: 'table.move',
     engine: ['moveTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_move_table',
       description: 'Move a table into another space. Only its home changes — every record, field and relation stays exactly as it was. It lands last there unless position says where (0 is the first table). Refuses when the destination already holds (or holds in its trash) a table of the same name.',
@@ -669,7 +679,7 @@ export const COMMANDS = [
   {
     name: 'table.duplicate',
     engine: ['duplicateTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_duplicate_table',
       description: 'Duplicate a table\'s schema into a sibling named "<name> Copy" ("Copy 2", … until free) in the same space: every field with its full config, relations rebuilt as real paired fields (an external target grows a fresh inverse; a self-relation retargets into the copy), lookups and rollups re-pointed at the copy\'s own relation fields. Records are not copied — the copy starts empty.',
@@ -682,7 +692,7 @@ export const COMMANDS = [
   {
     name: 'table.delete',
     engine: ['deleteTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_delete_table',
       description: 'Move a table to the trash (recoverable — its records go dark with it). Pass hard: true to purge table and records for good.',
@@ -695,7 +705,7 @@ export const COMMANDS = [
   {
     name: 'table.restore',
     engine: ['restoreTable'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: {
       name: 'weave_restore_table',
       description: 'Restore a table out of the trash: the table, its records and their relations come back exactly as they were.',
@@ -706,19 +716,19 @@ export const COMMANDS = [
     run: (w, a) => w.restoreTable(a.db),
   },
   {
-    name: 'run.start', engine: ['startRun'], writes: 'entity', tool: RUNS_TOOL, action: 'start',
+    name: 'run.start', engine: ['startRun'], writes: 'entity', minRole: 'editor', annotations: outward(ADD), tool: RUNS_TOOL, action: 'start',
     cli: { command: 'run', sub: 'start', positional: ['name'], args: (a, flags) => ({ name: a.name, recipient: flags.recipient, timeoutMinutes: cliNumber('timeout-minutes', flags['timeout-minutes'], undefined), workflow: flags.workflow, record: flags.record, key: flags.key }) },
     http: { method: 'POST', path: '/api/runs', status: 201 },
     run: (w, a) => w.startRun(defined({ name: a.name, recipient: a.recipient, timeoutMinutes: a.timeoutMinutes, workflow: a.workflow, record: a.record, key: a.key })),
   },
   {
-    name: 'run.update', engine: ['updateRun'], writes: 'entity', tool: RUNS_TOOL, action: 'update',
+    name: 'run.update', engine: ['updateRun'], writes: 'entity', minRole: 'editor', annotations: outward(EDIT), tool: RUNS_TOOL, action: 'update',
     cli: { command: 'run', sub: 'update', positional: ['run'], args: (a, flags, { json }) => ({ run: a.run, patch: json('patch') ?? {} }) },
     http: { method: 'PATCH', path: '/api/runs/:run', args: (a, body) => ({ run: a.run, patch: body }) },
     run: (w, a) => w.updateRun(a.run, a.patch ?? {}),
   },
   {
-    name: 'run.list', engine: ['listRuns'], writes: 'none', tool: RUNS_TOOL, action: 'list',
+    name: 'run.list', engine: ['listRuns'], writes: 'none', minRole: 'observer', annotations: READ, tool: RUNS_TOOL, action: 'list',
     cli: { command: 'run', sub: 'list', default: true, args: (a, flags) => ({ status: flags.status, limit: cliNumber('limit', flags.limit, undefined) }) },
     http: { method: 'GET', path: '/api/runs', query: ['status', 'limit'] },
     run: (w, a) => w.listRuns(defined({ status: a.status, limit: a.limit == null ? undefined : Number(a.limit) })),
@@ -726,7 +736,7 @@ export const COMMANDS = [
   {
     name: 'automation.create',
     engine: ['createAutomation'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: outward(ADD),
     tool: {
       name: 'weave_create_automation',
       description: 'Create an automation rule as a System/Workflows record; its Script holds the rule as JSON. enabled (default true) is the record\'s On: pass false to create it Off. trigger: {type: entity-created | field-updated | state-changed, field?, toState?} or {type: schedule, cron: "0 9 * * 1-5", zone?: IANA zone (UTC by default), where?: a query filter}: a schedule fires on its cron minute in its zone, once for every live record of the table the where clause admits, and a box that slept catches up with one run or {type: listener-changed, integration, url: an https list endpoint on its Host, items?: path to the list in the answer, key: path to the id in each item, cursor?: {param, path}, maxInterval?: minutes, 60 by default}: each tick reads the list with the integration key, the first poll is the baseline, then the rule fires once per new or changed item with it as trigger.item; an unchanged source is polled less often, the integration Poll Budget caps polls an hour, and a 429 backs off; its actions are upsert-row, http-request, start-run or update-run, or {type: webhook-inbound, key?: path to the delivery id in the body, items?: path to a list, record?: path naming the record to change, from?: integration or host whose echo is dropped, secret?: a keystore credential name}: saving mints POST /w/<ws>/api/hooks/<id>; a POST signed as webhook signs, or carrying X-Weave-Secret, runs the rule with trigger.body (trigger.item per item); a redelivered key answers 200 and runs nothing, an Off rule answers 202; actions are upsert-row, http-request, start-run or update-run, plus set-field and add-comment with record; the secret is shown once by weave automation secret. actions: [{type: start-run, name, recipient?, timeoutMinutes?} | {type: update-run, run: a run id or {{steps.N.id}}, status?, summary?, error?, sessionUrl?} | {type: set-field, field, value} | {type: append-doc, text} | {type: add-comment, text} | {type: webhook, url, signWith?: the name of a keystore credential, never its value; weave then signs the delivery with an X-Weave-Signature header holding the HMAC-SHA256 of <X-Weave-Timestamp>.<body>, beside an X-Weave-Delivery uuid} | {type: upsert-row, table, key, fields: {targetField: sourcePath}} | {type: http-request, method?: POST by default, url: https://host/path, headers?, body?: text or JSON with templates, integration?: the Name of a System/Integrations record whose key weave adds and never reveals, its Host must be the url host, signWith?: a keystore credential name, signed as on webhook, response?: {field: path in the JSON answer}}: a 4xx answer fails the run and stops later steps; a network error, a timeout, 408, 429 or 5xx is retried with backoff, eight attempts, then lands in System/Failed Deliveries] — upsert-row creates or updates a record of another table matched on its key field (text, number, url or email); source paths read record.<Field>, row.PublicId and event.type/field/toState; select values by option name, relations by target Name. text supports {{FieldName}}, {{PublicId}}, {{Today}} (the workspace date format; {{Today:iso}} for 2026-10-06) and {{steps.N.path}} templates: every action yields an output (set-field {field, value}; append-doc {field, text}; add-comment {id, text}; upsert-row {id, publicId, name, created}; webhook {url, sent}; http-request {status, ok, body}) that later actions read as steps.N in text, in a set-field string value and in upsert-row source paths.',
@@ -746,7 +756,7 @@ export const COMMANDS = [
   {
     name: 'automation.list',
     engine: ['listAutomations'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: AUTOMATIONS_TOOL,
     action: 'list',
     cli: { command: 'automation', sub: 'list', positional: ['db'], default: true, args: (a, flags) => ({ db: a.db ?? flags.db ?? null }), result: (r) => r.automations },
@@ -756,7 +766,7 @@ export const COMMANDS = [
   {
     name: 'automation.describe',
     engine: ['describeAutomations'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: AUTOMATIONS_TOOL,
     action: 'describe',
     cli: { command: 'automation', sub: 'describe', positional: ['db'], args: (a, flags) => ({ db: a.db ?? flags.db ?? null }), result: (r) => r.rules },
@@ -766,7 +776,7 @@ export const COMMANDS = [
   {
     name: 'automation.update',
     engine: ['updateAutomation'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: AUTOMATIONS_TOOL,
     action: 'update',
     cli: { command: 'automation', sub: 'update', positional: ['automation'], args: (a, flags, { json }) => ({ automation: a.automation, patch: json('patch') ?? {} }) },
@@ -776,7 +786,7 @@ export const COMMANDS = [
   {
     name: 'automation.delete',
     engine: ['deleteAutomation'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: AUTOMATIONS_TOOL,
     action: 'delete',
     cli: { command: 'automation', sub: 'delete', positional: ['automation'] },
@@ -789,7 +799,7 @@ export const COMMANDS = [
   {
     name: 'automation.replay',
     engine: ['replayDelivery'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: outward(EDIT),
     tool: AUTOMATIONS_TOOL,
     action: 'replay',
     cli: { command: 'automation', sub: 'replay', positional: ['delivery'] },
@@ -799,7 +809,7 @@ export const COMMANDS = [
   {
     name: 'automation.secret',
     engine: ['revealHookSecret'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: DESTROY,
     tool: AUTOMATIONS_TOOL,
     action: 'secret',
     toolRefusal: 'Revealing a hook secret is not an agent action: use `weave automation secret` or the app.',
@@ -810,7 +820,7 @@ export const COMMANDS = [
   {
     name: 'automation.receive',
     engine: ['receiveHook'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'observer', annotations: outward(ADD),
     via: { tool: 'weave_automations', cli: 'automation.secret' },
     http: { method: 'POST', path: '/api/hooks/:hook', door: true },
     run: (w, a, ctx) => w.receiveHook(a.hook, ctx.hook ?? {}),
@@ -818,7 +828,7 @@ export const COMMANDS = [
   {
     name: 'key.list',
     engine: ['listKeys'],
-    writes: 'none',
+    writes: 'none', minRole: 'architect', annotations: READ,
     tool: KEYS_TOOL,
     action: 'list',
     cli: { command: 'key', sub: 'list', default: true, result: (r) => r.keys },
@@ -828,7 +838,7 @@ export const COMMANDS = [
   {
     name: 'key.set',
     engine: ['setKey'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'architect', annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'set',
     cli: { command: 'key', sub: 'set', positional: ['name'], flags: ['value'], args: (a, flags, { stdin }) => ({ name: a.name, value: a.value ?? stdin().trim() }) },
@@ -838,7 +848,7 @@ export const COMMANDS = [
   {
     name: 'key.reveal',
     engine: ['revealKey'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'editor', annotations: READ,
     tool: KEYS_TOOL,
     action: 'reveal',
     toolRefusal: 'Revealing a secret is not an agent action — use `weave key reveal` or the app.',
@@ -849,7 +859,7 @@ export const COMMANDS = [
   {
     name: 'key.share',
     engine: ['grantKey'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'architect', annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'share',
     cli: { command: 'key', sub: 'share', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
@@ -859,7 +869,7 @@ export const COMMANDS = [
   {
     name: 'key.unshare',
     engine: ['revokeKey'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'architect', annotations: REMOVE,
     tool: KEYS_TOOL,
     action: 'unshare',
     cli: { command: 'key', sub: 'unshare', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
@@ -869,7 +879,7 @@ export const COMMANDS = [
   {
     name: 'key.delete',
     engine: ['deleteKey'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'architect', annotations: REMOVE,
     tool: KEYS_TOOL,
     action: 'delete',
     cli: { command: 'key', sub: 'delete', positional: ['name'] },
@@ -879,7 +889,7 @@ export const COMMANDS = [
   {
     name: 'key.migrate',
     engine: ['migrateKeys'],
-    writes: 'keystore',
+    writes: 'keystore', minRole: 'architect', annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'migrate',
     toolRefusal: 'Moving the key store is not an agent action: run `weave key migrate --to keychain` or `--to file` on the machine that holds it.',
@@ -890,7 +900,7 @@ export const COMMANDS = [
   {
     name: 'csv.export',
     engine: ['exportCSV'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_export_csv',
       description: 'Export a table as CSV: one record per entity, one column per field, computed fields resolved. Multiselect and to-many relation cells use "; " separators.',
@@ -903,7 +913,7 @@ export const COMMANDS = [
   {
     name: 'csv.import',
     engine: ['importCSV'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: {
       name: 'weave_import_csv',
       description: 'Import entities from CSV text. The header row maps to field names; multiselect and to-many relation cells use "; " separators. Computed fields and Public Id/Created At/Updated At columns are ignored.',
@@ -916,7 +926,7 @@ export const COMMANDS = [
   {
     name: 'activity',
     engine: ['activityFeed', 'getActivity'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_activity',
       description: 'The activity feed: every change weave recorded, newest first. Filter by entity, table, kinds, or since (ISO timestamp); pass id to read one event in full. Answers one page of 500 when you name no limit, with `total` counting every event in scope: page with offset, or pass limit -1 for the whole log. To read only what is new since a past read, pass sinceSeq instead of since: the page holds the entries after that seq, oldest first, and nextSeq is the seq to hand back next time. since compares wall-clock timestamps, which many entries share, so it cannot page without a repeat or a gap. Each entity keeps its newest 500 entries; `dropped` counts the older ones in scope that are no longer kept.',
@@ -956,7 +966,7 @@ export const COMMANDS = [
   {
     name: 'audit',
     engine: ['listAudit'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_audit',
       description: 'The workspace audit log: schema and account events with their actor.',
@@ -973,7 +983,7 @@ export const COMMANDS = [
   {
     name: 'registry.report',
     engine: ['registryReport'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: REGISTRY_TOOL,
     action: 'report',
     toolDefault: true,
@@ -984,7 +994,7 @@ export const COMMANDS = [
   {
     name: 'registry.rebuild',
     engine: ['rebuildRegistry'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: REGISTRY_TOOL,
     action: 'rebuild',
     cli: { command: 'registry', sub: 'rebuild' },
@@ -994,7 +1004,7 @@ export const COMMANDS = [
   {
     name: 'relation.map',
     engine: ['relationMapMmd'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_relation_map',
       description: 'The workspace relation map as a mermaid diagram: every table, relation and automation.',
@@ -1007,7 +1017,7 @@ export const COMMANDS = [
   {
     name: 'entity.restore',
     engine: ['restoreEntity'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_restore_entity',
       description: 'Restore a soft-deleted entity from the trash, links intact.',
@@ -1020,7 +1030,7 @@ export const COMMANDS = [
   {
     name: 'entity.state',
     engine: ['setState'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_set_state',
       description: 'Move an entity to a workflow state (multistate field).',
@@ -1033,7 +1043,7 @@ export const COMMANDS = [
   {
     name: 'entity.link',
     engine: ['link'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_link',
       description: 'Link entities through a relation field (bidirectional; inverse side updates automatically).',
@@ -1046,7 +1056,7 @@ export const COMMANDS = [
   {
     name: 'entity.unlink',
     engine: ['unlink'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_unlink',
       description: 'Remove entities from a relation field, leaving both entities in place. targets takes ids, names, or "#publicId"; the inverse field on the other table follows.',
@@ -1059,7 +1069,7 @@ export const COMMANDS = [
   {
     name: 'entity.create',
     engine: ['createEntity'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: {
       name: 'weave_create_entity',
       description: 'Create an entity. values maps field names to values; relation fields accept entity names, ids, or "#publicId".',
@@ -1082,7 +1092,7 @@ export const COMMANDS = [
   {
     name: 'entity.read',
     engine: ['readEntity', 'getEntity', 'listEntities'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_get_entity',
       description: 'Read one entity in full: all field values (including computed lookups/rollups/formulas), document markdown, comments, activity.',
@@ -1099,7 +1109,7 @@ export const COMMANDS = [
   {
     name: 'entity.update',
     engine: ['updateEntity', 'touching', 'affectedBy'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_update_entity',
       description: 'Update entity field values by name (writable fields only; computed fields are read-only).',
@@ -1122,7 +1132,7 @@ export const COMMANDS = [
   {
     name: 'entity.delete',
     engine: ['deleteEntity'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: {
       name: 'weave_delete_entity',
       description: 'Delete an entity. Recoverable by default — it moves to the trash keeping its id, public id and links. Pass hard: true to purge it irreversibly (relations are unlinked cleanly).',
@@ -1135,7 +1145,7 @@ export const COMMANDS = [
   {
     name: 'entity.query',
     engine: ['query'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_query',
       description: 'Query a table. 200 rows a page, at most 2000: `total` counts every match, and `nextOffset` is the next page\'s `offset` while more remain. Filters support dotted relation paths (e.g. ["Project.Name", "=", "Apollo"]). Operators: =, !=, <, <=, >, >=, contains, in, is-empty, not-empty. Combine with {and:[...]} / {or:[...]}.',
@@ -1187,7 +1197,7 @@ export const COMMANDS = [
   {
     name: 'entity.trash',
     engine: ['listTrash'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_trash',
       description: 'List deleted entities — one table, or the whole workspace when table is omitted.',
@@ -1204,7 +1214,7 @@ export const COMMANDS = [
   {
     name: 'table.stats',
     engine: ['tableStats', 'tableRollups'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_stats',
       description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
@@ -1227,7 +1237,7 @@ export const COMMANDS = [
   {
     name: 'entity.bulk',
     engine: ['bulk'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: DESTROY,
     tool: {
       name: 'weave_bulk',
       description: 'One write for a whole selection. op "set" writes values across every id; "link" links every id to targets through field; "move" re-creates each id in table by field name (same name, same type — unmatched fields, files and comments stay behind and are named in moved[].skipped) and trashes the original; "rollup" creates one parent (name/values) in field\'s target table (or table) and links every id to it. Each record is its own attempt: done names what landed, failed names what did not and why. Each record keeps its own undo step.',
@@ -1259,7 +1269,7 @@ export const COMMANDS = [
   {
     name: 'doc.read',
     engine: ['getDoc'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_get_doc',
       description: 'Read an entity document as markdown. Entities can carry several document fields; omit field for the default (the table\'s first document field, usually "Description").',
@@ -1276,7 +1286,7 @@ export const COMMANDS = [
   {
     name: 'doc.set',
     engine: ['setDoc', 'docBase'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: SET_DOC_TOOL,
     action: 'replace',
     actionArg: 'mode',
@@ -1300,7 +1310,7 @@ export const COMMANDS = [
   {
     name: 'doc.append',
     engine: ['appendDoc'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: SET_DOC_TOOL,
     action: 'append',
     actionArg: 'mode',
@@ -1311,7 +1321,7 @@ export const COMMANDS = [
   {
     name: 'doc.revisions',
     engine: ['listDocRevisions', 'getDocRevision'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_doc_revisions',
       description: 'A document\'s version history (Feature #225). Without seq: the revisions newest first as {seq, at, actor, len} — one per editing session (writes by one actor inside ten minutes fold into one). With seq: that revision with its text. field picks a document field; omit for the default.',
@@ -1334,7 +1344,7 @@ export const COMMANDS = [
   {
     name: 'doc.restore',
     engine: ['restoreDocRevision'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: {
       name: 'weave_doc_restore',
       description: 'Write a past revision back as the document\'s current text (Feature #225). An ordinary write: activity, undo and automations all see it, and the history keeps both the restored text and what it replaced.',
@@ -1355,7 +1365,7 @@ export const COMMANDS = [
   {
     name: 'comment.add',
     engine: ['addComment'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'observer', annotations: ADD,
     tool: {
       name: 'weave_add_comment',
       description: 'Add a comment to an entity. Comments are their own thread on the entity page and ride the activity feed; delete one with weave_delete_comment.',
@@ -1368,7 +1378,7 @@ export const COMMANDS = [
   {
     name: 'comment.delete',
     engine: ['deleteComment'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: {
       name: 'weave_delete_comment',
       description: 'Delete one comment from an entity. The comment id comes from weave_get_entity.',
@@ -1376,12 +1386,13 @@ export const COMMANDS = [
     },
     cli: { command: 'comment', sub: 'delete', positional: ['entity', 'comment'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), comment: a.comment }) },
     http: { method: 'DELETE', path: '/api/entities/:entity/comments/:comment', result: () => ({ ok: true }) },
+    owns: (w, a) => { try { return w.isActor(w.getEntity(a.entity).comments.find((c) => c.id === a.comment)?.author); } catch { return false; } },
     run: (w, a) => w.deleteComment(a.entity, a.comment),
   },
   {
     name: 'search',
     engine: ['search', 'universalSearch'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_search',
       description: 'Universal search across the workspace, spaces, tables, saved views, and entities (names, publicIds, text fields, documents, comments). Every result carries a stable permalink url. limit bounds entity records only; every matching workspace, space, table and view is always returned.',
@@ -1397,7 +1408,7 @@ export const COMMANDS = [
   {
     name: 'undo.list',
     engine: ['listUndo'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: UNDO_TOOL,
     action: true,
     actionArg: 'list',
@@ -1408,7 +1419,7 @@ export const COMMANDS = [
   {
     name: 'undo.run',
     engine: ['undo'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: DESTROY,
     tool: UNDO_TOOL,
     action: false,
     actionArg: 'list',
@@ -1420,7 +1431,7 @@ export const COMMANDS = [
   {
     name: 'json.export',
     engine: ['exportJSON'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_export_json',
       description: 'The whole workspace as JSON — the human-readable interchange format, and the backup to take before a destructive apply. Attachment bytes are left out unless blobs is true; `weave export` always carries them.',
@@ -1441,7 +1452,7 @@ export const COMMANDS = [
   {
     name: 'json.import',
     engine: ['importJSON'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_import_json',
       description: 'Replace the workspace with a JSON export. Destructive: everything not in the document is gone. The result names every file that arrived without its bytes (missing).',
@@ -1460,7 +1471,7 @@ export const COMMANDS = [
   {
     name: 'view.list',
     engine: ['listViews'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: VIEWS_TOOL,
     action: 'list',
     cli: { command: 'view', sub: 'list', default: true, args: (a, flags) => ({ trash: Boolean(flags.trash) }), result: (r) => r.views },
@@ -1470,7 +1481,7 @@ export const COMMANDS = [
   {
     name: 'view.get',
     engine: ['resolveView', 'getView'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: VIEWS_TOOL,
     action: 'get',
     cli: { command: 'view', sub: 'get', positional: ['view'] },
@@ -1480,7 +1491,7 @@ export const COMMANDS = [
   {
     name: 'view.create',
     engine: ['createView'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: VIEWS_TOOL,
     action: 'create',
     cli: { command: 'view', sub: 'create', positional: ['name'], args: (a, flags, { json }) => ({ name: a.name, blocks: json('blocks') ?? [] }) },
@@ -1490,7 +1501,7 @@ export const COMMANDS = [
   {
     name: 'view.delete',
     engine: ['deleteView'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: VIEWS_TOOL,
     action: 'delete',
     cli: { command: 'view', sub: 'delete', positional: ['view'], args: (a, flags) => ({ view: a.view, hard: Boolean(flags.hard) }) },
@@ -1500,7 +1511,7 @@ export const COMMANDS = [
   {
     name: 'view.restore',
     engine: ['restoreView'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: VIEWS_TOOL,
     action: 'restore',
     cli: { command: 'view', sub: 'restore', positional: ['view'] },
@@ -1510,7 +1521,7 @@ export const COMMANDS = [
   {
     name: 'view.share',
     engine: ['shareView'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: ADD,
     tool: VIEWS_TOOL,
     action: 'share',
     cli: { command: 'view', sub: 'share', positional: ['view'] },
@@ -1520,7 +1531,7 @@ export const COMMANDS = [
   {
     name: 'view.unshare',
     engine: ['unshareView'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: REMOVE,
     tool: VIEWS_TOOL,
     action: 'unshare',
     cli: { command: 'view', sub: 'unshare', positional: ['view'] },
@@ -1530,7 +1541,7 @@ export const COMMANDS = [
   {
     name: 'share.list',
     engine: ['listShares'],
-    writes: 'none',
+    writes: 'none', minRole: 'architect', annotations: READ,
     tool: SHARES_TOOL,
     action: 'list',
     cli: {
@@ -1548,7 +1559,7 @@ export const COMMANDS = [
   {
     name: 'share.mint',
     engine: ['mintShare'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: ADD,
     tool: SHARES_TOOL,
     action: 'mint',
     cli: {
@@ -1567,7 +1578,7 @@ export const COMMANDS = [
   {
     name: 'share.renew',
     engine: ['renewShare'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: ADD,
     tool: SHARES_TOOL,
     action: 'renew',
     cli: { command: 'share', sub: 'renew', positional: ['share'] },
@@ -1577,7 +1588,7 @@ export const COMMANDS = [
   {
     name: 'share.revoke',
     engine: ['revokeShare'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: REMOVE,
     tool: SHARES_TOOL,
     action: 'revoke',
     cli: { command: 'share', sub: 'revoke', positional: ['share'] },
@@ -1587,7 +1598,7 @@ export const COMMANDS = [
   {
     name: 'share.update',
     engine: ['updateShare'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: EDIT,
     tool: SHARES_TOOL,
     action: 'update',
     cli: { command: 'share', sub: 'update', positional: ['share'], args: sharePatchFlags },
@@ -1597,7 +1608,7 @@ export const COMMANDS = [
   {
     name: 'share.regenerate',
     engine: ['regenerateShare'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: DESTROY,
     tool: SHARES_TOOL,
     action: 'regenerate',
     cli: { command: 'share', sub: 'regenerate', positional: ['share'], args: sharePatchFlags },
@@ -1607,7 +1618,7 @@ export const COMMANDS = [
   {
     name: 'file.attach',
     engine: ['attachFile', 'attachToField'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: {
       name: 'weave_attach_file',
       description: 'Attach a file to a record, optionally to an attachments field. For local files over HTTP, send prepare:true and size (bytes), without contentBase64: returns a one-use PUT URL and headers, valid ten minutes. Send the raw file bytes from a local script using those headers; no separate editor token or base64 in context is needed. Each transfer attempt consumes its grant, even on failure. Grants expire on server restart; prepare again if refused. Stdio and small inline files can use contentBase64.',
@@ -1640,7 +1651,7 @@ export const COMMANDS = [
   {
     name: 'file.read',
     engine: ['readFile'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: FILES_TOOL,
     action: 'read',
     cli: {
@@ -1658,7 +1669,7 @@ export const COMMANDS = [
   {
     name: 'file.delete',
     engine: ['deleteFile'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: FILES_TOOL,
     action: 'delete',
     cli: { command: 'file', sub: 'delete', positional: ['entity', 'file'], args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), file: a.file }) },
@@ -1674,7 +1685,7 @@ export const COMMANDS = [
   {
     name: 'vocabulary',
     engine: [],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_vocabulary',
       description: 'Every closed set a configuration value comes from, and what each choice looks like on screen: field types with how they render and which config keys they take, the option color palette, the icon names, number/date formats, document kinds, relation cardinalities, workflow state categories, rollup aggregates, system columns, view kinds, the column-width rules, and formulaFunctions — every formula function with its signature, group, doc and an example. Read this before configuring a table. Name every section you need in one call (sections:["icons","optionColors"]); query searches the icon names by name, category and synonym ("wallet, bank" searches both).',
@@ -1694,7 +1705,7 @@ export const COMMANDS = [
   {
     name: 'share.current',
     engine: [],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     via: { tool: 'weave_shares', cli: 'share.list' },
     http: { method: 'GET', path: '/api/share' },
     run: (w, a, ctx) => {
@@ -1706,7 +1717,7 @@ export const COMMANDS = [
   {
     name: 'template.list',
     engine: ['listTemplates'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_template_list',
       description: 'The template spaces of this workspace: the live spaces marked template: true (weave_update_space marks one, or the Template box on its System/Spaces record). Each is a space: id, name, description, icon. Also starters: the built-in starter workspaces (id, title, blurb, and grows, a note on how one is meant to grow). starter: <id> answers {starter, spec}, a spec dated this month to pass to weave_build.',
@@ -1722,7 +1733,7 @@ export const COMMANDS = [
   {
     name: 'template.use',
     engine: ['useTemplate'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: ADD,
     tool: {
       name: 'weave_template_use',
       description: 'Copy a template space\'s schema, never its records, into another workspace of this hub: its tables, fields with their config, option colours and icons, workflow states, views, field order, hidden fields, filters, sort, the term, the icons and the space rollups over its tables. space: the template space (name or id). workspace: the target, a name as the hub lists it. name: the new space\'s name, the template\'s by default; a name the target already holds is refused. A relation to a table outside the space is left out and named in `skipped`, with every lookup, rollup and formula that reads through it. Needs an architect on the target. Answers {space, workspace, url, plan, skipped}. Over HTTP only: a stdio server holds one workspace, so there use the CLI, weave template use <space> --into <other.db>.',
@@ -1758,7 +1769,7 @@ export const COMMANDS = [
   {
     name: 'schema.describe',
     engine: ['describeSchema'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_schema',
       description: 'Describe the whole workspace: spaces, tables, fields (with types, options, workflow states, relations, lookups, rollups, formulas), and entity counts.',
@@ -1778,7 +1789,7 @@ export const COMMANDS = [
   {
     name: 'schema.apply',
     engine: ['applySchema'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_apply_schema',
       description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
@@ -1799,7 +1810,7 @@ export const COMMANDS = [
   {
     name: 'build',
     engine: ['build'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: {
       name: 'weave_build',
       description: 'Build in ONE call: spaces, tables, fields, relations and records. A field is {name, type, plus that type\'s weave_add_field config keys, flat}; a relation is {name, type:"relation", to:<table>, cardinality?}; lookups, rollups and formulas may read relations made in the same build. Records are values by field name; a relation value is the target record\'s Name. Re-sending the spec is safe: existing spaces, tables and same-typed fields are reused; records append; skipExistingRows:true skips Names already there. A refused icon or colour is dropped, not fatal. Returns one line: {ok, created, existing, ignored (keys dropped, with reason), errors:[{path, error}], computed:{field: its first values}}. Example spec:\n'
@@ -1830,7 +1841,7 @@ export const COMMANDS = [
   {
     name: 'workspace.get',
     engine: ['getWorkspace'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: WORKSPACE_TOOL,
     action: 'get',
     toolDefault: 'absent',
@@ -1844,7 +1855,7 @@ export const COMMANDS = [
   {
     name: 'workspace.update',
     engine: ['updateWorkspace', 'setRequireAuth'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: WORKSPACE_TOOL,
     action: 'update',
     cli: { command: 'workspace', sub: 'set', aliases: ['update'], args: (a, flags) => ({ patch: flagPatch(flags, ['name', 'description']) }) },
@@ -1868,7 +1879,7 @@ export const COMMANDS = [
   {
     name: 'workspace.logo.set',
     engine: ['setWorkspaceLogo'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: WORKSPACE_TOOL,
     action: 'logo',
     cli: {
@@ -1884,7 +1895,7 @@ export const COMMANDS = [
   {
     name: 'workspace.logo.read',
     engine: ['getWorkspaceLogo'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     via: { tool: 'weave_workspace' },
     cli: {
       command: 'workspace', swap: true,
@@ -1900,7 +1911,7 @@ export const COMMANDS = [
   {
     name: 'workspace.logo.clear',
     engine: ['deleteWorkspaceLogo'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'editor', annotations: REMOVE,
     tool: WORKSPACE_TOOL,
     action: 'clear-logo',
     cli: { command: 'workspace', swap: true },
@@ -1913,7 +1924,7 @@ export const COMMANDS = [
   {
     name: 'workspace.order',
     engine: ['workspaceOrder'],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: READ,
     tool: WORKSPACE_TOOL,
     action: 'order',
     cli: { command: 'workspace', sub: 'order' },
@@ -1927,7 +1938,7 @@ export const COMMANDS = [
   {
     name: 'workspace.move',
     engine: ['moveWorkspace'],
-    writes: 'entity',
+    writes: 'entity', minRole: 'architect', annotations: EDIT,
     tool: WORKSPACE_TOOL,
     action: 'move',
     cli: { command: 'workspace', sub: 'move', positional: ['name'], args: (a, flags) => ({ name: a.name, position: Number(flags.position) }) },
@@ -1951,7 +1962,7 @@ export const COMMANDS = [
   {
     name: 'account.list',
     engine: ['listAccounts'],
-    writes: 'none',
+    writes: 'none', minRole: 'architect', annotations: READ,
     tool: ACCOUNTS_TOOL,
     action: 'list',
     cli: { command: 'account', sub: 'list', default: true },
@@ -1962,7 +1973,7 @@ export const COMMANDS = [
   {
     name: 'account.create',
     engine: ['createAccount'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: ACCOUNTS_TOOL,
     action: 'create',
     cli: { command: 'account', sub: 'create', positional: ['name'], helpFlags: ['role'], args: (a, flags) => ({ input: { name: a.name, role: flags.role ?? 'editor' } }) },
@@ -1972,7 +1983,7 @@ export const COMMANDS = [
   {
     name: 'account.set',
     engine: ['setAccountRole'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: ACCOUNTS_TOOL,
     action: 'set',
     cli: { command: 'account', sub: 'set', positional: ['account'], helpFlags: ['role'], args: (a, flags) => ({ account: a.account, role: flags.role }) },
@@ -1982,7 +1993,7 @@ export const COMMANDS = [
   {
     name: 'account.delete',
     engine: ['deleteAccount'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: ACCOUNTS_TOOL,
     action: 'delete',
     cli: { command: 'account', sub: 'delete', positional: ['account'] },
@@ -1992,7 +2003,7 @@ export const COMMANDS = [
   {
     name: 'account.require',
     engine: [],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     tool: ACCOUNTS_TOOL,
     action: 'require-auth',
     cli: { command: 'workspace', sub: 'require-auth', args: (a, flags) => ({ on: !flags.off }) },
@@ -2003,7 +2014,7 @@ export const COMMANDS = [
   {
     name: 'account.sessions',
     engine: ['listSessions'],
-    writes: 'none',
+    writes: 'none', minRole: 'architect', annotations: READ,
     tool: ACCOUNTS_TOOL,
     action: 'sessions',
     cli: { command: 'account', sub: 'sessions', positional: ['account'] },
@@ -2015,7 +2026,7 @@ export const COMMANDS = [
   {
     name: 'account.revoke',
     engine: ['revokeSession'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: ACCOUNTS_TOOL,
     action: 'revoke-session',
     cli: {
@@ -2032,7 +2043,7 @@ export const COMMANDS = [
   {
     name: 'account.link',
     engine: ['linkIdentity'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: ACCOUNTS_TOOL,
     action: 'link-identity',
     cli: { command: 'account', sub: 'link', positional: ['account'], args: identityArgs('link') },
@@ -2045,7 +2056,7 @@ export const COMMANDS = [
   {
     name: 'account.unlink',
     engine: ['unlinkIdentity'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: ACCOUNTS_TOOL,
     action: 'unlink-identity',
     cli: { command: 'account', sub: 'unlink', positional: ['account'], args: identityArgs('unlink') },
@@ -2055,7 +2066,7 @@ export const COMMANDS = [
   {
     name: 'invite.create',
     engine: ['inviteMember'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: ACCOUNTS_TOOL,
     action: 'invite',
     cli: {
@@ -2080,7 +2091,7 @@ export const COMMANDS = [
   {
     name: 'invite.list',
     engine: ['listInvites'],
-    writes: 'none',
+    writes: 'none', minRole: 'architect', annotations: READ,
     tool: ACCOUNTS_TOOL,
     action: 'invites',
     cli: { command: 'invite', sub: 'list' },
@@ -2091,7 +2102,7 @@ export const COMMANDS = [
   {
     name: 'invite.revoke',
     engine: ['revokeInvite'],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: ACCOUNTS_TOOL,
     action: 'revoke-invite',
     cli: { command: 'invite', sub: 'revoke', positional: ['invite'] },
@@ -2101,7 +2112,7 @@ export const COMMANDS = [
   {
     name: 'workspace.preview',
     engine: [],
-    writes: 'schema',
+    writes: 'schema', minRole: 'architect', annotations: EDIT,
     via: { tool: 'weave_workspace', http: 'workspace.update' },
     cli: { command: 'workspace', sub: 'link-preview', args: (a, flags) => ({ on: !flags.off }) },
     http: null,
@@ -2110,7 +2121,7 @@ export const COMMANDS = [
   {
     name: 'workspace.leave',
     engine: [],
-    writes: 'none',
+    writes: 'none', minRole: 'observer', annotations: REMOVE,
     via: { tool: 'weave_workspace', http: 'none: POST /api/workspace/leave answers a signed-in member' },
     cli: { command: 'workspace', sub: 'leave', args: (a, flags, { actor }) => ({ account: flags.account ?? actor }) },
     http: null,
@@ -2140,6 +2151,8 @@ export function toolDefinition(name) {
 
 export function toolCommand(name, args = {}) {
   const single = BY_TOOL.get(name);
+  const swap = single?.toolUse?.(args);
+  if (swap) return COMMANDS.find((c) => c.name === swap);
   if (single) return single;
   const family = FAMILIES.get(name);
   if (!family) return null;

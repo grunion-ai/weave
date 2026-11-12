@@ -98,10 +98,12 @@ test('capped tokens cannot widen themselves through the MCP tunnel', async () =>
     return r.data.result.tools.map((t) => t.name);
   };
   const forReader = await listed(10, reader);
-  assert.equal(forReader.some((n) => /create|update|delete|add_field|add_relation|build|import|workspace/.test(n)), false, `reader lists no write tool (Issue #508): ${forReader}`);
+  assert.equal(forReader.some((n) => /create|update|delete|add_field|add_relation|build|import/.test(n)), false, `reader lists no write tool (Issue #508): ${forReader}`);
+  assert.ok(forReader.includes('weave_workspace'), 'a reader reads the workspace record over MCP, as over REST (Feature #363)');
   const forWriter = await listed(11, writer);
   assert.ok(forWriter.includes('weave_create_entity'), 'writer lists the row tools');
-  assert.equal(forWriter.some((n) => /space|table|field|relation|build|workspace|import/.test(n)), false, `writer lists no schema tool (Issue #508): ${forWriter}`);
+  assert.equal(forWriter.some((n) => /_space|table|field|relation|build/.test(n)), false, `writer lists no schema tool (Issue #508): ${forWriter}`);
+  assert.ok(forWriter.includes('weave_import_csv'), 'a writer imports records over MCP, as over REST (Feature #363)');
   assert.ok((await listed(12, admin)).includes('weave_create_space'), 'admin lists every tool');
   const widen = await rpc({ jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'weave_accounts', arguments: { action: 'set', account: 'writer-acct', role: 'admin' } } }, writer);
   assert.equal(widen.data.result.isError, true, 'a writer cannot widen itself');
