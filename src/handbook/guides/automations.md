@@ -21,12 +21,12 @@ Every rule is a row of `System/Workflows`, and the row is the whole interface to
 | `Script` | the rule itself, as JSON: `{"table", "trigger", "actions"}` |
 | `State` | `Setup incomplete` while the Script does not compile, `Ready` once it does |
 | `Health` | `Healthy`, `Warning` while a delivery waits to be sent again, `Failed`, or `No runs` before the first fire |
-| `Health Reason` | why the last run failed or what it waits on, in the engine's words. The grid shows it when you hover the Health chip, click it, or tap it on a phone |
+| `Health Reason` | why the last run failed or what it waits on, in the engine's words. The grid and the record page show it when you hover the Health chip, click it, or tap it on a phone |
 | `Last Run` | when it last fired, to the minute |
 | `Tables`, `Spaces` | what the rule touches, filled in by the engine |
 | `Diagram` | the rule drawn as mermaid |
 
-Editing the Script runs the same validation the create verb runs, because it is the create verb: a Script weave cannot compile leaves the row `Setup incomplete` and names what is wrong. The engine computes `State` and stamps `Health`, `Health Reason` and `Last Run` on every run. While a row is `Setup incomplete` and Off, its On toggle is greyed and cannot be switched on; hover it, click it or tap it on a phone and it names what is missing, the same text the `Health Reason` holds. A row whose setup breaks while it is On keeps a live toggle, so you can always switch it off. The row number is the firing order: when several rules answer the same trigger, they run top to bottom.
+Editing the Script runs the same validation the create verb runs, because it is the create verb: a Script weave cannot compile leaves the row `Setup incomplete` and names what is wrong. The engine computes `State` and stamps `Health`, `Health Reason` and `Last Run` on every run. While a row is `Setup incomplete` and Off, its On toggle is greyed and cannot be switched on, in the grid and on the record page alike; hover it, click it or tap it on a phone and it names what is missing, the same text the `Health Reason` holds. A row whose setup breaks while it is On keeps a live toggle, so you can always switch it off. The row number is the firing order: when several rules answer the same trigger, they run top to bottom.
 
 A rule's own writes can fire other rules, three deep at most, so a pair of rules that write to each other stops rather than looping.
 
