@@ -733,6 +733,8 @@ function termOfTable(id) {
 }
 
 let dock = null;
+let dockRead = 0;
+const dockOwns = (gen) => !!dock && dockRead === gen;
 let compare = null;
 
 function markDockedRow() {
@@ -817,6 +819,7 @@ async function collapseToSplit(entity) {
 
 function dockClose() {
   if (!dock && !compare) return;
+  dockRead += 1;
   compare = null;
   commitActiveEdit();
   releaseDockPanel();
@@ -927,6 +930,7 @@ function dockGo(next) {
 
 async function drawDock() {
   if (!dock) return;
+  const gen = (dockRead += 1);
   const top = dock.state.chain[dock.state.chain.length - 1];
   const held = dock.held?.id === top.id ? dock.held : null;
   dock.held = null;
@@ -942,8 +946,13 @@ async function drawDock() {
     });
     later.catch(() => {});
   } else {
-    try { [entity, refs] = await full; } catch (err) { dockClose(); return toast(err.message, true); }
+    try { [entity, refs] = await full; } catch (err) {
+      if (!dockOwns(gen)) return;
+      dockClose();
+      return toast(err.message, true);
+    }
   }
+  if (!dockOwns(gen)) return;
   crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
   syncDockChain();
   noteEntityRecent(entity);
@@ -9154,13 +9163,16 @@ function appearsAsPanel(db, entity, refresh) {
 }
 
 async function showEntity(id) {
+  const gen = (navDraw += 1);
   let entity, refs;
   try {
     [entity, refs] = await Promise.all([api('GET', `/entities/${id}`), entityRefs(id)]);
   } catch (err) {
+    if (!navOwns(gen)) return;
     toast(`Couldn't open that record: ${err.message}`, true);
     return showHome();
   }
+  if (!navOwns(gen)) return;
   noteEntityRecent(entity);
   const hop = entityHop(entity);
   const B = weaveBreadcrumbs;
@@ -10960,7 +10972,11 @@ function rememberRoute() {
   if (landed !== location.hash) history.replaceState(history.state, '', landed);
 }
 
+let navDraw = 0;
+const navOwns = (gen) => navDraw === gen;
+
 function dispatchRoute() {
+  navDraw += 1;
   closeSharePanel?.();
   teardownDocEditors();
   dockClose();
