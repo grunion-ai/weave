@@ -1,0 +1,1 @@
+- **The phone list keeps its own layout** (Issue #1735): under 600 px the grid is a stack of block rows that never overflows, so the wrap stays the flex card it was and draws no trailing-edge shade.
