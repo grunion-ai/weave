@@ -280,6 +280,8 @@ const BOARD_LAYOUT = [
   'layout: table|board; a board takes groups: stacked|side, picture: off|small|medium|large (gallery: stacked + picture, kanban: side)',
   '[--layout table|board]',
   '`layout` is `table` or `board`',
+  '`public/board-core.js`',
+  '`public/board-view.js`',
 ];
 const offersBoard = /\bboards?\b/i;
 const bare = (text) => BOARD_LAYOUT.reduce((t, ok) => t.split(ok).join(''), text);

@@ -685,8 +685,9 @@ show, and stops when that verification ends.
 commit named in `meta.repository.revision`. `test/architecture-map.test.mjs` goes red
 when a cited file moves or is deleted, when a new `src/` or `bin/` module is not named
 on the map, or when the HTML no longer matches the JSON. The change that trips it
-updates the JSON and runs `node scripts/architecture.mjs`, which re-pins HEAD and
-re-renders. Releasing step 5 re-pins it too, so every tagged version carries a map of the
+updates the JSON and runs `node scripts/architecture.mjs`, which re-pins HEAD,
+re-renders, and rewrites the region index `docs/regions.md` at the same commit.
+Releasing step 5 re-pins it too, so every tagged version carries a map of the
 code it shipped. archify is a dev tool, found at `$ARCHIFY` or
 `~/.claude/skills/archify/bin/archify.mjs`; weave never depends on it.
 

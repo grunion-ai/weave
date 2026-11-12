@@ -717,21 +717,49 @@ For agents changing weave itself: where the code lives and the rules every chang
 
 ### Repo map
 
+Every file in `bin/`, `src/` and `public/` has a row. A file's tests usually carry its name (`public/grid-range.js` is pinned by `test/grid-range.test.mjs`), and a row names the doc to read before changing the files in it.
+
 | Path | What lives there |
 | --- | --- |
-| `bin/weave.js` | CLI entry point — every command, including `serve` and `mcp` |
-| `src/engine.js` | The core: schema, entities, relations, computed fields, automations |
-| `src/store.js` | `node:sqlite` persistence (WAL, JSON→SQLite migration) |
-| `src/server.js` | HTTP server: web UI, REST API, document routes |
-| `src/mcp.js` | MCP server over the engine; the [Tool map](#tool-map) lists its tools |
+| `bin/weave.js` | CLI entry point: every command, including `serve` and `mcp` |
+| `src/engine.js` | The core: one `Weave` class holds schema, entities, relations, computed fields, views, accounts and automations. [docs/regions.md](docs/regions.md) cuts it into regions of at most 200 lines; [docs/ONTOLOGY.md](docs/ONTOLOGY.md) is the model it serves |
+| `src/store.js` | `node:sqlite` persistence: one `.db` per workspace, WAL, the JSON→SQLite migration |
+| `src/formula.js`, `src/stats.js` | Formula parser and evaluator; the aggregates behind rollups, footers and charts |
+| `src/vocabulary.js`, `src/field-hints.js` | The one field vocabulary and the hints a schema write answers with |
+| `src/ids.js`, `src/mark.js`, `src/workspace-name.js` | Ids and slugs, the logo mark's geometry, workspace names |
 | `src/commands.js` | The command registry: one entry per operation names its MCP tool, CLI command, HTTP route, what it writes and how it runs; the three doors dispatch from it |
 | `src/errors.js` | The error contract: each code's HTTP status, MCP code and CLI exit |
-| `src/formula.js` | Formula parser/evaluator |
-| `src/markdown.js`, `src/pdf.js` | Document rendering to HTML / PDF |
-| `public/` | Web UI (vanilla JS, no build step) and vendored third-party assets |
+| `src/mcp.js` | MCP server over the engine, with `src/mcp-primer.md` as its primer; the [Tool map](#tool-map) lists its tools |
+| `src/server.js`, `src/routes.js`, `src/minify.js` | HTTP: `server.js` wraps the request core in `routes.js` in `node:http` and serves the web UI, REST API and document routes; `minify.js` strips first-party scripts and styles before compression |
+| `src/access.js`, `src/shares.js`, `src/auth-page.js`, `src/oidc.js`, `src/keystore.js`, `src/integrations.js` | Who may read and write: open and private spaces, space roles and the one scope check, share grants and the `/s/` pages, the sign-in page and OIDC, stored credentials, integration keys. Read [SECURITY.md](SECURITY.md) first |
+| `src/markdown.js`, `src/pdf.js`, `src/deck.js` | Document rendering to HTML, PDF and slide decks |
+| `src/forms.js`, `src/applet.js`, `src/bugreport.js`, `src/legal.js` | Workspace/Forms rows and one-row submissions, the passcode task applet at `/t`, bug reports, the legal pages |
+| `src/mail.js`, `src/mail-send.js`, `src/trial-mail.js`, `src/billing.js` | Invite and trial mail and its sender, the hourly trial-ending sweep, paid seats read from Clerk Billing |
+| `src/schedule.js`, `src/delivery.js`, `src/runs.js` | Cron triggers and the minute ticker, retries of failed outbound deliveries, external run states |
+| `src/backup.js` | Encrypted backup archives to S3, and restore |
+| `src/handbook.js`, `src/handbook/`, `src/documentation-presentation.js`, `src/weaver-seed.js`, `src/quality-mirror.js`, `src/env.js` | weave records itself: the Handbook from `src/handbook/`, the docs workspace covers and introductions, the Showcase and Development seeds, the Quality mirror of the test files, and the environment registry the Environment reference renders from. Read [docs/documentation-presentation.md](docs/documentation-presentation.md) first |
+| `src/service.js`, `src/update-check.js`, `src/supervisor.js` | The launchd service, the newer-release check, in-place release swaps |
+| `src/vendor/` | Vendored decklet slide engine and the DejaVu Sans font for PDF export |
+| `public/index.html`, `public/404.html` | The app page, which loads the scripts below, and the not-found page |
+| `public/app.js` | The web UI in one classic script: the router, every page, and the grid's DOM work in `renderTable`. [docs/regions.md](docs/regions.md) cuts it into regions of at most 200 lines and places each grid behaviour by line |
+| `public/style.css`, `public/chip.css` | Styles on Tabler tokens in both themes, and chip styles. Read the surface table in [brand/README.md](brand/README.md) first |
+| `public/grid-window.js`, `public/grid-range.js`, `public/grid-keymap.js`, `public/column-resize.js`, `public/selection-core.js`, `public/list-core.js`, `public/phone-row.js` | The grid's pure cores: windowing, ranges, the keymap, column widths, selection, grouping and the phone row. Read [docs/grid.md](docs/grid.md) first: it maps each grid behaviour to its names |
+| `public/board-core.js`, `public/board-view.js`, `public/view-core.js`, `public/view-pane-core.js`, `public/cell-graphics.js`, `public/reorder.js` | The Board layout, view shapes, the view pane, number cells drawn as bars, rings and heat, drag to reorder |
+| `public/entity-surface-core.js`, `public/breadcrumbs.js`, `public/history-core.js`, `public/field-diff-core.js`, `public/activity-log.js`, `public/activity-panel.js`, `public/actor-core.js` | The record page: the docked record panel, the breadcrumb trail, history diffs, activity and undo, actor names |
+| `public/doc-editor.js`, `public/editor-lib.js`, `public/whiteboard.js` | The document editor, its text helpers, and the whiteboard view of a diagram |
+| `public/field-dialog.js`, `public/field-dialog-core.js`, `public/chip-core.js`, `public/chip-view.js`, `public/icon-registry.js`, `public/mark-icons.js`, `public/term-core.js` | The field dialog, chips and their hues, the icon inventory and mark icons, the nouns a table calls its rows |
+| `public/date-core.js`, `public/date-grain.js`, `public/date-picker.js`, `public/nl-date.js`, `public/number-core.js`, `public/picker-core.js`, `public/prefill-core.js` | Dates (formats, grains, the picker, typed dates), number formats, option ranking, prefill links |
+| `public/upload-core.js`, `public/file-preview-core.js`, `public/save-queue.js` | Uploads, image previews, the save queue that retries a write after a dropped connection |
+| `public/menu-core.js`, `public/command-palette.js`, `public/palette-core.js`, `public/resume-core.js`, `public/permalink.js` | Action menus, the command palette and its search, resuming the last route, permalink pages. Read [docs/menu-contract.md](docs/menu-contract.md) first |
+| `public/space-home-core.js`, `public/space-home-view.js`, `public/space-launcher-view.js`, `public/starter-core.js`, `public/starter-gallery.js` | The space home and launcher, the starter templates and their gallery |
+| `public/relation-map.js`, `public/relmap-layout.js`, `public/automation-map.js`, `public/workflows-cells.js` | The relation map and its layout, automations on the map, workflow table cells |
+| `public/share-panel.js`, `public/forms-dialog.js`, `public/form.js`, `public/invite-dialog.js`, `public/settings-view.js`, `public/usage-core.js`, `public/bug-core.js` | Sharing, forms (the dialog and the public form page), invites and seats, settings and the trash, consented usage events, bug reports |
+| `public/start.html`, `public/start.js`, `public/setup-core.js`, `public/slug-core.js`, `public/slug-form.js`, `public/agent-connect-core.js`, `public/consent.js` | `/start`: sign-up and first-workspace setup, workspace addresses, connecting an AI app, the cookie consent banner. Read [docs/onboarding-verification.md](docs/onboarding-verification.md) first |
+| `public/status.html`, `public/status.js`, `public/status.css`, `public/billing.html`, `public/billing.js`, `public/paint.js` | The status page ([DESIGN.md](DESIGN.md)), the billing page, the opt-in paint timing log |
+| `public/vendor/`, `public/brand/`, `public/showcase/` | Vendored third-party assets, which README.md lists with their licenses; brand marks; Showcase icons |
 | `test/` | Test suites, run through `npm test` (`scripts/test.mjs`): the contract for every behavior above |
-| `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`) |
-| `scripts/` | Dev tooling (seed data, README screenshots) |
+| `docs/` | Parity matrix, comparisons, screenshots, the architecture map (`docs/architecture/`), the grid map (`docs/grid.md`) and the region index (`docs/regions.md`) |
+| `scripts/` | Dev tooling: seed data, README screenshots, and the generators behind AGENTS.md, the architecture map and the region index |
 
 ### Rules for changing this repo
 
