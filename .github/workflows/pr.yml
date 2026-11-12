@@ -37,7 +37,9 @@ jobs:
     timeout-minutes: 20
     container:
       image: ${{ matrix.lane == 'browser' && 'mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e' || '' }}
-      options: --user 1001 --ipc=host --init
+      options: --user 1001 --ipc=host --init --add-host net.localhost:127.0.0.1 --add-host bandito.localhost:127.0.0.1 --add-host scratch.localhost:127.0.0.1
+      volumes:
+        - /usr/share/fonts:/usr/local/share/fonts/runner:ro
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
