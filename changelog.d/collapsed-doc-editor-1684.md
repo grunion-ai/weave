@@ -1,0 +1,1 @@
+- **A collapsed document field no longer builds an editor** (Issue #1684): opening a record held three Vditor instances for three document fields even when two sections were closed, so a reader paid for the 3.74 MB parser to read nothing. A closed section now waits, and its caret builds the editor the first time the body opens.
