@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { Weave } from '../src/engine.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
+import { unwrapData } from './lib/fixtures.mjs';
 
 async function fixture(options = {}) {
   const w = new Weave();
@@ -22,7 +23,7 @@ async function fixture(options = {}) {
     const res = await s.call('POST', `${prefix}/mcp`, { token, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_attach_file', arguments: { entity: row.id, field: 'Image', name: 'poster.png', mime: 'image/png', size: 4, prepare: true, ...args } } } });
     const body = await res.json();
     assert.equal(res.status, 200, JSON.stringify(body));
-    return body.result.isError ? body.result : JSON.parse(body.result.content[0].text);
+    return body.result.isError ? body.result : JSON.parse(unwrapData(body.result.content[0].text));
   };
   return { ...s, w, row, prepare, token };
 }
@@ -124,7 +125,7 @@ test('a named workspace host returns a usable upload URL on that same host', asy
     assert.equal(res.headers.get('cache-control'), 'no-store');
     const rpc = await res.json();
     assert.ok(!rpc.result.isError, JSON.stringify(rpc));
-    const grant = JSON.parse(rpc.result.content[0].text);
+    const grant = JSON.parse(unwrapData(rpc.result.content[0].text));
     assert.equal(grant.url, `http://${host}/api/uploads`);
     const uploaded = await hosted(grant.method, '/api/uploads', grant.headers, '1234');
     assert.equal(uploaded.status, 201, JSON.stringify(await uploaded.json()));

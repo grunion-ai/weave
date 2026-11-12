@@ -8,7 +8,7 @@ import { tempDir } from '../lib/temp.mjs';
 process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
-const { client } = await import('../lib/fixtures.mjs');
+const { client, unwrapData } = await import('../lib/fixtures.mjs');
 const { handleMcpMessage, listTools, ROLE_TOOLS, SEATLESS_TOOLS } = await import('../../src/mcp.js');
 
 let seq = 0;
@@ -99,10 +99,10 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
     await asUnknown(reader, name, args);
   }
   const posed = await works(reader, 'weave_add_comment', { entity: row.id, text: 'posing', author: 'root-admin' });
-  assert.notEqual(JSON.parse(text(posed)).author, 'root-admin', 'an observer comments under its own name, as over REST');
+  assert.notEqual(JSON.parse(unwrapData(text(posed))).author, 'root-admin', 'an observer comments under its own name, as over REST');
   await asUnknown(reader, 'weave_call', { name: 'weave_create_entity', args: { db: 'Dev/Task', name: 'x' } }, 'weave_create_entity');
   const made = await works(writer, 'weave_create_entity', { db: 'Dev/Task', name: 'by the editor' });
-  const id = JSON.parse(text(made)).id;
+  const id = JSON.parse(unwrapData(text(made))).id;
   await works(writer, 'weave_update_entity', { entity: id, values: { Name: 'renamed by the editor' } });
   await works(writer, 'weave_delete_entity', { entity: id });
   for (const [name, args] of [['weave_create_space', { name: 'S' }], ['weave_create_table', { space: 'Dev', name: 'T2' }], ['weave_add_field', { db: 'Dev/Task', name: 'Due', type: 'date' }], ['weave_accounts', { action: 'list' }], ['weave_keys', { action: 'list' }], ['weave_import_json', { state: root.exportJSON() }], ['weave_bulk', { ids: [row.id], op: 'delete' }]]) {
