@@ -175,3 +175,27 @@ test('SOUL.md does not refuse the marketplace weave ships through (Issue #1145)'
   assert.doesNotMatch(soul, /No marketplace\b/, 'SOUL.md still states a blanket no-marketplace refusal');
   assert.match(read('README.md'), /Claude Code plugin marketplace/, 'the README does distribute through one');
 });
+
+const SOURCED = /`([A-Za-z0-9_/.-]+\.(?:md|json))`/g;
+const SOUL_QUOTE = /"([^"]{12,})"/g;
+const plain = (text) => text.replace(/[`*]/g, '').replace(/\s+/g, ' ');
+
+test("every quote in SOUL.md's sourced sections is a line the file it names carries (Issue #1350)", () => {
+  const soul = read('SOUL.md');
+  let checked = 0;
+  for (const name of ['Purpose', 'Audience', 'Voice', 'Positioning']) {
+    const body = soul.split(`## ${name}`)[1]?.split('\n## ')[0];
+    assert.ok(body, `SOUL.md has no ${name} section`);
+    for (const line of body.split('\n')) {
+      const refs = [...line.matchAll(SOURCED)].map((m) => ({ at: m.index, file: m[1] }));
+      if (!refs.length) continue;
+      for (const match of line.matchAll(SOUL_QUOTE)) {
+        const { file } = refs.find((r) => r.at > match.index) ?? refs[refs.length - 1];
+        checked++;
+        assert.ok(plain(read(file)).includes(plain(match[1])),
+          `SOUL.md's ${name} section quotes "${match[1]}" from ${file}, and ${file} no longer says it`);
+      }
+    }
+  }
+  assert.ok(checked >= 17, `only ${checked} quotes found: SOUL.md's sourced sections no longer parse`);
+});
