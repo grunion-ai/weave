@@ -1,0 +1,1 @@
+- The `</>` source toggle on an app or diagram document now reports whether the source is showing, names the action it will take next, and hands the caret to the source box it reveals; pressing it again brings the drawing and the focus back (Issue #1447).

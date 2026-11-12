@@ -9451,14 +9451,19 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       let mounted = false;
       if (appFrame) {
         const sourceToggle = el('button', {
-          type: 'button', class: 'doc-anchor', title: 'Edit source', 'aria-label': `Edit ${f.name} source`,
+          type: 'button', class: 'doc-anchor', title: 'Edit source', 'aria-label': `Edit ${f.name} source`, 'aria-pressed': 'false',
           onclick: () => {
             showingSource = !showingSource;
             host.classList.toggle('hidden', !showingSource);
             appFrame.classList.toggle('hidden', showingSource);
             sourceToggle.classList.toggle('active', showingSource);
+            sourceToggle.setAttribute('aria-pressed', String(showingSource));
+            const verb = showingSource ? 'Hide' : 'Edit';
+            sourceToggle.title = `${verb} source`;
+            sourceToggle.setAttribute('aria-label', `${verb} ${f.name} source`);
             if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
             if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); }
+            if (showingSource) sourceBox?.focus(); else sourceToggle.focus();
           },
         }, iconEl('lucide:code-xml', 'wv-icon'));
         nameEl.after(sourceToggle);
