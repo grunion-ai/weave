@@ -429,9 +429,15 @@ a test file other than the one holding main red says nothing about this red, so
 the sheriff escalates with both file lists instead of narrowing to that commit.
 It checks once more that
 main has not gone green on its own, then opens a `sheriff/revert-<sha>` PR with
-squash auto-merge, comments on the original PR, files
-`Error: <test> fails on main after PR #<n>` with the run links, and writes
-one alert line to the job summary and `SHERIFF_ALERT_URL`. Then it reads the
+squash auto-merge, comments on the original PR, files the run links on the
+test's standing row `Error: <test> fails on main`, and writes
+one alert line to the job summary and `SHERIFF_ALERT_URL`. Each detector keeps
+one standing row whatever the PR: an Open or In Progress row takes the evidence,
+a Fixed one reopens with it, and only a detector with no row gets a new one,
+created with `dedupe` so a racing run lands on the same row. A new row carries
+Symptom Error and an Area read off the paths the convicted commits changed, or
+off the failing test files when those name none; a red that no commit explains
+is filed under Gate, like every flake row. Then it reads the
 `Issue #<n>` and `Feature #<n>` references off each reverted commit's subject
 and sets each of those rows back from `Fixed` to `Open`, or from `Shipped` to
 `Building`, with a dated line naming the revert PR, so the reland is queued
@@ -447,8 +453,8 @@ says nothing about the commits under it (Issue #1322). A timed-out shard can
 also leave no red file at all, when the manager killed it before any of its
 files answered: `scripts/ci-test.mjs` records `timedOut` in a shard's evidence
 when the manager exits 124, and a red held only by timed-out shards, with no
-file red and none unverdicted, escalates the same way under `Error: tests
-shards <ids> time out on main at <sha>`, since the gate conclusion alone
+file red and none unverdicted, escalates the same way on the standing row
+`Error: tests shards time out on main`, since the gate conclusion alone
 names no culprit. Past the cap it reverts what is still suspect. Before any
 revert, a range whose lower bound rests on the last green run alone gets one
 more `tests` dispatch at that green commit, inside the same four runs; the
