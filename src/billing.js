@@ -51,6 +51,7 @@ export function trialOf(workspace, trialDays, at) {
 
 export function createBilling({ secretKey, plan, since = 0, trialDays = TRIAL_DAYS, issuer = '', publishableKey = null, fetch = globalThis.fetch, now = Date.now }) {
   const cache = new Map();
+  let priced = null;
 
   async function api(method, path, body) {
     const res = await fetch(`${CLERK_API}${path}`, {
@@ -119,6 +120,16 @@ export function createBilling({ secretKey, plan, since = 0, trialDays = TRIAL_DA
     subjectOf,
     trialDays,
     trial: (workspace) => trialOf(workspace, trialDays, now()),
+    async seatPrice() {
+      if (priced && now() - priced.at < FRESH_MS) return priced.price;
+      try {
+        const fee = ((await api('GET', `/billing/plans?payer_type=org&limit=${PAGE}`))?.data ?? []).find((p) => p?.slug === plan)?.fee;
+        priced = { at: now(), price: Number.isInteger(fee?.amount) ? `${fee.currency_symbol ?? '$'}${(fee.amount / 100).toFixed(2)}` : null };
+      } catch {
+        priced = { at: now(), price: priced?.price ?? null };
+      }
+      return priced.price;
+    },
     async standing({ workspace, accounts }) {
       const created = Date.parse(workspace.createdAt ?? '');
       const orgId = workspace.billing?.orgId ?? null;
@@ -142,7 +153,7 @@ export function createBilling({ secretKey, plan, since = 0, trialDays = TRIAL_DA
       if (value.plan == null && trial) return { ...shape({ ...value, plan: 'trial' }, accounts), orgId, trial };
       return { ...shape(value, accounts), orgId, trial: null };
     },
-    forget() { cache.clear(); },
+    forget() { cache.clear(); priced = null; },
     async ensureOrg({ workspace, createdBy }) {
       if (workspace.billing?.orgId) return workspace.billing.orgId;
       const org = await api('POST', '/organizations', { name: workspace.name || workspace.slug, created_by: createdBy, private_metadata: { weave_workspace: workspace.slug } });
