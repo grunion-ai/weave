@@ -9445,7 +9445,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           type: 'button',
           class: 'btn btn-sm btn-primary',
           onclick: () => {
-            if (docEd) { try { docEd.setValue(draft.value); } catch {} } else if (sourceBox) sourceBox.value = draft.value;
+            if (docEd) docEd.setValue(draft.value); else if (sourceBox) sourceBox.value = draft.value;
             scheduleDocSave(id, f.name, draft.value);
             bar.remove();
           },
