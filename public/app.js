@@ -9443,7 +9443,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       bar.append(
         el('button', {
           type: 'button',
-          class: 'btn btn-sm btn-warning',
+          class: 'btn btn-sm btn-primary',
           onclick: () => {
             if (docEd) { try { docEd.setValue(draft.value); } catch {} } else if (sourceBox) sourceBox.value = draft.value;
             scheduleDocSave(id, f.name, draft.value);
