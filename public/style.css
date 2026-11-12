@@ -2363,6 +2363,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .phone-lead, .wv-grid td.phone-only { display: none; }
 @media (max-width: 600px) {
   #main > .table-wrap { overflow: visible; }
+  #main > .card.table-wrap { display: flex; }
+  #main > .card.table-wrap::after { content: none; }
   #main > .table-wrap .wv-grid { --wv-row-h: 88px; display: block; width: 100% !important; min-width: 0 !important; }
   #main > .table-wrap .wv-grid[data-density="compact"] { --wv-row-h: 68px; }
   #main > .table-wrap .wv-grid[data-density="spacious"] { --wv-row-h: 118px; }
