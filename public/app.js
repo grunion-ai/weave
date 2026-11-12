@@ -9381,6 +9381,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const body = el('div', { class: 'doc-section-body' }, host);
     const nameEl = el('span', { class: 'doc-section-name' }, f.name);
     let sourceBox = null;
+    let docOpen = !!f.displayInline || !docSectionCollapse(id, f.name);
     const caret = disclosure('doc-caret', true, {
       title: 'Collapse section',
       onclick: () => {
@@ -9388,6 +9389,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         caret.classList.toggle('closed', open);
         setDisclosure(caret, !open);
         docSectionCollapse(id, f.name, open);
+        docOpen = !open;
+        fillOpenDoc();
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
@@ -9402,7 +9405,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         dl), 'doc', f, () => ({ entity })),
       body);
 
-    if (!f.displayInline && docSectionCollapse(id, f.name)) {
+    if (!docOpen) {
       body.classList.add('hidden');
       caret.classList.add('closed');
       setDisclosure(caret, false);
@@ -9493,7 +9496,13 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (mode === 'code') mountSourceEditor();
       if (mode === 'markdown') mountEditor();
     };
-    if (holdsDoc(f.name)) fillDoc(); else fills.push(fillDoc);
+    let docFilled = false;
+    const fillOpenDoc = () => {
+      if (docFilled || !docOpen || !holdsDoc(f.name)) return;
+      docFilled = true;
+      fillDoc();
+    };
+    if (holdsDoc(f.name)) fillOpenDoc(); else fills.push(fillOpenDoc);
     return section;
   };
 
