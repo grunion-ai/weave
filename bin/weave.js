@@ -177,10 +177,10 @@ async function main() {
         console.warn(`Docs workspace sync skipped: ${err.message}`);
       }
       try {
-        const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
         if (docsW && process.env.WEAVE_TRACKER_CANONICAL === '1') {
           console.log('Development sync skipped: this server is the canonical tracker (WEAVE_TRACKER_CANONICAL=1)');
-        } else if (docsW) {
+        } else if (docsW?.state.meta.developmentSync) {
+          const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
           const { syncDevelopment } = await import('../src/weaver-seed.js');
           const r = syncDevelopment(docsW, manifest);
           if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);

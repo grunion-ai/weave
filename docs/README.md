@@ -30,7 +30,9 @@ weave is, the quickstart, self-hosting and the FAQ.
 
 ## The live docs
 
-Every running instance provisions a self-documenting **weave** workspace at
-`/w/weave/` — a Handbook, a Wiki, the roadmap and issue tracker, and a Quality
-space mirroring the test suite. It is queryable through the same REST API as any
-other workspace, so the tool documents itself in its own data model.
+Every running instance provisions a self-documenting **weave** docs workspace at
+`/w/weave/`: a Handbook, a Wiki and the Showcase examples. It is queryable
+through the same REST API as any other workspace, so the tool documents itself
+in its own data model. weave's own roadmap, issue tracker and the Quality space
+mirroring the test suite live only in the weave docs workspace on weave cloud,
+https://weave.grunion.ai/w/weave.

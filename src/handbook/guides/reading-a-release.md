@@ -13,7 +13,7 @@ Start with the concrete behavior: what a user can now do, or what no longer goes
 | Change | The user-visible before and after. |
 | Try it | A few steps and a link to a working example or guide. |
 | Evidence | The issue or feature, merged change, and deployment status. |
-| Checks | Relevant [[table:Quality/Suite|suites]] or [[table:Quality/Case|cases]]. |
+| Checks | The relevant test suites or cases, from the Quality space of the weave docs workspace on weave cloud. |
 | Limits | Permissions, migration needs, or behavior the change does not cover. |
 
 ## Keep the example useful

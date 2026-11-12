@@ -29,9 +29,13 @@ test('scanSuites finds every test file with its declared case names', () => {
   assert.ok(slash.cases.some((c) => c.includes('${')), 'template declarations are kept verbatim');
 });
 
-test('the seeded workspace mirror equals the scan, by construction', () => {
+test('the first sync builds the mirror on a docs workspace the seed left without one, equal to the scan (Issue #1595)', () => {
   const w = seedWeaver(new Weave());
+  assert.equal(w.findTable('Quality/Suite'), undefined, 'the seed carries no mirror of the test suite');
   const scanned = scanSuites(ROOT);
+  assert.deepEqual(syncQualityMirror(w, scanned, { dryRun: true }).createdSuites, scanned.length, 'a dry run plans the whole mirror');
+  assert.equal(w.findTable('Quality/Suite'), undefined, 'and builds nothing');
+  syncQualityMirror(w, scanned);
   const suiteRows = w.listEntities(w.getTable('Quality/Suite').id);
   assert.equal(suiteRows.length, scanned.length, 'one Suite row per test file');
 
@@ -48,6 +52,7 @@ test('the seeded workspace mirror equals the scan, by construction', () => {
 test('syncQualityMirror reconciles an existing drifted mirror without duplicating', () => {
   const w = seedWeaver(new Weave());
   const scanned = scanSuites(ROOT);
+  syncQualityMirror(w, scanned);
   const suite = w.getTable('Quality/Suite');
   const cases = w.getTable('Quality/Case');
 
@@ -164,6 +169,7 @@ test('a green file marks a case no run names Passing, and with no results the pl
 test('syncQualityMirror writes the run result onto Case Status and a second sync writes nothing (Issue #1245)', () => {
   const w = seedWeaver(new Weave());
   const scanned = scanSuites(ROOT);
+  syncQualityMirror(w, scanned);
   const target = scanned.find((s) => s.file === 'test/quality-mirror.test.mjs');
   const named = target.cases[0];
   const results = new Map([[target.file, { ok: false, cases: new Map([[named, 'Failing']]) }]]);

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
 import { seedWeaver } from '../src/weaver-seed.js';
-import { scanSuites, planQualityMirror } from '../src/quality-mirror.js';
+import { scanSuites, planQualityMirror, syncQualityMirror } from '../src/quality-mirror.js';
 import { http, readMirror, apply, drift } from '../scripts/quality-sync.mjs';
 import { withServer } from './lib/fixtures.mjs';
 
@@ -13,10 +13,11 @@ const ROOT = join(import.meta.dirname, '..');
 test('the sync over HTTP heals a drifted tracker, writes run results onto Case Status, and leaves no drift (Issue #1244, Issue #1245)', async () => {
   const w = seedWeaver(new Weave());
   w.state.meta.name = 'weave';
+  const scanned = scanSuites(ROOT);
+  syncQualityMirror(w, scanned);
   const suite = w.getTable('Quality/Suite');
   const ghost = w.createEntity(suite, { name: 'Ghost', values: { File: 'test/deleted-long-ago.test.mjs' } });
   w.createEntity(w.getTable('Quality/Case'), { name: 'orphaned', values: { Suite: ghost.id } });
-  const scanned = scanSuites(ROOT);
   const target = scanned.find((s) => s.file === 'test/quality-sync.test.mjs');
   const results = new Map([[target.file, { ok: false, cases: new Map([[target.cases[0], 'Failing']]) }]]);
 
