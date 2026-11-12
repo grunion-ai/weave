@@ -1,1 +1,0 @@
-- The Billing page and the invite note read the seat price from the Clerk plan instead of carrying a typed `$4.99`. `GET /api/billing` answers with `seatPrice`, taken from the plan whose slug the deployment bills on, and both surfaces say "the price shown at checkout" when Clerk names no such plan ([[Issue#1556]]).
