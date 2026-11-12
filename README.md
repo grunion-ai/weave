@@ -127,10 +127,12 @@ workspaces, attachments and keystore stay in the `weave-data` volume at `/data`:
 docker run -d --name weave -p 127.0.0.1:4400:4400 -v weave-data:/data ghcr.io/grunion-ai/weave:latest
 ```
 
-Open http://127.0.0.1:4400 and press **⌘K** to search everything. A
-self-documenting **weave** docs workspace is provisioned alongside your data at
-`/w/weave/`: handbook, wiki, the public issue tracker and roadmap, and a
-Quality space mirroring the test suite.
+Open http://127.0.0.1:4400 and press **⌘K** to search everything. weave
+provisions a self-documenting **weave** docs workspace alongside your data at
+`/w/weave/`: the handbook, the wiki, the Showcase examples, and an Issue table
+that collects this instance's bug reports. weave's own issue tracker, roadmap
+and test suite mirror live in the weave docs workspace on weave cloud,
+https://weave.grunion.ai/w/weave, which every weave cloud account can read.
 
 If weave replaces a SaaS seat for you, star the repo so other teams can find it.
 
@@ -427,9 +429,11 @@ escape.
 npm test
 ```
 
-The test suite is mirrored as entities in the docs workspace (Quality space),
-and the roadmap and issue tracker live there too (`/w/weave/`), so weave tracks
-its own development. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR;
+The weave docs workspace on weave cloud mirrors the test suite as entities in
+its Quality space, beside the roadmap and issue tracker
+(https://weave.grunion.ai/w/weave).
+`node bin/weave.js quality sync --data <weave.db>` builds the same mirror in a
+local docs workspace. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR;
 README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 ## Third-party (vendored, pinned)

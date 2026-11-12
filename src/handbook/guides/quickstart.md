@@ -20,4 +20,4 @@ Prefer to build with an agent? Read **Connect an agent**, then [[table:Handbook/
 
 [[table:Development/Issue|Issues]] holds bug reports and investigations. [[table:Development/Feature|The roadmap]] shows proposed and ongoing work. [[table:Development/Release|Release notes]] describe changes by release.
 
-[[table:Quality/Suite|Test suites]] and [[table:Quality/Case|test cases]] remain public alongside the documentation. Use them to understand what is checked, then link a specific case or issue when reporting a problem.
+weave's own issues and roadmap are kept in the weave docs workspace on weave cloud, https://weave.grunion.ai/w/weave, together with the test suites and test cases. A new install does not copy them, and bug reports filed on it go to its own Issues table. Use the test cases on weave cloud to see what is checked, then link a specific case or issue when you report a problem.
