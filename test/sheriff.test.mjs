@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sheriff, dryIO, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, flakeLine, flakeRows, flakeStep, failedStep, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP, timedOutShards } from '../scripts/sheriff.mjs';
+import { sheriff, dryIO, short, eligible, nextProbe, rerunVerdict, gateVerdict, isRevert, revertBranch, culpritsOf, failingFiles, unresolvedFiles, flakeLine, flakeRows, flakeStep, failedStep, revertedRefs, reopenNote, REOPEN, issueName, revertTitle, revertMessage, pushArgs, realIO, outcomeExitCode, BISECT_CAP, timedOutShards } from '../scripts/sheriff.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const repo = 'grunion-ai/weave';
 const red = (patch = {}) => ({ id: 900, name: 'tests', path: '.github/workflows/test.yml', event: 'push', head_branch: 'main', head_repository: { full_name: repo }, status: 'completed', conclusion: 'failure', run_attempt: 1, head_sha: sha(100), html_url: 'https://github.com/grunion-ai/weave/actions/runs/900', created_at: '2026-10-12T10:00:00Z', ...patch });
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
 
-function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, unresolved = [], probeRed = null, rows = {}, paths = {}, incidents = [], timedOut = [] } = {}) {
+function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badFrom = null, known = {}, reverts = [], branchExists = false, conflict = false, green = null, files = ['test/grid.test.mjs'], jobs = [{ name: 'tests browser-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/900/job/1' }], cancelled = [], flakes = {}, unresolved = [], probeRed = null, parent = 'success', parentRed = null, rows = {}, paths = {}, incidents = [], timedOut = [] } = {}) {
   const head = commits.at(-1)?.sha;
   const run = given ?? red({ head_sha: head ?? sha(100) });
   const writes = [];
@@ -20,7 +20,7 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     run: async () => run,
     greenAfter: async () => green,
     failures: async () => ({ files, jobs, cancelled, unresolved, timedOut }),
-    probeFiles: async () => probeRed ?? files,
+    probeFiles: async (id) => (id === 6999 ? parentRed : null) ?? probeRed ?? files,
     reopenRow: async ({ table, publicId, line }) => {
       const held = rows[`${table}#${publicId}`];
       if (!held || held !== REOPEN[table].from) return null;
@@ -38,7 +38,7 @@ function fake({ run: given, rerunGate = 'failure', commits = [commit(100)], badF
     openIncidents: async (names) => incidents.filter((i) => names.includes(i.file)),
     appendRow: async (row, line) => { writes.push(['append', row, line]); return { id: row.id, publicId: row.publicId, url: `https://weave.grunion.ai/w/weave/e/${row.id}`, appended: true }; },
     known: async (s) => known[s] ?? null,
-    probe: async (s) => { writes.push(['probe', s]); return { conclusion: index(s) >= badFrom ? 'failure' : 'success', url: `https://github.com/grunion-ai/weave/actions/runs/p${index(s)}`, id: 7000 + index(s) }; },
+    probe: async (s) => { writes.push(['probe', s]); return { conclusion: index(s) < 0 ? parent : index(s) >= badFrom ? 'failure' : 'success', url: `https://github.com/grunion-ai/weave/actions/runs/p${index(s)}`, id: 7000 + index(s) }; },
     pullsFor: async (s) => [{ number: Number.parseInt(s, 16), html_url: `https://github.com/grunion-ai/weave/pull/${Number.parseInt(s, 16)}` }],
     openRevert: async (spec) => { writes.push(['revert', spec]); return branchExists ? { exists: true } : conflict ? { conflict: true, error: 'CONFLICT (content)' } : { number: 500, html_url: 'https://github.com/grunion-ai/weave/pull/500', branch: spec.branch, armed: true }; },
     comment: async (n, body) => writes.push(['comment', n, body]),
@@ -345,7 +345,7 @@ test('the second rerun carries the verdict: green is a flake, red reverts', asyn
   assert.deepEqual(flake.kinds(), ['rerun', 'rerun', 'flake']);
   const red = fake({ rerunGate: ['cancelled', 'failure'] });
   assert.equal((await sheriff(900, red.io)).action, 'revert');
-  assert.deepEqual(red.kinds(), ['rerun', 'rerun', 'revert', 'comment', 'issue', 'alert']);
+  assert.deepEqual(red.kinds(), ['rerun', 'rerun', 'probe', 'revert', 'comment', 'issue', 'alert']);
 });
 
 test('main going green after the bisect clears the suspect before the revert is opened', async () => {
@@ -359,12 +359,14 @@ test('main going green after the bisect clears the suspect before the revert is 
   assert.deepEqual(f.kinds().filter((k) => k !== 'probe'), ['rerun']);
 });
 
-test('a revert with no bisect probe names the range size and the missing probe in its title', async () => {
+test('a revert that took no probe names the range size and the missing probe in its title, as a dry run shows', async () => {
   const f = fake({ commits: [commit(100)] });
-  const out = await sheriff(900, f.io);
+  const out = await sheriff(900, dryIO(f.io), { dryRun: true });
   assert.equal(out.action, 'revert');
   assert.equal(out.probes.length, 0);
-  assert.match(f.writes.find((w) => w[0] === 'revert')[1].title, /\(1 commit in range, no bisect probe\)$/);
+  assert.deepEqual(f.writes, []);
+  assert.ok(f.logs.some((l) => l.includes(`would dispatch tests at ${sha(1)}`)), 'the dry run names the parent probe it would dispatch');
+  assert.match(f.logs.find((l) => /would open sheriff\/revert-/.test(l)), /\(1 commit in range, no bisect probe\)\n/);
   const bisected = fake({ commits: [101, 102, 103].map((n) => commit(n)), badFrom: 2 });
   await sheriff(900, bisected.io);
   assert.doesNotMatch(bisected.writes.find((w) => w[0] === 'revert')[1].title, /no bisect probe/);
@@ -374,8 +376,8 @@ test('one commit since the last green run is the culprit: revert PR, PR comment,
   const f = fake({ commits: [commit(100)] });
   const out = await sheriff(900, f.io);
   assert.equal(out.action, 'revert');
-  assert.deepEqual(f.kinds(), ['rerun', 'revert', 'comment', 'issue', 'alert']);
-  const spec = f.writes[1][1];
+  assert.deepEqual(f.kinds(), ['rerun', 'probe', 'revert', 'comment', 'issue', 'alert']);
+  const spec = f.writes[2][1];
   assert.equal(spec.branch, `sheriff/revert-${sha(100).slice(0, 10)}`);
   assert.deepEqual(spec.shas, [sha(100)]);
   assert.match(spec.body, /test\/grid\.test\.mjs/);
@@ -385,11 +387,84 @@ test('one commit since the last green run is the culprit: revert PR, PR comment,
   assert.match(spec.message, new RegExp(`This reverts commit ${sha(100)}\\.`));
   assert.match(spec.message, /^No-changelog: \S/m);
   assert.doesNotMatch(spec.title, /\((Issue|Feature)s? #/);
-  assert.equal(f.writes[2][1], 100);
-  assert.match(f.writes[2][2], /pull\/500/);
-  assert.equal(f.writes[3][1].name, 'Error: test/grid.test.mjs fails on main after PR #100');
-  assert.match(f.writes[3][1].description, /actions\/runs\/900/);
+  assert.equal(f.writes[3][1], 100);
+  assert.match(f.writes[3][2], /pull\/500/);
+  assert.equal(f.writes[4][1].name, 'Error: test/grid.test.mjs fails on main after PR #100');
+  assert.match(f.writes[4][1].description, /actions\/runs\/900/);
   assert.equal(f.kinds().filter((k) => k === 'alert').length, 1);
+});
+
+test('a one-commit range is rerun at its parent before the sheriff convicts it (Issue #1671)', async () => {
+  const f = fake({ commits: [commit(100)] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'revert');
+  assert.deepEqual(f.kinds(), ['rerun', 'probe', 'revert', 'comment', 'issue', 'alert']);
+  assert.equal(f.writes[1][1], sha(1), 'the probe runs the last green commit again, after the red');
+  assert.deepEqual(out.probes.map((p) => [p.sha, p.conclusion, p.parent]), [[sha(1), 'success', true]]);
+  const spec = f.writes.find((w) => w[0] === 'revert')[1];
+  assert.doesNotMatch(spec.title, /no bisect probe/);
+  assert.match(spec.body, new RegExp(`^Parent probe ${short(sha(1))}: success https://github\\.com/grunion-ai/weave/actions/runs/p-1$`, 'm'));
+});
+
+test('the sheriff no longer reverts PR #923 for the RSS flake PR #922 left on main, because the parent goes red on it too (Issues #1671, #1736)', async () => {
+  const culprit = { sha: '6430ff5be073611c82c86b654480082ea247d8d5', message: 'Renaming a field rewrites the formulas that name it (Issues #1622, #1732) (#923)' };
+  const parentSha = '5c898afaf531713099ebee4ffa4daa3317ce3a7e';
+  const f = fake({
+    run: red({ id: 43115687795, head_sha: culprit.sha, html_url: 'https://github.com/grunion-ai/weave/actions/runs/43115687795' }),
+    commits: [culprit],
+    files: ['test/backup-stream.test.mjs'],
+    jobs: [{ name: 'tests unit-2', html_url: 'https://github.com/grunion-ai/weave/actions/runs/43115687795/job/130843153746' }],
+    parent: 'failure',
+    parentRed: ['test/backup-stream.test.mjs'],
+    rows: { 'Issue#1622': 'Fixed', 'Issue#1732': 'Fixed' },
+  });
+  f.io.lastGreen = async () => ({ sha: parentSha, url: 'https://github.com/grunion-ai/weave/actions/runs/43114912798' });
+  f.io.range = async (from, to) => { assert.equal(from, parentSha); assert.equal(to, culprit.sha); return [culprit]; };
+  const out = await sheriff(43115687795, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.deepEqual(f.kinds(), ['rerun', 'probe', 'comment', 'issue', 'alert']);
+  assert.equal(f.writes[1][1], parentSha);
+  assert.match(out.reason, /no commit in the range can explain this red/);
+  assert.match(out.reason, /the parent 5c898afaf5 went red on test\/backup-stream\.test\.mjs too/);
+  const row = f.writes.find((w) => w[0] === 'issue')[1];
+  assert.doesNotMatch(row.description, /Culprit commits:/);
+  assert.match(row.description, /^Parent probe 5c898afaf5: failure /m);
+  assert.match(row.description, /^- 6430ff5be073611c82c86b654480082ea247d8d5 Renaming a field rewrites the formulas that name it .*: the parent 5c898afaf5 went red/m);
+});
+
+test('a parent probe red on another file neither clears nor convicts the range: escalate (Issue #1671)', async () => {
+  const f = fake({ commits: [commit(100)], parent: 'failure', parentRed: ['test/feedback-budget-browser.test.mjs'] });
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.ok(!f.kinds().includes('revert'), f.kinds().join(','));
+  assert.match(out.reason, new RegExp(`parent probe at ${short(sha(1))} went red on test/feedback-budget-browser\\.test\\.mjs, not on test/grid\\.test\\.mjs`));
+});
+
+test('a parent probe that reaches no verdict leaves the rerun red to convict, as before the probe; a red that names no file meets a red parent alone (Issue #1671)', async () => {
+  for (const [options, said] of [[{ parent: 'cancelled' }, 'ended cancelled'], [{ parent: 'failure', parentRed: [] }, 'went red with no failing file recorded']]) {
+    const f = fake({ commits: [commit(100)], ...options });
+    const out = await sheriff(900, f.io);
+    assert.equal(out.action, 'revert', JSON.stringify(options));
+    assert.ok(f.logs.some((l) => l.includes(`parent probe at ${short(sha(1))} ${said}`)), f.logs.join('\n'));
+  }
+  const silent = fake({ commits: [commit(100)], files: [], parent: 'failure' });
+  const out = await sheriff(900, silent.io);
+  assert.equal(out.action, 'escalate');
+  assert.match(out.reason, new RegExp(`the parent ${short(sha(1))} went red too`));
+});
+
+test('a bisect that probed green below its culprit spends no parent probe; one whose every probe went red does, within the cap (Issue #1671)', async () => {
+  const found = fake({ commits: [101, 102, 103, 104, 105].map((n) => commit(n)), badFrom: 2 });
+  await sheriff(900, found.io);
+  assert.deepEqual(found.writes.filter((w) => w[0] === 'probe').map((w) => w[1]), [sha(102), sha(103)]);
+  const first = fake({ commits: [101, 102].map((n) => commit(n)), badFrom: 0 });
+  const out = await sheriff(900, first.io);
+  assert.deepEqual(out.culprits, [sha(101)]);
+  assert.deepEqual(first.writes.filter((w) => w[0] === 'probe').map((w) => w[1]), [sha(101), sha(1)]);
+  const spent = fake({ commits: Array.from({ length: 40 }, (_, i) => commit(200 + i)), badFrom: 0 });
+  assert.equal((await sheriff(900, spent.io)).action, 'revert');
+  assert.equal(spent.writes.filter((w) => w[0] === 'probe').length, BISECT_CAP, 'the parent probe counts against the bisect cap');
+  assert.ok(spent.logs.some((l) => l.includes('bisect cap') && l.includes('parent')), spent.logs.join('\n'));
 });
 
 test('bisect dispatches midpoints until one commit is isolated', async () => {
@@ -490,13 +565,13 @@ test('the same culprit is never acted on twice', async () => {
   assert.deepEqual(held.kinds(), ['rerun']);
   const branch = fake({ branchExists: true });
   assert.equal((await sheriff(900, branch.io)).action, 'skip');
-  assert.deepEqual(branch.kinds(), ['rerun', 'revert']);
+  assert.deepEqual(branch.kinds(), ['rerun', 'probe', 'revert']);
 });
 
 test('a conflicting revert or a missing green base escalates instead of guessing', async () => {
   const conflict = fake({ conflict: true });
   assert.equal((await sheriff(900, conflict.io)).action, 'escalate');
-  assert.deepEqual(conflict.kinds(), ['rerun', 'revert', 'comment', 'issue', 'alert']);
+  assert.deepEqual(conflict.kinds(), ['rerun', 'probe', 'revert', 'comment', 'issue', 'alert']);
   const none = fake();
   none.io.lastGreen = async () => null;
   assert.equal((await sheriff(900, none.io)).action, 'escalate');
@@ -508,7 +583,7 @@ test('a refused revert PR escalates with the pushed branch instead of failing si
   f.io.openRevert = async (spec) => { f.writes.push(['revert', spec]); return { refused: 'gh: GitHub Actions is not permitted to create or approve pull requests (HTTP 403)', branch: spec.branch, compare: `https://github.com/grunion-ai/weave/compare/main...${spec.branch}` }; };
   const out = await sheriff(900, f.io);
   assert.equal(out.action, 'escalate');
-  assert.deepEqual(f.kinds(), ['rerun', 'revert', 'comment', 'issue', 'alert']);
+  assert.deepEqual(f.kinds(), ['rerun', 'probe', 'revert', 'comment', 'issue', 'alert']);
   assert.match(f.writes.at(-1)[1], /refused its PR .*compare\/main\.\.\.sheriff\/revert-/);
 });
 

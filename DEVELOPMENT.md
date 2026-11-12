@@ -243,10 +243,17 @@ files answered: `scripts/ci-test.mjs` records `timedOut` in a shard's evidence
 when the manager exits 124, and a red held only by timed-out shards, with no
 file red and none unverdicted, escalates the same way under `Error: tests
 shards <ids> time out on main at <sha>`, since the gate conclusion alone
-names no culprit. Past the cap it
-reverts what is still suspect. A revert whose range took no bisect probe, the
-single-commit range among them, says so in its subject, so main's history shows
-how much evidence the revert carried. It never reverts a revert, never acts on a
+names no culprit. Past the cap it reverts what is still suspect. Before any
+revert, a range whose lower bound rests on the last green run alone gets one
+more `tests` dispatch at that green commit, inside the same four runs; the
+single-commit range is the usual case (Issue #1671). A parent that goes red on
+the same test file clears every commit in the range, and the sheriff
+escalates. Red on other files is no evidence: escalate. A green parent, or a
+probe that reaches no verdict, leaves the revert to the rerun's evidence.
+Revert PR #927 took PR #923 off main for a test that had failed once and
+passed on its retry in the green run just before. A revert that took no probe,
+as a dry run plans it, says so in its subject, so main's history shows how much
+evidence the revert carried. It never reverts a revert, never acts on a
 culprit that already has a revert branch, never pushes to main and never
 forces a push. Replay a run without writing anything:
 `gh workflow run sheriff -f run_id=<id> -f dry_run=true`, or locally
