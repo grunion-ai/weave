@@ -51,7 +51,10 @@ The server also applies these checks to every request:
 - Security headers. Every response carries `X-Content-Type-Options: nosniff`
   and `Referrer-Policy: same-origin`. Every page carries a Content Security
   Policy whose `frame-ancestors 'self'` is extended only by
-  `WEAVE_FRAME_ANCESTORS`. A request that arrived over https adds
+  `WEAVE_FRAME_ANCESTORS`. On weave's own pages it also enforces `frame-src`,
+  `object-src 'none'`, `base-uri 'self'` and `form-action 'self'` and only
+  reports the rest. Browsers send each violation to `POST /csp-report`, which
+  counts it. A request that arrived over https adds
   `Strict-Transport-Security`.
 - Inert attachments. An uploaded file downloads as `application/octet-stream`
   unless its bytes prove an image type, or its type is PDF or plain text. Those
