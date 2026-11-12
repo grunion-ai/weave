@@ -169,10 +169,10 @@ your account to your provider sign-in first: run `weave account link <account>`,
 which prints a one-time invite, and open that invite in a browser. Any role
 connects, and `tools/list` names only the tools that role may call.
 
-The server lists 17 tools by default: the 16 a workspace build uses,
+The server lists 17 tools by default: the ones a workspace build uses,
 `weave_build` among them, and `weave_call`, which runs the other 49.
-`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 66. The 66 include
-the same undo the UI has, and `weave_vocabulary`, which returns the allowed
+`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 66, among them
+the same undo the UI has and `weave_vocabulary`, which returns the allowed
 values so an agent reads them instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -234,7 +234,7 @@ more mature than weave. They differ mainly in what they optimize for:
 | Storage | One workspace = one `.db` file (WAL, row-level writes, crash-safe). Legacy JSON workspaces migrate automatically; `exportJSON`/`importJSON` remain the human-readable interchange. CLI, server, and MCP can run concurrently. |
 | Forms | A form lets someone without write access add one row to one table, as themselves, from a page at `/f/<id>` that takes prefilled values from its URL. Build it in the form editor or with `weave form create`, `update` and `config`; submissions arrive through the page, `weave form submit` or `weave_form_submit` over MCP. Submitting needs an observer account unless the operator sets `WEAVE_ANONYMOUS_FORMS=1`. Prefill links (`/t/<table>/new?Field=value`) open a table's New row form with fields set. |
 | Sharing | A share link (a `wvs_` token) opens one row, table, space, saved view or the whole workspace at read, edit or manage access, public or for signed-in accounts only. Architects mint, renew and revoke links. Each lasts thirty days unless renewed, and none reaches the schema or anything outside its scope. |
-| Templates | Forty starter templates in twelve categories at setup, searchable by the tool they resemble ("asana", "jira"). **Use template** copies a template space, such as the CRM or Money space in the docs workspace, into your workspace. |
+| Templates | Forty-two starter templates in thirteen categories at setup, searchable by the tool they resemble ("asana", "jira"). **Use template** copies a template space, such as the CRM or Money space in the docs workspace, into your workspace. |
 | Phone | At 600 px and under, menus, pickers and the Group popover open as bottom sheets and touch targets are 44 px. Search and + float at the bottom, and the New row sheet stays open for the next row. Board columns snap at 85% of the screen width, and a 250 ms hold lifts a card. |
 | Distribution | Every release publishes `ghcr.io/grunion-ai/weave:<version>` and `:latest`, plus an Official MCP Registry entry, `io.github.grunion-ai/weave`, that runs the image over stdio. The repository is also a Claude Code plugin marketplace for weave cloud. |
 | History | Each row's Activity panel lists its events, field diffs and document revisions, with Restore. The audit log records the account behind each write; a signed-in caller cannot write under another name. `PATCH /api/entities/:id` with `If-Match` refuses a stale revision (412) and writes nothing; the grid sends it, so two people editing one cell in the browser cannot overwrite each other. |
@@ -389,8 +389,8 @@ CSV import and export. It lists 17 by default and runs the other 49 through
 
 **Do I need Docker, Postgres, or npm install?**
 No, no, and no. One `git clone` and a Node runtime. Storage is Node's built-in
-`node:sqlite`; the only third-party code (mermaid, Tabler, Vditor, KaTeX and
-the DejaVu Sans font) is vendored and pinned in the repo.
+`node:sqlite`; the only third-party code is vendored and pinned in the repo,
+listed under [Third-party](#third-party-vendored-pinned).
 
 **Where does my data actually live?**
 In `<workspace>.db`, a plain SQLite file, plus a `files/` directory for
@@ -434,11 +434,18 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 ## Third-party (vendored, pinned)
 
-- [mermaid](https://github.com/mermaid-js/mermaid) 11.4.1, MIT © Knut Sveidqvist & contributors
+<!-- third-party:start (generated from security/vendor.lock.json by scripts/agent-docs.mjs) -->
+- [mermaid](https://github.com/mermaid-js/mermaid) 11.17.2, MIT © Knut Sveidqvist & contributors
+- [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.17 (bundled inside mermaid), Apache-2.0 and MPL-2.0 © Cure53 and other contributors
+- [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads), MIT © B3log (full text in `public/vendor/vditor/LICENSE`)
+- [KaTeX](https://github.com/KaTeX/KaTeX) 0.18.11 (js + css + woff2 fonts + mhchem, inside Vditor), MIT © Khan Academy & contributors
+- [highlight.js](https://github.com/highlightjs/highlight.js) 11.7.0 (inside Vditor), BSD-3-Clause © Ivan Sagalaev & contributors
 - [@tabler/core](https://github.com/tabler/tabler) 1.4.0, MIT © Paweł Kuna & The Tabler Authors
-- [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads), MIT © Vanessa219
-- [KaTeX](https://github.com/KaTeX/KaTeX) 0.18.11 (js + css + woff2 fonts + mhchem), MIT © Khan Academy & contributors
-- [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback), Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `public/vendor/fonts/DejaVuSans-LICENSE.txt`)
+- [Lucide](https://github.com/lucide-icons/lucide) (no version recorded; icon shapes, with motion CSS from movingicons.dev under MIT), ISC © Lucide Contributors
+- [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback), Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `src/vendor/fonts/DejaVuSans-LICENSE.txt`)
+- [decklet](https://github.com/grunion-ai/decklet) 0.3.3+cf73916 (the slide engine, pinned by commit), MIT
+- [Lobe Icons](https://github.com/lobehub/lobe-icons) 1.95.1 (brand marks), MIT © LobeHub
+<!-- third-party:end -->
 
 ## Security
 
