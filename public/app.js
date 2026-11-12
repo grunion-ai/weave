@@ -4870,7 +4870,7 @@ function serverSums(result) {
 }
 async function readAndDrawTable(db, dbId, search, cold = false, gen = navDraw) {
   if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search, gen);
-  if (db.system === 'workflows') await lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true));
+  await workflowCells(db);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
@@ -8386,6 +8386,10 @@ function segCtl(options, value, onPick) {
 }
 
 const lazyScripts = new Map();
+const workflowCells = (db) => (db?.system === 'workflows'
+  ? lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true))
+  : null);
+
 function lazyScript(src) {
   if (!lazyScripts.has(src)) lazyScripts.set(src, new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -9237,6 +9241,7 @@ const entityRefs = (id) => Promise.all(['references-from', 'references'].map((pa
 async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null, later = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
+  await workflowCells(db);
   let [refsOut, refsIn] = refs;
   const fills = [];
   const repaints = [];
