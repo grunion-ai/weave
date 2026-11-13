@@ -88,9 +88,18 @@ test('Issue #962: the feed asks for the next page once the loaded rows end withi
   const feed = (over = {}) => GW.feedFor({ scrollTop: 0, viewportH: 600, rowH: 30, loaded: 200, total: 900, ...over });
   assert.equal(feed(), null, 'at the top of 200 loaded rows there are nine screens left');
   assert.equal(feed({ scrollTop: 200 * 30 - 4 * 600 }), 200, 'three screens left: ask for the rows from 200');
-  assert.equal(feed({ scrollTop: 200 * 30 - 5 * 600 }), null, 'four screens left: not yet');
+  assert.equal(feed({ scrollTop: 200 * 30 - 7 * 600 }), null, 'six screens left, more than half the loaded rows: not yet');
   assert.equal(feed({ loaded: 900 }), null, 'every row is here');
   assert.equal(feed({ loaded: 50, total: 900, viewportH: 2000 }), 50, 'a tall viewport past its rows asks at once');
+});
+
+test('Issue #1271: the feed asks for the next page once the window passes the middle of the loaded rows', () => {
+  const feed = (over = {}) => GW.feedFor({ scrollTop: 0, viewportH: 600, rowH: 30, loaded: 200, total: 900, ...over });
+  assert.equal(feed({ scrollTop: 100 * 30 - 600 }), 200, 'the window bottom at row 100 of 200 asks for the rows from 200');
+  assert.equal(feed({ scrollTop: 120 * 30 - 600 }), 200, 'past the middle it keeps asking');
+  assert.equal(feed({ scrollTop: 90 * 30 - 600 }), null, 'above the middle, and more than three screens short of the end: not yet');
+  assert.equal(feed({ loaded: 40, total: 900, scrollTop: 0 }), 40, 'three screens is still the floor when half the loaded rows is less than that');
+  assert.equal(feed({ loaded: 900, scrollTop: 500 * 30 }), null, 'every row is here');
 });
 
 test('Issue #961: a refresh batch is whole pages and stays under the server cap of 500 rows', () => {

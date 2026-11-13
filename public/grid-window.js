@@ -3,6 +3,7 @@
   const BATCH = 400;
   const MIN_BUFFER = 20;
   const LEAD = 3;
+  const LOADED_SHARE = 0.5;
   const ROW_H = { compact: 32, comfortable: 44, spacious: 72 };
   const STAMP_COLUMNS = { updatedAt: 'Modified At', modifiedBy: 'Modified By', createdAt: 'Created At', createdBy: 'Created By' };
   const NEVER_DRAWN = ['revision'];
@@ -29,7 +30,8 @@
       if (!(loaded < total)) return null;
       const screen = Math.max(Number(viewportH) || 0, h);
       const left = loaded * h - ((Number(scrollTop) || 0) + screen);
-      return left <= lead * screen ? loaded : null;
+      const reach = Math.max(lead * screen, loaded * h * LOADED_SHARE);
+      return left <= reach ? loaded : null;
     },
 
     samePage(cached, fresh, drawn = []) {

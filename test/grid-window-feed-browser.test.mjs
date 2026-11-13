@@ -101,6 +101,27 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('Issue #1271: the next page is asked for at the middle of the loaded rows, well before the end is in reach', async () => {
+    const page = await open({ delay: 0 });
+    try {
+      const asked = [];
+      page.on('request', (r) => { if (/\/query$/.test(r.url())) asked.push(r.postDataJSON()?.offset ?? 0); });
+      const metrics = await page.evaluate(() => {
+        const wrap = document.querySelector('.table-wrap');
+        return {
+          rowH: document.querySelector('.wv-grid tbody tr.entity-row').getBoundingClientRect().height,
+          viewportH: (wrap.classList.contains('wv-grid-scroll') ? wrap : document.querySelector('#main')).clientHeight,
+        };
+      });
+      const { rowH, viewportH } = metrics;
+      const top = 110 * rowH - viewportH;
+      assert.ok(200 * rowH - (top + viewportH) > 3 * viewportH, `row 110 of 200 is within three screens of the end at ${rowH}px a row, so this case proves nothing`);
+      await scrollTo(page, top);
+      await eventually(() => asked.includes(200), true, { timeout: 3000 });
+      assert.ok(asked.includes(200), `no fetch for rows 200+ with the window bottom at row 110 of 200 loaded (asked ${JSON.stringify(asked)})`);
+    } finally { await page.close(); }
+  });
+
   test('Issue #961: scrolling back up shows every row already seen, filled, in the next frame', async () => {
     const page = await open();
     try {
