@@ -1,0 +1,1 @@
+- **`workspace logo --out` names the mime it wrote** (Issue #1545): the CLI read the mime off the `{meta, bytes}` wrapper instead of its `meta`, so the answer dropped the field.

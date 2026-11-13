@@ -1918,7 +1918,7 @@ export const COMMANDS = [
       result: (logo, flags, { write }) => {
         if (!logo) throw new WeaveError('This workspace has no logo');
         write(flags.out, Buffer.from(logo.bytes));
-        return { ok: true, path: flags.out, mime: logo.mime };
+        return { ok: true, path: flags.out, mime: logo.meta.mime };
       },
     },
     http: { method: 'GET', path: '/api/workspace/logo', serve: (a, ctx) => ctx.serveLogo() },

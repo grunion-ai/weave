@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from '../src/engine.js';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
@@ -75,4 +77,20 @@ test("server alias: /w/weaver/ requests reach the renamed 'weave' workspace", as
     const health = await (await fetch(`${base}/w/weaver/api/health`)).json();
     assert.equal(health.workspace, 'weave');
   });
+});
+
+test('CLI: workspace logo --out names the mime it wrote (Issue #1545)', () => {
+  const dir = tempDir('weave-logo-cli-');
+  const data = join(dir, 'ws.db');
+  const src = join(dir, 'logo.png');
+  writeFileSync(src, PNG);
+  const bin = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
+  const run = (...args) => JSON.parse(execFileSync('node', [bin, '--data', data, ...args], { encoding: 'utf8' }));
+  assert.equal(run('workspace', 'logo', '--path', src).mime, 'image/png');
+  const out = join(dir, 'got.png');
+  const read = run('workspace', 'logo', '--out', out);
+  assert.equal(read.ok, true);
+  assert.equal(read.path, out);
+  assert.equal(read.mime, 'image/png');
+  assert.deepEqual(readFileSync(out), PNG);
 });
