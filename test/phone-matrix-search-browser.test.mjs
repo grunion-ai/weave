@@ -57,16 +57,21 @@ if (s) {
     });
   });
 
-  test('the phone search sheet shows no keyboard key hints on a touch screen (Issue #1380)', { todo: 'Issue #1380' }, async (t) => {
+  test('the phone search sheet shows no keyboard key hints on a touch screen (Issue #1380)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openTable(page, base, tasks);
       await openSearch(page);
-      const v = await page.evaluate(() => ({
-        touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
-        keys: [...document.querySelectorAll('#cmdk kbd')].filter((k) => { const r = k.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).map((k) => k.textContent.trim()),
-      }));
+      const v = await page.evaluate(() => {
+        const box = (q) => document.querySelector(q).getBoundingClientRect();
+        return {
+          touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
+          keys: [...document.querySelectorAll('#cmdk kbd')].filter((k) => { const r = k.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).map((k) => k.textContent.trim()),
+          gap: Math.round(box('#cmdk').bottom - box('#cmdk-results').bottom),
+        };
+      });
       assert.ok(v.touch, 'the phone answers (hover: none) and (pointer: coarse)');
       assert.deepEqual(v.keys, [], `the search sheet draws key hints ${v.keys.join(' ')}`);
+      assert.ok(v.gap <= 2, `${v.gap} px of the sheet sits below the results list instead of holding results`);
     });
   });
 

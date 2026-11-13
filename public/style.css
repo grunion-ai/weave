@@ -2576,7 +2576,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .new-row-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .new-row-chips > .new-row-opt { padding: 0 14px; border: 1px dashed var(--tblr-border-color); border-radius: 6px; background: transparent; color: var(--tblr-body-color); font: inherit; font-size: var(--fs-body); }
 .new-row-opt[aria-pressed="true"] { border-style: solid; border-color: transparent; background: var(--fill, var(--wv-pill-active)); color: var(--text, var(--tblr-body-color)); font-weight: 600; }
-@media (hover: none) and (pointer: coarse) { .search-like kbd, .bug-kbd { display: none; } }
+@media (hover: none) and (pointer: coarse) { .search-like kbd, .bug-kbd, .cmdk-foot { display: none; } #cmdk-results { max-height: calc(46vh + 40px); } }
 
 @media (max-width: 600px), (pointer: coarse) {
   .crumb-copy, .crumb-item, .crumb-more, .dots-btn, .table-share-btn, .date-pick-btn, .view-desc-more, .entity-fields .fieldrow button.k, .doc-anchor.permalink-copy, .list-fold, .tile-pick > input { position: relative; }
