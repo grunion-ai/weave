@@ -97,3 +97,61 @@ test('Issue #961: a refresh batch is whole pages and stays under the server cap 
   assert.equal(GW.BATCH % GW.PAGE, 0);
   assert.ok(GW.BATCH <= 500);
 });
+
+const page = (over = {}) => ({
+  total: 2,
+  trashCount: 0,
+  all: 2,
+  items: [
+    { id: 'a', revision: 'r1', fields: { Name: 'Alpha', Note: 'one' }, raw: { Name: 'Alpha', Note: 'one' }, updatedAt: '2026-11-01T00:00:00.000Z', modifiedBy: 'kyle', createdAt: '2026-10-01T00:00:00.000Z', createdBy: 'kyle' },
+    { id: 'b', revision: 'r2', fields: { Name: 'Beta', Note: 'two' }, raw: { Name: 'Beta', Note: 'two' }, updatedAt: '2026-11-01T00:00:00.000Z', modifiedBy: 'kyle', createdAt: '2026-10-01T00:00:00.000Z', createdBy: 'kyle' },
+  ],
+  ...over,
+});
+const touched = (over = {}) => {
+  const fresh = page(over);
+  fresh.items = fresh.items.map((item, i) => (i ? item : { ...item, revision: 'r9', updatedAt: '2026-11-13T00:00:00.000Z' }));
+  return fresh;
+};
+const DRAWN = ['Name', 'Note'];
+
+test('a page whose stamps moved but whose drawn cells did not draws the same grid (Issue #1702)', () => {
+  assert.equal(GW.samePage(page(), touched(), DRAWN), true);
+});
+
+test('a page with a changed cell draws a different grid (Issue #1702)', () => {
+  const fresh = touched();
+  fresh.items[0].fields.Note = 'moved';
+  fresh.items[0].raw.Note = 'moved';
+  assert.equal(GW.samePage(page(), fresh, DRAWN), false);
+});
+
+test('a view that draws Modified At or Modified By holds the stamp against the cache (Issue #1702)', () => {
+  assert.equal(GW.samePage(page(), touched(), [...DRAWN, 'Modified At']), false);
+  assert.equal(GW.samePage(page(), touched(), [...DRAWN, 'Modified By']), true, 'the author did not change, only the time did');
+  const author = touched();
+  author.items[0].modifiedBy = 'sam';
+  assert.equal(GW.samePage(page(), author, [...DRAWN, 'Modified By']), false);
+});
+
+test('a moved row count, trash count or row order draws a different grid (Issue #1702)', () => {
+  assert.equal(GW.samePage(page(), touched({ total: 3 }), DRAWN), false);
+  assert.equal(GW.samePage(page(), touched({ trashCount: 1 }), DRAWN), false);
+  assert.equal(GW.samePage(page(), touched({ all: 3 }), DRAWN), false);
+  const swapped = touched();
+  swapped.items.reverse();
+  assert.equal(GW.samePage(page(), swapped, DRAWN), false);
+});
+
+test('a missing page is never the same page (Issue #1702)', () => {
+  assert.equal(GW.samePage(null, page(), DRAWN), false);
+  assert.equal(GW.samePage(page(), null, DRAWN), false);
+});
+
+test('a field named like a stamp is compared, never stripped (Issue #1702)', () => {
+  const cached = page();
+  const fresh = touched();
+  cached.items[0].fields.updatedAt = 'keep';
+  fresh.items[0].fields.updatedAt = 'changed';
+  assert.equal(GW.samePage(cached, fresh, [...DRAWN, 'updatedAt']), false);
+});

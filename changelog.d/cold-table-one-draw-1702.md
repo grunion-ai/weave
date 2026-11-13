@@ -1,0 +1,1 @@
+- **One draw on a cold table open** (Issue #1702): a table whose cached first page lost only its row stamps now draws once instead of twice. `WeaveGridWindow.samePage` compares the cached and fresh pages without the timestamps and authors the view does not draw; a page whose cells, counts or order moved still paints over the cached one.
