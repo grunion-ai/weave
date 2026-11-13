@@ -350,6 +350,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         const moved = hub.aliasOf(hostSlug);
         const q = rx.searchParams?.toString();
         if (moved) return { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}${hostSuffix}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+        if (oidc && rx.method === 'GET' && !path.includes('/api/')) {
+          const address = `${hostSlug}.${baseDomain}`;
+          return out(404, renderRefusalPage({
+            title: 'No workspace at this address',
+            lines: [`${address} matches no weave workspace. The name may have changed, or the address may have lost a character.`],
+            actions: [{ href: `${apexOrigin}/start?pick=1`, label: 'Find your workspaces' }],
+          }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        }
         return notFound({ error: 'Not found', code: 'not-found' });
       }
       weave = holder;

@@ -1,0 +1,1 @@
+- **A dead workspace address offers the workspace picker** (Issue #1332): a host under the base domain that matches no workspace now names the address that failed and links to the apex `/start?pick=1`, instead of a 404 page whose only link reloaded the same dead host.
