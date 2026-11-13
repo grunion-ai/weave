@@ -356,7 +356,7 @@ function startUsage() {
     q.delete('joined');
     history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`);
   }
-  const daily = () => { if (consent.active() && WeaveUsage.opened(localStorage)) usage('app_opened'); };
+  const daily = () => { const store = WeavePrefs.of(); if (store && consent.active() && WeaveUsage.opened(store)) usage('app_opened'); };
   daily();
   addEventListener('grunion:consent-granted', daily);
 }
@@ -995,7 +995,7 @@ function pinPane(panel, px) {
   panel.style.flex = px ? `0 1 ${px}px` : '';
 }
 function applyPaneWidth(panel, pane) {
-  const px = Number(localStorage.getItem(pane.key));
+  const px = Number(WeavePrefs.read(pane.key));
   pinPane(panel, px >= pane.min ? px : 0);
 }
 function fitPanes() {
@@ -1028,13 +1028,13 @@ function wirePaneGutter(panel, pane) {
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       const px = Math.max(pane.min, Math.round(panel.getBoundingClientRect().width));
-      localStorage.setItem(pane.key, String(px));
+      WeavePrefs.write(pane.key, String(px));
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
   });
   grip.addEventListener('dblclick', () => {
-    localStorage.removeItem(pane.key);
+    WeavePrefs.drop(pane.key);
     applyPaneWidth(panel, pane);
   });
 }
@@ -1488,14 +1488,15 @@ function navDrag(handle, source, { items, home, save }) {
     });
   });
 }
+const FOLDED_SPACES_KEY = 'weave-folded-spaces';
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
-  const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
+  const folded = new Set(WeavePrefs.list(FOLDED_SPACES_KEY));
   const toggleFold = (spaceId) => {
     if (folded.has(spaceId)) folded.delete(spaceId);
     else folded.add(spaceId);
-    localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
+    WeavePrefs.write(FOLDED_SPACES_KEY, JSON.stringify([...folded]));
     renderNav();
   };
   for (const space of state.schema) {
@@ -5312,8 +5313,8 @@ function phoneRowPopover(anchor, db) {
 const VP = globalThis.weaveViewPane;
 const PANE_KEY = 'weave-view-pane';
 const PANE_SECTION_KEY = 'weave-view-pane-section';
-const readPref = (k, d) => localStorage.getItem(k) ?? d;
-const writePref = (k, v) => localStorage.setItem(k, v);
+const readPref = (k, d) => WeavePrefs.read(k) ?? d;
+const writePref = (k, v) => WeavePrefs.write(k, v);
 const viewPane = { open: readPref(PANE_KEY, '') === 'open', section: readPref(PANE_SECTION_KEY, 'filters'), note: null, views: false, db: null, strip: null, fields: null };
 const PANE_SECTIONS = {
   filters: { label: 'Filters', icon: 'list-filter' },
@@ -8986,11 +8987,8 @@ const DOC_DECOR = [docBubbles, refChipLayers, docCodeAuto, docCodeRaw, docRails,
 
 function docFoldState(entityId, field, next) {
   const key = `weave-doc-folds:${entityId}:${field}`;
-  if (next === undefined) {
-    try { return new Set(JSON.parse(localStorage.getItem(key)) ?? []); }
-    catch { return new Set(); }
-  }
-  localStorage.setItem(key, JSON.stringify([...next]));
+  if (next === undefined) return new Set(WeavePrefs.list(key));
+  WeavePrefs.write(key, JSON.stringify([...next]));
   return next;
 }
 
@@ -9168,8 +9166,8 @@ function dropDecor(st) { clearTimeout(st.timer); st.stop?.(); (st.layer ?? st.ra
 
 function docSectionCollapse(entityId, field, next) {
   const key = `weave-doc-collapsed:${entityId}:${field}`;
-  if (next === undefined) return localStorage.getItem(key) === '1';
-  localStorage.setItem(key, next ? '1' : '');
+  if (next === undefined) return WeavePrefs.read(key) === '1';
+  WeavePrefs.write(key, next ? '1' : '');
   return next;
 }
 
@@ -11506,7 +11504,7 @@ function setNavCollapsed(collapsed) {
   const app = $('#app');
   app.classList.toggle('nav-collapsed', collapsed);
   closeNavPeek();
-  localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
+  WeavePrefs.write('weave-nav-collapsed', collapsed ? '1' : '');
 }
 function wireNavCollapse() {
   const app = $('#app');
@@ -11551,7 +11549,7 @@ function wireNavCollapse() {
     });
   }
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPeek(); });
-  apply(localStorage.getItem('weave-nav-collapsed') === '1');
+  apply(WeavePrefs.read('weave-nav-collapsed') === '1');
   const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
@@ -11578,8 +11576,8 @@ function wireNavResize() {
     app.style.setProperty('--wv-nav-width', `${width}px`);
     grip.setAttribute('aria-valuenow', String(width));
   };
-  const keep = () => localStorage.setItem('weave-nav-width', String(width));
-  const stored = Number(localStorage.getItem('weave-nav-width'));
+  const keep = () => WeavePrefs.write('weave-nav-width', String(width));
+  const stored = Number(WeavePrefs.read('weave-nav-width'));
   show(stored > 0 ? stored : NAV_WIDTH.base);
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -11600,7 +11598,7 @@ function wireNavResize() {
     grip.addEventListener('pointercancel', up);
   });
   grip.addEventListener('dblclick', () => {
-    localStorage.removeItem('weave-nav-width');
+    WeavePrefs.drop('weave-nav-width');
     show(NAV_WIDTH.base);
   });
   grip.addEventListener('keydown', (e) => {
@@ -11722,7 +11720,7 @@ const THEME_LABELS = { auto: 'Auto', dark: 'Dark', light: 'Light' };
 const THEME_MEDIA = matchMedia('(prefers-color-scheme: dark)');
 
 function themePref() {
-  const pref = localStorage.getItem('weave-theme');
+  const pref = WeavePrefs.read('weave-theme');
   return THEME_ICONS[pref] ? pref : 'auto';
 }
 
@@ -11734,7 +11732,7 @@ function applyTheme() {
 
 function cycleTheme() {
   const pref = themePref();
-  localStorage.setItem('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
+  WeavePrefs.write('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
   applyTheme();
 }
 
