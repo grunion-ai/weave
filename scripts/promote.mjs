@@ -43,14 +43,7 @@ export async function select(io, { paused = false, now = new Date(), event = 'wo
   const { status, commits } = await io.range(head);
   if (status === 'identical') return skip(`${BRANCH} is already at main (${short(head)})`);
   if (status !== 'ahead') throw new Error(`${BRANCH} ${short(head)} is not an ancestor of main (compare: ${status})`);
-  let from = 0;
-  const health = await io.health();
-  if (health?.supervisor?.commit !== head) {
-    const at = commits.findLastIndex((c) => revertsCommit(c.message, head));
-    if (at < 0) return skip(`prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(head)}; waiting for a main commit that reverts it`);
-    from = at;
-  }
-  for (const c of commits.slice(from).reverse()) {
+  for (const c of commits.toReversed()) {
     if (await io.gate(c.sha) !== 'success') continue;
     if (await io.soak(c.sha) !== 'success') continue;
     const stale = c.at && now - c.at > batchHours(everyHours) * 3_600_000 ? lagLine(c, now, everyHours) : undefined;
@@ -73,9 +66,19 @@ async function waitLive(io, sha, { deadlineMs, pollMs, sleep }) {
   }
 }
 
+async function heldBack(io, { sha, from }) {
+  const health = await io.health();
+  if (health?.supervisor?.commit === from) return null;
+  const { commits } = await io.range(from, sha);
+  if (commits.some((c) => revertsCommit(c.message, from))) return null;
+  return { ...skip(`prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(from)}; waiting for a main commit that reverts it`), sha, from };
+}
+
 export async function promote(io, { sha, from, stale }, { deadlineMs = 25 * 60_000, pollMs = 15_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), self } = {}) {
   const head = await io.production();
   if (head !== from && head !== sha) throw new Error(`production moved to ${short(head)} since ${short(from)} was selected`);
+  const held = head === from ? await heldBack(io, { sha, from }) : null;
+  if (held) return held;
   if (stale) await io.alert(stale);
   if (head !== sha) await io.push(sha);
   let hook;
@@ -155,7 +158,7 @@ export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
       return api(`${base}/commits/${sha}/check-runs?check_name=${SOAK}&filter=latest`).check_runs[0]?.conclusion ?? null;
     },
     health: async () => {
-      const r = await fetch(`${PROD}/api/health`, { headers: { 'cache-control': 'no-cache' }, signal: AbortSignal.timeout(10_000) });
+      const r = await fetch(`${PROD}/api/health`, { headers: { 'cache-control': 'no-cache', ...(env.PROD_DEPLOY_TOKEN ? { 'x-weave-deploy-token': env.PROD_DEPLOY_TOKEN } : {}) }, signal: AbortSignal.timeout(10_000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     },
@@ -202,7 +205,7 @@ async function main(env = process.env) {
     const out = await promote(io, { sha: env.SHA, from: env.FROM, stale: env.STALE || undefined }, { self });
     console.log(JSON.stringify({ ...out, health: out.health?.supervisor }));
     output(env, { result: out.action, sha: out.sha, reason: out.reason });
-    if (out.action !== 'promoted') process.exitCode = 1;
+    if (out.action === 'failed') process.exitCode = 1;
     return;
   }
   throw new Error('usage: node scripts/promote.mjs select|promote');

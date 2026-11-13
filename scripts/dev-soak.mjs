@@ -200,7 +200,7 @@ export function config(env = process.env) {
   };
 }
 
-function realIO(cfg, env = process.env) {
+export function realIO(cfg, env = process.env) {
   const repo = env.GITHUB_REPOSITORY || REPO;
   const token = env.GITHUB_TOKEN || env.GH_TOKEN;
   const runUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : null;
@@ -220,7 +220,7 @@ function realIO(cfg, env = process.env) {
     log: (line) => console.log(line),
     health: async () => {
       try {
-        const r = await fetch(`${cfg.base}/api/health`, { signal: AbortSignal.timeout(10_000), headers: { 'Cache-Control': 'no-cache' } });
+        const r = await fetch(`${cfg.base}/api/health`, { signal: AbortSignal.timeout(10_000), headers: { 'Cache-Control': 'no-cache', ...(env.DEV_DEPLOY_TOKEN ? { 'X-Weave-Deploy-Token': env.DEV_DEPLOY_TOKEN } : {}) } });
         return { status: r.status, body: r.ok ? await r.json() : null };
       } catch (error) { return { status: 0, error: error.message }; }
     },
