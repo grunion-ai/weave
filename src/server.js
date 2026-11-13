@@ -98,6 +98,41 @@ export function acceptsCoding(header, coding) {
 
 export const acceptsGzip = (header) => acceptsCoding(header, 'gzip');
 
+export const COMPRESSED_CACHE_BYTES = 16 * 1024 * 1024;
+
+export function createByteCache(cap) {
+  const entries = new Map();
+  let bytes = 0;
+  const drop = (key) => {
+    bytes -= entries.get(key)?.length ?? 0;
+    return entries.delete(key);
+  };
+  return {
+    get(key) {
+      const value = entries.get(key);
+      if (value !== undefined) {
+        entries.delete(key);
+        entries.set(key, value);
+      }
+      return value;
+    },
+    set(key, value) {
+      drop(key);
+      const size = value?.length ?? 0;
+      if (size > cap) return;
+      entries.set(key, value);
+      bytes += size;
+      for (const old of entries.keys()) {
+        if (bytes <= cap) break;
+        drop(old);
+      }
+    },
+    delete: drop,
+    get size() { return entries.size; },
+    get bytes() { return bytes; },
+  };
+}
+
 function brotliLater(cache, key, body, size) {
   cache.set(key, null);
   const params = { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: size };
@@ -110,7 +145,9 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
   if (status !== 200 || size < GZIP_MIN) return { headers: { ...headers, Vary: vary }, body };
-  const key = headers.ETag && !/\bprivate\b/.test(headers['Cache-Control'] ?? '') && `${path} ${headers.ETag}`;
+  const policy = headers['Cache-Control'] ?? '';
+  const perRequest = /^text\/html/i.test(type) && /\bno-(?:cache|store)\b/.test(policy);
+  const key = headers.ETag && !perRequest && !/\bprivate\b/.test(policy) && `${path} ${headers.ETag}`;
   if (key && cache && acceptsCoding(acceptEncoding, 'br')) {
     const br = cache.get(`br ${key}`);
     if (br) return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'br' }, body: br };
@@ -570,6 +607,7 @@ export function hostCheckFor({ host, env = process.env }) {
   return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
 }
 
+const ASSET_REF = /(\b(?:src|href)="|\bfrom ")(\/[^"?#]+\.(?:js|mjs|css|svg|ico|png))"/g;
 export function createAssetVersions(dir) {
   const known = new Map();
   const version = (file) => {
@@ -583,9 +621,38 @@ export function createAssetVersions(dir) {
     known.set(full, { mtimeMs: st.mtimeMs, size: st.size, v });
     return v;
   };
-  const rewrite = (html) => html.replace(/(\b(?:src|href)="|\bfrom ")(\/[^"?#]+\.(?:js|mjs|css|svg|ico|png))"/g,
-    (all, lead, url) => { const v = version(url); return v ? `${lead}${url}?v=${v}"` : all; });
+  const rewrite = (html) => html.replace(ASSET_REF, (all, lead, url) => { const v = version(url); return v ? `${lead}${url}?v=${v}"` : all; });
   return { version, rewrite };
+}
+
+const SHELL_TITLE = /<title>[^<]*<\/title>/;
+const APP_TAG = '<script src="/app.js" defer></script>';
+const shellTag = (body) => `W/"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`;
+export function createShell(dir, { assets = createAssetVersions(dir), extra = '', every = 1000, now = Date.now } = {}) {
+  const file = join(dir, 'index.html');
+  const stamp = (refs, st = statSync(file)) => [st.mtimeMs, st.size, ...refs.map((url) => assets.version(url))].join(' ');
+  const build = () => {
+    const st = statSync(file);
+    const raw = readFileSync(file, 'utf8');
+    const text = extra ? raw.replace(APP_TAG, (tag) => `${extra}${tag}`) : raw;
+    const refs = [...text.matchAll(ASSET_REF)].map((m) => m[2]);
+    const seen = stamp(refs, st);
+    const page = assets.rewrite(text);
+    const title = SHELL_TITLE.exec(page);
+    return { refs, stamp: seen, page, etag: shellTag(page), slot: title && [page.slice(0, title.index), page.slice(title.index + title[0].length)] };
+  };
+  let shell = null;
+  let checked = -Infinity;
+  return (head = null) => {
+    const t = now();
+    if (t - checked >= every) {
+      checked = t;
+      if (!shell || stamp(shell.refs) !== shell.stamp) shell = build();
+    }
+    if (!head || !shell.slot) return { body: shell.page, etag: shell.etag };
+    const body = `${shell.slot[0]}${assets.rewrite(head)}${shell.slot[1]}`;
+    return { body, etag: shellTag(body) };
+  };
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const VENDOR_CACHE = 'public, max-age=3600';
@@ -620,6 +687,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const NOT_A_PAGE = /^(?:\/w\/[^/]+)?\/(?:api|mcp|ingest)(?:\/|$)|^\/(?:_supervisor|\.well-known)\//;
 
   const assets = createAssetVersions(PUBLIC_DIR);
+  const shell = createShell(PUBLIC_DIR, {
+    assets,
+    extra: `${paintLog ? `<script src="/paint.js" data-build="${VERSION}" defer></script>\n` : ''}${posthog ? `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n` : ''}`,
+  });
   const minified = createMinified();
   const serveStatic = (path, rx, { head = null } = {}) => {
     const file = path === '/' ? '/index.html'
@@ -631,17 +702,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const match = rx?.header?.('if-none-match');
     const matches = (etag) => etagMatches(match, etag);
     if (file === '/index.html') {
-      const raw = readFileSync(full, 'utf8');
-      const appTag = '<script src="/app.js" defer></script>';
-      const extra = `${paintLog ? `<script src="/paint.js" data-build="${VERSION}" defer></script>\n` : ''}${posthog ? `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n` : ''}`;
-      const shell = extra ? raw.replace(appTag, (tag) => `${extra}${tag}`) : raw;
-      const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
-      const headers = {
-        'Content-Type': MIME['.html'],
-        'Cache-Control': 'no-cache',
-        ETag: `W/"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`,
-      };
-      return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
+      const { body, etag } = shell(head);
+      const headers = { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache', ETag: etag };
+      return matches(etag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
     }
     const v = rx?.searchParams?.get?.('v');
     const st = statSync(full);
@@ -683,7 +746,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     ...(limits ? { limits } : {}),
   });
 
-  const gzCache = new Map();
+  const gzCache = createByteCache(COMPRESSED_CACHE_BYTES);
   const violations = cspCount();
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code, id) => {
@@ -743,7 +806,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         remote: req.socket?.remoteAddress ?? null,
       });
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
-      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
+      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path });
       res.writeHead(fresh.status, secure(req, sized(fresh.status, headers, body)));
       if (typeof body?.pipe === 'function') await pipeline(body, res);
       else res.end(body);
