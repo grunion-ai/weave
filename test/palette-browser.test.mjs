@@ -65,6 +65,20 @@ if (s) {
     await ctx.close();
   });
 
+  test('a pointer with hover keeps the key hint footer under the results (Issue #1380)', async () => {
+    const { ctx, page } = await open();
+    await palette(page, 'onboard');
+    const v = await page.evaluate(() => ({
+      hover: matchMedia('(hover: hover)').matches,
+      keys: [...document.querySelectorAll('.cmdk-foot kbd')].filter((k) => { const r = k.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).map((k) => k.textContent.trim()),
+      foot: Math.round(document.querySelector('.cmdk-foot').getBoundingClientRect().height),
+    }));
+    assert.ok(v.hover, 'a desktop pointer answers (hover: hover)');
+    assert.deepEqual(v.keys, ['↑', '↓', '↵', 'tab', 'esc'], `the footer lists ${v.keys.join(' ')}`);
+    assert.ok(v.foot > 0, 'the footer still takes height on a pointer that can use the keys');
+    await ctx.close();
+  });
+
   test('typing "onboard" gives one plain line per hit, grouped Records → In documents', async () => {
     const { ctx, page } = await open();
     await palette(page, 'onboard');
