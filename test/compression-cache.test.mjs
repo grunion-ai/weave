@@ -111,9 +111,9 @@ test('a permalink page answers gzip every time and is never compressed to Brotli
 
 test('an escaped spelling of an asset path shares the compressed copy of the path it names (Issue #1638)', async () => {
   await withServer(new Weave(), async ({ port }) => {
-    const plain = await settle(() => raw(port, '/app.js', BROWSER), isBrotli);
+    const plain = await settle(() => raw(port, '/breadcrumbs.js', BROWSER), isBrotli);
     assert.equal(plain.headers['content-encoding'], 'br');
-    const escaped = await raw(port, '/%61pp.js', BROWSER);
+    const escaped = await raw(port, '/bre%61dcrumbs.js', BROWSER);
     assert.equal(escaped.status, 200);
     assert.equal(escaped.headers['content-encoding'], 'br', 'a new cache key per spelling would answer gzip and start another Brotli job');
     assert.ok(escaped.body.equals(plain.body));
