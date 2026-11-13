@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { realIO as sheriffIO, isRevert } from './sheriff.mjs';
+import { realIO as sheriffIO, isRevert, trackerWrite } from './sheriff.mjs';
 
 export const REPO = 'grunion-ai/weave';
 export const BRANCH = 'production';
@@ -113,8 +113,9 @@ export async function promote(io, { sha, from, stale }, { deadlineMs = 25 * 60_0
     }
   } else if (outcome.state === 'timeout') note = 'No revert opened: the watch never finished, so the commit is not known bad.';
   const prLine = revert?.html_url ? `Revert PR: ${revert.html_url}` : note;
-  const issue = await io.fileIssue({ name: issueName(sha), description: [...lines, '', prLine, '', 'Fix shape: reproduce on dev with the promoted commit, land the fix as a new PR; promotion resumes once main carries a commit that reverts or supersedes it with CI gate and dev-soak success.', '', `Filed by the promote workflow, ${new Date().toISOString().slice(0, 10)}.`].join('\n') });
-  await io.alert(`weave promote: production rejected ${short(sha)} (${outcome.why}); ${prLine}${issue?.url ? `; Issue ${issue.url}` : ''}`);
+  const filed = await trackerWrite(() => io.fileIssue({ name: issueName(sha), description: [...lines, '', prLine, '', 'Fix shape: reproduce on dev with the promoted commit, land the fix as a new PR; promotion resumes once main carries a commit that reverts or supersedes it with CI gate and dev-soak success.', '', `Filed by the promote workflow, ${new Date().toISOString().slice(0, 10)}.`].join('\n') }));
+  const issue = filed.value;
+  await io.alert(`weave promote: production rejected ${short(sha)} (${outcome.why}); ${prLine}${issue?.url ? `; Issue ${issue.url}` : ''}${filed.failed ? `; ${filed.failed}` : ''}`);
   return { action: 'failed', sha, from, reason: outcome.why, revert, issue };
 }
 
