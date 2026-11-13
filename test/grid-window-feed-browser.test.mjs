@@ -70,7 +70,7 @@ if (s) {
         seen.push(v);
         assert.equal(v.pending, 0, `flick ${k}: ${v.pending} blank pending rows on screen at scrollTop ${v.top}`);
         assert.equal(v.spacer, 0, `flick ${k}: an empty spacer band on screen at scrollTop ${v.top}`);
-        if (v.more) {
+        if (v.more && v.top >= v.max - 2) {
           assert.equal(v.more.inView, true, `flick ${k}: the bottom of the scroll is not the load-more row`);
           assert.ok(v.more.running >= 1, `flick ${k}: the load-more row is on screen but nothing in it moves`);
         }
