@@ -1,0 +1,1 @@
+- **A tap that closes a phone sheet no longer reaches what is under it** (Issue #1384): closing the record menu or a picker sheet by tapping the dimmed page used to hand the same tap to the element beneath, so a tap over the record title opened the title for editing and the keyboard, one keypress away from a rename. An outside tap on a phone sheet now only closes the sheet.

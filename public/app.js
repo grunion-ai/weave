@@ -1920,12 +1920,13 @@ function whileConnected(node, type, handler, capture = false) {
 function ghostBtn({ class: cls = '', ...attrs } = {}, ...kids) {
   return el('button', { class: cls ? `btn btn-sm btn-ghost-secondary tiny ${cls}` : 'btn btn-sm btn-ghost-secondary tiny', ...attrs }, ...kids);
 }
-function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
+function dismissOutside({ inside, close, open = () => true, swallow = () => false, sheet = false }) {
   const away = (e) => {
     if (!open()) return off();
     if (inside(e.target)) return;
     off();
-    if (swallow(e.target)) swallowClick();
+    if (sheet) e.preventDefault();
+    if (sheet || swallow(e.target)) swallowClick();
     close(e);
   };
   const off = () => removeEventListener('pointerdown', away, true);
@@ -2248,7 +2249,7 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
   dismissOutside({
     open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!anchor?.contains?.(t),
-    close: () => (multi ? commit() : pop.remove()),
+    close: () => (multi ? commit() : pop.remove()), sheet,
   });
   if (!quiet) input.focus();
   drawChips();
@@ -3108,7 +3109,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
     pop.style.top = `${Math.round(top)}px`;
   }
   trigger?.setAttribute?.('aria-expanded', 'true');
-  off = dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!trigger?.contains?.(t), close: () => close() });
+  off = dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!trigger?.contains?.(t), close: () => close(), sheet });
   addEventListener('hashchange', drop);
 
   const rows = () => [...pop.querySelectorAll('.wv-menu-row')].filter((r) => r.getClientRects().length);
