@@ -4929,7 +4929,7 @@ async function readAndDrawTable(db, dbId, search, cold = false, gen = navDraw) {
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   if (!whole) rememberFirstPage(pageKey, result);
-  if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
+  if (cached && globalThis.WeaveGridWindow.samePage(cached, result, query.fields)) return;
   paint(result, domains);
 }
 

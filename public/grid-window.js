@@ -4,6 +4,8 @@
   const MIN_BUFFER = 20;
   const LEAD = 3;
   const ROW_H = { compact: 32, comfortable: 44, spacious: 72 };
+  const STAMP_COLUMNS = { updatedAt: 'Modified At', modifiedBy: 'Modified By', createdAt: 'Created At', createdBy: 'Created By' };
+  const NEVER_DRAWN = ['revision'];
 
   globalThis.WeaveGridWindow = {
     PAGE,
@@ -28,6 +30,21 @@
       const screen = Math.max(Number(viewportH) || 0, h);
       const left = loaded * h - ((Number(scrollTop) || 0) + screen);
       return left <= lead * screen ? loaded : null;
+    },
+
+    samePage(cached, fresh, drawn = []) {
+      if (!cached || !fresh) return false;
+      const shown = new Set(drawn);
+      const quiet = [...NEVER_DRAWN, ...Object.keys(STAMP_COLUMNS).filter((key) => !shown.has(STAMP_COLUMNS[key]))];
+      const bare = (page) => ({
+        ...page,
+        items: (page.items ?? []).map((item) => {
+          const row = { ...item };
+          for (const key of quiet) delete row[key];
+          return row;
+        }),
+      });
+      return JSON.stringify(bare(cached)) === JSON.stringify(bare(fresh));
     },
 
     scrollTopFor({ index, rowH, viewportH, headH = 0, scrollTop }) {
