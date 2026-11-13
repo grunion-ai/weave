@@ -280,6 +280,10 @@
       "gzip": 1499,
       "br": 1276
     },
+    "/theme-boot.js": {
+      "gzip": 315,
+      "br": 315
+    },
     "/upload-core.js": {
       "gzip": 1958,
       "br": 1716
