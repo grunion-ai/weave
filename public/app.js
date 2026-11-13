@@ -2001,6 +2001,10 @@ function holdToConfirm(label, onConfirm, {
     hint ? el('span', { class: 'hold-hint' }, hint) : null);
   let armed = false;
   let press = 0;
+  const sweepMs = () => {
+    const [spec] = getComputedStyle(fill).transitionDuration.split(',');
+    return parseFloat(spec) * (spec.endsWith('ms') ? 1 : 1000) || 900;
+  };
   const start = (e) => {
     if (armed || btn.disabled) return;
     armed = true;
@@ -2008,11 +2012,22 @@ function holdToConfirm(label, onConfirm, {
     if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch {} }
     btn.classList.add('holding');
     text.textContent = holdingLabel;
+    const thisPress = press;
+    const sweep = fill.getAnimations()[0];
+    if (sweep) sweep.finished.then(() => finish(thisPress), () => {});
+    else setTimeout(() => finish(thisPress), sweepMs());
   };
   const stop = () => {
     armed = false;
     btn.classList.remove('holding');
     text.textContent = label;
+  };
+  const finish = (thisPress) => {
+    setTimeout(async () => {
+      if (!armed || press !== thisPress) return;
+      stop();
+      await onConfirm();
+    }, 80);
   };
   btn.addEventListener('pointerdown', start);
   for (const ev of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, stop);
@@ -2020,12 +2035,7 @@ function holdToConfirm(label, onConfirm, {
   btn.addEventListener('keyup', stop);
   fill.addEventListener('transitionend', (e) => {
     if (!armed || e.propertyName !== 'transform') return;
-    const thisPress = press;
-    setTimeout(async () => {
-      if (!armed || press !== thisPress) return;
-      stop();
-      await onConfirm();
-    }, 80);
+    finish(press);
   });
   return btn;
 }
