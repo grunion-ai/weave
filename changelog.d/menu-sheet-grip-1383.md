@@ -1,1 +1,0 @@
-- **The phone menu sheet's handle drags** (Issue #1383): the record, table and space menu sheets draw the same grabber the picker sheets use, so a downward drag or flick on the handle closes the sheet. The handle was a decorative pseudo-element with no listener, and a 340 pt swipe left the sheet where it was.

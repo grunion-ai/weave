@@ -1,1 +1,0 @@
-- **Search key hints on a pointer that has keys** (Issue #1380): the search sheet drops its "move, open, next group, close" footer on a touch screen, where there is no hardware keyboard to use it, and the results list takes the 40 px it held. A pointer with hover keeps the footer.
