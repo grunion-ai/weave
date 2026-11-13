@@ -28,13 +28,13 @@
       "gzip": 2099,
       "br": 1784
     },
-    "/board-view.js": {
-      "gzip": 6584,
-      "br": 6202
-    },
     "/board-core.js": {
       "gzip": 2077,
       "br": 1844
+    },
+    "/board-view.js": {
+      "gzip": 6584,
+      "br": 6202
     },
     "/breadcrumbs.js": {
       "gzip": 1428,
@@ -191,6 +191,10 @@
     "/prefill-core.js": {
       "gzip": 603,
       "br": 523
+    },
+    "/prefs-core.js": {
+      "gzip": 838,
+      "br": 838
     },
     "/relation-map.js": {
       "gzip": 1758,
