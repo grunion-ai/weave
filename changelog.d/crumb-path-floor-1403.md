@@ -1,0 +1,1 @@
+- **Phone record top bar** (Issue #1403): the breadcrumb path drops out instead of spilling its crumbs over Activity, field visibility and Share when back and forward arrows leave it too little room.

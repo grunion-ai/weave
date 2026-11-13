@@ -1269,7 +1269,12 @@ function fitCrumbs(path, foldFrom) {
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
   const mins = slots.map((sl) => { const min = parseFloat(getComputedStyle(sl).minWidth); return Number.isNaN(min) ? Infinity : min; });
-  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX, mins });
+  const room = path.clientWidth;
+  const fold = weaveBreadcrumbs.foldPlan(widths, room, { from: foldFrom, more: CRUMB_MORE_PX, mins });
+  if (weaveBreadcrumbs.foldFloor(widths, fold, { more: CRUMB_MORE_PX, mins }) > room) {
+    for (const sl of slots) sl.hidden = true;
+    return;
+  }
   if (!fold.length) return;
   for (const i of fold) slots[i].hidden = true;
   const hidden = fold.map((i) => slots[i].crumb);
