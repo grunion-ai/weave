@@ -1,0 +1,1 @@
+- **A record's banner draws under the breadcrumbs and over its title** (Issue #1551): the cover now sits inside the view header, between the crumb row with its toolbar and the record name, on records, table landings and space landings alike. A header carrying a banner scrolls away with the page instead of holding half the pane.

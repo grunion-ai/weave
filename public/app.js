@@ -1204,7 +1204,8 @@ function publishHeaderOn(holder, box, pane) {
   const h = box.getBoundingClientRect().height;
   const keyboard = keyboardInset();
   const writing = keyboard > 0 && dockCoversScreen.matches;
-  const holds = h <= (pane - keyboard) / (writing ? 4 : 2);
+  const banner = !!box.querySelector(':scope > .entity-cover');
+  const holds = !banner && h <= (pane - keyboard) / (writing ? 4 : 2);
   holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
@@ -2958,11 +2959,10 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
     const row = mineOnly(result.items).find((r) => r.sysId === subjectId);
     if (!row || !header.isConnected || header.presentationRequest !== request) return;
     const file = boardCore.coverOf(db, row);
-    let lead = header;
     if (file) {
-      lead = entityCoverEl(file, { size: cover.size, fit: cover.fit });
+      const lead = entityCoverEl(file, { size: cover.size, fit: cover.fit });
       lead.classList.add('registry-cover');
-      header.after(lead);
+      placeCoverIn(header, lead);
     }
     const sections = [];
     const detail = intros.some(f => f.type === 'document') ? await api('GET', `/entities/${row.id}`) : row;
@@ -2995,7 +2995,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
     if (!header.isConnected || header.presentationRequest !== request) return;
-    lead.after(...sections);
+    header.after(...sections);
     for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
 }
@@ -3897,6 +3897,12 @@ function fileViewerEl(file, { size = 'medium', chrome = true } = {}) {
       el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: fileViewUrl(file), target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))) : null,
     body);
 }
+function placeCoverIn(header, cover) {
+  const title = header.querySelector(':scope > .entity-head, :scope > .view-title-row');
+  if (title) title.before(cover); else header.append(cover);
+  return cover;
+}
+
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
   const full = fileUrl(file) + (String(file.mime ?? '').split(';')[0].trim().toLowerCase() === 'image/svg+xml' ? '?view' : '');
   const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
@@ -9564,12 +9570,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const coverF = boardCore.coverField(db);
   const coverFile = boardCore.coverOf(db, entity);
   const coverEl = (file) => entityCoverEl(file, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' });
-  const introHeader = shown.some((f) => f.displayInline || (f.type === 'attachments' && f.preview === 'intro'));
-  const placeCover = (file) => {
-    const cover = coverEl(file);
-    if (introHeader) mount.querySelector(':scope > .view-header').after(cover);
-    else left.prepend(cover);
-  };
+  const placeCover = (file) => placeCoverIn(mount.querySelector(':scope > .view-header'), coverEl(file));
   if (coverFile) placeCover(coverFile);
   const blocks = new Map();
 
@@ -9831,9 +9832,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   });
   if (later && coverF && !coverFile) fills.push(() => {
     const file = boardCore.coverOf(db, entity);
-    if (!file) return;
-    if (introHeader) placeCover(file);
-    else if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
+    if (file) placeCover(file);
   });
 
   const refCard = (title, extraClass, refs) => {

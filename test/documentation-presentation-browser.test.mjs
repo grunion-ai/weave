@@ -87,7 +87,7 @@ if (s) {
     });
   }
   for (const theme of ['light', 'dark']) for (const width of [1440, 390]) for (const [route, key] of [['e', 'row'], ['#/table', 'table'], ['#/space', 'space']]) {
-    test(`breadcrumbs and toolbar sit above the banner on ${route} at ${width} ${theme} (Issue #1538)`, async () => {
+    test(`breadcrumbs and toolbar sit above the banner on ${route} at ${width} ${theme} (Issue #1538, Issue #1551)`, async () => {
       const page = await browser.newPage({ colorScheme: null, extraHTTPHeaders: { Authorization: `Bearer ${owner}` }, viewport: { width, height: 900 } });
       try {
         await page.addInitScript(t => localStorage.setItem('weave-theme', t), theme);
@@ -98,15 +98,18 @@ if (s) {
         await settled(header);
         assert.equal(await styleOf(header, 'visibility', 'visible'), 'visible');
         const order = await header.evaluate(h => {
-          const cover = document.querySelector('.entity-cover');
+          const cover = h.querySelector(':scope > .entity-cover');
+          const crumbs = h.querySelector(':scope > .crumb-row');
+          const title = h.querySelector(':scope > .entity-head, :scope > .view-title-row');
           const intro = document.querySelector('.attachment-intro');
           return {
-            next: h.nextElementSibling === cover,
-            above: h.getBoundingClientRect().bottom <= cover.getBoundingClientRect().top + 1,
+            inHeader: !!cover,
+            above: crumbs.getBoundingClientRect().bottom <= cover.getBoundingClientRect().top + 1,
+            overTitle: cover.getBoundingClientRect().bottom <= title.getBoundingClientRect().top + 1,
             introAfter: !!(cover.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING),
           };
         });
-        assert.deepEqual(order, { next: true, above: true, introAfter: true });
+        assert.deepEqual(order, { inHeader: true, above: true, overTitle: true, introAfter: true });
       } finally { await page.close(); }
     });
   }
