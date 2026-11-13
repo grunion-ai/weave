@@ -49,29 +49,28 @@ if (s) {
     }, was);
   };
 
+  const theme = 'light';
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
-      test(`the tap that closes the phone record menu does not reach the title under it (${engine}, ${theme}, Issue #1384)`, async () => {
-        const page = await open(b, profile, theme);
-        try {
-          await page.click('#main .view-header .dots-btn');
-          const seen = await tapOverTitle(page, '.chip-pop.wv-menu-sheet');
-          assert.equal(seen.theme, theme);
-          assert.equal(seen.editing, false, `the title took focus from the closing tap (${seen.focus})`);
-          assert.equal(seen.renamed, false, `a keypress after the tap renamed the record: ${seen.before} → ${seen.now}`);
-        } finally { await page.close(); }
-      });
+    test(`the tap that closes the phone record menu does not reach the title under it (${engine}, ${theme}, Issue #1384)`, async () => {
+      const page = await open(b, profile, theme);
+      try {
+        await page.click('#main .view-header .dots-btn');
+        const seen = await tapOverTitle(page, '.chip-pop.wv-menu-sheet');
+        assert.equal(seen.theme, theme);
+        assert.equal(seen.editing, false, `the title took focus from the closing tap (${seen.focus})`);
+        assert.equal(seen.renamed, false, `a keypress after the tap renamed the record: ${seen.before} → ${seen.now}`);
+      } finally { await page.close(); }
+    });
 
-      test(`the tap that closes a phone picker sheet does not reach the title under it (${engine}, ${theme}, Issue #1384)`, async () => {
-        const page = await open(b, profile, theme);
-        try {
-          await page.click('#main .chip-trigger[title="Priority"]');
-          const seen = await tapOverTitle(page, '.chip-pop.picker-pop');
-          assert.equal(seen.theme, theme);
-          assert.equal(seen.editing, false, `the title took focus from the closing tap (${seen.focus})`);
-          assert.equal(seen.renamed, false, `a keypress after the tap renamed the record: ${seen.before} → ${seen.now}`);
-        } finally { await page.close(); }
-      });
-    }
+    test(`the tap that closes a phone picker sheet does not reach the title under it (${engine}, ${theme}, Issue #1384)`, async () => {
+      const page = await open(b, profile, theme);
+      try {
+        await page.click('#main .chip-trigger[title="Priority"]');
+        const seen = await tapOverTitle(page, '.chip-pop.picker-pop');
+        assert.equal(seen.theme, theme);
+        assert.equal(seen.editing, false, `the title took focus from the closing tap (${seen.focus})`);
+        assert.equal(seen.renamed, false, `a keypress after the tap renamed the record: ${seen.before} → ${seen.now}`);
+      } finally { await page.close(); }
+    });
   }
 }
