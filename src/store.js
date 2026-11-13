@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS doc_revisions (
   at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 CREATE TABLE IF NOT EXISTS file_storage (file_id TEXT PRIMARY KEY, at TEXT NOT NULL, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY, entity_id TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS changes_on_insert AFTER INSERT ON entities BEGIN INSERT INTO changes (entity_id) VALUES (new.id); END;
+CREATE TRIGGER IF NOT EXISTS changes_on_update AFTER UPDATE ON entities BEGIN INSERT INTO changes (entity_id) VALUES (new.id); END;
+CREATE TRIGGER IF NOT EXISTS changes_on_delete AFTER DELETE ON entities BEGIN INSERT INTO changes (entity_id) VALUES (old.id); END;
 `;
 
 const LOAD_ORDER = {
@@ -71,6 +75,7 @@ const LOAD_ORDER = {
 
 const UNDO_CAP = 200;
 export const DOC_REVISION_CAP = 200;
+export const JOURNAL_CAP = 1000;
 
 function addRestoredFrom(exec) {
   try { exec('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
@@ -151,10 +156,13 @@ function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
 }
 
+const sameRow = (a, b) => a?.seq === b?.seq && a?.id === b?.id;
+
 export class Store {
   #db = null;
   #dataVersion = null;
   #cache = null;
+  #seen = null;
   #batch = false;
 
   constructor(path = null) {
@@ -217,6 +225,7 @@ export class Store {
       db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = FULL');
+      db.exec('PRAGMA temp_store = MEMORY');
     } catch (err) {
       throw new WeaveError(this.#openFailure(err), 'invalid');
     }
@@ -237,8 +246,57 @@ export class Store {
     return this.#loadState();
   }
 
+  #journalTop() {
+    return this.#db.prepare('SELECT seq, entity_id AS id FROM changes ORDER BY seq DESC LIMIT 1').get() ?? null;
+  }
+
+  #snapshot(read) {
+    const db = this.#db;
+    if (db.isTransaction) return read();
+    db.exec('BEGIN');
+    try {
+      return read();
+    } finally {
+      db.exec('COMMIT');
+    }
+  }
+
+  #applyJournal(state) {
+    const db = this.#db;
+    const seen = this.#seen;
+    const top = this.#journalTop();
+    const anchored = seen ? db.prepare('SELECT entity_id AS id FROM changes WHERE seq = ?').get(seen.seq)?.id === seen.id : !top;
+    const metaRow = anchored && db.prepare('SELECT json FROM weave_meta WHERE id = 1').get();
+    if (!metaRow) return null;
+    const { spaces, tables, entities, automations, ...rest } = state;
+    const next = { ...(metaRow.json === this.#cache.meta ? rest : JSON.parse(metaRow.json)) };
+    const cache = { meta: metaRow.json };
+    for (const [key, held = {}] of [['spaces', spaces], ['tables', tables], ['automations', automations]]) {
+      const was = this.#cache[key];
+      const now = new Map(db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all().map((r) => [r.id, r.json]));
+      next[key] = {};
+      for (const [id, json] of now) {
+        if (was.get(id) !== json) next[key][id] = JSON.parse(json);
+        else if (Object.hasOwn(held, id)) next[key][id] = held[id];
+      }
+      for (const id of Object.keys(held)) if (!now.has(id) && !was.has(id)) next[key][id] = held[id];
+      cache[key] = now;
+    }
+    next.entities = { ...entities };
+    const changed = seen ? db.prepare(`SELECT c.id, e.json FROM (SELECT DISTINCT entity_id AS id FROM changes WHERE seq > ?) c
+      LEFT JOIN entities e ON e.id = c.id ORDER BY e.rowid`).all(seen.seq) : [];
+    for (const { id, json } of changed) {
+      if (json == null) delete next.entities[id];
+      else next.entities[id] = JSON.parse(json);
+    }
+    this.#cache = cache;
+    this.#seen = top;
+    return next;
+  }
+
   #loadState() {
     const db = this.#db;
+    this.#seen = this.#journalTop();
     const metaRow = db.prepare('SELECT json FROM weave_meta WHERE id = 1').get();
     if (!metaRow) {
       this.#cache = { meta: null, spaces: new Map(), tables: new Map(), automations: new Map() };
@@ -440,6 +498,7 @@ export class Store {
     let moved = 0;
     if (!this.#batch) db.exec('BEGIN IMMEDIATE');
     try {
+      const synced = sameRow(this.#journalTop(), this.#seen);
       const { spaces, tables, entities, automations, ...rest } = state;
       const ids = all
         ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
@@ -474,6 +533,9 @@ export class Store {
         if (e === undefined) dropEntity.run(id);
         else putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
       }
+      const top = this.#journalTop();
+      if (top) db.prepare('DELETE FROM changes WHERE seq <= ?').run(top.seq - JOURNAL_CAP);
+      if (synced) this.#seen = top;
       if (!this.#batch) db.exec('COMMIT');
     } catch (err) {
       if (!this.#batch) { db.exec('ROLLBACK'); this.#loadState(); }
@@ -510,9 +572,9 @@ export class Store {
     return Number(row?.n ?? 0);
   }
 
-  reload() {
+  reload(state = null) {
     if (!this.#db) return null;
-    return this.#loadState();
+    return (state && this.#snapshot(() => this.#applyJournal(state))) || this.#loadState();
   }
 
   close() {

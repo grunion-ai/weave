@@ -2065,7 +2065,7 @@ export class Weave {
 
   maybeRefresh() {
     if (!this.store.changedExternally?.()) return false;
-    const loaded = this.store.reload();
+    const loaded = this.store.reload(this.state);
     if (loaded) {
       this.state = loaded;
       if (this.registryHost) this.#syncAll();
