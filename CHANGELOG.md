@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.143 (2026-11-13)
+
+- **A record's banner draws under the breadcrumbs and over its title** (Issue #1551): the cover now sits inside the view header, between the crumb row with its toolbar and the record name, on records, table landings and space landings alike. A header carrying a banner scrolls away with the page instead of holding half the pane.
+- **A hold-to-confirm button finishes without a `transitionend`** (Issue #1439): `holdToConfirm` waited only for the fill's `transitionend` on `transform`, so a press whose transition the browser never ran held forever, which is the `test/workspace-delete-last-browser.test.mjs` hang logged on Issue #1305. The press now resolves from the fill's own animation where one is running, and from a timer sized by the fill's computed duration where none is, so a slowed or paused sweep still decides its own length.
+- **`workspace logo --out` names the mime it wrote** (Issue #1545): the CLI read the mime off the `{meta, bytes}` wrapper instead of its `meta`, so the answer dropped the field.
+
 ## v0.4.142 (2026-11-13)
 
 - **One draw on a cold table open** (Issue #1702): a table whose cached first page lost only its row stamps now draws once instead of twice. `WeaveGridWindow.samePage` compares the cached and fresh pages without the timestamps and authors the view does not draw; a page whose cells, counts or order moved still paints over the cached one.
