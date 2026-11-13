@@ -1,1 +1,0 @@
-- **Theme at first paint** (Issue #1714): a dark-mode load no longer flashes the light canvas. `/theme-boot.js` sets `data-bs-theme` from the stored preference and the system scheme before any stylesheet applies, and the shell declares `color-scheme` and both `theme-color` metas.
