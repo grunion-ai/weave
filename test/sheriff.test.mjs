@@ -655,3 +655,14 @@ test('missing tracker credentials reject both incident filing and flake recordin
   assert.deepEqual(await dryIO({ ...io, log: (l) => logs.push(l) }).openFlakes(['test/grid.test.mjs']), []);
   assert.match(logs.join('\n'), /could not read the flake rows/);
 });
+
+test('a sheriff report whose tracker write throws still alerts the verdict and names the tracker failure (Issue #1651)', async () => {
+  const f = fake({ commits: [commit(100, 'Revert "grid: tab order (Issue #551)"\n\nThis reverts commit abcdef1234.')] });
+  f.io.fileIssue = async () => { throw new Error('weave.grunion.ai answered HTTP 503'); };
+  const out = await sheriff(900, f.io);
+  assert.equal(out.action, 'escalate');
+  assert.deepEqual(f.kinds(), ['rerun', 'comment', 'alert']);
+  const line = f.writes.at(-1)[1];
+  assert.match(line, /never reverts a revert/);
+  assert.match(line, /tracker write failed: weave\.grunion\.ai answered HTTP 503/);
+});

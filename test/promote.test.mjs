@@ -263,3 +263,15 @@ test('promote.yml: one run at a time, read-only token, prod secrets only in the 
   for (const s of ['PROD_DEPLOY_TOKEN', 'PROMOTION_DEPLOY_KEY']) assert.match(promoteJob, new RegExp(`secrets\\.${s}`));
   assert.doesNotMatch(yml + readFileSync('scripts/promote.mjs', 'utf8'), /--force|push -f|\+refs\//);
 });
+
+test('a tracker write that throws still alerts the rejection and names the tracker failure (Issue #1651)', async () => {
+  const f = fake({ commits: [commit(2)], health: [live(1)] });
+  f.io.fileIssue = async () => { throw new Error('weave.grunion.ai answered HTTP 503'); };
+  const out = await promote(f.io, { sha: sha(2), from: sha(1) }, { ...fast, deadlineMs: 0 });
+  assert.equal(out.action, 'failed');
+  assert.equal(out.issue, null);
+  assert.deepEqual(f.kinds(), ['push', 'check', 'alert']);
+  const line = f.writes.at(-1)[1];
+  assert.match(line, /production rejected/);
+  assert.match(line, /tracker write failed: weave\.grunion\.ai answered HTTP 503/);
+});

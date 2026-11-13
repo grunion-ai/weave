@@ -443,12 +443,17 @@ async function escalate(io, ctx, result, reason) {
 async function report(io, ctx, result, revert, outcome, action, note) {
   for (const pr of ctx.prs) await io.comment(pr.number, prComment(ctx, revert));
   const description = issueDescription(ctx, revert, note);
-  const open = ctx.files?.length ? await io.openIncidents(ctx.files) : [];
-  const issue = open[0]
-    ? await io.appendRow(open[0], description)
-    : await io.fileIssue({ name: issueName(ctx), description, area: rowArea(ctx), symptom: ['Error'] });
-  const reopened = action === 'revert' ? await reopenReverted(io, ctx, revert) : [];
-  await io.alert(alertLine(ctx, outcome + (issue?.url ? `; Issue ${issue.url}` : '')));
+  const filed = await trackerWrite(async () => {
+    const open = ctx.files?.length ? await io.openIncidents(ctx.files) : [];
+    return open[0]
+      ? io.appendRow(open[0], description)
+      : io.fileIssue({ name: issueName(ctx), description, area: rowArea(ctx), symptom: ['Error'] });
+  });
+  const issue = filed.value;
+  const back = action === 'revert' ? await trackerWrite(() => reopenReverted(io, ctx, revert)) : { value: [] };
+  const reopened = back.value ?? [];
+  const broke = [filed.failed, back.failed].filter(Boolean);
+  await io.alert(alertLine(ctx, outcome + (issue?.url ? `; Issue ${issue.url}` : '') + (broke.length ? `; ${broke.join('; ')}` : '')));
   return result(action, { reason: outcome, culprits: ctx.culprits.map((c) => c.sha), prs: ctx.prs.map((p) => p.number), probes: ctx.probes, revert, issue, reopened });
 }
 
@@ -463,6 +468,10 @@ async function reopenReverted(io, ctx, revert) {
     }
   }
   return reopened;
+}
+
+export async function trackerWrite(write) {
+  try { return { value: await write() }; } catch (error) { return { value: null, failed: `tracker write failed: ${error.message}` }; }
 }
 
 export function alertRequest(env, line) {
