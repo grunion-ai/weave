@@ -2950,6 +2950,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .launcher-failed { padding: 18px 0; color: var(--tblr-secondary); }
 .launcher-failed .btn { min-height: 44px; }
 @media (max-width: 600px) {
+  #cmdk-back { padding-top: 0; }
+  #cmdk { width: 100%; max-width: none; max-height: calc(100dvh - var(--wv-keyboard, 0px)); border-width: 0 0 1px; border-radius: 0 0 var(--tblr-border-radius-lg) var(--tblr-border-radius-lg); }
+  #cmdk-results { flex: 1 1 auto; min-height: 0; max-height: none; }
   #cmdk-input { align-self: stretch; }
   #cmdk .copy-btn { padding: 0; opacity: 1; }
 }

@@ -1,0 +1,1 @@
+- **Phone search sheet at the top of the screen** (Issue #1379): on phone widths the search sheet opens at the top edge of the page and sizes itself to the room the software keyboard leaves, so the results list holds every hit that fits. A seeded phone at 402x874 shows twelve hits where six fit before.
