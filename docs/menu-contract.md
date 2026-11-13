@@ -91,7 +91,7 @@ A menu opened away from its object (a sidebar row, a right-click, a rail chip) s
 
 ## Phone
 
-Under 600px the same `menu()` draws a bottom sheet with the picker sheet rules: the desktop's rows, in the desktop's order. Row height follows the pointer instead of the width, so on a touch screen every menu row takes the 44px `--wv-hit` floor, in a sheet or a popover, and a mouse keeps the dense rows at any width.
+Under 600px the same `menu()` draws a bottom sheet with the picker sheet rules: the desktop's rows, in the desktop's order. The sheet opens with the picker sheets' `sheetGrip`, so the handle it draws is a 44px target that closes the sheet on a drag or flick down (Issue #1383). Row height follows the pointer instead of the width, so on a touch screen every menu row takes the 44px `--wv-hit` floor, in a sheet or a popover, and a mouse keeps the dense rows at any width.
 
 ## Keys
 

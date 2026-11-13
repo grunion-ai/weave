@@ -3087,6 +3087,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
   };
   const drop = () => close();
   const done = () => { close({ focus: pop.contains(document.activeElement) }); onRun?.(); };
+  if (sheet) pop.append(sheetGrip(pop, () => close()));
   if (head) {
     pop.append(el('div', { class: 'wv-menu-head' },
       el('span', { class: 'wv-menu-title', title: head.title }, head.title),
