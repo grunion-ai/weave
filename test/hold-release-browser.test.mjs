@@ -84,6 +84,37 @@ if (s) {
     }
   });
 
+  test('a hold whose sweep the browser never runs still fires the purge (Issue #1439)', async () => {
+    const id = trashed('NoSweep');
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      const kill = () => {
+        const tag = document.createElement('style');
+        tag.textContent = '.hold-btn.holding .hold-fill { transition-duration: 0s !important; }';
+        document.head.append(tag);
+      };
+      if (document.head) kill();
+      else document.addEventListener('DOMContentLoaded', kill, { once: true });
+    });
+    try {
+      await page.goto(`${base}/#/settings`);
+      await page.locator('#main .settings-purge tr.purge-row', { hasText: 'NoSweep' }).locator('.purge-open').click();
+      await page.locator('#main .purge-confirm input').fill('NoSweep');
+      const hold = page.locator('#main .purge-confirm .hold-btn');
+      await hold.waitFor();
+      await hold.hover();
+      await page.mouse.down();
+      await page.waitForSelector('.hold-btn.holding');
+      assert.equal(await hold.locator('.hold-fill').evaluate((f) => f.getAnimations().length), 0,
+        'the forced 0s duration is what the gate shard hit: no transition runs, so no transitionend can fire');
+      await page.waitForSelector('.hold-btn.holding', { state: 'detached', timeout: 5000 });
+      await page.mouse.up();
+      assert.equal(await eventually(() => exists(id), false), false, 'the press finished without a transitionend');
+    } finally {
+      await page.close();
+    }
+  });
+
   for (const theme of ['light', 'dark']) {
     test(`${theme}: the purge sweep keeps its leading edge`, async () => {
       trashed(`Sweep ${theme}`);
