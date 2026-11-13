@@ -23,7 +23,8 @@ if (s) {
       globals: ['chipCore', 'WeaveTerm'].filter((g) => !(g in window)),
       name: document.querySelector('#ws-name')?.textContent,
     }));
-    assert.deepEqual(boot.blocking, [], 'no classic script blocks the parser');
+    assert.deepEqual(boot.blocking.filter((u) => !u.includes('/theme-boot.js')), [], 'no classic script blocks the parser');
+    assert.equal(boot.blocking.filter((u) => u.includes('/theme-boot.js')).length, 1, 'the theme runs before first paint, so it alone blocks the parser (Issue #1714)');
     assert.deepEqual(boot.globals, [], 'every boot global is in place');
     assert.equal(await page.waitForFunction(() => 'Vditor' in window, null, { timeout: 15000 }).then(() => true), true, 'the document editor arrives after boot (Issue #989)');
     assert.ok(boot.name, 'the workspace name painted');

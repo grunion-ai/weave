@@ -1670,7 +1670,7 @@ test('dock: the surface core loads before app.js and #dock is a sibling of #main
   const mainEnd = html.indexOf('</main>', main);
   const dock = html.indexOf('<aside id="dock" hidden>');
   assert.ok(main > -1 && dock > mainEnd, '#dock sits after </main>, never inside it — a page render must not wipe a docked entity');
-  assert.ok(dock < html.indexOf('<script'), 'the panel is page shell, declared before the scripts');
+  assert.ok(dock < html.search(/<script\b[^>]*\bdefer\b/), 'the panel is page shell, declared before the boot scripts');
   assert.match(html, /<aside id="dock" hidden>/, 'the dock starts hidden');
 });
 
