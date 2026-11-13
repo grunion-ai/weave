@@ -342,7 +342,8 @@ const tierOf = (caller, c) => (bound(c) ? caller.tier : caller.workspaceTier ?? 
 const ranks = (tier, c) => tier == null || RANK[Weave.roleName(tier)] >= RANK[c.minRole];
 const admits = (caller, c) => ranks(tierOf(caller, c) ?? caller.role, c);
 const OWNER = { minRole: 'observer' };
-const visible = (caller, name) => !caller || rowsOf(name).some((c) => ranks(tierOf(caller, c), c.owns ? OWNER : c));
+const unroled = (caller) => !!caller?.signedIn && caller.role == null;
+const visible = (caller, name) => !caller || (!unroled(caller) && rowsOf(name).some((c) => ranks(tierOf(caller, c), c.owns ? OWNER : c)));
 export const ROLE_TOOLS = Object.fromEntries(ROLES.filter((r) => r !== 'architect').map((role) => [role, new Set(TOOLS.filter((t) => visible({ tier: role }, t.name)).map((t) => t.name))]));
 export function toolWrites(name, args = {}) {
   try { return !(toolCommand(name, args) ?? DOOR_TOOLS[name])?.annotations.readOnlyHint; } catch { return true; }

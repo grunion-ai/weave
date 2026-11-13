@@ -246,7 +246,17 @@ async function ladder(call, f, token, name, tag) {
   return { read, write, shape };
 }
 
+async function workspaceLadder(call, token, tag) {
+  const read = await call('GET', '/api/spaces', { token });
+  const write = await call('POST', '/api/views', { token, body: { name: tag, blocks: [] } });
+  const shape = await call('PATCH', '/api/workspace', { token, body: { description: '' } });
+  return { read, write, shape };
+}
+
 const stated = (role) => ({ read: role != null, write: RANK[role] >= RANK.editor, shape: role === 'architect' });
+const SEATLESS = { standing: async () => ({ seated: () => false }) };
+const door = (f, entry) => client(createWorkspaceHub(f.w), entry.unseated ? { billing: SEATLESS } : {});
+const turnedAway = (entry, letters) => !entry.perSpace && !!entry.token && ROLE[letters[COLUMNS.indexOf('workspace')]] == null;
 
 for (const { kind, letters } of EXPECTED) {
   if (kind === 'unrestricted engine') continue;
@@ -254,18 +264,32 @@ for (const { kind, letters } of EXPECTED) {
     const f = build();
     f.w.setRequireAuth(false);
     const entry = f.kinds[kind];
-    const call = client(createWorkspaceHub(f.w), entry.unseated ? { billing: { standing: async () => ({ seated: () => false }) } } : {});
+    const call = door(f, entry);
+    const away = turnedAway(entry, letters);
     for (const name of LIVE) {
-      const role = ROLE[letters[COLUMNS.indexOf(name)]];
+      const role = away ? null : ROLE[letters[COLUMNS.indexOf(name)]];
       const label = `${kind} × ${name}`;
-      const door = entry.perSpace?.(name) ?? entry;
-      const got = await ladder(call, f, door.token ?? undefined, name, `F ${LIVE.indexOf(name)}`);
+      const link = entry.perSpace?.(name) ?? entry;
+      const got = await ladder(call, f, link.token ?? undefined, name, `F ${LIVE.indexOf(name)}`);
       assert.deepEqual({ read: ok(got.read), write: ok(got.write), shape: ok(got.shape) }, stated(role), `${label}: ${got.read.status}/${got.write.status}/${got.shape.status} ${JSON.stringify([got.write.json?.error, got.shape.json?.error])}`);
-      if (role == null) assert.equal(got.read.status, 404, `${label}: a space out of reach answers 404, never 403`);
+      if (role == null) assert.equal(got.read.status, away ? 403 : 404, `${label}: ${away ? 'a token with no workspace role is turned away at the door' : 'a space out of reach answers 404, never 403'}`);
     }
     if (entry.perSpace) return;
     const sysRow = Object.values(f.w.state.entities).find((e) => e.sysId === f.system.id && f.w.state.tables[e.dbId]?.system === 'spaces');
     const sys = await call('GET', `/api/entities/${sysRow.id}`, { token: entry.token ?? undefined });
-    assert.equal(ok(sys), ROLE[letters[COLUMNS.indexOf('System')]] != null, `${kind} × System: ${sys.status}`);
+    assert.equal(ok(sys), !away && ROLE[letters[COLUMNS.indexOf('System')]] != null, `${kind} × System: ${sys.status}`);
+  });
+}
+
+for (const { kind, letters } of EXPECTED) {
+  const entry = fixture.kinds[kind];
+  if (!Object.hasOwn(entry, 'token') || entry.perSpace) continue;
+  test(`access matrix HTTP twin: ${kind} reads, writes and runs the workspace as the table states (Issue #1800)`, async () => {
+    const f = build();
+    f.w.setRequireAuth(false);
+    const role = ROLE[letters[COLUMNS.indexOf('workspace')]];
+    const got = await workspaceLadder(door(f, f.kinds[kind]), f.kinds[kind].token ?? undefined, `View by ${kind}`);
+    assert.deepEqual({ read: ok(got.read), write: ok(got.write), shape: ok(got.shape) }, stated(role), `${kind}: ${got.read.status}/${got.write.status}/${got.shape.status}`);
+    if (role == null) for (const res of Object.values(got)) assert.equal(res.json?.code, 'access-removed', `${kind}: ${JSON.stringify(res.json)}`);
   });
 }
