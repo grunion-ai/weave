@@ -1,0 +1,1 @@
+- **Grid row feed** (Issue #1271): the next page of rows is asked for once the window passes the middle of the loaded rows, so a steady scroll on a table whose pages take half a second to come back no longer stops at the loaded end.

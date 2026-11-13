@@ -29,7 +29,7 @@
       if (!(loaded < total)) return null;
       const screen = Math.max(Number(viewportH) || 0, h);
       const left = loaded * h - ((Number(scrollTop) || 0) + screen);
-      return left <= lead * screen ? loaded : null;
+      return left <= Math.max(lead * screen, loaded * h / 2) ? loaded : null;
     },
 
     samePage(cached, fresh, drawn = []) {
