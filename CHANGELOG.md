@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.141 (2026-11-12)
+
+- **Saved preferences no longer stop the sidebar from rendering** (Issue #1448): `public/prefs-core.js` reads, validates and writes every stored UI preference behind one guard, so a malformed or wrong-shaped `weave-folded-spaces` value resets that one key and the sidebar still draws, and browser storage the page is denied leaves navigation, the view pane and the theme on their defaults instead of ending boot.
+- **A tap that closes a phone sheet no longer reaches what is under it** (Issue #1384): closing the record menu or a picker sheet by tapping the dimmed page used to hand the same tap to the element beneath, so a tap over the record title opened the title for editing and the keyboard, one keypress away from a rename. An outside tap on a phone sheet now only closes the sheet.
+- **A dead workspace address offers the workspace picker** (Issue #1332): a host under the base domain that matches no workspace now names the address that failed and links to the apex `/start?pick=1`, instead of a 404 page whose only link reloaded the same dead host.
+
 ## v0.4.140 (2026-11-12)
 
 - **Responses name their length** (Issue #1645): every response went out with `Transfer-Encoding: chunked`, because the server committed its headers before it knew the body's size, so a browser showed no size or progress for an attachment, CSV, PDF or archive download and a HEAD request could not report one. A response with its body in hand (JSON, pages, scripts, files, errors, a gzipped or brotli body after compression, redirects) now carries `Content-Length` in bytes. A HEAD request reports the length its GET sends. A 204 or 304 carries none, and a streamed body keeps the length its route names, or goes out chunked when the route names none.
