@@ -193,8 +193,8 @@ test('a cold table open paints its chrome before the rows and the skeleton benea
     'a skeleton under a header keeps the header and drops the skeleton toolbar');
   assert.match(APP, /const cached = cold && !whole \? firstPages\.get\(pageKey\) : null;\n\s*if \(cached\) paint\(cached, null\);/,
     'a first page fetched earlier in the session paints at once');
-  assert.match(APP, /if \(cached && JSON\.stringify\(cached\) === JSON\.stringify\(result\)\) return;/,
-    'an unchanged fresh page does not redraw the grid');
+  assert.match(APP, /if \(cached && globalThis\.WeaveGridWindow\.samePage\(cached, result, query\.fields\)\) return;/,
+    'a fresh page the reader cannot tell from the cached one does not redraw the grid (Issue #1702)');
 });
 
 
