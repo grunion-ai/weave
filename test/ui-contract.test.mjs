@@ -47,8 +47,8 @@ test('wireNavCollapse wires both directions and persists the state', () => {
   assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekDwell\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekLeave\)/);
-  assert.match(fnBody('setNavCollapsed'), /localStorage\.setItem\('weave-nav-collapsed'/);
-  assert.match(body, /localStorage\.getItem\('weave-nav-collapsed'\)/);
+  assert.match(fnBody('setNavCollapsed'), /WeavePrefs\.write\('weave-nav-collapsed'/);
+  assert.match(body, /WeavePrefs\.read\('weave-nav-collapsed'\)/);
 });
 
 const PICKER_TYPES = ['select', 'multiselect', 'workflow'];
