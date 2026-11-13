@@ -125,8 +125,10 @@ commit subject or a changelog fragment names.
    or above `WEAVE_WATCH_5XX_RATE` (default 0.25, over at least 20 responses)
    marks the release failed and swaps back, through the same health-checked
    path, to the kept rollback folder, or the image when none is kept.
-   `lastSwap.rollback` names the trip and `/api/health` shows
-   `supervisor.watch` with `until` and `ok`. A release is written good
+   `lastSwap.rollback` names the trip, and the deploy-token read of
+   `/api/health` (an `X-Weave-Deploy-Token` header holding
+   `WEAVE_DEPLOY_TOKEN`) shows `supervisor.watch` with `until` and `ok`; an
+   anonymous read carries no `supervisor` block. A release is written good
    (`.weave-release-ok`) only when its watch passes, so a restart mid-watch
    boots the last proven release; a boot that fails falls back to the newest
    good `v<version>` or `c<sha>` folder before the image.
@@ -138,7 +140,7 @@ commit subject or a changelog fragment names.
 7. Before it downloads a release the supervisor reads the free space on the
    releases volume. Under `WEAVE_RELEASE_FREE_MB` (default 128) it fetches
    nothing, records `lastSwap.ok: false` with the free space in the reason, and
-   tries again on the next check; `/api/health` shows `supervisor.disk` with
+   tries again on the next check; the deploy-token read shows `supervisor.disk` with
    `freeMB` and `totalMB`. Grow the Railway volume when that number runs low.
 8. `railway.json` sets `build.watchPatterns` to `/Dockerfile`, `/railway.json`
    and `/src/supervisor.js`. A push to main that touches none of them builds
@@ -622,10 +624,13 @@ newest main commit that has a push `tests` run whose `CI gate` succeeded and a
 head. With none it exits quietly. The `promote` job then, in the `production`
 environment:
 
-1. pushes `<sha>:refs/heads/production` through the promotion deploy key
+1. reads `/api/health` with `PROD_DEPLOY_TOKEN` in the `X-Weave-Deploy-Token`
+   header; when prod no longer serves the `production` head, it holds a pick
+   whose range carries no commit reverting that head and ends the run green;
+2. pushes `<sha>:refs/heads/production` through the promotion deploy key
    (`PROMOTION_DEPLOY_KEY`), a fast-forward that is never forced;
-2. calls `POST /_supervisor/check` with `PROD_DEPLOY_TOKEN`;
-3. waits up to 25 minutes for `/api/health` to show `supervisor.commit` at that
+3. calls `POST /_supervisor/check` with `PROD_DEPLOY_TOKEN`;
+4. waits up to 25 minutes for that read to show `supervisor.commit` at the
    SHA, `lastSwap.ok` true and `supervisor.watch` for `c<sha>` with `ok` true.
 
 A failed watch or a rollback fails the run, files the Issue row

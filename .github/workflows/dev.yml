@@ -63,7 +63,7 @@ jobs:
               exit 1
             fi
             for _ in $(seq 12); do
-              commit=$(curl -fsS --max-time 30 https://dev.weave.grunion.ai/api/health | jq -r '.supervisor.commit') || commit=''
+              commit=$(curl -fsS --max-time 30 -H "X-Weave-Deploy-Token: $DEV_DEPLOY_TOKEN" https://dev.weave.grunion.ai/api/health | jq -r '.supervisor.commit') || commit=''
               if [ "$commit" = "$SHA" ]; then exit 0; fi
               sleep 5
             done

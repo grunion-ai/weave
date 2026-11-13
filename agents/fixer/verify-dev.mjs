@@ -35,13 +35,14 @@ export function parseArgs(argv) {
   return out;
 }
 
-export async function verify({ sha, host = DEFAULT_HOST, timeoutMs = DEFAULT_TIMEOUT_S * 1000, fetch = globalThis.fetch, clock }) {
+export async function verify({ sha, host = DEFAULT_HOST, timeoutMs = DEFAULT_TIMEOUT_S * 1000, token = '', fetch = globalThis.fetch, clock }) {
   const url = `${host.replace(/\/+$/, '')}/api/health`;
+  const headers = { 'Cache-Control': 'no-cache', ...(token ? { 'X-Weave-Deploy-Token': token } : {}) };
   const start = clock.now();
   let last = null;
   for (;;) {
     try {
-      const r = await fetch(url, { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(POLL_MS) });
+      const r = await fetch(url, { headers, signal: AbortSignal.timeout(POLL_MS) });
       last = r.ok ? await r.json() : { status: r.status };
     } catch (error) {
       last = { error: error.message };
@@ -57,7 +58,7 @@ const realClock = { now: () => Date.now(), sleep: (ms) => new Promise((r) => set
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const out = await verify({ ...args, clock: realClock });
+  const out = await verify({ ...args, token: process.env.WEAVE_DEPLOY_TOKEN ?? '', clock: realClock });
   if (out.ok) {
     const sup = out.health.supervisor;
     console.log(JSON.stringify({ ok: true, host: args.host, sha: args.sha, commit: sup.commit, release: sup.release, since: sup.since, lastSwap: sup.lastSwap ?? null }));

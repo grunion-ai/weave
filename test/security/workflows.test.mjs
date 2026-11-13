@@ -125,6 +125,7 @@ test('dev.yml gates ready pull requests in seconds and swaps dev on every main p
   assert.doesNotMatch(deploy.split('run: |')[1], /\$\{\{/, 'no expression is spliced into the deploy script');
   assert.match(deploy, /_supervisor\/check/);
   assert.match(deploy, /\.supervisor\.commit/);
+  assert.match(deploy, /-H "X-Weave-Deploy-Token: \$DEV_DEPLOY_TOKEN" https:\/\/dev\.weave\.grunion\.ai\/api\/health/, 'the supervisor block answers the deploy token only (Issue #1650)');
 });
 
 test('dev.yml waits for dev to report the commit instead of failing on a check error', () => {

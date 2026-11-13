@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { select, promote, verdict, revertsCommit, due, pushArgs, issueName, lagLine } from '../scripts/promote.mjs';
+import { select, promote, verdict, revertsCommit, due, pushArgs, issueName, lagLine, realIO } from '../scripts/promote.mjs';
 
 const sha = (n) => n.toString(16).padStart(40, '0');
 const commit = (n, message = `change ${n} (#${n})`) => ({ sha: sha(n), message });
@@ -120,18 +120,34 @@ test('a pick older than one batch carries a lag line for the alert; a fresh pick
   assert.equal(lagLine({ sha: sha(3), at: new Date(at(11).getTime() - 3 * 3_600_000) }, at(11), 1), `weave promote: production lags ${sha(3).slice(0, 10)} by 3.0 hours, more than the 1-hour batch; the tests and dev-soak completion triggers missed it`);
 });
 
-test('while prod does not serve the production head, only a range carrying its revert is promoted', async () => {
+test('while prod does not serve the production head, only a range carrying its revert is promoted (Issue #1650)', async () => {
   const bad = sha(1);
   const stuck = { ok: true, supervisor: { commit: sha(0), release: `c${sha(0)}`, failed: [bad], lastSwap: { ok: true, from: `c${bad}`, to: `c${sha(0)}`, rollback: 'x' } } };
-  const plain = fake({ commits: [commit(2), commit(3)], gates: { [sha(2)]: 'success', [sha(3)]: 'success' }, soaks: { [sha(2)]: 'success', [sha(3)]: 'success' }, health: [stuck] });
-  const held = await select(plain.io, opts());
+  const pick = async (f) => {
+    f.io.health = async () => { throw new Error('select never reads prod: it holds no secret'); };
+    const out = await select(f.io, opts());
+    f.io.health = async () => stuck;
+    return out;
+  };
+  const plain = fake({ commits: [commit(2), commit(3)], gates: { [sha(2)]: 'success', [sha(3)]: 'success' }, soaks: { [sha(2)]: 'success', [sha(3)]: 'success' } });
+  const chosen = await pick(plain);
+  assert.equal(chosen.sha, sha(3));
+  const held = await promote(plain.io, chosen, fast);
   assert.equal(held.action, 'skip');
-  assert.match(held.reason, /revert/);
+  assert.match(held.reason, /^prod serves c0{40}, not the production head 0{10}; waiting for a main commit that reverts it$/);
+  assert.deepEqual(plain.writes, [], 'a held pick never moves production, calls the hook or alerts');
   const commits = [commit(2), commit(3, `Revert promoted range\n\nThis reverts commit ${bad}.`), commit(4)];
-  const freed = fake({ commits, gates: { [sha(2)]: 'success', [sha(3)]: 'success', [sha(4)]: 'failure' }, soaks: { [sha(2)]: 'success', [sha(3)]: 'success', [sha(4)]: 'success' }, health: [stuck] });
-  assert.equal((await select(freed.io, opts())).sha, sha(3));
-  const early = fake({ commits, gates: { [sha(2)]: 'success' }, soaks: { [sha(2)]: 'success' }, health: [stuck] });
-  assert.equal((await select(early.io, opts())).action, 'skip', 'a green commit before the revert still carries the bad change');
+  const freed = fake({ commits, gates: { [sha(2)]: 'success', [sha(3)]: 'success', [sha(4)]: 'failure' }, soaks: { [sha(2)]: 'success', [sha(3)]: 'success', [sha(4)]: 'success' } });
+  const revert = await pick(freed);
+  assert.equal(revert.sha, sha(3));
+  freed.io.health = (() => { const seen = [stuck, live(3)]; return async () => seen.shift() ?? live(3); })();
+  assert.equal((await promote(freed.io, revert, fast)).action, 'promoted', 'a range carrying the revert moves production');
+  assert.deepEqual(freed.kinds(), ['push', 'check']);
+  const early = fake({ commits, gates: { [sha(2)]: 'success' }, soaks: { [sha(2)]: 'success' } });
+  const before = await pick(early);
+  assert.equal(before.sha, sha(2));
+  assert.equal((await promote(early.io, before, fast)).action, 'skip', 'a green commit before the revert still carries the bad change');
+  assert.deepEqual(early.writes, []);
 });
 
 test('a promotion fast-forwards production, calls the deploy hook and waits for the watch to pass', async () => {
@@ -161,7 +177,7 @@ test('a watch that fails or a rollback fails the run, files an Issue, alerts and
   const tripped = live(3, { ok: false, reason: '/api/health failed 3 checks in a row' });
   const rolled = { ok: true, supervisor: { commit: sha(1), release: `c${sha(1)}`, failed: [sha(3)], lastSwap: { ok: true, from: `c${sha(3)}`, to: `c${sha(1)}`, rollback: '12 of 20 responses were 5xx' }, watch: { release: `c${sha(3)}`, ok: false } } };
   for (const bad of [tripped, rolled]) {
-    const f = fake({ commits, health: [bad] });
+    const f = fake({ commits, health: [live(1), bad] });
     const out = await promote(f.io, { sha: sha(3), from: sha(1) }, fast);
     assert.equal(out.action, 'failed');
     assert.deepEqual(f.kinds(), ['push', 'check', 'revert', 'issue', 'alert']);
@@ -180,11 +196,11 @@ test('a watch that fails or a rollback fails the run, files an Issue, alerts and
 
 test('a range holding a revert is escalated without another revert; a failed revert still files and alerts', async () => {
   const commits = [commit(2, `Revert "x"\n\nThis reverts commit ${sha(9)}.`), commit(3)];
-  const f = fake({ commits, health: [live(3, { ok: false, reason: 'worker exited' })] });
+  const f = fake({ commits, health: [live(1), live(3, { ok: false, reason: 'worker exited' })] });
   const out = await promote(f.io, { sha: sha(3), from: sha(1) }, fast);
   assert.equal(out.action, 'failed');
   assert.deepEqual(f.kinds(), ['push', 'check', 'issue', 'alert']);
-  const g = fake({ commits: [commit(2), commit(3)], health: [live(3, { ok: false, reason: 'worker exited' })] });
+  const g = fake({ commits: [commit(2), commit(3)], health: [live(1), live(3, { ok: false, reason: 'worker exited' })] });
   g.io.openRevert = async () => { throw new Error('push denied'); };
   assert.equal((await promote(g.io, { sha: sha(3), from: sha(1) }, fast)).action, 'failed');
   assert.deepEqual(g.kinds(), ['push', 'check', 'issue', 'alert']);
@@ -204,7 +220,7 @@ test('a timeout or a skipped hook fails visibly without a revert', async () => {
 });
 
 test('a stale pick writes its lag line once before production moves (Issue #1535)', async () => {
-  const f = fake({ commits: [commit(2), commit(3)], health: [live(3)] });
+  const f = fake({ commits: [commit(2), commit(3)], health: [live(1), live(3)] });
   const out = await promote(f.io, { sha: sha(3), from: sha(1), stale: 'weave promote: production lags x' }, fast);
   assert.equal(out.action, 'promoted');
   assert.deepEqual(f.kinds(), ['alert', 'push', 'check']);
@@ -274,4 +290,17 @@ test('a tracker write that throws still alerts the rejection and names the track
   const line = f.writes.at(-1)[1];
   assert.match(line, /production rejected/);
   assert.match(line, /tracker write failed: weave\.grunion\.ai answered HTTP 503/);
+});
+
+test('the production health read sends the deploy token header when the job holds the token (Issue #1650)', async () => {
+  const was = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url, init) => { sent.push([String(url), init.headers]); return new Response(JSON.stringify({ ok: true, name: 'weave' })); };
+  try {
+    await realIO({ PROD_DEPLOY_TOKEN: 'p'.repeat(40) }).health();
+    await realIO({}).health();
+  } finally { globalThis.fetch = was; }
+  assert.equal(sent[0][0], 'https://weave.grunion.ai/api/health');
+  assert.equal(sent[0][1]['x-weave-deploy-token'], 'p'.repeat(40), 'the supervisor answers its block to the token only');
+  assert.equal('x-weave-deploy-token' in sent[1][1], false, 'no token, no header');
 });
