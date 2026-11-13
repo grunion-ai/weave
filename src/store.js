@@ -69,8 +69,10 @@ CREATE TRIGGER IF NOT EXISTS changes_on_update AFTER UPDATE ON entities BEGIN IN
 CREATE TRIGGER IF NOT EXISTS changes_on_delete AFTER DELETE ON entities BEGIN INSERT INTO changes (entity_id) VALUES (old.id); END;
 `;
 
-const LOAD_ORDER = {
-  automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
+const LOAD = {
+  spaces: 'SELECT id, json FROM spaces',
+  tables: 'SELECT id, json FROM tables',
+  automations: "SELECT id, json FROM automations ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
 };
 
 const UNDO_CAP = 200;
@@ -273,7 +275,7 @@ export class Store {
     const cache = { meta: metaRow.json };
     for (const [key, held = {}] of [['spaces', spaces], ['tables', tables], ['automations', automations]]) {
       const was = this.#cache[key];
-      const now = new Map(db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all().map((r) => [r.id, r.json]));
+      const now = new Map(db.prepare(LOAD[key]).all().map((r) => [r.id, r.json]));
       next[key] = {};
       for (const [id, json] of now) {
         if (was.get(id) !== json) next[key][id] = JSON.parse(json);
@@ -305,7 +307,7 @@ export class Store {
     const state = { ...JSON.parse(metaRow.json), spaces: {}, tables: {}, entities: {}, automations: {} };
     const cache = { meta: metaRow.json, spaces: new Map(), tables: new Map(), automations: new Map() };
     for (const key of ['spaces', 'tables', 'automations']) {
-      for (const row of db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all()) {
+      for (const row of db.prepare(LOAD[key]).all()) {
         state[key][row.id] = JSON.parse(row.json);
         cache[key].set(row.id, row.json);
       }
