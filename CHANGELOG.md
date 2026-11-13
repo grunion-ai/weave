@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.142 (2026-11-13)
+
+- **One draw on a cold table open** (Issue #1702): a table whose cached first page lost only its row stamps now draws once instead of twice. `WeaveGridWindow.samePage` compares the cached and fresh pages without the timestamps and authors the view does not draw; a page whose cells, counts or order moved still paints over the cached one.
+- **A failed promotion alerts even when the tracker write throws** (Issue #1651): `scripts/promote.mjs` and the sheriff's `report()` now run their tracker writes through `trackerWrite`, so a rejection or an escalation still posts to `SHERIFF_ALERT_URL` when `weave.grunion.ai` answers non-2xx, with `tracker write failed: <reason>` appended to the alert line in place of the Issue link.
+- **Theme at first paint** (Issue #1714): a dark-mode load no longer flashes the light canvas. `/theme-boot.js` sets `data-bs-theme` from the stored preference and the system scheme before any stylesheet applies, and the shell declares `color-scheme` and both `theme-color` metas.
+
 ## v0.4.141 (2026-11-12)
 
 - **Saved preferences no longer stop the sidebar from rendering** (Issue #1448): `public/prefs-core.js` reads, validates and writes every stored UI preference behind one guard, so a malformed or wrong-shaped `weave-folded-spaces` value resets that one key and the sidebar still draws, and browser storage the page is denied leaves navigation, the view pane and the theme on their defaults instead of ending boot.

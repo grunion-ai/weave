@@ -2,7 +2,7 @@
 
 `public/app.js` (11,975 lines) and `src/engine.js` (11,853 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
 
-`node scripts/region-index.mjs` generates this page at commit [`5f26f72`](https://github.com/grunion-ai/weave/tree/5f26f72384fec3af91555350dcc5f3e41601ad44), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
+`node scripts/region-index.mjs` generates this page at commit [`bd1bb75`](https://github.com/grunion-ai/weave/tree/bd1bb75adb9f66b5e494db3c198734b2f21e599d), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
 
 ## Grid behaviours
 
@@ -14,8 +14,8 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | Rows are read and the grid is drawn | `readAndDrawTable` 4892-4934, `drawDatabase` 5868-5979, `renderTable` 6396-7868 (1,473 lines, 8 regions below) |
 | A board layout takes the same route | `public/board-core.js` 1-113, `public/board-view.js` 1-341, `readAndDrawBoard` 6015-6040 |
 | Which columns are drawn | `visibleCols` 6389-6393, `gridFields` 4942-4951, `fieldVisibilityPopover` 6197-6369, `dropDrawnColumn` 6371-6380 |
-| Only the rows near the viewport are in the DOM | `public/grid-window.js` 1-40, `rewindow` 7317-7328 in `renderTable`, `paint` 7283-7316 in `renderTable`, `renderTable` 6396-7868 (1,473 lines, 8 regions below) |
-| The next page is fetched as the reader scrolls | `gridPager` 4971-5017, `WeaveGridWindow.feedFor` public/grid-window.js 25-31 |
+| Only the rows near the viewport are in the DOM | `public/grid-window.js` 1-57, `rewindow` 7317-7328 in `renderTable`, `paint` 7283-7316 in `renderTable`, `renderTable` 6396-7868 (1,473 lines, 8 regions below) |
+| The next page is fetched as the reader scrolls | `gridPager` 4971-5017, `WeaveGridWindow.feedFor` public/grid-window.js 27-33 |
 | The loading state | `gridHold` 10919-10924, `paintGridWait` 10930-10945, `showGridLoader` 10962-10976, `hideGridLoader` 10977-10981, `resetGridWait` 10982-10988 |
 | A cell rests, opens and commits | `activateCell` 2492-2512, `openCellPicker` 2483-2490, `editorFor` 4047-4382 (336 lines, 2 regions below) |
 | A commit writes and the grid catches up | `renderTable` 6396-7868 (1,473 lines, 8 regions below), `patchRows` 7365-7388 in `renderTable` |
