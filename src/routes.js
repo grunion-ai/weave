@@ -808,6 +808,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     const guarded = () => !!weave.listAccounts().length;
     if (role) role = workspaceRole(weave, viewer);
+    if (requestAccount && !share && !role && !openDoor) {
+      const ws = weave.state.meta.name;
+      const error = session
+        ? `Your account no longer reaches ${ws}: the account that added it was removed or lost its own access. Ask an architect of ${ws} for a new invite.`
+        : `This token no longer reaches ${ws}: the account that issued it was removed or lost its own access. Ask an architect of ${ws} for a new token.`;
+      if (path.startsWith('/api/')) return out(403, { error, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
+      return out(403, renderRefusalPage({
+        title: `Your access to ${ws} ended`,
+        lines: [error, 'Open one of your other workspaces, or sign in with a different account.'],
+        actions: [{ href: `${startRoot}/start?pick=1`, label: 'Find your workspaces' }, { href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
+      }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
     const viewerOn = (w) => {
       if (!w.listAccounts().length && !w.state.meta.requireAuth) return null;
       if (w === weave) return viewer;
@@ -1782,7 +1794,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (route === 'POST /api/mcp') {
           const msgs = Array.isArray(body) ? body : [body];
           const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-          const caller = { role, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+          const caller = { role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
           const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
           if (viewers.tokenWrite) {
             for (const msg of msgs) {
