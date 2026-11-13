@@ -86,7 +86,7 @@ test('store.save writes the journal row inside its own transaction', () => {
 test('a CLI write followed by a server read reparses only the changed rows', () => {
   const { path, w: server } = seeded(200);
   const row = server.findEntity('Task', '#7');
-  execFileSync(process.execPath, [CLI, '--data', path, 'update', row.id, '--values', JSON.stringify({ Name: 'Written by the CLI' })], { stdio: 'ignore' });
+  execFileSync(process.execPath, [CLI, '--data', path, 'update', row.id, '--values', JSON.stringify({ Name: 'Written by the CLI' })], { encoding: 'utf8' });
 
   const parses = parsesDuring(() => assert.equal(server.maybeRefresh(), true));
   assert.equal(nameOf(server, row.id), 'Written by the CLI');
