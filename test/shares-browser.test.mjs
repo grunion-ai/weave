@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, painted, eventually } from './lib/browser.mjs';
+import { launch, painted, eventually, headerAction } from './lib/browser.mjs';
 
 let task;
 let one;
@@ -79,7 +79,7 @@ if (s) {
     weave.mintShare({ scope: { kind: 'table', id: task.id }, label: 'whole table' });
     const page = await open(`#/entity/${one.id}`);
     try {
-      await page.locator('#main .view-header .table-share-btn').click();
+      await headerAction(page, '#main', '.table-share-btn', 'Share (Beta)');
       await page.locator('#share-pane .share-link', { hasText: 'whole table' }).waitFor();
       await page.getByRole('button', { name: 'Add link', exact: true }).click();
       assert.equal(await page.getByLabel('Link purpose', { exact: true }).locator('option').count(), 1, 'a record link only reads');
@@ -107,10 +107,10 @@ if (s) {
   test('a second page\'s share button opens its own scope over an open pane', async () => {
     const page = await open(`#/table/${task.id}?e=${one.id}`);
     try {
-      await page.locator('#main .view-header .table-share-btn').click();
+      await headerAction(page, '#main', '.table-share-btn', 'Share (Beta)');
       await painted(page, '#share-pane .share-add');
       assert.match(await page.locator('#share-pane').innerText(), /Entire table: Task/);
-      await page.locator('#dock .view-header .table-share-btn').click();
+      await headerAction(page, '#dock', '.table-share-btn', 'Share (Beta)');
       await page.waitForFunction(() => /This record: One/.test(document.querySelector('#share-pane')?.innerText ?? ''));
       assert.equal(await page.locator('#main .view-header .table-share-btn').getAttribute('aria-expanded'), 'false');
       assert.equal(await page.locator('#dock .view-header .table-share-btn').getAttribute('aria-expanded'), 'true');

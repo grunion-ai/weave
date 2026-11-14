@@ -135,7 +135,7 @@ if (s) {
 
   const slack = (page) => page.evaluate(() => {
     const path = document.querySelector('#main .crumb-path');
-    const above = (slot) => Math.round(slot.getBoundingClientRect().width - parseFloat(getComputedStyle(slot).minWidth));
+    const above = (slot) => (slot.hidden ? -1 : Math.round(slot.getBoundingClientRect().width - (parseFloat(getComputedStyle(slot).minWidth) || 0)));
     return { space: above(path.querySelector('.crumb-slot:has(> .crumb-k-space)')), cur: above(path.querySelector('.crumb-slot-cur')), path: path.clientWidth };
   });
   const phone = await phoneBrowser();
@@ -154,7 +154,7 @@ if (s) {
       const roomy = await at(599);
       const tight = await at(390);
       assert.ok(roomy.cur - tight.cur > 10, `the narrow header squeezes the current crumb: ${JSON.stringify({ roomy, tight })}`);
-      assert.ok(tight.cur > tight.space, `the current crumb keeps more room above its floor than the space crumb, which gives way first: ${JSON.stringify({ roomy, tight })}`);
+      assert.ok(tight.cur > tight.space, `the current crumb keeps more room above its floor than the space crumb, which gives way first by folding into the "…" menu (Feature #377): ${JSON.stringify({ roomy, tight })}`);
     });
   }
 

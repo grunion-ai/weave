@@ -47,7 +47,7 @@ if (s) {
           assert.ok(Math.abs(m.dots.cy - m.path.cy) <= 1, `on the breadcrumb line: ⋮ centre ${m.dots.cy}, path centre ${m.path.cy}`);
           assert.ok(Math.abs(m.dots.right - m.row.right) <= 8, `at the right end of the row: ⋮ ${m.dots.right}, row ${m.row.right}`);
           for (const c of m.controls) assert.ok(!overlaps(m.dots, c), `the ⋮ covers no toolbar control: ${JSON.stringify(c)}`);
-          if (dock >= 700) assert.ok(m.toolbarTop > m.path.bottom - 1, 'the toolbar has wrapped below the breadcrumb while the ⋮ stayed');
+          if (m.toolbarTop != null) assert.ok(m.toolbarTop < m.path.bottom, `the toolbar stays on the breadcrumb line beside the ⋮ (Feature #377): ${m.toolbarTop} vs ${m.path.bottom}`);
           await page.click('#main .view-header .dots-btn[title="Table actions"]');
           await page.waitForSelector('.chip-pop.wv-menu[role="menu"] .wv-menu-row');
         } finally { await page.close(); }
