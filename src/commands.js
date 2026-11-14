@@ -1102,7 +1102,9 @@ export const COMMANDS = [
       const { dedupe, ...input } = a.input ?? { name: a.name, values: a.values, doc: a.doc, docs: a.docs };
       if (dedupe != null && typeof dedupe !== 'boolean') throw new WeaveError('dedupe takes true or false', 'invalid');
       if (dedupe) refuseDuplicate(w, a.db, input, ctx);
-      return withSecret(w, w.createEntity(a.db, input, zoned(ctx)).id, ctx);
+      const made = w.createEntity(a.db, input, zoned(ctx));
+      if (ctx?.door === 'mcp') noteAgentRead(w, made.id, w.documentFields(w.state.tables[made.dbId]));
+      return withSecret(w, made.id, ctx);
     },
   },
   {
