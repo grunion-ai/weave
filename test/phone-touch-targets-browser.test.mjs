@@ -126,7 +126,7 @@ const s = await launch('phone touch targets', SEEDS.touch);
 
 if (s) {
   const { base, browser, table } = s;
-  const surfaceOf = (state) => ({ name: state.name, url: ROUTES[state.route].url(s, 'phone'), ready: readyOf(state, 'phone'), roots: rootsOf(state), act: state.act });
+  const surfaceOf = (state) => ({ name: state.name, url: ROUTES[state.route].url(s, 'phone'), ready: readyOf(state, 'phone'), roots: rootsOf(state), act: state.act && ((page) => state.act(page, s, 'phone')) });
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }]];
   engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
@@ -148,6 +148,7 @@ if (s) {
     const page = await open(b, profile, theme, surface);
     try {
       if (plant) await page.evaluate(plant, surface.roots[0]);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface.name} fits the phone without horizontal scrolling`);
       const seen = await page.evaluate(SWEEP, surface.roots);
       const small = seen.filter((c) => c.left + c.right < SPAN || c.up + c.down < SPAN);
       const offenders = small.map((c) => (c.over

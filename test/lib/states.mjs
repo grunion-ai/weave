@@ -142,7 +142,7 @@ function touch(weave) {
     }));
   }
   weave.setDoc(rows[0].id, 'Some body text.\n\nAnother paragraph.');
-  return { table: issues.id, row: rows[0].id, ...views(weave, issues) };
+  return { table: issues.id, row: rows[0].id, ids: rows.map((r) => r.id), ...views(weave, issues) };
 }
 
 export const WRAPPED_DESCRIPTION = [
@@ -580,19 +580,19 @@ const OVERLAY_STATES = [
     close: (page, ctx, cell) => tap(page, '#main .table-tools-btn', cell),
   },
   { name: 'view', route: 'table', cells: PHONE, root: '.table-view-popover', act: toolsThen('#main .table-view-btn') },
-  { name: 'density', route: 'table', cells: PHONE, root: '.table-density-popover', act: toolsThen('#main .table-density-btn') },
+  { name: 'density', seeds: [...MESSY, 'touch'], route: 'table', cells: PHONE, root: '.table-density-popover', act: toolsThen('#main .table-density-btn') },
   { name: 'phone-row', route: 'table', cells: PHONE, root: '.phone-row-popover', act: toolsThen('#main .eye-btn') },
-  { name: 'filters', route: 'table', cells: PHONE, root: '.table-filter-popover', act: toolsThen('#main .table-filter-btn') },
-  { name: 'sort', route: 'table', cells: PHONE, root: '.table-sort-popover', act: toolsThen('#main .table-sort-btn') },
-  { name: 'group', route: 'table', cells: PHONE, root: '.table-group-popover', act: toolsThen('#main .table-group-btn') },
+  { name: 'filters', seeds: [...MESSY, 'touch'], route: 'table', cells: PHONE, root: '.table-filter-popover', act: toolsThen('#main .table-filter-btn') },
+  { name: 'sort', seeds: [...MESSY, 'touch'], route: 'table', cells: PHONE, root: '.table-sort-popover', act: toolsThen('#main .table-sort-btn') },
+  { name: 'group', seeds: [...MESSY, 'touch'], route: 'table', cells: PHONE, root: '.table-group-popover', act: toolsThen('#main .table-group-btn') },
   { name: 'view-pane-filters', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('filters'), close: paneClose },
   { name: 'view-pane-sort', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('sort'), close: paneClose },
   { name: 'view-pane-group', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('group'), close: paneClose },
   { name: 'fields', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('fields'), close: paneClose },
   { name: 'view-pane-display', route: 'table', cells: DESKTOP, root: '#view-pane', act: paneSection('display'), close: paneClose },
   { name: 'table-menu', route: 'table', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#main .dots-btn[title="Table actions"]', cell) },
-  { name: 'share-table', route: 'table', cells: BOTH, root: '#share-pane', act: toolsThen('#main .table-share-btn'), close: shareClose },
-  { name: 'share-page', route: 'table', cells: BOTH, root: '#tray-back', act: tableMenu('New share page') },
+  { name: 'share-table', seeds: [...MESSY, 'touch'], route: 'table', cells: BOTH, root: '#share-pane', act: toolsThen('#main .table-share-btn'), close: shareClose },
+  { name: 'share-page', seeds: [...MESSY, 'touch'], route: 'table', cells: BOTH, root: '#tray-back', act: tableMenu('New share page') },
   {
     name: 'name-field-editor', route: 'table', cells: DESKTOP, root: '#tray-back',
     async act(page, ctx, cell) {
@@ -616,12 +616,12 @@ const OVERLAY_STATES = [
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Record actions"]`, cell) },
-  { name: 'share-row', route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
+  { name: 'share-row', seeds: [...MESSY, 'touch'], route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
   { name: 'date-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
   { name: 'range-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Window"] .date-pick-btn`, cell) },
-].map((o) => ({ ...o, open: 'overlay', layout: o.route === 'table' ? 'table' : null, seeds: MESSY }));
+].map((o) => ({ ...o, open: 'overlay', layout: o.route === 'table' ? 'table' : null, seeds: o.seeds ?? MESSY }));
 
 const A11Y_STATES = [
   { name: 'Task table', route: 'table', open: 'rest', layout: 'table' },

@@ -2598,7 +2598,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
     .wv-act-row, button.wv-act-subject, .wv-act-icon, .wv-act-filters button, .tray-close, .tray-actions .btn, .tray-body :is(.form-control, .form-select),
     .picker-search, .picker-pop :is(.picker-box, .picker-row), .date-pop .form-control-sm, .date-pop-arrow, .date-pop-title, .date-day, .date-pop-link,
     .opt-row :is(.opt-grip, .opt-name, .opt-del, .opt-color), .opt-list .opt-add, .entity-body > .attach-block .opt-grip, .related-head .opt-grip,
-    .table-control-popover :is(.chip-pop-row, .filter-chip, .seg-opt, .view-tab, .field-reorder-handle),
+    .table-control-popover :is(.chip-pop-row, .filter-chip, .seg-opt, .view-tab, .field-reorder-handle, .btn, .vp-add-level),
     .phone-row-popover :is(.phone-row-field, .field-reorder-handle, .chip-pop-row, .seg-opt),
     :is(.table-view-popover, #view-pane) :is(.view-grip, .view-layout .seg-opt, .board-preset),
     #sidebar :is(.search-like, .nav-db, .nav-space, .nav-caret, button.btn-icon, .nav-db-menu .dots-btn, .nav-space-menu .dots-btn, .nav-pinned .btn, .ws-wordmark),
@@ -2606,13 +2606,14 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
     .wv-schema > summary, .entity-body :is(.block-head, .doc-section-head), .entity-files-make, .entity-fields .fieldrow, .entity-fields .fieldrow > .text-dressed,
     .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit, .url-link, .url-edit),
     .bug-cat, .bug-mail, .bug-send, .av-pick:has(.head-av), #page-loader .loader-retry, .doc-editor .vditor-toolbar.wv-bar-dock button,
-    .document-inline-options .doc-anchor, .share-link-actions button, #cmdk-results .result, #cmdk .copy-btn
+    .document-inline-options .doc-anchor, #share-pane .btn, .share-link-actions button, #cmdk-results .result, #cmdk .copy-btn
   ):not(input[type="checkbox"], input[type="radio"]) { min-inline-size: var(--wv-hit); min-block-size: var(--wv-hit); }
   .date-grid .date-day { min-inline-size: auto; }
   .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
   .nav-db-menu .dots-btn::after, .nav-space-menu .dots-btn::after, td.pid-cell a.open-link::after { width: max(100%, var(--wv-hit)); height: max(100%, var(--wv-hit)); }
   .wv-disclosure::after { width: var(--wv-hit); height: var(--wv-hit); }
   .crumb-copy::after, .crumb-more::after, .dots-btn::after, .table-share-btn::after, .date-pick-btn::after, .view-desc-more::after, .entity-fields .fieldrow button.k::after, .doc-anchor.permalink-copy::after,
+  .table-filter-popover .filter-chip .form-check-input::before,
   .list-fold::after, .tile-pick > input::after {
     content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, var(--wv-hit)); height: max(100%, var(--wv-hit)); transform: translate(-50%, -50%); }
   .crumb-item::after { content: ''; position: absolute; left: 0; top: 50%; width: 100%; height: max(100%, var(--wv-hit)); transform: translateY(-50%); }
