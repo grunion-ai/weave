@@ -160,7 +160,7 @@ function refuseDuplicate(w, dbRef, input, ctx) {
 
 const queryOptions = (a) => ({
   where: a.where ?? [], sort: a.sort ?? [], limit: toolLimit(a.limit),
-  offset: nonNegativeInteger('offset', a.offset), select: a.select ?? null, fields: a.fields ?? null, relations: a.relations ?? 'chip',
+  offset: a.offset, select: a.select ?? null, fields: a.fields ?? null, relations: a.relations ?? 'chip',
   includeDeleted: a.includeDeleted == null ? null : Boolean(a.includeDeleted),
   trashCount: Boolean(a.trashCount), countAll: Boolean(a.countAll), search: a.search ?? '', view: a.view ?? null,
   groupBy: a.groupBy ?? null, shape: a.shape ?? 'lean',
@@ -168,7 +168,7 @@ const queryOptions = (a) => ({
 const TOOL_SHAPES = ['lean', 'row', 'full'];
 function toolLimit(value) {
   if (value == null) return QUERY_PAGE;
-  const n = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  const n = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
   if (Number.isInteger(n) && n >= 0 && n <= QUERY_CAP) return n;
   throw new WeaveError(`weave_query reads at most ${QUERY_CAP} rows a call (got limit ${JSON.stringify(value)}); read more as a cursor: pass each answer's nextOffset as offset until the answer has none`, 'invalid');
 }
