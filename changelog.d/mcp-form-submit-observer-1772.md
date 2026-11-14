@@ -1,0 +1,1 @@
+- `weave_form_submit` over MCP now admits an observer, as `POST /api/forms/:id/submit` does; both doors read one role declaration and the form's own floor still decides (Issue #1772).

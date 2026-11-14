@@ -459,6 +459,7 @@ function plainRow(form, picked, actor, server) {
   return { input: { ...(name != null ? { name } : {}), values, ...(Object.keys(docs).length ? { docs } : {}) }, extra: {} };
 }
 
+export const FORM_MIN_ROLE = { submit: 'observer', manage: 'architect' };
 export function submitForm(w, ref, input = {}, options = {}) {
   return unrestricted(() => submitFormIn(w, ref, input, options));
 }

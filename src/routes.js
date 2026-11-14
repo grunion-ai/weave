@@ -11,7 +11,7 @@ import { markdownToPdf } from './pdf.js';
 const deckModule = () => import('./deck.js');
 import { handleMcpMessage, mayAdminister, toolTable, QUERY_PAGE, toolWrites } from './mcp.js';
 import { workspaceSlug, slugOfHost, slugTaken } from './workspace-name.js';
-import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
+import { createForm, updateForm, getFormDefinition, getForm, listForms, submitForm, FORM_MIN_ROLE, ensureBugForm, formAdmits, renderFormPage, leaveWorkspace, isDocsWorkspace, refuseOnDocs } from './forms.js';
 import { renderAuthPage, renderRefusalPage, renderMcpDoorPage, sameOriginPath } from './auth-page.js';
 import { CLIENT_FAULTS } from './oidc.js';
 import { PRIVACY, TERMS, SUPPORT, AGENT_DOCS } from './legal.js';
@@ -883,7 +883,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         } catch { return false; }
       })();
       const owns = !!hit?.cmd.owns?.(weave, hit.params);
-      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
+      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || (/^\/api\/forms\/[^/]+\/submit$/.test(path) && RANKS.get(cap) >= RANKS.get(FORM_MIN_ROLE.submit)));
       if (RANKS.get(cap) < RANKS.get(need) && !owns && !submits) {
         if (unseated) return out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
         return deny(role ? 403 : 401, `${m2} ${path} needs an ${need} on this workspace${role ? `; your role here is ${cap}` : ': send a token or sign in'}`);
