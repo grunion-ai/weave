@@ -1,0 +1,1 @@
+- **Rule actions read back in full** (Issue #1533): `weave_automations` and `describeAutomations` now carry the value of a set-field action and the text of append-doc and add-comment actions (and the author of a comment), cut at 200 characters with an ellipsis.

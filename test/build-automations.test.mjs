@@ -91,6 +91,25 @@ test('a re-run keeps the rule of the same name, and unknown rule keys are listed
   assert.equal(w.listAutomations().length, 1);
 });
 
+test('describeAutomations carries the value of a set-field action and the text of append-doc and add-comment, bounded', () => {
+  const w = new Weave();
+  const long = 'x'.repeat(500);
+  w.build(SPEC({
+    name: 'Many',
+    trigger: { type: 'entity-created' },
+    actions: [
+      { type: 'set-field', field: 'Done on', value: '{{Today:iso}}' },
+      { type: 'add-comment', text: 'Closed by rule', author: 'Bot' },
+      { type: 'add-comment', text: long },
+    ],
+  }));
+  const [rule] = w.describeAutomations('Work/Tasks');
+  assert.deepEqual(rule.actions[0], { type: 'set-field', field: 'Done on', value: '{{Today:iso}}' });
+  assert.deepEqual(rule.actions[1], { type: 'add-comment', text: 'Closed by rule', author: 'Bot' });
+  assert.equal(rule.actions[2].type, 'add-comment');
+  assert.ok(rule.actions[2].text.length < 300, String(rule.actions[2].text.length));
+  assert.match(rule.actions[2].text, /…$/);
+});
 test('a rule that is not an object, or names no actions, is an error at its path', () => {
   const w = new Weave();
   const r = w.build(SPEC('stamp it'), { dryRun: true });
