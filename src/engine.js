@@ -9207,6 +9207,14 @@ export class Weave {
     return a === b || String(a) === String(b);
   }
 
+  #storesDate(db, f, resolved) {
+    if (f.type === 'date') return true;
+    if (typeof resolved !== 'string') return false;
+    if (f.type === 'formula') return Boolean(f.config.grain);
+    if (f.type !== 'rollup') return false;
+    const agg = f.config.aggregate;
+    return (agg === 'min' || agg === 'max') && this.#rollupTarget(db, f).targetField?.type === 'date';
+  }
   #pathValue(e, db, path, { undressed = false, numbers = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
@@ -9227,7 +9235,7 @@ export class Weave {
         if (isLast) {
           const bare = undressed || numbers;
           results.push(bare && typeof resolved === 'number' ? resolved
-            : bare && f.type === 'date' ? resolved
+            : bare && this.#storesDate(cdb, f, resolved) ? resolved
             : bare && f.type === 'daterange' ? DG.rangeKey(resolved)
             : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
             : this.#displayValue(cdb, f, resolved, ce));
