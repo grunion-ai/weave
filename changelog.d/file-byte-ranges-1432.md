@@ -1,0 +1,1 @@
+- **File downloads honour byte ranges** (Issue #1432): `GET /api/files/:id` sends `Accept-Ranges: bytes`, answers one satisfiable range with 206 and `Content-Range`, an unsatisfiable one with 416, and a multi-range or malformed request with the full 200, so video, audio and PDF viewers can seek.
