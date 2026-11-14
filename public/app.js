@@ -5882,13 +5882,18 @@ function paintTableChrome(db) {
   if (!main) return;
   const chrome = tableChrome(db, 0);
   main.wvTable = chrome;
+  teardownGrid(main);
   main.replaceChildren(chrome.header);
   syncPhoneBar();
   scheduleSkeleton(isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
+function teardownGrid(host) {
+  host?.querySelector(':scope > .table-wrap')?.wvDestroy?.();
+}
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   const main = $('#main');
+  teardownGrid(main);
   let chrome = tableChromeOn(db.id);
   if (chrome && chrome.sig === tableChromeSig(db)) {
     chrome.set(db, trashCount);
@@ -6442,6 +6447,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     rewindow();
   };
   const fitWatch = new ResizeObserver(() => { fitFrame ||= requestAnimationFrame(refit); });
+  const stop = new AbortController();
 
   const SEL = () => globalThis.WeaveSelection;
   let repaintRange = () => {};
@@ -7204,7 +7210,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const end = (drop, p) => {
       if (!drag) return;
       th.dataset.gesture = '1';
-      document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
+      document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true, signal: stop.signal });
       const d = drag;
       drag = null;
       d.finish(drop, p);
@@ -7354,7 +7360,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
     if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) schedule();
   };
-  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true, signal: stop.signal });
   const scrollToRow = (i) => {
     if (!tbody?.isConnected) return;
     rewindow();
@@ -7752,7 +7758,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!wrap.isConnected) return document.removeEventListener(kind, fn);
     if (!e.clipboardData || !cellOfEvent(e) || clipboardTarget() === 'text') return;
     handle(e);
-  });
+  }, { signal: stop.signal });
   onGrid('copy', (e) => {
     const rect = rangeOrCursor();
     if (!rect) return;
@@ -7887,6 +7893,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
   requestAnimationFrame(() => { if (wrap.isConnected) settle(); });
   rewindow();
+  const destroy = () => { stop.abort(); fitWatch.disconnect(); };
+  wrap.wvDestroy = destroy;
+  return destroy;
 }
 
 

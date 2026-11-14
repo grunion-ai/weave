@@ -12,6 +12,7 @@ file changes.
 | --- | --- |
 | A table route opens and the chrome paints | `showDatabase`, `tableChrome`, `paintTableChrome`, `tableChromeOn` |
 | Rows are read and the grid is drawn | `readAndDrawTable`, `drawDatabase`, `renderTable` |
+| The grid a redraw replaces is torn down | `teardownGrid`, the `destroy` closure in `renderTable`, `wvDestroy` |
 | A board layout takes the same route | `readAndDrawBoard`, `public/board-core.js`, `public/board-view.js` |
 | Which columns are drawn | `visibleCols`, `gridFields`, `fieldVisibilityPopover`, `dropDrawnColumn` |
 | Only the rows near the viewport are in the DOM | `public/grid-window.js` (`WeaveGridWindow`), the `rewindow` and `paint` pair inside `renderTable` |
