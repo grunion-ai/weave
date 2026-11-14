@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage, atRest } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage, atRest, headerAction } from './lib/browser.mjs';
 
 const s = await launch('phone activity sheet', (weave) => {
   weave.revisionWindowMs = 0;
@@ -38,7 +38,7 @@ if (s) {
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-    await page.click('#dock .activity-btn');
+    await headerAction(page, '#dock', '.activity-btn', 'Activity');
     await page.waitForSelector('aside.wv-activity .wv-act-list');
     return page;
   };
@@ -135,7 +135,7 @@ if (s) {
           await page.goBack();
           assert.equal(await eventually(() => page.locator('aside.wv-activity').count(), 0), 0, 'Back closes the sheet');
           assert.equal(await page.locator('#dock:not([hidden]) textarea.name-edit').count(), 1, 'and leaves the row open');
-          await page.click('#dock .activity-btn');
+          await headerAction(page, '#dock', '.activity-btn', 'Activity');
           await page.waitForSelector('aside.wv-activity');
           const before = await page.evaluate(() => history.length);
           await page.click('aside.wv-activity .wv-act-close');
@@ -153,7 +153,7 @@ if (s) {
     try {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await page.click('#dock .activity-btn');
+      await headerAction(page, '#dock', '.activity-btn', 'Activity');
       await page.waitForSelector('aside.wv-activity');
       await atRest(page.locator('#side'));
       const p = await sheet(page);
