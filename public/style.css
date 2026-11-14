@@ -2037,6 +2037,7 @@ body:has(#fsv-back > .fsv-frame, #side:not([hidden]) > .wv-file-panel) .bug-fab 
 .chip-pop-title { font-size: var(--fs-meta); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-secondary); padding: 4px 6px 2px; }
 .chip-pop-note { font-size: var(--fs-meta); color: var(--tblr-secondary); padding: 4px 6px 2px; max-width: 220px; white-space: normal; }
 .foot-row .eye-label { display: flex; gap: 6px; align-items: baseline; }
+.foot-row .foot-agg { flex: 0 0 1.5em; min-width: 0; text-align: left; }
 .wv-stat-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .wv-stat-tile { display: flex; flex-direction: column; gap: 1px; min-width: 128px; padding: 8px 12px; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius-lg, 8px); background: var(--tblr-bg-surface); text-decoration: none; color: var(--tblr-body-color); }
 .wv-stat-tile:hover { border-color: var(--tblr-primary); text-decoration: none; }

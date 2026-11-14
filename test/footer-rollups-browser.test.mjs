@@ -73,6 +73,41 @@ if (s) {
     await page.close();
   });
 
+  for (const surface of ['footer', 'view pane']) {
+    test(`rollup picker labels appear once and align in the ${surface} (Issue #995)`, async () => {
+      const page = await open(`/table/${sessions.id}`);
+      try {
+        await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');
+        if (surface === 'view pane') await openPane(page, 'display');
+        const read = async (col) => {
+          if (surface === 'footer') {
+            await footCell(page, col).click();
+            await page.waitForSelector('.chip-pop .foot-row');
+          }
+          const root = surface === 'footer' ? '.chip-pop' : `#view-pane .vp-agg[data-col="${col}"]`;
+          await page.waitForSelector(`${root} .foot-row`);
+          return page.locator(`${root} .foot-row`).evaluateAll((rows) => rows.map((row) => ({
+            label: row.querySelector('.eye-label').textContent.replace(/\s+/g, ' ').trim(),
+            x: row.querySelector('.foot-name')?.getBoundingClientRect().left ?? null,
+            start: row.getBoundingClientRect().left,
+          }))).then((rows) => rows.map((row) => ({ ...row, x: row.x === null ? null : row.x - (surface === 'view pane' ? row.start : 0) })));
+        };
+        const numeric = await read('Cost');
+        assert.deepEqual(numeric.map((row) => row.label), ['Σ sum', 'avg', 'median', 'min', 'max', 'σ stdev', 'range', 'filled', 'empty']);
+        assert.ok(numeric.every((row) => row.x !== null), 'each label has a measurable name');
+        assert.ok(Math.max(...numeric.map((row) => row.x)) - Math.min(...numeric.map((row) => row.x)) < 1, 'numeric names align from the control edge');
+        if (surface === 'footer') {
+          await page.keyboard.press('Escape');
+          await page.waitForSelector('.chip-pop', { state: 'hidden' });
+        }
+        const names = await read('Name');
+        assert.deepEqual(names.map((row) => row.label), ['count of records', '≠ distinct']);
+        assert.ok(names.every((row) => row.x !== null), 'count and distinct have measurable names');
+        assert.ok(Math.abs(names[0].x - names[1].x) < 1, 'count and distinct align');
+      } finally { await page.close(); }
+    });
+  }
+
   test('the Name column carries the row count; a date column its extremes', async () => {
     const page = await open(`/table/${sessions.id}`);
     await page.waitForSelector('thead tr.wv-foot td.foot-cell.has-stats');

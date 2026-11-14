@@ -5541,7 +5541,7 @@ async function footStatLists(db, cols) {
     const paint = () => box.replaceChildren(el('div', { class: 'vp-agg-name' }, col),
       el('div', { class: 'vp-agg-rows' }, ...footAggregatesFor(db, colField(db, col)).map((agg) => el('label', { class: 'chip-pop-row eye-row foot-row', dataset: { agg } },
         el('input', { type: 'checkbox', class: 'form-check-input', ...(have(agg) ? { checked: '' } : {}), onchange: (e) => flip(agg, e.currentTarget.checked) }),
-        el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg)))));
+        footPickerLabel(db, agg)))));
     const flip = (agg, on) => {
       const turn = eyeWrites.then(async () => {
         try {
@@ -8590,6 +8590,12 @@ function addFieldMenuButton(db) {
 const FOOT_LABELS = { count: 'n', sum: 'Σ', avg: 'avg', median: 'med', min: 'min', max: 'max', stdev: 'σ', range: 'range', distinct: '≠', filled: 'filled', empty: 'empty' };
 const FOOT_NUMERIC = ['sum', 'avg', 'median', 'min', 'max', 'stdev', 'range'];
 
+function footPickerLabel(db, agg) {
+  return el('span', { class: 'eye-label' },
+    el('span', { class: 'foot-agg', 'aria-hidden': 'true' }, { sum: 'Σ', stdev: 'σ', distinct: '≠' }[agg] ?? ''), ' ',
+    el('span', { class: 'foot-name' }, agg === 'count' ? `count of ${db.term.plural}` : agg));
+}
+
 function footAggregatesFor(db, f) {
   if (!f) return [];
   if (f.role === 'name' || f.id === db.fields.find((x) => x.role === 'name')?.id) return ['count', 'distinct'];
@@ -8697,7 +8703,7 @@ async function footerPicker(anchor, db, col) {
       class: 'chip-pop-row eye-row foot-row', dataset: { agg },
       onclick: (e) => e.stopPropagation(),
     }, el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => flip(e.currentTarget) }),
-    el('span', { class: 'eye-label' }, el('span', { class: 'foot-agg' }, FOOT_LABELS[agg]), ' ', agg === 'count' ? `count of ${db.term.plural}` : agg));
+    footPickerLabel(db, agg));
   };
   const build = () => [
     el('div', { class: 'chip-pop-title' }, `${col} · space rollups`),
