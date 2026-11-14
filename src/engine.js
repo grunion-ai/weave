@@ -6565,6 +6565,60 @@ export class Weave {
     return { hit, node: node2 };
   }
 
+  #ruleRenames(db, field, to) {
+    const reg = this.#reg;
+    if (!reg.#sysTable('workflows')) return [];
+    const script = reg.#wfField('Script');
+    const names = (key) => !/^(steps|trigger)\./.test(key) && !['PublicId', 'Today', 'Today:iso'].includes(key)
+      && key.toLowerCase() === field.name.toLowerCase() && this.findField(db, key) === field;
+    const out = [];
+    for (const rule of reg.#allRules()) {
+      if (rule.owner !== this || rule.problem || !rule.trigger) continue;
+      const home = this.state.tables[rule.dbId];
+      if (!home) continue;
+      let paths = false;
+      let placeholders = false;
+      const trigger = { ...rule.trigger };
+      if (trigger.where != null) {
+        const where = this.#wherePaths(home, trigger.where, field, to);
+        if (where.hit) { paths = true; trigger.where = where.node; }
+      }
+      let actions = rule.actions;
+      if (home === db) {
+        const fill = (s) => s.replace(/\{\{([^}]+)\}\}/g, (m, key) => {
+          if (!names(key.trim())) return m;
+          placeholders = true;
+          return `{{${key.replace(key.trim(), () => to)}}}`;
+        });
+        const row = ([fid, path]) => {
+          const [head, name, ...rest] = path.split('.');
+          if (head !== 'row' || name !== field.name) return [fid, path];
+          paths = true;
+          return [fid, ['row', to, ...rest].join('.')];
+        };
+        actions = rule.actions.map((a) => {
+          const next = fillJson(a, fill);
+          return a.type === 'upsert-row' ? { ...next, fields: a.fields.map(row) } : next;
+        });
+      }
+      if (!paths && !placeholders) continue;
+      out.push({ reg, row: rule.row, name: reg.entityName(rule.row), paths, placeholders, before: rule.row.docs?.[script.id] ?? '', next: { dbId: rule.dbId, trigger, actions } });
+    }
+    return out;
+  }
+
+  #applyRuleRenames(rules) {
+    for (const r of rules) {
+      const spec = this.#renderSpec(r.next);
+      if (!spec) continue;
+      const script = r.reg.#wfField('Script');
+      r.script = workflowScript(spec);
+      r.reg.#stamp(r.row, () => { r.row.docs[script.id] = r.script; });
+      r.reg.#wfRules = null;
+      if (r.reg !== this) r.reg.save();
+    }
+  }
+
   #fieldSettings(field, to = null) {
     const out = [];
     for (const t of Object.values(this.state.tables)) {
@@ -6624,6 +6678,7 @@ export class Weave {
     let renamed = false;
     let rewritten = [];
     let settings = [];
+    let rules = [];
     if (patch.name != null) refuseReserved('field', patch.name);
     if (patch.name != null && patch.name !== field.name && field.system && db.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
     if (patch.name != null && patch.name !== field.name) {
@@ -6631,10 +6686,16 @@ export class Weave {
       if (holder && holder !== field) throw new WeaveError(`Field '${patch.name}' already exists`, 'conflict');
       rewritten = this.#formulaRenames(db, field, patch.name);
       settings = this.#fieldSettings(field, patch.name);
-      const pathed = settings.filter((s) => s.paths).map((s) => `${s.t.name}.${s.f.name}`);
+      rules = this.#ruleRenames(db, field, patch.name);
+      const pathed = [...settings.filter((s) => s.paths).map((s) => `${s.t.name}.${s.f.name}`), ...rules.filter((r) => r.paths).map((r) => r.name)];
       if (patch.name.includes('.') && pathed.length) {
         const one = pathed.length === 1;
         throw new WeaveError(`A filter path splits on '.', so it cannot name a field '${patch.name}': ${pathed.join(', ')} ${one ? 'reads' : 'read'} '${field.name}'. Pick a name without '.', or change ${one ? 'that filter' : 'those filters'} first`, 'invalid');
+      }
+      const placed = rules.filter((r) => r.placeholders).map((r) => r.name);
+      if (patch.name.includes('}') && placed.length) {
+        const one = placed.length === 1;
+        throw new WeaveError(`A {{Field}} placeholder ends at '}', so it cannot name a field '${patch.name}': ${placed.join(', ')} ${one ? 'reads' : 'read'} '${field.name}'. Pick a name without '}', or change ${one ? 'that automation' : 'those automations'} first`, 'invalid');
       }
       for (const v of db.tableViews ?? []) {
         if (v.filters?.[field.name]) { v.filters[patch.name] = v.filters[field.name]; delete v.filters[field.name]; }
@@ -6644,6 +6705,7 @@ export class Weave {
       for (const s of settings) s.f.config[s.setting] = s.after;
       field.name = patch.name;
       renamed = true;
+      this.#applyRuleRenames(rules);
     }
     if (patch.type != null && patch.type !== field.type && field.type === 'view') {
       throw new WeaveError(`The ${field.config.shape} is fixed as a view — rename or reconfigure it`, 'invalid');
@@ -6714,7 +6776,7 @@ export class Weave {
     const logged = !db.system && !this.#fieldLogQuiet && changed.length
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
         ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
-        ...(rewritten.length || settings.length ? { rewritten: [...rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })), ...settings.map(({ t, f, setting, before, after }) => ({ field: `${t.name}.${f.name}`, setting, before, after }))] } : {}),
+        ...(rewritten.length || settings.length || rules.length ? { rewritten: [...rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })), ...settings.map(({ t, f, setting, before, after }) => ({ field: `${t.name}.${f.name}`, setting, before, after })), ...rules.filter((r) => r.script).map(({ name, before, script }) => ({ automation: name, setting: 'Script', before, after: script }))] } : {}),
         ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
