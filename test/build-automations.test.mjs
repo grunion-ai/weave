@@ -91,6 +91,22 @@ test('a re-run keeps the rule of the same name, and unknown rule keys are listed
   assert.equal(w.listAutomations().length, 1);
 });
 
+test('a re-run whose rule differs from the held rule of the same name says so and keeps the held rule', () => {
+  const w = new Weave();
+  w.build(SPEC());
+  const other = { ...STAMP(), actions: [{ type: 'set-field', field: 'Done on', value: '2030-01-01' }] };
+  const again = w.build(SPEC(other), { skipExistingRows: true });
+  assert.equal(again.ok, true, JSON.stringify(again.errors));
+  assert.ok(again.existing.includes('automation Work/Tasks: Stamp the done date'));
+  assert.equal(again.ignored.length, 1, JSON.stringify(again.ignored));
+  assert.equal(again.ignored[0].path, 'spaces[0].tables[0].automations[0]');
+  assert.deepEqual(again.ignored[0].keys, ['actions']);
+  assert.match(again.ignored[0].reason, /held rule/);
+  const same = w.build(SPEC(), { skipExistingRows: true });
+  assert.deepEqual(same.ignored ?? [], []);
+  const trig = w.build(SPEC({ ...STAMP(), trigger: { type: 'entity-created' } }), { skipExistingRows: true });
+  assert.deepEqual(trig.ignored[0].keys, ['trigger']);
+});
 test('a rule whose on is not a boolean builds On and lists on under ignored with a reason', () => {
   for (const on of ['false', 0, 'off', null]) {
     const w = new Weave();

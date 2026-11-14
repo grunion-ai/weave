@@ -1,0 +1,1 @@
+- **A bare tracker export refuses to run** (Issue #1777): `scripts/export-development.mjs` with no `--from` and no path now stops and names the canonical `--from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN` command, so the local read copy at `~/.weave/weave.db` is only exported when you pass it as an explicit path.

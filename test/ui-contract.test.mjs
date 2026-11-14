@@ -739,7 +739,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
+  assert.match(APP, /class: 'crumb crumb-row crumb-row-fit' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
     'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
   assert.match(body, /grid\.classList\.toggle\('side-open', \(showsRefPanel\(db, 'References'\) && refsOut\.length > 0\) \|\| \(showsRefPanel\(db, 'Referenced by'\) && refsIn\.length > 0\)\)/,
@@ -749,7 +749,7 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
   assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
-  assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row' \}/,
+  assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row crumb-row-fit' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
   assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/,
     'the same eye popover as the table, redrawing the entity, without the table-only Rows section and with the reference panel switches');

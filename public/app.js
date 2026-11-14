@@ -1281,15 +1281,36 @@ function fitCrumbs(path, foldFrom) {
   path.querySelector(':scope > .crumb-more-slot')?.remove();
   const slots = [...path.querySelectorAll(':scope > .crumb-slot')];
   for (const sl of slots) sl.hidden = false;
+  path.querySelector(':scope > .crumb-lead')?.classList.remove('crumb-lead');
   path.classList.add('crumb-measure');
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
   const mins = slots.map((sl) => { const min = parseFloat(getComputedStyle(sl).minWidth); return Number.isNaN(min) ? Infinity : min; });
-  const room = path.clientWidth;
-  const fold = weaveBreadcrumbs.foldPlan(widths, room, { from: foldFrom, more: CRUMB_MORE_PX, mins });
-  if (weaveBreadcrumbs.foldFloor(widths, fold, { more: CRUMB_MORE_PX, mins }) > room) {
-    for (const sl of slots) sl.hidden = true;
-    return;
+  const row = path.parentElement;
+  const fit = !!row?.classList.contains('crumb-row-fit');
+  const box = getComputedStyle(path);
+  const spent = fit ? parseFloat(box.paddingLeft) + parseFloat(box.paddingRight) + (parseFloat(box.columnGap) || 0) * slots.length : 0;
+  const plan = fit ? widths.map((w, i) => (i === widths.length - 1 ? Math.min(w, mins[i]) : w)) : widths;
+  if (fit) {
+    row.classList.remove('crumb-row-tight');
+    row.classList.toggle('crumb-row-tight', plan.reduce((sum, w) => sum + w, 0) > path.clientWidth - spent);
+  }
+  const room = path.clientWidth - spent;
+  const n = slots.length;
+  let fold = weaveBreadcrumbs.foldPlan(plan, room, { from: foldFrom, more: CRUMB_MORE_PX, mins });
+  let more = true;
+  const over = weaveBreadcrumbs.foldFloor(plan, fold, { more: CRUMB_MORE_PX, mins }) > room;
+  const pair = fit && dockCoversScreen.matches && n > 2 && plan[n - 2] + plan[n - 1] <= room;
+  if (pair && (over || fold.includes(n - 2))) {
+    fold = slots.slice(0, -2).map((_, i) => i);
+    more = false;
+  } else if (over) {
+    more = fit && n > 1 && CRUMB_MORE_PX + plan[n - 1] <= room;
+    if (!more && !(fit && plan[n - 1] <= room + 0.5)) {
+      for (const sl of slots) sl.hidden = true;
+      return;
+    }
+    fold = slots.slice(0, -1).map((_, i) => i);
   }
   if (!fold.length) return;
   for (const i of fold) slots[i].hidden = true;
@@ -1299,10 +1320,24 @@ function fitCrumbs(path, foldFrom) {
     'aria-label': `${hidden.length} more on the trail`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
     onclick: (e) => { e.stopPropagation(); crumbFoldMenu(btn, hidden); },
   }, lucideEl('ellipsis'));
-  slots[fold[0]].before(el('span', { class: 'crumb-slot crumb-more-slot' },
-    el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'), btn));
+  if (more) {
+    slots[fold[0]].before(el('span', { class: 'crumb-slot crumb-more-slot' },
+      el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›'), btn));
+  }
+  path.querySelector(':scope > .crumb-slot:not([hidden])')?.classList.add('crumb-lead');
 }
 const CRUMB_MORE_PX = 40;
+function shedRows(shed, inPeek) {
+  const row = (btn, label, icon) => (btn?.isConnected ? { label, icon, run: () => btn.click() } : null);
+  return {
+    activity: row(shed?.activity, 'Activity', 'lucide:history'),
+    share: row(shed?.share, 'Share (Beta)', 'lucide:upload'),
+    pose: shed?.pose?.isConnected && !(inPeek && dockCoversScreen.matches) ? {
+      label: inPeek ? 'Expand to the full page' : 'Collapse beside the table', run: () => shed.pose.click(),
+      nodes: [el('span', { class: 'wv-icon wv-menu-icon' }, poseGlyph(!inPeek)), el('span', { class: 'wv-menu-label' }, inPeek ? 'Expand to the full page' : 'Collapse beside the table')],
+    } : null,
+  };
+}
 
 function crumbFoldMenu(btn, hidden) {
   menu(hidden.map((c) => ({
@@ -3343,7 +3378,8 @@ const MENU_ROWS = {
       undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
-  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null } = {}) => ({
+  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null, shed = null } = {}) => ({
+    ...shedRows(anchor?.closest?.('.crumb-row-tight') ? shed : null, inPeek),
     report: bugRecorder && anchor ? {
       label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
       run: () => openBugPanel(anchor),
@@ -9375,7 +9411,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     for (const fill of repaints) fill(!field);
   };
 
-  const recordCtx = () => ({ db, inPeek, onClose });
+  const shed = {};
+  const recordCtx = () => ({ db, inPeek, onClose, shed });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
   const shareBtn = sharePanelButton(() => ({ kind: 'entity', id, name: entity.name || `#${entity.publicId}`, noun: termOfTable(entity.dbId).singular, spaceId: db?.spaceId, tableIds: [entity.dbId], entityIds: [id] }));
 
@@ -9397,15 +9434,16 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       onclick: () => closeToTable(entity),
     }, iconEl('✕')),
   ] : [];
+  Object.assign(shed, { activity: activityBtn, share: shareBtn, pose: poseControls.find((b) => b.classList.contains('pose-btn')) });
   mount.append(
     kindContext(stickViewHeader(el('div', { class: 'view-header' },
-      el('div', { class: 'crumb crumb-row' },
+      el('div', { class: 'crumb crumb-row crumb-row-fit' },
         ...(inPeek ? (dockControls?.nav ?? []) : [navMenuButton(), ...navArrows(pageGo)]),
         crumbPath(inPeek
           ? (crumbs ?? weaveBreadcrumbs.dockCrumbs([entityHop(entity)]))
           : weaveBreadcrumbs.entityCrumbs($('#ws-name').textContent || 'workspace', state.trail, entityHop(entity)), {
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
-          foldFrom: inPeek ? 1 : 4,
+          foldFrom: 1,
         }),
         el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls), saveMarkFor(inPeek)),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),

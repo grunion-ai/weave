@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, headerAction } from './lib/browser.mjs';
 
 let deals, contacts, a, b, jane;
 const s = await launch('entity dock', (weave) => {
@@ -155,7 +155,7 @@ if (s) {
   test('expanding a foreign docked row lands on its own #/entity page', async () => {
     const page = await freshTablePage();
     await hopToJane(page);
-    await page.click('#dock .pose-btn');
+    await headerAction(page, '#dock', '.pose-btn', 'Expand to the full page');
     await page.waitForSelector('#main .name-edit');
     assert.equal(await page.evaluate(() => location.hash), `#/entity/${jane.id}`);
     assert.equal(await page.inputValue('#main .name-edit'), 'Jane Rivera');

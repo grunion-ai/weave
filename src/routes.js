@@ -281,6 +281,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     return { ...res, headers: { ...res.headers, 'Set-Cookie': all.length === 1 ? all[0] : all } };
   };
 
+  const byteRange = (header, size) => {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String(header ?? '').trim());
+    if (!m || (m[1] === '' && m[2] === '')) return null;
+    if (m[1] === '') {
+      const suffix = Number(m[2]);
+      return suffix === 0 || size === 0 ? 'unsatisfiable' : { first: Math.max(0, size - suffix), last: size - 1 };
+    }
+    const first = Number(m[1]);
+    const last = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+    if (m[2] !== '' && Number(m[2]) < first) return null;
+    return first >= size ? 'unsatisfiable' : { first, last };
+  };
   const respond = async (rx, jar, viewers) => {
     let path = rx.path;
     const viewerZone = rx.header('x-weave-zone') || null;
@@ -1905,7 +1917,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
               const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
               if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
               const { meta, bytes } = weave.readFile(id, { preview });
-              return out(200, bytes, { ...fileHeaders(meta, bytes, { view }), ...cache });
+              const headers = { ...fileHeaders(meta, bytes, { view }), ...cache, 'Accept-Ranges': 'bytes' };
+              const range = byteRange(rx.header('range'), bytes.length);
+              if (range === 'unsatisfiable') return out(416, '', { ...headers, 'Content-Range': `bytes */${bytes.length}` });
+              if (range) return out(206, bytes.subarray(range.first, range.last + 1), { ...headers, 'Content-Range': `bytes ${range.first}-${range.last}/${bytes.length}` });
+              return out(200, bytes, headers);
             }
             const { meta, bytes } = weave.readFile(id, { preview });
             if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Weave } from '../src/engine.js';
@@ -134,9 +133,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const previous = existsSync(out) ? JSON.parse(readFileSync(out, 'utf8')) : null;
     if (opts['token-env'] && !opts.from) throw new Error('--token-env reads a bearer token for --from; pass --from <workspace base url>');
     if (opts['token-env'] && !process.env[opts['token-env']]) throw new Error(`--token-env ${opts['token-env']}: that variable is empty`);
+    if (!opts.from && !positionals[0]) throw new Error('Nothing to export from. The canonical tracker is the source: node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN. ~/.weave/weave.db is a read copy and is only read when you pass it as an explicit path.');
     const tracker = opts.from
       ? await readHttpTracker(opts.from, opts['token-env'] ? process.env[opts['token-env']] : null)
-      : readFileTracker(positionals[0] ?? join(homedir(), '.weave', 'weave.db'));
+      : readFileTracker(positionals[0]);
     manifest = buildManifest(tracker, { version: pkg.version, generatedAt, fragments, previous, warn: (line) => console.warn(line) });
   } catch (err) {
     console.error(err.message);

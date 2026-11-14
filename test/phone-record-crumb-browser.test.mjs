@@ -20,6 +20,7 @@ const crumb = (page, scope) => page.evaluate((sc) => {
     text: cur.innerText.replace(/\s+/g, ''),
     title: cur.getAttribute('title'),
     cut,
+    folds: !!root.querySelector('.crumb-row .crumb-more'),
     trail: [...root.querySelectorAll('.crumb-row .crumb-slot:not([hidden]) .crumb-item')].filter((n) => n.getClientRects().length).map((n) => n.innerText.replace(/\s+/g, ' ').trim()),
     heading: root.querySelector('textarea.name-edit').value,
   };
@@ -54,7 +55,7 @@ if (s) {
       try {
         const c = await crumb(page, '#main');
         assert.equal(c.text, '#1');
-        assert.equal(c.trail.at(-2), 'Deal', `the table crumb comes first (${c.trail.join(' › ')})`);
+        assert.ok(c.trail.at(-2) === 'Deal' || c.folds, `the table crumb comes first, or folds into the "…" menu when the one-row header has no room (Feature #377): ${c.trail.join(' › ')}`);
         assert.deepEqual(c.cut, []);
       } finally { await page.close(); }
     });

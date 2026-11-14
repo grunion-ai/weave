@@ -616,7 +616,11 @@ const OVERLAY_STATES = [
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Record actions"]`, cell) },
-  { name: 'share-row', seeds: [...MESSY, 'touch'], route: 'entity', cells: BOTH, root: '#share-pane', act: (page, ctx, cell) => tap(page, `${scope(cell)} .view-header .table-share-btn`, cell), close: shareClose },
+  { name: 'share-row', seeds: [...MESSY, 'touch'], route: 'entity', cells: BOTH, root: '#share-pane', act: async (page, ctx, cell) => {
+    const direct = `${scope(cell)} .view-header .table-share-btn`;
+    if (await page.locator(`${direct} >> visible=true`).count()) return tap(page, direct, cell);
+    return menu(page, cell, `${scope(cell)} .view-header .crumb-actions .dots-btn`, 'Share (Beta)');
+  }, close: shareClose },
   { name: 'doc-downloads', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Description downloads"]`, cell) },
   { name: 'entity-status', route: 'entity', cells: BOTH, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Status"] .chip-trigger`, cell) },
   { name: 'date-picker', route: 'entity', cells: BOTH, root: '.date-pop', act: (page, ctx, cell) => tap(page, `${scope(cell)} .fieldrow[data-field="Due"] .date-pick-btn`, cell) },
