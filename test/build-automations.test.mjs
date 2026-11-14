@@ -110,6 +110,37 @@ test('describeAutomations carries the value of a set-field action and the text o
   assert.ok(rule.actions[2].text.length < 300, String(rule.actions[2].text.length));
   assert.match(rule.actions[2].text, /…$/);
 });
+test('a re-run whose rule differs from the held rule of the same name says so and keeps the held rule', () => {
+  const w = new Weave();
+  w.build(SPEC());
+  const other = { ...STAMP(), actions: [{ type: 'set-field', field: 'Done on', value: '2030-01-01' }] };
+  const again = w.build(SPEC(other), { skipExistingRows: true });
+  assert.equal(again.ok, true, JSON.stringify(again.errors));
+  assert.ok(again.existing.includes('automation Work/Tasks: Stamp the done date'));
+  assert.equal(again.ignored.length, 1, JSON.stringify(again.ignored));
+  assert.equal(again.ignored[0].path, 'spaces[0].tables[0].automations[0]');
+  assert.deepEqual(again.ignored[0].keys, ['actions']);
+  assert.match(again.ignored[0].reason, /held rule/);
+  const same = w.build(SPEC(), { skipExistingRows: true });
+  assert.deepEqual(same.ignored ?? [], []);
+  const trig = w.build(SPEC({ ...STAMP(), trigger: { type: 'entity-created' } }), { skipExistingRows: true });
+  assert.deepEqual(trig.ignored[0].keys, ['trigger']);
+});
+test('a rule whose on is not a boolean builds On and lists on under ignored with a reason', () => {
+  for (const on of ['false', 0, 'off', null]) {
+    const w = new Weave();
+    const r = w.build(SPEC({ ...STAMP(), on }));
+    assert.equal(r.ok, true, JSON.stringify(r.errors));
+    assert.equal(r.ignored.length, 1, String(on));
+    assert.equal(r.ignored[0].path, 'spaces[0].tables[0].automations[0]');
+    assert.deepEqual(r.ignored[0].keys, ['on']);
+    assert.match(r.ignored[0].reason, /true or false/);
+    assert.equal(w.describeAutomations('Work/Tasks')[0].enabled, true);
+  }
+  const w = new Weave();
+  const ok = w.build(SPEC({ ...STAMP(), on: true }));
+  assert.deepEqual(ok.ignored ?? [], []);
+});
 test('a rule that is not an object, or names no actions, is an error at its path', () => {
   const w = new Weave();
   const r = w.build(SPEC('stamp it'), { dryRun: true });

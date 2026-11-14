@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants, writeFileSync, renameSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, accessSync, constants, writeFileSync, renameSync, mkdirSync, rmSync, openSync, fsyncSync, closeSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { uuid } from './ids.js';
@@ -32,14 +32,26 @@ export async function streamToFileDurable(source, path, max) {
   return size;
 }
 
-export function writeFileDurable(path, bytes, options = {}) {
-  mkdirSync(dirname(path), { recursive: true });
+const REAL_FS = { mkdirSync, writeFileSync, renameSync, rmSync, openSync, fsyncSync, closeSync };
+
+export function writeFileDurable(path, bytes, options = {}, io = {}) {
+  const fs = { ...REAL_FS, ...io.fs };
+  const platform = io.platform ?? process.platform;
+  fs.mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${uuid()}.tmp`;
   try {
-    writeFileSync(temporary, bytes, { ...options, flush: true });
-    renameSync(temporary, path);
+    fs.writeFileSync(temporary, bytes, { ...options, flush: true });
+    fs.renameSync(temporary, path);
+    if (platform !== 'win32') {
+      const directory = fs.openSync(dirname(path), 'r');
+      try {
+        fs.fsyncSync(directory);
+      } finally {
+        fs.closeSync(directory);
+      }
+    }
   } finally {
-    rmSync(temporary, { force: true });
+    fs.rmSync(temporary, { force: true });
   }
 }
 

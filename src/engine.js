@@ -246,6 +246,11 @@ export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fiel
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
+export function pageNumber(name, value, { negative = false } = {}) {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isInteger(n) || (n < 0 && !negative)) throw new WeaveError(`${name} must be a whole number of rows, not '${value}'`, 'invalid');
+  return n;
+}
 const describeValue = (v) => (v === null ? 'null' : Array.isArray(v) ? 'an array' : typeof v === 'object' ? 'an object' : `${typeof v} ${JSON.stringify(v)}`);
 function checkWhereNode(node, at) {
   if (Array.isArray(node)) {
@@ -3793,14 +3798,22 @@ export class Weave {
     }
 
     for (const tb of tables) {
-      const have = new Set(this.listAutomations(tb.db.id).map((a) => String(a.name).toLowerCase()));
+      const held = new Map(this.#myRules().filter((r) => r.dbId === tb.db.id).map((r) => [String(this.#reg.entityName(r.row)).toLowerCase(), r]));
+      const have = new Set(held.keys());
       listAt(`${tb.at}.automations`, tb.spec.automations).forEach((rule, k) => {
         const at = `${tb.at}.automations[${k}]`;
         if (!isObj(rule)) return fail(at, new WeaveError('A rule is an object: {name, trigger, actions, on?}', 'invalid'));
         extra(at, rule, ['name', 'trigger', 'actions', 'on']);
+        const onValid = rule.on === undefined || typeof rule.on === 'boolean';
+        if (!onValid) ignored.push({ path: at, keys: ['on'], reason: `on takes true or false, got ${JSON.stringify(rule.on)}; the rule is built On` });
         const name = String(rule.name ?? '').trim();
         if (!name) return fail(at, new WeaveError('A rule needs a name', 'invalid'));
-        if (have.has(name.toLowerCase())) { existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`); return undefined; }
+        if (have.has(name.toLowerCase())) {
+          existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`);
+          const differs = this.#ruleDiffers(held.get(name.toLowerCase()), tb.db.id, rule);
+          if (differs.length) ignored.push({ path: at, keys: differs, reason: `The held rule '${name}' differs from this spec and is kept; edit it or delete it to change it` });
+          return undefined;
+        }
         const made = step(at, () => {
           try { this.#compileSpec({ table: tb.db.id, trigger: rule.trigger, actions: rule.actions }); } catch (err) {
             throw new WeaveError(`Rule '${name}' would read Setup incomplete: ${err.message}`, 'invalid');
@@ -8993,6 +9006,8 @@ export class Weave {
   #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null, shape = 'full' } = {}, workspace = null) {
     checkQueryDocs(where, sort);
     sort = sort ?? [];
+    limit = limit == null ? null : pageNumber('limit', limit, { negative: true });
+    offset = offset == null ? 0 : pageNumber('offset', offset);
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
@@ -9202,6 +9217,14 @@ export class Weave {
     return a === b || String(a) === String(b);
   }
 
+  #storesDate(db, f, resolved) {
+    if (f.type === 'date') return true;
+    if (typeof resolved !== 'string') return false;
+    if (f.type === 'formula') return Boolean(f.config.grain);
+    if (f.type !== 'rollup') return false;
+    const agg = f.config.aggregate;
+    return (agg === 'min' || agg === 'max') && this.#rollupTarget(db, f).targetField?.type === 'date';
+  }
   #pathValue(e, db, path, { undressed = false, numbers = false } = {}) {
     const parts = String(path).split('.');
     let current = [{ e, db }];
@@ -9222,7 +9245,7 @@ export class Weave {
         if (isLast) {
           const bare = undressed || numbers;
           results.push(bare && typeof resolved === 'number' ? resolved
-            : bare && f.type === 'date' ? resolved
+            : bare && this.#storesDate(cdb, f, resolved) ? resolved
             : bare && f.type === 'daterange' ? DG.rangeKey(resolved)
             : undressed && (f.type === 'select' || f.type === 'workflow') ? this.#definitionRank(f, resolved)
             : this.#displayValue(cdb, f, resolved, ce));
@@ -10071,6 +10094,16 @@ export class Weave {
     return out;
   }
 
+  #ruleDiffers(heldRule, dbId, rule) {
+    if (!heldRule) return [];
+    let next;
+    try { next = this.#compileSpec({ table: dbId, trigger: rule.trigger, actions: rule.actions }); } catch { return []; }
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const now = this.#renderSpec({ dbId, trigger: heldRule.trigger, actions: heldRule.actions });
+    const want = this.#renderSpec(next);
+    if (!now || !want) return [];
+    return ['trigger', 'actions'].filter((k) => !same(now[k], want[k]));
+  }
   #myRules() { return this.#reg.#allRules().filter((r) => r.owner === this); }
 
   listAutomations(dbRef = null) {

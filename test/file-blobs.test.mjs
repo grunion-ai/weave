@@ -251,6 +251,42 @@ test('writeFileDurable removes its temp file when the rename cannot land', () =>
   assert.deepEqual(readdirSync(dir), ['occupied'], 'the failed write left its temp file behind');
 });
 
+for (const [platform, expected] of [
+  ['darwin', ['write', 'rename', 'open:/d', 'fsync:fd', 'close:fd', 'rm']],
+  ['linux', ['write', 'rename', 'open:/d', 'fsync:fd', 'close:fd', 'rm']],
+  ['win32', ['write', 'rename', 'rm']],
+]) {
+  test(`writeFileDurable fsyncs the parent directory after the rename on ${platform}`, () => {
+    const calls = [];
+    const fs = {
+      mkdirSync: () => {},
+      writeFileSync: () => calls.push('write'),
+      renameSync: () => calls.push('rename'),
+      openSync: (dir) => (calls.push(`open:${dir}`), 'fd'),
+      fsyncSync: (fd) => calls.push(`fsync:${fd}`),
+      closeSync: (fd) => calls.push(`close:${fd}`),
+      rmSync: () => calls.push('rm'),
+    };
+    writeFileDurable('/d/blob.bin', Buffer.from('x'), {}, { fs, platform });
+    assert.deepEqual(calls, expected);
+  });
+}
+
+test('writeFileDurable closes the directory handle when its fsync fails', () => {
+  const calls = [];
+  const fs = {
+    mkdirSync: () => {},
+    writeFileSync: () => {},
+    renameSync: () => {},
+    openSync: () => 'fd',
+    fsyncSync: () => { throw new Error('EIO'); },
+    closeSync: (fd) => calls.push(`close:${fd}`),
+    rmSync: () => {},
+  };
+  assert.throws(() => writeFileDurable('/d/blob.bin', Buffer.from('x'), {}, { fs, platform: 'linux' }), /EIO/);
+  assert.deepEqual(calls, ['close:fd']);
+});
+
 test('every blob write goes through writeFileDurable, and every restore write lands through a synced rename', () => {
   const source = (file) => readFileSync(new URL(file, import.meta.url), 'utf8');
   const firstArgs = (file) => [...source(file).matchAll(/writeFileSync\(([^,)]+)/g)].map((m) => m[1].trim());

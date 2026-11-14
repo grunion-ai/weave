@@ -239,4 +239,11 @@ export async function eventually(read, want, { timeout = 10000, every = 50 } = {
   return got;
 }
 
+export async function headerAction(page, scope, selector, label) {
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+  const direct = page.locator(`${scope} .view-header ${selector} >> visible=true`);
+  if (await direct.count()) return direct.first().click();
+  await page.click(`${scope} .view-header .crumb-actions .dots-btn`);
+  await page.locator('.wv-menu >> visible=true').locator('.wv-menu-label', { hasText: label }).click();
+}
 export { openBugReport } from './bug-report.mjs';
