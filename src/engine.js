@@ -3791,14 +3791,20 @@ export class Weave {
     }
 
     for (const tb of tables) {
-      const have = new Set(this.listAutomations(tb.db.id).map((a) => String(a.name).toLowerCase()));
+      const held = new Map(this.#myRules().filter((r) => r.dbId === tb.db.id).map((r) => [String(this.#reg.entityName(r.row)).toLowerCase(), r]));
+      const have = new Set(held.keys());
       listAt(`${tb.at}.automations`, tb.spec.automations).forEach((rule, k) => {
         const at = `${tb.at}.automations[${k}]`;
         if (!isObj(rule)) return fail(at, new WeaveError('A rule is an object: {name, trigger, actions, on?}', 'invalid'));
         extra(at, rule, ['name', 'trigger', 'actions', 'on']);
         const name = String(rule.name ?? '').trim();
         if (!name) return fail(at, new WeaveError('A rule needs a name', 'invalid'));
-        if (have.has(name.toLowerCase())) { existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`); return undefined; }
+        if (have.has(name.toLowerCase())) {
+          existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`);
+          const differs = this.#ruleDiffers(held.get(name.toLowerCase()), tb.db.id, rule);
+          if (differs.length) ignored.push({ path: at, keys: differs, reason: `The held rule '${name}' differs from this spec and is kept; edit it or delete it to change it` });
+          return undefined;
+        }
         const made = step(at, () => {
           try { this.#compileSpec({ table: tb.db.id, trigger: rule.trigger, actions: rule.actions }); } catch (err) {
             throw new WeaveError(`Rule '${name}' would read Setup incomplete: ${err.message}`, 'invalid');
@@ -10069,6 +10075,16 @@ export class Weave {
     return out;
   }
 
+  #ruleDiffers(heldRule, dbId, rule) {
+    if (!heldRule) return [];
+    let next;
+    try { next = this.#compileSpec({ table: dbId, trigger: rule.trigger, actions: rule.actions }); } catch { return []; }
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const now = this.#renderSpec({ dbId, trigger: heldRule.trigger, actions: heldRule.actions });
+    const want = this.#renderSpec(next);
+    if (!now || !want) return [];
+    return ['trigger', 'actions'].filter((k) => !same(now[k], want[k]));
+  }
   #myRules() { return this.#reg.#allRules().filter((r) => r.owner === this); }
 
   listAutomations(dbRef = null) {
