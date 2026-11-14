@@ -120,3 +120,15 @@ test('append stays allowed without a base or a read (Issue #1682)', () => {
   agent.ok('weave_set_doc', { entity: row.id, markdown: 'AGENT_NOTE', mode: 'append' });
   assert.equal(w.getDoc(row.id), 'HUMAN_EDIT\n\nAGENT_NOTE');
 });
+test('an agent that creates a record with a document can replace it without a base, and a person writing in between still refuses it (Issue #1740)', () => {
+  const { w } = workspace();
+  const agent = as(w, 'mcp:agent');
+  const made = agent.ok('weave_create_entity', { db: 'Task', name: 'Made', doc: 'CREATED_TEXT' });
+  assert.deepEqual(agent.ok('weave_set_doc', { entity: made.id, markdown: 'REPLACED_TEXT' }), { ok: true, length: 13, base: hash('REPLACED_TEXT') });
+  assert.equal(w.getDoc(made.id), 'REPLACED_TEXT');
+  const other = agent.ok('weave_create_entity', { db: 'Task', name: 'Other', doc: 'CREATED_TEXT' });
+  humanWrites(w, other.id, 'HUMAN_EDIT');
+  const no = agent.refused('weave_set_doc', { entity: other.id, markdown: 'AGENT_TEXT' });
+  assert.equal(no.code, 'stale');
+  assert.equal(w.getDoc(other.id), 'HUMAN_EDIT');
+});
