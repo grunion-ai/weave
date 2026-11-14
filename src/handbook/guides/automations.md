@@ -28,6 +28,8 @@ Every rule is a row of `System/Workflows`, and the row is the whole interface to
 
 Editing the Script runs the same validation the create verb runs, because it is the create verb: a Script weave cannot compile leaves the row `Setup incomplete` and names what is wrong. The engine computes `State` and stamps `Health`, `Health Reason` and `Last Run` on every run. While a row is `Setup incomplete` and Off, its On toggle is greyed and cannot be switched on, in the grid and on the record page alike; hover it, click it or tap it on a phone and it names what is missing, the same text the `Health Reason` holds. A row whose setup breaks while it is On keeps a live toggle, so you can always switch it off. The row number is the firing order: when several rules answer the same trigger, they run top to bottom.
 
+Renaming a field rewrites every rule that names it: the trigger and action fields, a schedule `where` filter (through a relation path too), `{{Field}}` placeholders in action text and `row.Field` source paths of an `upsert-row` action. The Script shows the new name at once, and rolling the rename back puts the old one back. A new name a rule could not read is refused with the rule named: a `.` while a filter or source path names the field, a `}` while a placeholder does.
+
 A rule's own writes can fire other rules, three deep at most, so a pair of rules that write to each other stops rather than looping.
 
 ## Triggers
