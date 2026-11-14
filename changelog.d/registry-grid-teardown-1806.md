@@ -1,0 +1,1 @@
+- **Registry grid teardown on a page redraw** (Issue #1806): the space page and the home page now tear down the registry grid in their Schema disclosure before they replace the page, so a save in the Tables or Spaces registry no longer leaves an observer and three document listeners holding the table it drew.
