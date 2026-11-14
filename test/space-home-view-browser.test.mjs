@@ -143,9 +143,33 @@ if (s) {
       await page.locator('.space-home-view').click();
       await page.waitForFunction((want) => location.hash.endsWith(want), `/view/${ids.pipeline}`);
       await page.goto(`${s.base}/#/space/${ids.sales}`);
-      const opened = page.waitForResponse((r) => r.url().includes(`/api/entities/${ids.northstar}`));
-      await page.locator('.space-home-rows .space-home-row').click();
-      await opened;
+      await page.locator('.space-home-rows .space-home-row').waitFor();
+      assert.equal(await page.locator('.space-home-rows .space-home-row').count(), 1);
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes(`/api/entities/${ids.northstar}`)),
+        page.locator('.space-home-rows .space-home-row').click(),
+      ]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('two draws of one space that overlap paint one home and each recent record once', async () => {
+    const page = await open('light', 1280, ids.sales, recentsOf());
+    try {
+      await page.locator('.space-home-rows .space-home-row').waitFor();
+      await page.evaluate(() => Promise.all([route(), route()]));
+      await page.locator('.space-home-rows .space-home-row').first().waitFor();
+      assert.equal(await page.locator('.space-home').count(), 1);
+      assert.equal(await page.locator('.space-home-rows .space-home-row').count(), 1);
+      await page.route('**/api/spaces/*/home', async (held) => {
+        await page.evaluate(() => { route(); });
+        await held.continue();
+      }, { times: 1 });
+      await page.evaluate(() => route());
+      await page.locator('.space-home-rows .space-home-row').first().waitFor();
+      assert.equal(await page.locator('.space-home').count(), 1);
+      assert.equal(await page.locator('.space-home-rows .space-home-row').count(), 1);
     } finally {
       await page.close();
     }

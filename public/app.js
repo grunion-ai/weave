@@ -8724,6 +8724,7 @@ async function spaceStatTiles(space) {
 }
 
 async function showSpace(spaceId) {
+  const gen = navDraw;
   const space = state.schema.find((s) => s.spaceId === spaceId);
   if (!space) return showHome();
   state.route = { page: 'space', spaceId };
@@ -8761,10 +8762,12 @@ async function showSpace(spaceId) {
   );
   await appendRegistryPresentation(main.querySelector('.view-header'), 'spaces', spaceId, space.space);
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
-  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showSpaceLauncher(main, space);
+  if (!navOwns(gen)) return;
+  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return navOwns(gen) ? showSpaceLauncher(main, space) : undefined;
   if (!dockCoversScreen.matches) {
     const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
-    if (loaded) return mountSpaceHome(main, space);
+    if (!navOwns(gen)) return;
+    if (loaded) return mountSpaceHome(main, space, gen);
   }
   await appendSpaceDetails(main, space);
 }
