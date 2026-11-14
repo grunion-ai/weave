@@ -189,7 +189,8 @@ both themes only when it reads paint (Theme loops, below), and
 Browser suites import `playwright` at the version `.github/test-tools/package.json`
 pins. CI installs it with `npm ci --ignore-scripts --prefix .github/test-tools`
 and links `node_modules` to `.github/test-tools/node_modules`. A worktree that
-runs browser suites locally needs the same link; without one, run unit files
+runs browser suites locally needs the same link; without one the runner refuses
+the browser lane and prints that install line (Issue #1675), so run unit files
 with `--targeted` and leave the browser lane to CI.
 
 ### Scratch state

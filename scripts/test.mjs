@@ -52,9 +52,11 @@ export function readFailed(failedPath) {
 
 export const childEnv = ({ NODE_TEST_CONTEXT, ...rest } = process.env) => rest;
 
+export const PLAYWRIGHT_MISSING = 'playwright is not installed in this checkout: npm ci --prefix .github/test-tools && ln -s .github/test-tools/node_modules node_modules';
+
 export function browserProblem(env = process.env, root = ROOT) {
   let modulePath;
-  try { modulePath = createRequire(join(root, 'package.json')).resolve('playwright'); } catch { return undefined; }
+  try { modulePath = createRequire(join(root, 'package.json')).resolve('playwright'); } catch { return PLAYWRIGHT_MISSING; }
   const kind = env.WEAVE_BROWSER || 'chromium';
   const probe = `import(${JSON.stringify(pathToFileURL(modulePath).href)}).then(async (m) => { const pw = m.default || m; await (await pw[${JSON.stringify(kind)}].launch()).close(); })`
     + `.catch((e) => { process.stderr.write(String(e.message).split('\\n')[0]); process.exit(1); });`;
@@ -71,7 +73,7 @@ export function run(files, extraArgs = [], opts = {}) {
     const problem = browserCheck();
     if (problem) {
       out(`# BROWSER MISSING: ${problem}`);
-      out(`# Install it with \`npx playwright install ${process.env.WEAVE_BROWSER || 'chromium'}\` from this checkout, then rerun.`);
+      if (problem !== PLAYWRIGHT_MISSING) out(`# Install it with \`npx playwright install ${process.env.WEAVE_BROWSER || 'chromium'}\` from this checkout, then rerun.`);
       out('# RESULT red: browser missing, no lane ran');
       return 1;
     }

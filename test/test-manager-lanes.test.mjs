@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { request, fingerprint, REACHING } from '../scripts/test-manager.mjs';
 import { REACHING as SHERIFF_REACHING } from '../scripts/sheriff.mjs';
 import { lanes } from '../scripts/test.mjs';
-import { managerHarness } from './lib/fixtures.mjs';
+import { managerHarness, stubBrowserDriver } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const { ROOT, scratch, env } = managerHarness('weave-lanes-test-');
@@ -22,6 +22,7 @@ function worktree(files = {}) {
   const root = realpathSync(tempDir('weave-lanes-root-'));
   for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) write(root, `scripts/${name}`, readFileSync(join(ROOT, 'scripts', name)));
   for (const [path, body] of Object.entries(files)) write(root, path, body);
+  stubBrowserDriver(root);
   execFileSync('git', ['init', '-q'], { cwd: root });
   return root;
 }

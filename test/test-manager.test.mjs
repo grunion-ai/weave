@@ -4,16 +4,17 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSy
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { request, managerDirectory, resourceReason } from '../scripts/test-manager.mjs';
-import { managerHarness } from './lib/fixtures.mjs';
+import { managerHarness, stubBrowserDriver } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const { ROOT, scratch, env, cli, fixture } = managerHarness('weave-manager-test-');
-const driverless = realpathSync(tempDir('weave-manager-driverless-'));
-mkdirSync(join(driverless, 'scripts'));
-for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFileSync(join(driverless, 'scripts', name), readFileSync(join(ROOT, 'scripts', name)));
-execFileSync('git', ['init', '-q'], { cwd: driverless });
+const stubRoot = realpathSync(tempDir('weave-manager-stub-driver-'));
+mkdirSync(join(stubRoot, 'scripts'));
+for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFileSync(join(stubRoot, 'scripts', name), readFileSync(join(ROOT, 'scripts', name)));
+stubBrowserDriver(stubRoot);
+execFileSync('git', ['init', '-q'], { cwd: stubRoot });
 const browserCli = args => {
-  const child = spawn(process.execPath, [join(driverless, 'scripts/test.mjs'), ...args], { cwd: driverless, env });
+  const child = spawn(process.execPath, [join(stubRoot, 'scripts/test.mjs'), ...args], { cwd: stubRoot, env });
   let out = '';
   child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
   return { child, done: new Promise(resolve => child.on('close', code => resolve({ code, out }))) };
