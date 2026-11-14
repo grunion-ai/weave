@@ -243,7 +243,7 @@ export async function headerAction(page, scope, selector, label) {
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   const direct = page.locator(`${scope} .view-header ${selector} >> visible=true`);
   if (await direct.count()) return direct.first().click();
-  await page.click(`${scope} .view-header .crumb-actions .dots-btn`);
+  await page.click(`${scope} .view-header .crumb-row .dots-btn`);
   await page.locator('.wv-menu >> visible=true').locator('.wv-menu-label', { hasText: label }).click();
 }
 export { openBugReport } from './bug-report.mjs';

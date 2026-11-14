@@ -1290,10 +1290,12 @@ function fitCrumbs(path, foldFrom) {
   const fit = !!row?.classList.contains('crumb-row-fit');
   const box = getComputedStyle(path);
   const spent = fit ? parseFloat(box.paddingLeft) + parseFloat(box.paddingRight) + (parseFloat(box.columnGap) || 0) * slots.length : 0;
-  const plan = fit ? widths.map((w, i) => (i === widths.length - 1 ? Math.min(w, mins[i]) : w)) : widths;
+  const plan = fit ? widths.map((w, i) => (i === widths.length - 1 && Number.isFinite(mins[i]) ? mins[i] : w)) : widths;
   if (fit) {
     row.classList.remove('crumb-row-tight');
-    row.classList.toggle('crumb-row-tight', plan.reduce((sum, w) => sum + w, 0) > path.clientWidth - spent);
+    const acts = row.querySelector(':scope > .crumb-actions');
+    const shown = acts ? getComputedStyle(acts) : null;
+    row.classList.toggle('crumb-row-tight', !!shown && shown.display !== 'none' && shown.position !== 'fixed' && plan.reduce((sum, w) => sum + w, 0) > path.clientWidth - spent);
   }
   const room = path.clientWidth - spent;
   const n = slots.length;
@@ -1306,7 +1308,7 @@ function fitCrumbs(path, foldFrom) {
     more = false;
   } else if (over) {
     more = fit && n > 1 && CRUMB_MORE_PX + plan[n - 1] <= room;
-    if (!more && !(fit && plan[n - 1] <= room + 0.5)) {
+    if (!more && !(fit && widths[n - 1] <= room + 0.5)) {
       for (const sl of slots) sl.hidden = true;
       return;
     }
@@ -1327,6 +1329,13 @@ function fitCrumbs(path, foldFrom) {
   path.querySelector(':scope > .crumb-slot:not([hidden])')?.classList.add('crumb-lead');
 }
 const CRUMB_MORE_PX = 40;
+function tableShedRows(db, row) {
+  const share = row?.querySelector(':scope > .crumb-actions > .table-share-btn');
+  return {
+    find: row?.querySelector('.table-search') ? { label: `Search ${db.term?.plural ?? 'records'}`, icon: 'lucide:search', run: () => openTableSearch(row) } : null,
+    share: share ? { label: 'Share (Beta)', icon: 'lucide:upload', run: () => share.click() } : null,
+  };
+}
 function shedRows(shed, inPeek) {
   const row = (btn, label, icon) => (btn?.isConnected ? { label, icon, run: () => btn.click() } : null);
   return {
@@ -1427,7 +1436,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
   const box = el('div', { class: `view-header${descriptionKey ? ' view-description-toggle' : ''}` });
   const tools = actions.filter(Boolean);
   const dots = tools.at(-1)?.classList?.contains('dl-wrap') ? tools.pop() : null;
-  box.append(el('div', { class: 'crumb crumb-row' },
+  box.append(el('div', { class: 'crumb crumb-row crumb-row-fit' },
     navMenuButton(),
     crumbPath([...crumbs.map(crumbOfHref), { kind, label: title, icon, current: true }], {
       copy: {
@@ -3316,6 +3325,7 @@ const OPEN_TRASH = { label: 'Open trash', run: () => { location.hash = '#/trash'
 
 const MENU_ROWS = {
   table: (db, { anchor = null } = {}) => ({
+    ...tableShedRows(db, anchor?.closest?.('.crumb-row-tight')),
     move: db.system ? null : {
       label: 'Move to space…',
       run: () => searchPicker({

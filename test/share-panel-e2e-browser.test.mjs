@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, headerAction } from './lib/browser.mjs';
 
 const app = await launch('Share panel end-to-end', w => {
   w.createSpace({ name: 'Intake' });
@@ -103,7 +103,7 @@ if (app) {
       await owner.evaluate(t => document.documentElement.setAttribute('data-bs-theme', t), theme);
       await checkbox(rows[0]).check();
       await checkbox(rows[1]).check();
-      await owner.locator('#main .table-share-btn').click();
+      await headerAction(owner, '#main', '.table-share-btn', 'Share (Beta)');
       assert.match(await owner.locator('#share-pane').innerText(), /2 selected entries/);
       await checkbox(rows[1]).uncheck();
       const selectedUrl = await create(`Selection ${theme}`);
@@ -114,7 +114,7 @@ if (app) {
       assert.deepEqual((await recipient.locator('table tbody tr').allTextContents()).map(text => text.trim()), ['First', 'Second']);
       await owner.getByRole('button', { name: 'Close share panel', exact: true }).click();
       await checkbox(rows[0]).uncheck();
-      await owner.locator('#main .table-share-btn').click();
+      await headerAction(owner, '#main', '.table-share-btn', 'Share (Beta)');
       assert.match(await owner.locator('#share-pane').innerText(), /Entire table: Sharing/);
       const tableUrl = await create(`Table ${theme}`);
       assert.deepEqual(weave.listShares().find(g => g.label === `Table ${theme}`).scope, { kind: 'table', id: table.id });
@@ -123,9 +123,9 @@ if (app) {
       assert.equal(await recipient.locator('table tbody tr').count(), 3);
       await check(selectedUrl, rows.slice(0, 2), [rows[2]]);
       await owner.goto(`${base}/#/table/${table.id}?e=${rows[0].id}`, { waitUntil: 'networkidle' });
-      await owner.locator('#main .table-share-btn').click();
+      await headerAction(owner, '#main', '.table-share-btn', 'Share (Beta)');
       await owner.locator('#share-pane .share-add').waitFor();
-      await owner.locator('#dock .table-share-btn').click();
+      await headerAction(owner, '#dock', '.table-share-btn', 'Share (Beta)');
       assert.match(await owner.locator('#share-pane').innerText(), /This record: First/);
       assert.equal(await owner.locator('#main .table-share-btn').getAttribute('aria-expanded'), 'false');
       assert.equal(await owner.locator('#dock .table-share-btn').getAttribute('aria-expanded'), 'true');

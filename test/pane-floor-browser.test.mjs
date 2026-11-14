@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, headerAction } from './lib/browser.mjs';
 import { closePane, openPane } from './lib/view-pane.mjs';
 let issues, row;
 const s = await launch('side panes hold their floors beside a docked entity (Issue #1286)', (weave) => {
@@ -61,7 +61,7 @@ if (s) {
           await page.click('#dock .activity-btn');
           await page.waitForSelector('#side', { state: 'hidden' });
           await holds(page, 'Activity closed again');
-          await page.click('#main .table-share-btn');
+          await headerAction(page, '#main', '.table-share-btn', 'Share (Beta)');
           await page.waitForSelector('#share-pane:not([hidden])');
           await holds(page, 'with Share open');
           await page.click('#share-pane [aria-label="Close share panel"]');

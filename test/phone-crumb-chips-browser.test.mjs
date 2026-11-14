@@ -42,7 +42,7 @@ if (s) {
           if (scope === '#dock') await page.waitForSelector('#dock:not([hidden]) .crumb-row .crumb-item');
           const seen = await crumbs(page, scope);
           assert.equal(seen.theme, theme);
-          assert.ok(seen.chips.length >= (scope === '#dock' ? 1 : 2), `crumbs: ${JSON.stringify(seen.chips)}`);
+          assert.ok(seen.chips.length + (await page.locator(`${scope} .crumb-row .crumb-more`).count()) >= (scope === '#dock' ? 1 : 2), `every crumb shows as a chip or folds into the "…" chip (Feature #377): ${JSON.stringify(seen.chips)}`);
           for (const c of seen.chips) {
             assert.equal(c.height, 36, `${c.text} is ${c.height}px tall`);
             assert.equal(c.radius, '18px', `${c.text} has an 18px radius`);

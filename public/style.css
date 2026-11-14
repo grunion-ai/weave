@@ -1824,10 +1824,15 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-path { flex: 1 1 0; min-width: 0; max-width: none; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-actions { flex: none; flex-wrap: nowrap; }
 #app .crumb-row.crumb-row-tight > .crumb-actions > :is(.activity-btn, .table-share-btn, .pose-btn) { display: none; }
+#app .crumb-row.crumb-row-tight > .crumb-actions > .table-search:not(:focus-within):has(.table-search-input:placeholder-shown) { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+#app .crumb-row.crumb-row-tight > .crumb-actions .table-search-input { width: 90px; }
+}
 #app .crumb-row-fit > .crumb-path > .crumb-slot:has(> :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table)) { flex: none; min-width: auto; }
 .crumb-path > .crumb-slot.crumb-lead > .crumb-sep { display: none; }
+#app .crumb-row-fit > .crumb-path.crumb-measure > .crumb-slot { min-width: 0; }
+#app .crumb-row-fit > .crumb-path > .crumb-slot-cur.crumb-lead { min-width: 0; }
 @media (max-width: 600px) {
-  #app .crumb-row-fit > .crumb-path > .crumb-slot-cur { flex: none; min-width: max-content; }
+  #app .crumb-row-fit > .crumb-path > .crumb-slot-cur:has(.crumb-k-row > .crumb-pid) { flex: none; min-width: max-content; }
   #app .crumb-row-tight > .crumb-actions > .eye-btn { margin-inline-end: 4px; }
 }
 .crumb-sep { flex: none; padding: 0 2px; color: var(--tblr-secondary); }

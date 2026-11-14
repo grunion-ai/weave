@@ -114,7 +114,7 @@ test('every kind has exactly one definition, and the registry names them all', (
 
 test('the definitions match the target menu table', () => {
   const shape = (kind) => Object.fromEntries(core.SECTIONS.map((s) => [s, core.definition(kind)[s] ?? []]).filter(([, ids]) => ids.length));
-  assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['move', 'duplicate', 'trash'], share: ['share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
+  assert.deepEqual(shape('table'), { settings: ['icon', 'description'], organize: ['find', 'share', 'move', 'duplicate', 'trash'], share: ['share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] });
   assert.deepEqual(shape('record'), { organize: ['activity', 'share', 'pose', 'duplicate', 'report'], export: ['md', 'html', 'pdf'], delete: ['delete'] });
   assert.deepEqual(shape('doc'), { export: ['md', 'mmd', 'html', 'pdf'] });
   assert.deepEqual(shape('space'), { organize: ['trash'], delete: ['delete'] });
@@ -131,9 +131,11 @@ test('the workspace menu holds one row, Delete workspace…; invite and link pre
   assert.throws(() => core.assemble('workspace', { 'link-preview': { label: 'Link preview before sign-in', run } }), /"link-preview" is not on the workspace menu/);
 });
 
-test('Share is a header button, never a table menu row; a record menu carries it only for a condensed header (Issue #765, Feature #377)', () => {
-  assert.throws(() => core.assemble('table', { share: { label: 'Share…', run } }), /"share" is not on the table menu/);
-  assert.deepEqual(core.assemble('record', { share: { label: 'Share (Beta)', run } }).map((r) => r.id), ['share']);
+test('Share is a header button; a table or record menu carries it only for a condensed header (Issue #765, Feature #377)', () => {
+  for (const kind of ['table', 'record']) {
+    assert.deepEqual(core.assemble(kind, { share: { label: 'Share (Beta)', run } }).map((r) => r.id), ['share']);
+  }
+  assert.throws(() => core.assemble('space', { share: { label: 'Share (Beta)', run } }), /"share" is not on the space menu/);
 });
 
 test('table description creation and field settings occupy the settings section', () => {
