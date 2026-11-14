@@ -137,7 +137,7 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'field editor tray', 'icon picker', 'menu', 'multi picker', 'picker sheet', 'range picker', 'search sheet']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'density', 'field editor tray', 'filters', 'group', 'icon picker', 'menu', 'multi picker', 'picker sheet', 'range picker', 'search sheet', 'share-page', 'share-row', 'share-table', 'sort']);
 });
 
 const sinkOf = (weave, handles) => {
@@ -216,4 +216,13 @@ test('the line-ending probe walks every layout at all three densities, on phone 
   }
   assert.ok(entries.filter((p) => !p.state.layout).every((p) => p.density === null), 'a page with no grid has no density to walk');
   for (const probe of ['cutoff', 'flicker', 'budgets', 'a11y', 'touch']) assert.ok(plan(probe).every((p) => p.density === null), `${probe} walks each state once`);
+});
+
+
+test('the phone tool and share overlays enter the touch sweep without a hold (Issue #1427)', () => {
+  for (const name of ['density', 'filters', 'sort', 'group', 'share-table', 'share-page', 'share-row']) {
+    for (const theme of THEMES) {
+      assert.ok(walked('touch').some((p) => p.state.name === name && p.cell === 'phone' && p.theme === theme), `${name} is touch-swept in ${theme}`);
+    }
+  }
 });

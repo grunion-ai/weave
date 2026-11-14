@@ -12,7 +12,7 @@ const PLATFORM = process.platform;
 const SECTION = FILE[PLATFORM] ?? null;
 const PHONE_STATES = STATES.filter((st) => cellsOf(st).includes('phone'));
 const SEEDED = ['touch', 'prose'];
-const seedOf = (st) => SEEDED.find((name) => seedsOf(st).includes(name));
+const seedOf = (st) => st.seeds?.includes('prose') ? 'prose' : SEEDED.find((name) => seedsOf(st).includes(name));
 const rootsFor = (st) => (st.open === 'journey' ? ['#app'] : rootsOf(st));
 const named = (list) => list.map((x) => `${x.kind}: ${x.now ? `${x.now[0]}x${x.now[1]}` : 'not drawn'} against ${x.was[0]}x${x.was[1]}`).join('\n');
 
