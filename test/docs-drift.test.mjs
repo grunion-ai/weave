@@ -172,6 +172,8 @@ test('every tool, CLI verb and vendored version a doc names outside the generate
     assert.deepEqual(staleVersions(text), [], `${file} names a vendored version security/vendor.lock.json does not pin`);
   }
   for (const page of [...GUIDES, ...FIELD_DOCS]) assert.deepEqual(unknownTools(page.doc), [], `Handbook "${page.name}" names tools src/mcp.js does not register`);
+  const REMOVED_VERBS = new Set(['`weave account invite`', '`weave account remove-credential`']);
+  for (const page of [...GUIDES, ...FIELD_DOCS]) assert.deepEqual(unknownVerbs(page.doc).filter((v) => !REMOVED_VERBS.has(v)), [], `Handbook "${page.name}" names CLI verbs weave help does not list (Issue #1765)`);
 });
 
 const PROBES = {
@@ -187,6 +189,14 @@ const PROBES = {
   "Table 'Deals' not found": (w) => w.query('Deals'),
 };
 
+test('the Handbook names every featured starter and the count of them (Issue #1766)', () => {
+  const featured = STARTERS.TEMPLATES.filter((t) => t.featured);
+  const guide = GUIDES.find((g) => g.name === 'Making a workspace your own').doc;
+  const sentence = guide.match(/see a \*\*New table\*\* button and (\w+) templates \(([^)]*)\)/);
+  assert.ok(sentence, 'the empty-workspace sentence no longer parses');
+  assert.equal(sentence[1], UNITS[featured.length], 'the page counts the featured starters wrongly');
+  assert.deepEqual(sentence[2].split(', ').map((n) => n.replace(/^and /, '').replace(/\*\*/g, '')), featured.map((t) => t.title));
+});
 test('every error the AGENTS.md Pitfalls table quotes is the text the engine answers today (Issue #1563)', () => {
   const agents = read('AGENTS.md');
   const pitfalls = agents.slice(agents.indexOf('\n### Pitfalls\n'), agents.indexOf('\n## Reference\n'));

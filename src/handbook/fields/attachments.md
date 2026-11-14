@@ -18,7 +18,7 @@ Image covers remain separate: `preview: "cover"` keeps the native header treatme
 
 `fit` — `trim` (default) shows the whole file and trims the cell to its shape, so a portrait page stands tall beside a wide screenshot; `fill` makes every cell the same box and crops the file to it. Nothing is ever stretched.
 
-Every path takes a file of up to 10 MB: the field in the browser, the REST attach routes, `weave attach` and MCP. A larger file is refused by name, with the limit in the message. The browser checks the size before it reads the file, so an oversized pick never leaves the machine, and the attach routes answer an oversized body with `413` and a JSON body whose `limit` gives the limit in bytes.
+Every path takes a file of up to 10 MB: the field in the browser, the REST attach routes, `weave file attach` and MCP. A larger file is refused by name, with the limit in the message. The browser checks the size before it reads the file, so an oversized pick never leaves the machine, and the attach routes answer an oversized body with `413` and a JSON body whose `limit` gives the limit in bytes.
 
 Each file you pick or drop shows a tile in the field at once, with its name, a progress bar and **Uploading 40%**, then **Saving** once the browser has sent it and the server is writing it. The field is `aria-busy` while any upload runs. Files in one pick or drop go up one at a time, and each is tried on its own, so one failure never stops the rest. One toast sums up a batch: "3 files uploaded." when all landed, or "2 of 3 files uploaded." with the file that was not saved and why.
 

@@ -1180,3 +1180,18 @@ test('the template use synopsis names --into, the flag the command requires (Iss
   const refused = run('template', 'use', 'Showcase', '--workspace', 'other.db');
   assert.match(`${refused.stdout}${refused.stderr}`, /template use needs --into <other\.db>/);
 });
+
+test('every flag a CLI refusal message names is in that command synopsis (Issue #1784)', () => {
+  const bare = COMMANDS.filter((c) => c.cli?.args && !c.cli.swap);
+  const checked = [];
+  for (const c of bare) {
+    const messages = [...c.cli.args.toString().matchAll(/WeaveError\((['`])((?:(?!\1).)*?)\1/g)].map((m) => m[2].replace(/\$\{(?:sub|verb)\}/g, c.cli.sub));
+    const named = new Set(messages.filter((m) => m.startsWith(`${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''} `) && /\bneeds\b/.test(m)).flatMap((m) => [...m.matchAll(/--([a-z][a-z-]*)/g)].map((f) => f[1])));
+    if (!named.size) continue;
+    const line = cliHelp(c.cli.command).split('\n').find((l) => l.startsWith(`  ${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}`) && !l.startsWith('      '));
+    assert.ok(line, `${c.name} has a synopsis line`);
+    for (const f of named) assert.ok(line.includes(`[--${f}]`), `${c.name} refuses without --${f} but its synopsis is: ${line.trim()}`);
+    checked.push(c.name);
+  }
+  for (const n of ['doc.set', 'doc.append', 'json.import', 'file.attach', 'workspace.logo.set', 'account.revoke', 'template.use']) assert.ok(checked.includes(n), `${n} is scanned`);
+});

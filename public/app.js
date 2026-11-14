@@ -6202,7 +6202,10 @@ function tableGroupButton(ref) {
     let pop;
     const rows = (db) => [tableControlHeader('Group', () => pop?.remove()), ...levelsBlock(db, 'group', (patch) => paneWrite(db, patch))];
     pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
-    if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
+    if (!pop) return;
+    const grip = MENU_SHEET.matches ? sheetGrip(pop, () => pop.remove()) : null;
+    if (grip) pop.prepend(grip);
+    pop.refresh = (db) => { pop.replaceChildren(...(grip ? [grip] : []), ...rows(db)); pop.reposition?.(); };
   });
   return btn;
 }
@@ -8729,6 +8732,7 @@ async function spaceStatTiles(space) {
 }
 
 async function showSpace(spaceId) {
+  const gen = navDraw;
   const space = state.schema.find((s) => s.spaceId === spaceId);
   if (!space) return showHome();
   state.route = { page: 'space', spaceId };
@@ -8766,10 +8770,12 @@ async function showSpace(spaceId) {
   );
   await appendRegistryPresentation(main.querySelector('.view-header'), 'spaces', spaceId, space.space);
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
-  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showSpaceLauncher(main, space);
+  if (!navOwns(gen)) return;
+  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return navOwns(gen) ? showSpaceLauncher(main, space) : undefined;
   if (!dockCoversScreen.matches) {
     const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
-    if (loaded) return mountSpaceHome(main, space);
+    if (!navOwns(gen)) return;
+    if (loaded) return mountSpaceHome(main, space, gen);
   }
   await appendSpaceDetails(main, space);
 }

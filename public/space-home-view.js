@@ -149,8 +149,8 @@ function spaceHomeOverview(space, description, { withTables }) {
   return box;
 }
 
-async function mountSpaceHome(main, space) {
-  const stillHere = () => state.route?.page === 'space' && state.route.spaceId === space.spaceId;
+async function mountSpaceHome(main, space, gen = navDraw) {
+  const stillHere = () => navOwns(gen) && state.route?.page === 'space' && state.route.spaceId === space.spaceId;
   let payload;
   try {
     payload = await api('GET', `/spaces/${space.spaceId}/home`);
