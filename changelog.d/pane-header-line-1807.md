@@ -1,1 +1,0 @@
-- A record docked beside a table now draws its header on the same line as the list header: both panes pad their top by 24px and both breadcrumb lines are 34px tall (Issue #1807).

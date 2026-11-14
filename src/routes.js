@@ -176,6 +176,1569 @@ const joinedInvite = (next) => {
 };
 const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim()).filter(Boolean).map((c) => { const i = c.indexOf('='); return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 1)]; }));
 
+const NEXT = Symbol('next');
+async function resolveWorkspaceHost(c, fromRequest) {
+  const { apexOrigin, baseDomain, clientIp, hostSuffix, hub, limited, notFound, oidc, out, paintLog, posthog, rx, scheme } = c;
+  const { path } = fromRequest;
+  if (path === '/api/paint') {
+    if (!paintLog || !rx.readBytes) return { hit: out(404, { error: 'Not found', code: 'not-found' }) };
+    if (rx.method !== 'POST') return { hit: out(405, { error: 'POST only', code: 'method-not-allowed' }, { Allow: 'POST' }) };
+    if (limited('paint', clientIp(rx)) || limited('paintAll', '*')) return { hit: out(429, { error: 'Too many paint reports: wait a minute', code: 'rate-limited' }, { 'Retry-After': '60' }) };
+    let rows;
+    try { rows = paintReports(JSON.parse(Buffer.from(await rx.readBytes(PAINT_MAX_BYTES)).toString('utf8'))); } catch (err) {
+      if (err instanceof WeaveError) return { hit: out(statusFor(err), errorBody(err)) };
+      rows = null;
+    }
+    if (!rows) return { hit: out(400, { error: 'A paint report is JSON with 1 to 10 shift or frame reports', code: 'invalid' }) };
+    for (const row of rows) paintLog(`weave: paint ${JSON.stringify(row)}`);
+    return { hit: { status: 204, headers: {}, body: '' } };
+  }
+
+  if (path === '/ingest' || path.startsWith('/ingest/')) {
+    if (!posthog || !rx.readBytes) return { hit: out(404, { error: 'Not found', code: 'not-found' }) };
+    const rest = path.slice('/ingest'.length) || '/';
+    const query = rx.searchParams?.toString();
+    const target = `${/^\/(?:static|array)\//.test(rest) ? posthog.assets : posthog.host}${rest}${query ? `?${query}` : ''}`;
+    const headers = Object.fromEntries(INGEST_HEADERS.map((h) => [h, rx.header(h)]).filter(([, v]) => v));
+    headers['x-forwarded-for'] = clientIp(rx);
+    let res;
+    try {
+      const body = ['GET', 'HEAD'].includes(rx.method) ? undefined : await rx.readBytes(INGEST_MAX_BYTES);
+      res = await fetch(target, { method: rx.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    } catch (err) {
+      if (err instanceof WeaveError) return { hit: out(statusFor(err), errorBody(err)) };
+      return { hit: out(502, { error: 'PostHog is not answering', code: 'bad-gateway' }) };
+    }
+    const kept = Object.fromEntries(['content-type', 'cache-control'].map((h) => [h, res.headers.get(h)]).filter(([, v]) => v).map(([h, v]) => [h === 'content-type' ? 'Content-Type' : 'Cache-Control', v]));
+    return { hit: { status: res.status, headers: { 'Content-Type': 'application/octet-stream', ...kept }, body: new Uint8Array(await res.arrayBuffer()) } };
+  }
+
+  let weave = hub.get(hub.defaultName);
+  let wsPrefix = '';
+  const hostSlug = slugOfHost(rx.header('host'), baseDomain);
+  let hostOrigin = null;
+  let hostWs = null;
+  if (hostSlug !== null) {
+    const holder = hub.bySlug(hostSlug);
+    if (!holder) {
+      const moved = hub.aliasOf(hostSlug);
+      const q = rx.searchParams?.toString();
+      if (moved) return { hit: { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}${hostSuffix}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' } };
+      if (oidc && rx.method === 'GET' && !path.includes('/api/')) {
+        const address = `${hostSlug}.${baseDomain}`;
+        return { hit: out(404, renderRefusalPage({
+          title: 'No workspace at this address',
+          lines: [`${address} matches no weave workspace. The name may have changed, or the address may have lost a character.`],
+          actions: [{ href: `${apexOrigin}/start?pick=1`, label: 'Find your workspaces' }],
+        }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }) };
+      }
+      return { hit: notFound({ error: 'Not found', code: 'not-found' }) };
+    }
+    weave = holder;
+    hostWs = holder;
+    hostOrigin = `${scheme}//${String(rx.header('host')).toLowerCase()}`;
+  }
+  const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
+  return { next: { hostSlug, wsM, weave, wsPrefix, hostOrigin, hostWs } };
+}
+async function openHookDoor(c, fromRequest) {
+  const { baseDomain, hostSuffix, hub, oidc, out, rx, scheme } = c;
+  const { hostOrigin, path, weave, wsPrefix } = fromRequest;
+  const hookDoor = rx.method === 'POST' ? matchRoute('POST', path) : null;
+  if (hookDoor?.cmd.http.door) {
+    let bytes = null;
+    try { bytes = rx.readBytes ? await rx.readBytes(HOOK_BODY_MAX) : Buffer.from(JSON.stringify(await rx.readBody())); } catch (err) { if (!(err instanceof WeaveError) || err.code !== 'too-large') throw err; }
+    const r = hookDoor.cmd.run(weave, hookDoor.params, { hook: { bytes, header: (n) => rx.header(n), size: Number(rx.header('content-length')) } });
+    return { hit: out(r.status, r.answer, { 'Cache-Control': 'no-store' }) };
+  }
+  if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+    if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
+      const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
+      return { hit: { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' } };
+    }
+  }
+  if (!wsPrefix && ['GET', 'HEAD'].includes(rx.method) && /^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
+    const kind = path.slice(1, 2);
+    const id = path.slice(3);
+    const servesHere = holdsLink(weave, kind, id) || (weave.registryHost && holdsLink(weave.registryHost, kind, id));
+    const holder = servesHere ? null : linkHolder(hub, kind, id);
+    if (holder && hostOrigin) {
+      return { hit: { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' } };
+    }
+    if (holder) {
+      const key = hub.list().find((x) => x.id === holder.state.meta.id)?.name ?? holder.state.meta.name;
+      return { hit: { status: 302, headers: { Location: `/w/${encodeURIComponent(key)}${path}`, 'Cache-Control': 'no-store' }, body: '' } };
+    }
+  }
+  const updateWorkspace = (patch) => {
+    const slug = patch.name != null ? workspaceSlug(patch.name) : null;
+    const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
+    if (state !== 'available') throw new WeaveError(WeaveSlugs.apiMessage(state, slug), `slug_${state}`);
+    const was = weave.state.meta.name;
+    const ws = weave.updateWorkspace(patch);
+    if (ws.name !== was) hub.rename(was, ws.name);
+    return ws;
+  };
+
+  const member = weave;
+
+  let actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
+  weave.actor = actor;
+  if (oidc?.issuer) weave.inviteIssuer = oidc.issuer;
+  return { next: { updateWorkspace, member, actor } };
+}
+async function buildPagePreviews(c, fromRequest) {
+  const { apexOrigin, baseDomain, clearCookie, hostSuffix, hub, jar, LEGACY_COOKIE, notFound, oidc, origin, out, rx, scheme } = c;
+  const { path, weave, wsPrefix } = fromRequest;
+  {
+    const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
+    if (shareM && rx.method === 'GET') {
+      if (!weave.shareByToken(shareM[1])) return { hit: out(404, 'This share link is not (or no longer) valid.') };
+      return { hit: { status: 302, headers: { Location: `${wsPrefix}/s/${shareM[1]}`, 'Cache-Control': 'no-store' }, body: '' } };
+    }
+  }
+
+  if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)) && !UUID_RE.test(path.slice(3).replace(/\/new$/, '')))) {
+    const wantsBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) && appletOn();
+    if (wantsBody && Number(rx.header('content-length') ?? 0) > MAX_BODY_BYTES) return { hit: out(413, { error: 'Body too large', code: 'too-large' }) };
+    const appletBody = wantsBody ? await rx.readBody().catch(() => ({})) : {};
+    try {
+      const hit = handleApplet({
+        weave,
+        rx: { method: rx.method, header: (n) => rx.header(n), searchParams: rx.searchParams, body: appletBody },
+        path,
+        out,
+        mount: `${wsPrefix}/t`,
+      });
+      if (hit) return { hit: hit };
+    } catch (err) {
+      const json = errorBody(err, 'error');
+      return { hit: err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json) };
+    }
+  }
+
+  const shellMarker = () => `\n<meta name="weave-workspace" content="${metaAttr(weave.state.meta.name ?? '')}">`;
+  const linkPreview = (p, { signedOut = false } = {}) => {
+    const m = p.match(/^\/([est])\/([^/]+)$/);
+    if (p !== '/' && !m) return null;
+    if (signedOut && m && !UUID_RE.test(m[2])) return null;
+    const ws = weave.state.meta;
+    const site = ws.title ?? ws.name;
+    const canonical = baseDomain && ws.name ? `${scheme}//${String(ws.name).toLowerCase()}${hostSuffix}` : null;
+    const base = canonical ?? origin ?? `http://${rx.header('host')}`;
+    const home = canonical ? '' : `/w/${ws.name || hub.defaultName}`;
+    let image = `${base}/brand/weave-mark-512.png`;
+    if (ws.logo) {
+      try {
+        const { meta: logo, bytes } = weave.getWorkspaceLogo();
+        if (RASTER.has(logoType(bytes))) image = `${base}${home}/api/workspace/logo?v=${logo.id.slice(0, 8)}`;
+      } catch {}
+    }
+    const live = (tables) => tables.reduce((n, d) => n + weave.listEntities(d.id).length, 0);
+    let title, heading, trail, detail, url, route = null, fields = [];
+    try {
+      if (!m) {
+        const tables = weave.userTables();
+        title = site;
+        detail = plainLine(ws.description) || `${count(new Set(tables.map((d) => d.spaceId)).size, 'space')} · ${count(tables.length, 'table')}`;
+        url = `${home}/`;
+      } else if (m[1] === 'e') {
+        const e = weave.getEntity(m[2]);
+        if (e.deletedAt) return null;
+        const db = weave.state.tables[e.dbId];
+        const name = weave.entityName(e).trim();
+        const ref = `${db.name} #${e.publicId}`;
+        title = clip(`${ref}${name ? ` · ${name}` : ''}`, 80);
+        heading = clip(name || ref, 80);
+        trail = [site, weave.state.spaces[db.spaceId]?.name, ref];
+        fields = weave.previewFields(e.id);
+        detail = fields.map((f) => `${f.label} ${f.value}`).join(' · ');
+        url = `/e/${e.id}`;
+        route = `${wsPrefix}/#/entity/${e.id}`;
+      } else if (m[1] === 's') {
+        const sp = Object.hasOwn(weave.state.spaces, m[2]) ? weave.state.spaces[m[2]] : null;
+        if (!sp || sp.deletedAt) return null;
+        const tables = weave.listTables(sp.id);
+        title = `${sp.name} · space`;
+        trail = [site, sp.name];
+        detail = `${count(tables.length, 'table')} · ${count(live(tables), 'record')}`;
+        url = `/s/${sp.id}`;
+        route = `${wsPrefix}/#/space/${sp.id}`;
+      } else {
+        const db = weave.listTables().find((d) => d.id === m[2]);
+        if (!db) return null;
+        const space = weave.state.spaces[db.spaceId]?.name;
+        title = `${space} / ${db.name} · table`;
+        trail = [site, space, db.name];
+        detail = count(live([db]), 'record');
+        url = `/t/${db.id}`;
+        route = `${wsPrefix}/#/table/${db.id}`;
+      }
+    } catch (err) {
+      if (err instanceof WeaveError) return null;
+      throw err;
+    }
+    const description = m ? `${trail.filter(Boolean).join(' › ')}${detail ? `\n${detail}` : ''}` : detail;
+    const tag = (attr, key, value) => `<meta ${attr}="${key}" content="${metaAttr(value)}">`;
+    const head = [
+      `<title>${escapeHtml(title === site ? site : `${title} · ${site}`)}</title>`,
+      tag('name', 'description', description),
+      tag('property', 'og:title', heading ?? title),
+      tag('property', 'og:description', description),
+      tag('property', 'og:site_name', site),
+      tag('property', 'og:url', base + url),
+      tag('property', 'og:type', m?.[1] === 'e' ? 'article' : 'website'),
+      tag('property', 'og:image', image),
+      tag('name', 'twitter:card', 'summary'),
+      ...fields.flatMap((f, i) => [tag('name', `twitter:label${i + 1}`, f.label), tag('name', `twitter:data${i + 1}`, String(f.value))]),
+    ].join('\n');
+    return { head, route };
+  };
+
+  const carried = weavePrefill.clip(rx.searchParams).query;
+  const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path + (carried ? `?${carried}` : ''))}`;
+  const wallPage = () => out(401, wallPageHtml(authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
+  const statusPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/status' || path === '/status/');
+  const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs');
+  const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
+  const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
+  const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
+  const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || statusPage || previewLogo || startDoor || formDoor
+    || (['GET', 'HEAD'].includes(rx.method) && (/\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));
+  let role = null;
+  let session = null;
+  let accountName = null;
+  let requestAccount = null;
+  const cookies = parseCookies(rx.header('cookie'));
+  if (cookies[LEGACY_COOKIE]) jar.push(clearCookie(LEGACY_COOKIE, rx));
+  const startRoot = baseDomain ? apexOrigin : '';
+  return { next: {
+    shellMarker, linkPreview, authHref, wallPage, wall, statusPage, legalPage, startDoor, openDoor, cookies, startRoot, role, session, accountName,
+    requestAccount,
+  } };
+}
+async function buildStartHelpers(c, fromRequest) {
+  const {
+    baseDomain, billing, cookieName, hostSuffix, hub, jar, LEGACY_COOKIE, oidc, openSignup, originFor, out, prune, rx, scheme, secureFlag, sessionCookie,
+    starts,
+  } = c;
+  const { cookies, hostOrigin, path, weave, wsPrefix } = fromRequest;
+  const startReturn = (back) => sameOriginPath(back, originFor(rx), null) === back && (WORKSPACE_LINK.test(back) || START_LINK.test(back) || inviteLink(back));
+  const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
+  const findWorkspaces = (logins) => {
+    const all = hub.entries();
+    const live = all.filter(([, w]) => !w.state.meta.deletedAt);
+    const accountFor = (w, me) => w.accountForIdentity(me);
+    const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
+    const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
+    const title = (name, w) => w.state.meta.title ?? name;
+    const seenOn = (w, account) => w.listSessions(account.id)[0]?.lastSeenAt ?? null;
+    const logoOf = (name, w) => (w.state.meta.logo ? `/api/start/logo/${encodeURIComponent(name)}?v=${w.state.meta.logo.id.slice(0, 8)}` : null);
+    const rows = [
+      ...live.filter(([, w]) => opener(w))
+        .map(([name, w]) => {
+          const me = opener(w);
+          const account = accountFor(w, me);
+          return { kind: 'workspace', name, id: w.state.meta.id, title: title(name, w), login: label(me), host: baseDomain ? `${name.toLowerCase()}.${baseDomain}` : null, role: Weave.roleName(account.role), logo: logoOf(name, w), seenAt: seenOn(w, account), open: `/api/start/open/${encodeURIComponent(name)}` };
+        })
+        .sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '')),
+      ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
+        .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
+    ];
+    const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
+    const names = [...new Set([...String(cookies.wv_rail ?? '').split(',').filter((n) => available.includes(n)), ...available])];
+    const signedUp = (me) => all.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
+    const signup = openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
+    const owner = signup ?? (billing ? logins[0] ?? null : null);
+    const accountName = logins.flatMap((me) => live.map(([, w]) => accountFor(w, me)?.name)).find(Boolean) ?? logins.map((me) => me.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
+      ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
+    const unpaid = async (me) => {
+      for (const [name, w] of all) {
+        if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
+        const { plan } = await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() });
+        if (plan == null || plan === 'trial') return name;
+      }
+      return null;
+    };
+    return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, signup, owner, canCreate: !!owner, accountName, unpaid };
+  };
+  const creationAdmission = async (logins) => {
+    const found = findWorkspaces(logins);
+    const me = found.owner;
+    if (!me) return { response: out(403, { error: openSignup.on ? 'This sign-in has made as many workspaces as this server allows.' : 'Creating a workspace here needs an invite from the operator.', code: openSignup.on ? 'signup_limit' : 'signup_closed' }) };
+    if (billing) {
+      let waiting;
+      try { waiting = await found.unpaid(me); } catch (error) {
+        if (!(error instanceof BillingUnavailable)) throw error;
+        return { response: out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' }) };
+      }
+      if (waiting) {
+        const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}${hostSuffix}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
+        return { response: out(402, { error: `${waiting} is still waiting on a plan. Subscribe on its billing page before starting another workspace.`, code: 'plan-required', waiting, billing: at }) };
+      }
+    }
+    return { found, me };
+  };
+  const heldStart = async () => {
+    prune(starts);
+    const key = cookies.wv_start ? await digest(cookies.wv_start) : null;
+    const held = key ? starts.get(key) : null;
+    return held ? { key, token: cookies.wv_start, logins: held.logins } : null;
+  };
+  const holdLogin = async (who) => {
+    const held = await heldStart();
+    const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null, ...(who.name ? { name: who.name } : {}) };
+    const logins = (held?.logins ?? []).map((l) => (sameLogin(l, login) ? login : l));
+    if (!logins.some((l) => sameLogin(l, login))) logins.push(login);
+    const token = held?.token ?? newChallenge();
+    starts.set(held?.key ?? await digest(token), { logins, expiresAt: Date.now() + START_TTL_MS });
+    return { token, logins };
+  };
+  const railDomain = baseDomain ? `; Domain=.${baseDomain}` : '';
+  const railCookie = (names) => `wv_rail=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
+  const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
+  const recent = String(cookies.wv_recent ?? '').toLowerCase().split(',').filter((n) => RECENT_NAME.test(n));
+  const stampRecent = (hit) => {
+    const name = hub.entries().find(([, w]) => w === weave)?.[0]?.toLowerCase();
+    if (hit && rx.method === 'GET' && hit.status < 400 && RECENT_NAME.test(name ?? '')) {
+      const names = [...new Set([name, ...recent])].slice(0, RECENT_CAP);
+      jar.push(`wv_recent=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`);
+    }
+    return hit;
+  };
+  const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
+  const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
+  if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+    const railed = (await heldStart()) ? null : String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
+    return { hit: { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}${hostSuffix}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' } };
+  }
+  const resolved = new Map();
+  const ownSession = (w) => {
+    if (resolved.has(w)) return resolved.get(w);
+    const name = cookieName(w);
+    const own = cookies[name] ? w.verifySession(cookies[name]) : null;
+    const hit = own ? { ...own, engine: w, cookie: name } : null;
+    if (hit?.renewed) jar.push(sessionCookie(name, cookies[name], rx));
+    resolved.set(w, hit);
+    return hit;
+  };
+  const docsVisitor = (w) => {
+    if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
+    for (const name of Object.keys(cookies)) {
+      const from = name.startsWith(`${LEGACY_COOKIE}_`) ? hub.get(name.slice(LEGACY_COOKIE.length + 1)) : null;
+      const hit = from && from !== w ? ownSession(from) : null;
+      if (hit) return { ...hit, role: 'observer', visitor: true };
+    }
+    return null;
+  };
+  const docsToken = (w, token) => {
+    if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
+    const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
+    return from ? { ...from.verifyToken(token), role: 'observer', visitor: true } : null;
+  };
+  const sessionOn = (w) => ownSession(w) ?? docsVisitor(w);
+  const authz = rx.header('authorization');
+  let oauth = null;
+  let upload = null;
+  const uploadToken = /^Bearer (wvu_[A-Za-z0-9_-]+)$/i.exec(authz ?? '')?.[1];
+  return { next: {
+    startReturn, findWorkspaces, creationAdmission, heldStart, holdLogin, railCookie, clearRail, recent, stampRecent, startCookies, withCookies,
+    ownSession, docsToken, sessionOn, authz, uploadToken, oauth, upload,
+  } };
+}
+async function resolveUploadAndMcpDoors(c, fromRequest) {
+  const { deny, hub, mcpOrigin, notFound, oidc, out, prune, rx, spentUploads, uploads, uploadToken } = c;
+  let { oauth, upload } = c;
+  const { hostOrigin, path, weave, wsPrefix } = fromRequest;
+  if (uploadToken) {
+    prune(uploads);
+    prune(spentUploads);
+    upload = uploads.get(uploadToken);
+    const spent = upload ? null : spentUploads.get(uploadToken);
+    if (spent?.incomplete && path === '/api/uploads' && rx.method === 'PUT') {
+      return { hit: out(400, { error: 'The upload ended before all of its bytes arrived; prepare it again and send the whole file', code: 'incomplete-upload' }, { 'Cache-Control': 'no-store' }) };
+    }
+    if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || rx.method !== 'PUT') return { hit: deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP') };
+    uploads.delete(uploadToken);
+    spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
+    upload.engine.maybeRefresh();
+    if (upload.accountId == null) {
+      if (upload.engine.listAccounts().length) return { hit: deny(401, 'This workspace now has accounts; prepare the upload again') };
+    } else {
+      const account = upload.engine.listAccounts().find((a) => a.id === upload.accountId);
+      if (!account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id)) return { hit: deny(401, 'The upload account or sign-in link no longer exists') };
+      if (upload.engine !== weave && Weave.roleName(account.role) !== 'architect') return { hit: deny(403, 'The upload account no longer administers this workspace') };
+      oauth = { account, engine: upload.engine };
+    }
+  }
+  let mcpDoor = false;
+  if (path.startsWith('/.well-known/oauth-protected-resource') && !wsPrefix) {
+    const rest = path.slice('/.well-known/oauth-protected-resource'.length);
+    const wm = rest.match(/^\/w\/([^/]+)\/mcp$/);
+    if (!oidc || rx.method !== 'GET' || !(rest === '' || rest === '/mcp' || (wm && hub.get(wm[1])))) {
+      return { hit: notFound({ error: oidc ? 'No such protected resource' : 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' }) };
+    }
+    return { hit: out(200, {
+      resource: (hostOrigin ?? mcpOrigin(rx)) + rest,
+      authorization_servers: [oidc.issuer],
+      scopes_supported: ['profile', 'offline_access'],
+      bearer_methods_supported: ['header'],
+    }) };
+  }
+  if (path === '/.well-known/openai-apps-challenge' && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
+    const token = process.env.WEAVE_OPENAI_APPS_CHALLENGE?.trim();
+    if (!token) return { hit: notFound({ error: 'No apps challenge is configured', code: 'not-found' }) };
+    return { hit: out(200, token, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }) };
+  }
+  return { next: { mcpDoor, oauth, upload } };
+}
+async function resolveSessionRole(c, fromRequest) {
+  const { authz, clearCookie, cookieName, deny, oauth, out, rx, sessionOn, share, upload } = c;
+  const { authHref, cookies, docsToken, linkPreview, openDoor, path, startRoot, wall, wallPage, weave, wsPrefix } = fromRequest;
+  let { accountName, actor, requestAccount, role, session } = fromRequest;
+  if (share) role = null;
+  else if (authz && /^Bearer /i.test(authz) && !(upload && !oauth)) {
+    const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
+    if (!account) return { hit: path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage() };
+    weave.actor = actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
+    accountName = account.name;
+    requestAccount = account;
+    role = Weave.roleName(account.role);
+  } else if ((session = sessionOn(weave))) {
+    weave.actor = actor = actorOf(session);
+    accountName = session.name;
+    requestAccount = session;
+    role = Weave.roleName(session.role);
+  } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
+    if (weave.removedSession(cookies[cookieName(weave)])) {
+      const ws = weave.state.meta.name;
+      if (path.startsWith('/api/')) return { hit: out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' }) };
+      return { hit: out(403, renderRefusalPage({
+        title: `Your access to ${ws} was removed`,
+        lines: [`A workspace architect removed your account from ${ws}, so this browser's session there has ended.`, 'Ask an architect for a new invite link, open one of your other workspaces, or sign in with a different account.'],
+        actions: [{ href: `${startRoot}/start?pick=1`, label: 'Find your workspaces' }, { href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
+      }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }) };
+    }
+    return { hit: path.startsWith('/api/')
+      ? deny(401, 'Session expired or revoked')
+      : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' } };
+  } else if (weave.state.meta.requireAuth && !openDoor) {
+    if (path.startsWith('/api/')) return { hit: deny(401, 'This workspace requires authentication') };
+    const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
+    if (preview) return { hit: out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }) };
+    return { hit: wall() };
+  }
+  const localAccount = (w, a) => !!a && Object.hasOwn(w.state.meta.accounts ?? {}, a.accountId ?? a.id);
+  const viewerAs = (w, a) => (localAccount(w, a) ? viewerFor(a) : { accountId: null, role: Weave.roleName(a.role) ?? 'observer' });
+  let viewer = share ? { share } : role ? viewerAs(weave, { ...requestAccount, role }) : ANONYMOUS;
+  let unseated = null;
+  return { next: { localAccount, viewerAs, viewer, unseated, accountName, actor, requestAccount, role, session } };
+}
+async function buildAccessHelpers(c, fromRequest) {
+  const {
+    actor, authz, deny, guarded, localAccount, oauth, out, requestAccount, rx, seatRequired, sessionOn, share, unseated, viewer, viewerAs, viewerOn,
+    viewers,
+  } = c;
+  const { docsToken, path, role, startDoor, weave, wsPrefix } = fromRequest;
+  const seen = new Map();
+  viewers.of = (w) => {
+    if (!seen.has(w)) seen.set(w, viewerOn(w));
+    return seen.get(w);
+  };
+  const pathSpace = () => unrestricted(() => {
+    try {
+      let m2;
+      if ((m2 = path.match(/^\/api\/tables\/([^/]+)/))) return weave.findTable(decodeURIComponent(m2[1]))?.spaceId ?? null;
+      if ((m2 = path.match(/^\/api\/spaces\/([^/]+)/))) return weave.findSpace(decodeURIComponent(m2[1]))?.id ?? null;
+      if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.findTable(weave.getEntity(decodeURIComponent(m2[1])).dbId)?.spaceId ?? null;
+    } catch {}
+    return null;
+  });
+  const targetSpace = role && !share ? pathSpace() : null;
+  if (requestAccount?.space && localAccount(weave, requestAccount)) viewers.tokenWrite = { engine: weave, accountId: requestAccount.accountId ?? requestAccount.id };
+  const actorForRequest = role || share || !guarded() ? actor : 'anonymous';
+  weave.actor = actorForRequest;
+  const requestActor = role ? actorForRequest : 'anonymous';
+  const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
+  const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
+  const cap = startDoor || targetHidden ? null
+    : targetSpace ? spaceRole(weave, viewer, weave.state.spaces[targetSpace])
+      : bulkRows ? 'editor'
+        : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+  if (cap && cap !== 'architect') {
+    const m2 = rx.method;
+    const hit = matchRoute(m2, path);
+    const open = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
+      || (m2 === 'POST' && path === '/api/mcp' && !!role)
+      || (m2 === 'POST' && path === '/api/markdown');
+    const need = hit && hit.cmd.writes !== 'keystore' && !hit.cmd.http.across ? hit.cmd.minRole : open ? 'observer' : path === '/api/onboarding' ? 'architect' : 'editor';
+    const sysM = (hit ? hit.cmd.writes !== 'none' : !open) && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
+    const sysTouch = sysM && (() => {
+      try {
+        const ref = sysM[0].startsWith('/api/entities/')
+          ? weave.state.tables[weave.getEntity(sysM[1]).dbId]
+          : weave.findTable(decodeURIComponent(sysM[1]));
+        return !!ref?.system;
+      } catch { return false; }
+    })();
+    const owns = !!hit?.cmd.owns?.(weave, hit.params);
+    const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || (/^\/api\/forms\/[^/]+\/submit$/.test(path) && RANKS.get(cap) >= RANKS.get(FORM_MIN_ROLE.submit)));
+    if (RANKS.get(cap) < RANKS.get(need) && !owns && !submits) {
+      if (unseated) return { hit: out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' }) };
+      return { hit: deny(role ? 403 : 401, `${m2} ${path} needs an ${need} on this workspace${role ? `; your role here is ${cap}` : ': send a token or sign in'}`) };
+    }
+    if (cap === 'editor' && sysTouch) return { hit: deny(403, 'This token cannot change the schema') };
+  }
+  const accountOn = (w) => {
+    if (oauth) return w === oauth.engine ? oauth.account : null;
+    if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim()) ?? docsToken(w, authz.slice(7).trim());
+    return sessionOn(w);
+  };
+  const roleOn = (w) => {
+    if (w === weave) return role;
+    const account = accountOn(w);
+    return account ? workspaceRole(w, viewerAs(w, account)) : null;
+  };
+  const actorOn = (w) => w === weave ? actorForRequest : actorOf(accountOn(w)) ?? `from ${weave.state.meta.name}: ${weave.actorName(actorForRequest)}`;
+
+  const plainMention = (kind, ref) => {
+    try {
+      if (kind === 'workspace') {
+        return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
+      }
+      if (kind === 'space') {
+        const sp = weave.findSpace(ref);
+        return sp ? { href: `${wsPrefix}/#/space/${sp.id}`, label: sp.name } : null;
+      }
+      if (kind === 'table') {
+        const db = weave.findTable(ref);
+        return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
+      }
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
+        const e = weave.state.entities[ref];
+        if (!e || e.deletedAt || !weave.canSee(e.id)) return null;
+        return {
+          href: `${wsPrefix}/e/${e.id}/doc.html`,
+          label: weave.entityName(e),
+          name: weave.entityName(e),
+          home: weave.state.tables[e.dbId]?.name,
+          view: weave.renderView(e.id, 'chip'),
+          fields: weave.previewFields(e.id),
+        };
+      }
+      const m = /^(.+)#(\d+)$/.exec(ref);
+      if (!m) return null;
+      const db = weave.findTable(m[1].trim());
+      if (!db) return null;
+      const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === m[2]);
+      if (!entity) return null;
+      return {
+        href: `${wsPrefix}/e/${entity.id}/doc.html`,
+        label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
+        name: weave.entityName(entity),
+        home: db.name,
+        view: weave.renderView(entity.id, 'chip'),
+        fields: weave.previewFields(entity.id),
+      };
+    } catch {
+      return null;
+    }
+  };
+  const resolveMention = share ? scopedMention(weave, share, plainMention, `${wsPrefix}/s/${share.token}`) : plainMention;
+
+  if (rx.method === 'OPTIONS') {
+    return { hit: { status: 204, headers: { Allow: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' }, body: '' } };
+  }
+  return { next: { actorForRequest, requestActor, cap, roleOn, actorOn, resolveMention } };
+}
+async function entityExportRoutes(c, fromRequest) {
+  const { out, resolveMention, rx, serveStatic, share } = c;
+  const { linkPreview, path, shellMarker, stampRecent, weave, wsPrefix } = fromRequest;
+  let m;
+  if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
+    const entity = sharedRead(weave, share, m[1]);
+    const fieldRef = m[2] ?? null;
+    const markdown = weave.getDoc(m[1], fieldRef);
+    const docLabel = fieldRef ? ` • ${fieldRef}` : '';
+    const subtitle = `${entity.db} #${entity.publicId} • ${entity.name}${docLabel} • updated ${entity.updatedAt.slice(0, 10)}`;
+    if (m[3] === 'md') {
+      return out(200, markdown, { 'Content-Type': 'text/markdown; charset=utf-8' });
+    }
+    if (m[3] === 'mmd') {
+      return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
+    }
+    if (m[3] === 'html') {
+      if (isHtmlDocument(markdown)) return out(200, rx.searchParams.get('inline') === '1' ? viewHtml(Buffer.from(markdown), frameLinkBase(Buffer.from(markdown)) + FRAME_HEIGHT_SCRIPT) : markdown, sandboxedHtmlHeaders());
+      const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
+      return out(200, page, sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
+    }
+    const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
+    return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
+  }
+  if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
+    const entity = sharedRead(weave, share, m[1]);
+    const lines = [`# ${entity.name || '#' + entity.publicId}`, '', `${entity.db} #${entity.publicId} • updated ${entity.updatedAt.slice(0, 10)}`, '', '## Fields', '', '| Field | Value |', '|---|---|'];
+    for (const [k, v] of Object.entries(entity.fields)) {
+      if (k in entity.docs) continue;
+      const val = v == null ? '' : Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join(', ') : typeof v === 'object' ? (v.name ?? '') : String(v);
+      lines.push(`| ${k} | ${String(val).replace(/\|/g, '\\|')} |`);
+    }
+    for (const [docName, docText] of Object.entries(entity.docs)) {
+      lines.push('', '<div class="pagebreak"></div>', '', `## ${docName}`, '', docText || '_empty_');
+    }
+    if (entity.notice) lines.push('', entity.notice);
+    const md = lines.join('\n');
+    const subtitle = `${entity.db} #${entity.publicId} • full entity export`;
+    if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
+    if (m[2] === 'mmd') return out(200, md, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
+    if (m[2] === 'html') {
+      return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
+    }
+    const pdf = markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle });
+    return out(200, pdf, fileHeaders({ name: `${entity.name || 'entity'}.pdf`, mime: 'application/pdf' }, pdf));
+  }
+
+  if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
+    const { renderDeck } = await deckModule();
+    const built = renderDeck(weave, m[1], share ? { admit: (id) => withinScope(weave, share, { entityId: id }) } : {});
+    if (m[2] === 'json') {
+      return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
+    }
+    return out(200, built.html, sandboxedHtmlHeaders({ 'X-Weave-Deck-Warnings': String(built.warnings.length) }));
+  }
+
+  if ((m = path.match(/^\/t\/([^/]+)\/new$/)) && ['GET', 'HEAD'].includes(rx.method)) {
+    const preview = linkPreview(`/t/${m[1]}`);
+    if (!preview) throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
+    const q = weavePrefill.clip(rx.searchParams).query;
+    const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
+    if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
+    const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
+    if (hit) return stampRecent({ ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } });
+  }
+  if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
+    throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
+  }
+  if (['GET', 'HEAD'].includes(rx.method) && (path === '/' || m)) {
+    const preview = linkPreview(path);
+    if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
+    if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
+    const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
+    const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
+    if (hit) return m?.[1] === 's' ? hit : stampRecent(hit);
+  }
+  return NEXT;
+}
+async function formAndStatusRoutes(c, fromRequest) {
+  const {
+    apexOrigin, authz, baseDomain, billing, clerkPane, clientIp, deny, door, formClient, formFor, formLimited, isProviderReturn, limits, mcpOrigin,
+    notFound, oidc, openSignup, origin, originFor, out, posthog, requestActor, roleOn, rx, serveStatic, session, sessionOn, share, uptime, version,
+  } = c;
+  const { docsToken, findWorkspaces, heldStart, hostOrigin, hostSlug, legalPage, path, role, startReturn, startRoot, statusPage, wall, weave, wsPrefix } = fromRequest;
+  let m;
+  if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
+    const { form, admitted } = formFor(m[1]);
+    if (!admitted) return wall();
+    formClient();
+    const formParams = new URLSearchParams(rx.searchParams);
+    if (share) formParams.delete('preview');
+    return out(200, renderFormPage(form, { mount: share ? `${wsPrefix}/s/${share.token}` : wsPrefix, ...(share && rx.searchParams.get('preview') === '1' ? { submitUrl: `${wsPrefix}/s/${share.token}/api/forms/${form.id}/submit?preview=1` } : {}), searchParams: formParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  }
+
+  if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
+    if (share && rx.searchParams.get('preview') === '1') return deny(403, 'Preview does not submit entries');
+    const { form, admitted } = formFor(m[1]);
+    if (!admitted) return deny(401, 'Sign in to submit this form');
+    const ip = clientIp(rx);
+    const key = `${form.owner.state.meta.id}:${form.id}`;
+    const retry = formLimited([['server', limits.formServer ?? 1000], [`form:${key}`, limits.formTotal ?? 120], [`sender:${key}:${ip}`, limits.formSender ?? 20]]);
+    if (retry) return out(429, { error: 'Too many submissions. Try again later.', code: 'rate-limited' }, { 'Retry-After': String(retry) });
+    const signedIn = roleOn(form.owner) != null;
+    const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : actorOf((authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner)) ?? null) ?? requestActor;
+    const body = await rx.readBody();
+    const idempotencyKey = rx.header('idempotency-key') ?? body?.idempotencyKey;
+    const client = formClient();
+    if (!signedIn && idempotencyKey != null && !/^[A-Za-z0-9_-]{32,200}$/.test(idempotencyKey)) throw new WeaveError('Anonymous Idempotency-Key must contain 32 to 200 letters, digits, hyphens or underscores', 'invalid');
+    const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
+    const result = submitForm(weave, form.id, input ?? {}, {
+      actor,
+      ...(share ? { authorize: freshForm => {
+        const current = weave.shareByToken(door.token);
+        if (!current || current.mode !== 'submit' || current.formId !== freshForm.id || current.scope.id !== freshForm.tableId || !freshForm.shareOnly || freshForm.owner !== weave) throw new WeaveError('This submission link is no longer valid', 'forbidden');
+      } } : {}),
+      server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
+      idempotencyKey,
+      scope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`}`,
+      dedupScope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : `client:${client}`}`,
+    });
+    return out(result.replayed ? 200 : 201, share ? { submitted: true, ...(result.replayed ? { replayed: true } : {}), ...(result.duplicate ? { duplicate: true } : {}) } : result);
+  }
+
+  if (statusPage) {
+    const page = serveStatic?.('/status.html', rx);
+    return page ?? notFound({ error: 'Not found', code: 'not-found' });
+  }
+
+  if (path === '/auth') {
+    const startDoorAt = (next) => {
+      const q = new URLSearchParams();
+      if (next) q.set('next', next);
+      if (rx.searchParams?.get('mode') === 'signup') q.set('mode', 'signup');
+      return { status: 302, headers: { Location: `${hostOrigin ? apexOrigin : ''}/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+    };
+    const hasDoor = oidc && (baseDomain || clerkPane);
+    if (hasDoor && !hostOrigin && !wsPrefix) {
+      const asked = rx.searchParams?.get('next');
+      return startDoorAt(startReturn(asked) ? asked : null);
+    }
+    if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
+      const q = rx.searchParams?.toString() ?? '';
+      if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
+        return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+      const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
+      if (clerkPane && hostOrigin) {
+        const deep = hostPath(rx.searchParams?.get('next'));
+        if (isDocsWorkspace(weave)) return startDoorAt(`/w/${encodeURIComponent(hostSlug)}${deep ?? '/'}`);
+        return startDoorAt(`/api/start/open/${encodeURIComponent(hostSlug)}${deep && deep !== '/' ? `?path=${encodeURIComponent(deep)}` : ''}`);
+      }
+      if (hasDoor && wsPrefix && !hostOrigin) return startDoorAt(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`);
+      const next = n ? `?next=${encodeURIComponent(n)}` : '';
+      return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
+    }
+    return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null, analyticsKey: posthog?.key ?? null, signInPath: clerkPane ? `${wsPrefix}/auth` : null, signUpHref: oidc && openSignup.on ? `${startRoot}/start?mode=signup` : null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  }
+
+  if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
+    if (hostOrigin && oidc) {
+      const q = rx.searchParams?.toString();
+      return { status: 302, headers: { Location: `${apexOrigin}/start${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+    }
+    const asked = ['pick', 'setup', 'error', 'mode', 'next', 'redirect_url'].some((k) => rx.searchParams?.has(k));
+    const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
+    const found = logins.length ? findWorkspaces(logins) : null;
+    const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
+    if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
+    const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
+    const back = rx.searchParams?.get('next');
+    const workspaceReturn = back == null || startReturn(back);
+    const sentBack = rx.searchParams?.get('redirect_url');
+    const providerReturn = sentBack == null || isProviderReturn(sentBack);
+    if (page && !(workspaceReturn && providerReturn)) {
+      const q = new URLSearchParams(rx.searchParams);
+      if (!workspaceReturn) q.delete('next');
+      if (!providerReturn) q.delete('redirect_url');
+      return { status: 302, headers: { Location: `/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
+    }
+    if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
+    return notFound({ error: 'Not found', code: 'not-found' });
+  }
+
+  if (path === '/billing' && ['GET', 'HEAD'].includes(rx.method)) {
+    const page = billing && serveStatic ? serveStatic('/billing.html', rx) : null;
+    if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
+    return notFound({ error: 'Not found', code: 'not-found' });
+  }
+
+  if (legalPage) {
+    const [title, markdown] = new Map(Object.entries({
+      '/privacy': ['Privacy policy', PRIVACY],
+      '/terms': ['Terms of Service', TERMS],
+      '/support': ['Support', SUPPORT],
+      '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
+    })).get(path);
+    const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
+    return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
+  }
+  return NEXT;
+}
+async function backupAndUploadRoutes(c, fromRequest) {
+  const { actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploadToken } = c;
+  const { path, role, weave } = fromRequest;
+  let m;
+  if (path === '/api/backups' || (m = path.match(/^\/api\/backups\/([^/]+)$/))) {
+    const archive = path === '/api/backups' ? null : m[1];
+    const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+    const account = bearer.startsWith('wv_') ? weave.verifyToken(bearer) : null;
+    if (!account) return deny(401, 'Backups need the account token: send Authorization: Bearer wv_…');
+    const claimed = rx.header('x-weave-account');
+    let named = claimed;
+    try { named = claimed == null ? null : decodeURIComponent(claimed); } catch {}
+    if (named != null && named !== account.name) return deny(403, `This token belongs to the account ${account.name}, not ${named}`);
+    if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
+    if (rx.method === 'GET' && !archive) {
+      const backups = await cloudBackups.list(account.id);
+      return out(200, { account: account.name, quota: cloudBackups.quota, used: backups.reduce((n, b) => n + b.bytes, 0), backups });
+    }
+    if (rx.method === 'GET') {
+      const { body, bytes } = await cloudBackups.open(account.id, archive);
+      return out(200, body, { 'Content-Type': 'application/octet-stream', ...(bytes == null ? {} : { 'Content-Length': String(bytes) }), 'Content-Disposition': `attachment; filename="${archive}"`, 'Cache-Control': 'no-store' });
+    }
+    if (rx.method === 'PUT' && archive) {
+      if (!rx.bodyStream) return out(400, { error: 'This deployment cannot take an archive upload.', code: 'invalid' });
+      if (Number(rx.header('content-length')) > cloudBackups.quota) throw new WeaveError(`Body too large: ${cloudBackups.quota} bytes at most`, 'too-large');
+      return out(201, await cloudBackups.put(account.id, archive, rx.bodyStream()));
+    }
+    return out(405, { error: 'Backups answer GET /api/backups, GET /api/backups/<name> and PUT /api/backups/<name>', code: 'method-not-allowed' }, { Allow: 'GET, PUT' });
+  }
+
+  if (path === '/api/uploads' && upload) {
+    if (guarded() && !['editor', 'architect'].includes(role)) return deny(403, 'Uploading needs an editor account');
+    const entity = weave.getEntity(upload.entity);
+    if (entity.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
+    if (role === 'editor' && weave.state.tables[entity.dbId]?.system) return deny(403, 'This token cannot change the schema');
+    if (!rx.readBytes && !(rx.bodyStream && weave.filesOnDisk())) throw new WeaveError('This server cannot receive raw uploads', 'invalid');
+    if (Number(rx.header('content-length')) > upload.size) throw new WeaveError(`Body too large: ${upload.size} bytes at most`, 'too-large');
+    const attempt = spentUploads.get(uploadToken);
+    const cutShort = (err) => {
+      if (!(err instanceof WeaveError) || !['too-large', 'invalid'].includes(err.code)) attempt.incomplete = true;
+      return err;
+    };
+    const streamed = rx.bodyStream && weave.filesOnDisk()
+      ? await weave.streamBlob(rx.bodyStream(), upload.size).catch((err) => { throw cutShort(err); })
+      : null;
+    try {
+      const bytes = streamed ?? await rx.readBytes(upload.size).catch((err) => { throw cutShort(err); });
+      if ((streamed ? streamed.size : bytes.length) !== upload.size) {
+        attempt.incomplete = true;
+        throw new WeaveError('The upload ended before all of its bytes arrived; prepare it again and send the whole file', 'incomplete-upload');
+      }
+      upload.engine.maybeRefresh();
+      weave.maybeRefresh();
+      const byAccount = upload.accountId != null;
+      const account = byAccount ? upload.engine.listAccounts().find((a) => a.id === upload.accountId) : null;
+      const currentRole = Weave.roleName(account?.role);
+      const refused = byAccount
+        ? !account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id) || !['editor', 'architect'].includes(currentRole) || (upload.engine !== weave && currentRole !== 'architect')
+        : upload.engine.listAccounts().length > 0;
+      if (refused) return deny(403, 'The upload account no longer has permission');
+      if (currentRole === 'editor' && weave.state.tables[weave.getEntity(upload.entity).dbId]?.system) return deny(403, 'This token cannot change the schema');
+      if (weave.getEntity(upload.entity).deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
+      weave.actor = actorForRequest;
+      const file = { name: upload.name, mime: upload.mime, preview: upload.preview, ...(streamed ? { staged: streamed } : { bytes: Buffer.from(bytes) }) };
+      const landed = upload.field == null ? weave.attachFile(entity.id, file) : weave.attachToField(entity.id, upload.field, file);
+      spentUploads.get(uploadToken).landed = true;
+      return out(201, landed, { 'Cache-Control': 'no-store' });
+    } finally {
+      if (streamed) weave.dropStagedBlob(streamed.id);
+    }
+  }
+  return NEXT;
+}
+async function authRoutes(c, fromRequest) {
+  const {
+    apexOrigin, authz, baseDomain, billing, clearCookie, clerkPane, clientIp, cookieName, deny, handOff, handoffs, hostSuffix, hub, LEGACY_COOKIE, limited,
+    noteFailure, notFound, oidc, openSignup, originFor, out, outName, posthog, putChallenge, remirror, route, rx, scheme, secureFlag, session,
+    sessionCookie, sessionOn, starts, takeChallenge,
+  } = c;
+  const {
+    clearRail, cookies, findWorkspaces, heldStart, holdLogin, hostOrigin, hostSlug, ownSession, path, role, startCookies, startRoot, weave, withCookies,
+    wsPrefix,
+  } = fromRequest;
+  let m;
+  if (path.startsWith('/api/auth/')) {
+    const ip = clientIp(rx);
+    const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
+    const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
+    if (path.startsWith('/api/auth/oidc/')) {
+      if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
+      let mount = wsPrefix;
+      const signInAgain = () => ({ href: `${mount}/auth?signed-out=1`, label: 'Back to sign in' });
+      const refusal = (status, title, detail, actions = [signInAgain()]) => out(status, renderRefusalPage({ title, lines: detail, actions }),
+        { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      const tooMany = () => refusal(429, 'Too many sign-in attempts', 'Wait a minute, then sign in again.');
+      const redirectUri = `${originFor(rx)}/api/auth/oidc/callback`;
+      if (hostOrigin && route === 'GET /api/auth/oidc/start') {
+        const q = new URLSearchParams(rx.searchParams ?? '');
+        q.set('handoff', String(weave.state.meta.name).toLowerCase());
+        return { status: 302, headers: { Location: `${apexOrigin}/w/${encodeURIComponent(weave.state.meta.name)}/api/auth/oidc/start?${q}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+      if (route === 'GET /api/auth/oidc/start') {
+        if (limited('options', ip)) return tooMany();
+        const handoff = rx.searchParams?.get('handoff') || null;
+        if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
+        const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
+        const invite = rx.searchParams?.get('invite') || null;
+        if (invite && !weave.identityInvite(invite)) {
+          const member = session?.engine === weave || ((await heldStart())?.logins ?? []).some((me) => weave.accountForIdentity(me));
+          return refusal(410, 'This invite expired or was already used', member ? 'You already have access. Open your workspace to continue.' : 'If you already joined, sign in to open the workspace. Otherwise, ask the sender for a new invite.',
+            [{ href: member ? `${mount}/` : `${mount}/auth`, label: member ? 'Open workspace' : 'Sign in to workspace' }, { href: '/start?pick=1', label: 'Find your workspaces' }]);
+        }
+        const heldLogins = invite && !rx.searchParams?.has('pick') ? (await heldStart())?.logins ?? [] : [];
+        if (heldLogins.length) {
+          const again = (extra) => { const u = new URLSearchParams(rx.searchParams ?? ''); for (const [k, v] of Object.entries(extra)) u.set(k, v); return `${mount}/api/auth/oidc/start?${u}`; };
+          const another = { label: WeaveSlugs.COPY.start.otherLogin, href: again({ fresh: '1', pick: '1' }) };
+          const as = rx.searchParams?.get('as');
+          if (as == null) {
+            const labels = findWorkspaces(heldLogins).logins;
+            return refusal(200, WeaveSlugs.fill(WeaveSlugs.COPY.start.chooserTitle, { workspace: weave.state.meta.name }), WeaveSlugs.COPY.start.chooserLead,
+              [...labels.map((login, i) => ({ label: WeaveSlugs.fill(WeaveSlugs.COPY.start.acceptAs, { login }), href: again({ as: String(i) }) })), another]);
+          }
+          const me = heldLogins[Number(as)];
+          if (!me) return refusal(400, 'This choice expired', 'Open the invite link again.', [another]);
+          let account;
+          try { account = weave.redeemIdentityInvite(invite, me); await remirror(weave); } catch (err) {
+            noteFailure(ip);
+            if (err.code === 'conflict' && weave.accountForIdentity(me)) return refusal(409, `This login already opens ${weave.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or accept the invite with the login it was meant for.', [{ label: 'Open workspace', href: `${startRoot}/api/start/open/${encodeURIComponent(weave.state.meta.name)}` }, another, signInAgain()]);
+            if (err.code === 'conflict') return refusal(409, 'This login already opens another account', 'The invite was not used. Accept it with the login it was meant for.', [another, signInAgain()]);
+            return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+          }
+          const kept = startCookies(await holdLogin(me));
+          const to = posthog ? joinedInvite(next) : next;
+          if (handoff) return withCookies(await handOff(weave, account.id, to, handoff), kept);
+          const minted = weave.createSession(account.id, { ua: rx.header('user-agent') });
+          return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
+        }
+        if (invite && clerkPane && !hostOrigin && !rx.searchParams?.has('pick') && !rx.searchParams?.has('fresh')) {
+          const kept = new URLSearchParams([...rx.searchParams].filter(([k]) => INVITE_LINK_FIELDS.has(k)));
+          return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(`${wsPrefix}/api/auth/oidc/start?${kept}`)}`, 'Cache-Control': 'no-store' }, body: '' };
+        }
+        let trip;
+        try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
+        const binder = newChallenge();
+        const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
+        putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start, door: !!rx.searchParams?.has('door') }, trip.state);
+        const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
+        return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
+      }
+      if (route === 'GET /api/auth/oidc/callback') {
+        if (limited('failed', ip, { peek: true })) return tooMany();
+        const c = takeChallenge(String(rx.searchParams?.get('state') ?? ''), 'oidc');
+        if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
+        mount = c.mount ?? '';
+        const toStart = (code) => ({ status: 302, headers: { Location: `/start?error=${code}`, 'Cache-Control': 'no-store' }, body: '' });
+        const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
+        const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
+        const broken = (code, where) => {
+          console.error(`weave: ALERT sign-in is broken: ${oidc.name} refused weave's own client at its ${where} (${code}); check WEAVE_OIDC_CLIENT_ID, WEAVE_OIDC_CLIENT_SECRET and the allowed scopes against the provider`);
+          return refusal(503, 'Sign-in is broken on weave\'s side', [`${oidc.name} refused weave's own credentials (${code}), so nobody can sign in until weave's configuration is fixed.`, 'Signing in again, or with a different account, will not help. The fault is logged for the people who run weave; try again later.'], []);
+        };
+        const refused = rx.searchParams.get('error');
+        if (CLIENT_FAULTS.has(refused)) { noteFailure(ip); return broken(refused, 'authorization endpoint'); }
+        if (refused || !rx.searchParams.get('code')) {
+          if (c.start) return toStart('signin_failed');
+          return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? refused ?? 'No authorization code came back.'), [await differentAccount(), signInAgain()]);
+        }
+        let who;
+        try {
+          who = await oidc.redeem({ code: rx.searchParams.get('code'), redirectUri, verifier: c.verifier, nonce: c.nonce });
+        } catch (err) {
+          noteFailure(ip);
+          if (!(err instanceof WeaveError)) return c.start ? toStart('provider_down') : refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
+          if (CLIENT_FAULTS.has(err.provider)) return broken(err.provider, 'token endpoint');
+          return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
+        }
+        if (c.start) {
+          const link = START_LINK.exec(c.next);
+          let slug = link?.[1] ?? '';
+          try { slug = decodeURIComponent(slug); } catch {}
+          const opens = link && hub.bySlug(slug.toLowerCase())?.accountForIdentity(who);
+          const back = link ? (opens ? c.next : `/start?next=${encodeURIComponent(c.next)}`) : /^\/start(?:[?#]|$)/.test(c.next) || inviteLink(c.next) ? c.next : '/start';
+          return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
+        }
+        let account = null;
+        let engine = null;
+        if (c.invite) {
+          try {
+            account = c.holder.redeemIdentityInvite(c.invite, who);
+            engine = c.holder;
+            await remirror(c.holder);
+          } catch (err) {
+            noteFailure(ip);
+            if (err.code === 'conflict' && c.holder.accountForIdentity(who)) return refusal(409, `This login already opens ${c.holder.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or sign in as the person it was meant for to use it.', [{ label: 'Open workspace', href: `${mount}/api/auth/oidc/start?${c.handoff ? `handoff=${encodeURIComponent(c.handoff)}&` : ''}next=${encodeURIComponent(c.next)}` }, { label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
+            if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign in as the person it was meant for to use it.`, [{ label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
+            return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
+          }
+        } else if ((account = c.holder.accountForIdentity(who))) engine = c.holder;
+        if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && (account = e.accountForIdentity(who)));
+        if (!engine && c.door) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(c.next)}`, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
+        if (!engine) {
+          noteFailure(ip);
+          const ws = c.holder.state.meta.name;
+          const own = billing || openSignup.on ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
+          const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces, or sign in with a different account.'], [...own, { label: 'Find your workspaces', href: `${startRoot}/start?pick=1` }, await differentAccount(), signInAgain()]);
+          return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
+        }
+        const kept = startCookies(await holdLogin(who));
+        const to = posthog && c.invite ? joinedInvite(c.next) : c.next;
+        if (c.handoff) return withCookies(await handOff(engine, account.id, to, c.handoff), kept);
+        const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
+        const back = cookies[outName(c.holder)] ? [clearCookie(outName(c.holder), rx)] : [];
+        return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, ...kept], 'Cache-Control': 'no-store' }, body: '' };
+      }
+      return notFound({ error: 'Unknown auth route', code: 'not-found' });
+    }
+    if (route === 'GET /api/auth/handoff' && hostOrigin) {
+      if (limited('failed', ip, { peek: true })) return tooMany();
+      const key = await digest(String(rx.searchParams?.get('code') ?? ''));
+      const h = handoffs.get(key);
+      handoffs.delete(key);
+      if (!h || h.expiresAt <= Date.now() || h.host !== hostSlug) {
+        noteFailure(ip);
+        return out(400, renderRefusalPage({ title: 'This sign-in expired or was already used', lines: 'Start again from the sign-in page.', actions: [{ href: '/auth?signed-out=1', label: 'Back to sign in' }] }),
+          { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+      const minted = h.engine.createSession(h.accountId, { ua: rx.header('user-agent') });
+      return { status: 302, headers: { Location: h.next, 'Set-Cookie': sessionCookie(cookieName(h.engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
+    }
+    if ((m = path.match(/^\/api\/auth\/open\/([^/]+)$/)) && rx.method === 'GET' && baseDomain) {
+      const target = hub.bySlug(String(m[1]).toLowerCase());
+      if (!target || target.state.meta.deletedAt) return notFound({ error: 'Not found', code: 'not-found' });
+      const host = String(target.state.meta.name).toLowerCase();
+      const hit = sessionOn(target);
+      if (hit) return handOff(hit.engine, hit.id, '/', host);
+      return { status: 302, headers: { Location: `${scheme}//${host}${hostSuffix}/`, 'Cache-Control': 'no-store' }, body: '' };
+    }
+    if (route === 'POST /api/auth/logout') {
+      const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
+      const borrowed = !everywhere && !!session && session.engine !== weave;
+      const ending = everywhere ? hub.entries().map(([, w]) => ownSession(w)).filter(Boolean) : borrowed ? [] : [session].filter(Boolean);
+      for (const hit of ending) {
+        try { hit.engine.revokeSession(hit.id, { id: hit.sessionId }); } catch {}
+      }
+      const names = new Set(everywhere
+        ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`) || n.startsWith('wv_out_')), ...ending.map((hit) => hit.cookie)]
+        : borrowed ? [] : [session?.cookie ?? cookieName(weave)]);
+      const marks = borrowed ? [`${outName(weave)}=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`] : [];
+      const held = everywhere ? await heldStart() : null;
+      if (held) starts.delete(held.key);
+      const startEnds = everywhere ? [clearCookie('wv_start', rx), clearRail()] : [];
+      return out(200, { ok: true }, { 'Set-Cookie': [...[...names].map((n) => clearCookie(n, rx)), ...marks, ...startEnds], 'Cache-Control': 'no-store' });
+    }
+    if (route === 'GET /api/auth/me') {
+      const account = who();
+      if (!account) return deny(401, 'Not signed in');
+      const engine = session ? session.engine : weave;
+      const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
+      const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
+      const ids = pub.identities ?? [];
+      const user = posthog ? (ids.find((i) => i.issuer === oidc?.issuer) ?? ids[0])?.subject : null;
+      return out(200, { account: pub, role: account.role, sessions, ...(user ? { analytics: { user } } : {}) }, { 'Cache-Control': 'no-store' });
+    }
+    if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
+      const account = who();
+      if (!account) return deny(401, 'Not signed in');
+      const engine = session ? session.engine : weave;
+      if (m[1] === 'others') return out(200, engine.revokeSession(account.id, { all: true, except: session?.sessionId ?? null }));
+      return out(200, engine.revokeSession(account.id, { id: m[1] }));
+    }
+    return notFound({ error: 'Unknown auth route', code: 'not-found' });
+  }
+  return NEXT;
+}
+async function startRoutes(c, fromRequest) {
+  const {
+    actorForRequest, baseDomain, billing, body, clearCookie, clerkPane, clientIp, cookieName, deny, handOff, hostSuffix, hub, limited, notFound, oidc,
+    openSignup, originFor, out, outName, posthog, remirror, route, rx, scheme, sessionCookie, starts,
+  } = c;
+  const { clearRail, cookies, creationAdmission, findWorkspaces, heldStart, hostOrigin, path, railCookie, startDoor, weave, withCookies, wsPrefix } = fromRequest;
+  let m;
+  if (startDoor) {
+    if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
+    const held = await heldStart();
+    const logins = held?.logins ?? [];
+    if (route === 'POST /api/start/signout') {
+      if (held) starts.delete(held.key);
+      return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
+    }
+    if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key } } : {}) }, { 'Cache-Control': 'no-store' });
+    const navigation = ['GET', 'HEAD'].includes(rx.method) && (rx.header('sec-fetch-mode') === 'navigate' || prefersHtml(rx.header('accept')));
+    if (!logins.length && navigation) {
+      const q = rx.searchParams?.toString() ?? '';
+      const link = `${path}${q ? `?${q}` : ''}`;
+      return { status: 302, headers: { Location: START_LINK.test(link) ? `/start?next=${encodeURIComponent(link)}` : '/start', 'Cache-Control': 'no-store' }, body: '' };
+    }
+    if (!logins.length) return deny(401, 'Sign in first');
+    const found = findWorkspaces(logins);
+    const { accountIn } = found;
+    if (route === 'GET /api/start') {
+      const { canCreate, accountName } = found;
+      const trialOn = async (name) => {
+        const w = billing && hub.get(name);
+        if (!w || !billing.trial(w.billing())) return null;
+        return (await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).trial;
+      };
+      const rows = await Promise.all(found.rows.map(async (r) => (r.kind === 'workspace' ? { ...r, trial: await trialOn(r.name) } : r)));
+      let waiting = null;
+      if (billing && found.owner) {
+        try { waiting = await found.unpaid(found.owner); } catch (error) {
+          if (!(error instanceof BillingUnavailable)) throw error;
+        }
+      }
+      return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, docs: hub.entries().filter(([, w]) => isDocsWorkspace(w)).map(([name]) => name), ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
+    }
+    if (route === 'GET /api/start/slug') {
+      if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
+      const slug = String(rx.searchParams?.get('slug') ?? '');
+      return out(200, { slug, state: hub.slugState(slug), base: baseDomain }, { 'Cache-Control': 'no-store' });
+    }
+    if ((m = path.match(/^\/api\/start\/open\/([^/]+)$/)) && rx.method === 'GET') {
+      const w = hub.bySlug(String(m[1]).toLowerCase());
+      const account = w && accountIn(w);
+      if (!account && navigation) {
+        const ws = w ? w.state.meta.name : String(m[1]);
+        return out(403, renderRefusalPage({ title: `No access to ${ws}`, lines: [`The account you signed in with has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces.'], actions: [{ href: '/start?pick=1', label: 'Find your workspaces' }] }),
+          { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+      if (!account) return deny(403, 'This sign-in opens no account on that workspace');
+      const engine = w;
+      const host = String(w.state.meta.name).toLowerCase();
+      const deep = hostPath(rx.searchParams?.get('path'));
+      const table = String(rx.searchParams?.get('table') ?? '');
+      const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
+        : rx.searchParams?.get('to') === 'resume' ? '#/resume'
+        : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
+      const rail = railCookie(isDocsWorkspace(w) ? found.names : [host, ...found.names.filter((name) => name !== host)]);
+      if (baseDomain) return withCookies(await handOff(engine, account.id, deep ?? `/${land}`, host), [rail]);
+      const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
+      const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
+      return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, rail], 'Cache-Control': 'no-store' }, body: '' };
+    }
+    if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
+      const w = hub.bySlug(String(m[1]).toLowerCase());
+      if (!(w && accountIn(w))) return deny(403, 'This sign-in opens no account on that workspace');
+      if (!w.state.meta.logo) return notFound({ error: 'This workspace has no logo', code: 'not-found' });
+      const { bytes } = w.getWorkspaceLogo();
+      return out(200, bytes, { 'Content-Type': logoType(bytes), 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'" });
+    }
+    if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
+      const w = hub.bySlug(String(m[1]).toLowerCase());
+      if (!w) return notFound({ error: 'Not found', code: 'not-found' });
+      const me = logins.find((l) => l.email && w.invitesForEmail(l.email).some((i) => i.id === m[2])) ?? logins[0];
+      const account = w.acceptInvite(m[2], me);
+      await remirror(w);
+      return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
+    }
+    if ((m = path.match(/^\/api\/start\/workspaces\/([^/]+)\/agent$/)) && rx.method === 'GET') {
+      const w = hub.bySlug(String(m[1]).toLowerCase());
+      const account = w && accountIn(w);
+      if (!account) return deny(403, 'This sign-in opens no account on that workspace');
+      const seen = w.agentSeen(account.id);
+      return out(200, { connected: !!seen, at: seen?.at ?? null, client: seen?.client ?? null }, { 'Cache-Control': 'no-store' });
+    }
+    if (route === 'POST /api/start/workspaces') {
+      const admission = await creationAdmission(logins);
+      if (admission.response) return admission.response;
+      const me = admission.me;
+      const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
+      if (body?.template && !template) return out(400, { error: `Unknown template '${body.template}'`, code: 'invalid' });
+      const ownerName = found.accountName || 'owner';
+      let asked = body?.name;
+      let slug = body?.slug ?? null;
+      if (body?.quick) {
+        asked = String(asked || ownerName);
+        const base = WeaveSlugs.slugify(asked) || 'workspace';
+        slug = [base, ...Array.from({ length: 50 }, (_, i) => `${base}-${i + 2}`)].find((s) => hub.slugState(s) === 'available') ?? null;
+      }
+      const w = hub.create(asked, { slug, actor: `creator: ${weave.actorName(actorForRequest)}` });
+      const owner = w.createAccount({ name: ownerName, role: 'architect' }).account;
+      w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
+      w.state.meta.signup = { issuer: me.issuer, subject: me.subject };
+      w.save();
+      w.startTrial();
+      let table = null;
+      let templateError = null;
+      const built = { space: template?.space ?? null, tables: [] };
+      if (template) {
+        try {
+          const spec = WeaveStarters.spec(template);
+          const done = unrestricted(() => w.build(spec));
+          if (!done.ok) throw new Error(done.errors.map((e) => e.error).join('; '));
+          built.tables = spec.spaces[0].tables.map((t) => t.name);
+          table = w.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
+        } catch (err) { templateError = err.message; }
+      }
+      w.markOnboarded(owner.id);
+      const name = w.state.meta.name;
+      const host = String(name).toLowerCase();
+      const mcp = baseDomain ? `${scheme}//${host}${hostSuffix}/mcp` : `${originFor(rx)}/w/${encodeURIComponent(name)}/mcp`;
+      return out(201, { name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}`, table, mcp, built, templateError });
+    }
+    return notFound({ error: 'Not found', code: 'not-found' });
+  }
+  return NEXT;
+}
+async function workspaceRoutes(c, fromRequest) {
+  const {
+    accountName, actorForRequest, actorOn, authz, billing, body, canOpen, cloudBackups, deny, hub, notFound, out, ownCreated, remirror, roleOn, route, rx,
+    session, unseated,
+  } = c;
+  const { ownSession, path, role, updateWorkspace, weave } = fromRequest;
+  let m;
+  if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
+    const ref = /^\/api\/workspaces\/([^/]+)/.exec(path)?.[1];
+    const target = ref ? hub.get(decodeURIComponent(ref)) : weave;
+    if (!target) return notFound({ error: 'Workspace not found', code: 'not-found' });
+    const targetRole = roleOn(target);
+    const local = !hub.walled && !target.state.meta.requireAuth && !target.listAccounts().length;
+    if (!local && targetRole !== 'architect') return deny(targetRole ? 403 : 401, 'Managing a workspace needs its architect');
+  }
+  if (route === 'POST /api/workspaces' && body?.from != null) {
+    const source = String(body.from).match(/^backup:(.+)$/);
+    if (!source) throw new WeaveError('from takes backup:<archive>, an archive GET /api/backups lists', 'invalid');
+    if (body.key == null || body.key === '') throw new WeaveError('key is required: the passphrase the archive was sealed with', 'invalid');
+    if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
+    const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
+    const caller = bearer ? weave.verifyToken(bearer) : ownSession(weave);
+    if (!caller) return deny(401, 'Migrating a backup needs an account on this workspace');
+    const { body: archive } = await cloudBackups.open(caller.id, source[1]);
+    const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
+    const { owner, headers } = ownCreated(w);
+    return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities, ...(owner ? { owner } : {}) }, headers);
+  }
+  if (route === 'POST /api/workspaces') {
+    const w = hub.create(body.name, { slug: body.slug ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
+    const { owner, headers } = ownCreated(w);
+    return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, ...(owner ? { owner } : {}) }, headers);
+  }
+  if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
+    const w = hub.restore(m[1], { actor: actorOn(hub.get(m[1])) });
+    return out(200, { name: w.state.meta.name, deletedAt: null });
+  }
+  if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
+    if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
+    const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
+    if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorOn(hub.get(m[1])) }));
+    const w = hub.remove(m[1], { actor: actorOn(hub.get(m[1])) });
+    return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
+  }
+
+
+  if (path === '/api/onboarding') {
+    const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
+    const me = token ? { engine: weave, id: token.id, name: token.name }
+      : session ? { engine: session.engine, id: session.id, name: session.name }
+        : { engine: weave, id: null, name: null };
+    const taken = (n) => { const h = hub.get(n); return !!h && h !== weave; };
+    const firstName = WeaveStarters.workspaceName(String(me.name ?? '').trim().split(/\s+/)[0].toLowerCase());
+    const fallback = WeaveStarters.workspaceName(weave.state.meta.name) || 'workspace';
+    const byDefault = firstName && !taken(firstName) ? firstName : fallback;
+    if (rx.method === 'GET') {
+      const show = !me.engine.onboardedAt(me.id)
+        && (!role || role === 'architect')
+        && weave.state.meta.name !== 'weave'
+        && !weave.userTables().length
+        && hub.list().every((x) => x.name === 'weave' || !x.tables || hub.get(x.name) === weave || !canOpen(hub.get(x.name)));
+      return out(200, { show, name: byDefault }, { 'Cache-Control': 'no-store' });
+    }
+    if (rx.method === 'POST') {
+      const name = WeaveStarters.workspaceName(body?.name) || byDefault;
+      if (taken(name)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
+      const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
+      if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
+      let table = null;
+      if (template) {
+        const built = weave.build(WeaveStarters.spec(template));
+        if (!built.ok) throw new WeaveError(`Couldn't set up ${template.title}: ${built.errors.map((e) => e.error).join('; ')}`, 'invalid');
+        table = weave.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
+      }
+      const ws = updateWorkspace({ name });
+      me.engine.markOnboarded(me.id);
+      return out(200, { id: ws.id, name: ws.name, url: `/w/${ws.id}/`, table });
+    }
+  }
+
+  if (route === 'GET /api/workspace/home') return out(200, weave.workspaceHome());
+
+  if (path === '/api/billing' || path === '/api/billing/organization') {
+    if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and WEAVE_BILLING_PLAN are not set.', code: 'billing-off' });
+    const architect = (unseated ?? role) === 'architect' || mayAdminister(weave, unseated ?? role);
+    const standingNow = async () => {
+      const accounts = weave.listAccounts();
+      const s = await billing.standing({ workspace: weave.billing(), accounts });
+      return {
+        plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, planSlug: billing.plan, publishableKey: billing.publishableKey,
+        seatPrice: s.plan === 'comped' ? null : await billing.seatPrice(),
+        me: accountName, architect,
+        members: accounts.map((a) => {
+          const mail = a.identities?.find((i) => i.verifiedEmail)?.verifiedEmail ?? null;
+          return { name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name), ...(architect && mail ? { email: mail } : {}) };
+        }),
+      };
+    };
+    const answer = async (extra = {}) => {
+      try { return out(200, { ...(await standingNow()), ...extra }, { 'Cache-Control': 'no-store' }); } catch (error) {
+        if (!(error instanceof BillingUnavailable)) throw error;
+        return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
+      }
+    };
+    if (route === 'GET /api/billing') {
+      if (!role && !unseated && !mayAdminister(weave, role)) return deny(401, 'Sign in to see this workspace\'s plan');
+      return answer();
+    }
+    if (route === 'POST /api/billing/organization') {
+      if (!architect) return deny(role ? 403 : 401, 'Setting up billing needs an architect');
+      const me = weave.listAccounts().find((a) => a.name === accountName);
+      const createdBy = me ? billing.subjectOf(me) : null;
+      if (!createdBy) return out(400, { error: 'Your account has no sign-in identity at the billing provider, so it cannot own the billing organization. Sign in with the provider first.', code: 'invalid' });
+      weave.linkBillingOrg(await billing.ensureOrg({ workspace: weave.billing(), createdBy }));
+      const synced = await remirror(weave);
+      billing.forget();
+      return answer(synced?.refused?.length ? { refused: synced.refused } : {});
+    }
+    return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/organization', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
+  }
+  return NEXT;
+}
+async function mailKeyAndIntegrationRoutes(c, fromRequest) {
+  const {
+    anonymousForms, body, canOpen, deny, formFor, hub, mcpDoor, mcpOrigin, notFound, oauth, originFor, out, prepareUpload, requestAccount, resolveMention,
+    roleOn, route, rx, seatRequired, unseated, useTemplateInto, version, viewer, viewers,
+  } = c;
+  const { hostOrigin, path, role, updateWorkspace, weave, wsPrefix } = fromRequest;
+  let m;
+  if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
+    if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
+    const make = { invite: inviteEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
+    if (!make) return notFound({ error: `No email named '${m[1]}' (invite, trial, trial-last)`, code: 'not-found' });
+    const asked = rx.searchParams?.get('role') || 'editor';
+    if (!MAIL_ROLES[asked]) throw new WeaveError(`Invalid role '${asked}' (${Object.keys(MAIL_ROLES).join(', ')})`, 'invalid');
+    const o = originFor(rx);
+    const email = make({ inviter: 'kyle', workspace: 'weave', expires: 'October 10', role: asked,
+      daysLeft: 3, endsAt: '2026-10-10T00:00:00.000Z', billing: `${o}/w/weave/billing`,
+      link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, origin: o,
+      theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
+    return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  }
+  if ((m = path.match(/^\/api\/integrations\/([^/]+)\/credential$/))) {
+    if (!role || !mayAdminister(weave, roleOn(weave))) return deny(role ? 403 : 401, 'Setting an integration key needs an architect on this workspace');
+    if (rx.method !== 'PUT') return out(405, { error: 'An integration key is written with PUT and never read back', code: 'method-not-allowed' }, { Allow: 'PUT' });
+    return out(200, await weave.setIntegrationCredential(decodeURIComponent(m[1]), body?.value));
+  }
+  if (path.startsWith('/api/keys')) {
+    if (!role) return deny(401, 'Managing keys needs an account on this workspace');
+    const localRole = roleOn(weave);
+    const keyed = matchRoute(rx.method, path);
+    const need = keyed?.cmd.minRole ?? 'architect';
+    const target = keyed?.cmd.name === 'key.set' ? body?.name : keyed?.cmd.name === 'key.delete' ? keyed.params.name : null;
+    const owns = !!localRole && target != null && weave.ownsKey(target);
+    if (!mayAdminister(weave, localRole) && !(RANK[localRole] >= RANK[need]) && !owns) {
+      return deny(localRole ? 403 : 401, `${rx.method} ${path} needs an ${need} on this workspace${localRole ? `; your role here is ${localRole}` : ''}`);
+    }
+    if (keyed) { const r = httpReply(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams); return out(r.status, r.data, r.headers); }
+    if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
+  }
+  if (route === 'POST /api/uploads') {
+    return out(201, prepareUpload({ entity: body.entity, field: body.field, name: body.name, mime: body.mime, size: body.size, preview: body.preview, sameOrigin: true }));
+  }
+  if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
+  if (route === 'POST /api/mcp') {
+    const msgs = Array.isArray(body) ? body : [body];
+    const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
+    const caller = { role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+    const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
+    if (viewers.tokenWrite) {
+      for (const msg of msgs) {
+        const hatch = msg?.params?.name === 'weave_call';
+        const tool = msg?.method === 'tools/call' ? (hatch ? msg.params?.arguments?.name : msg.params?.name) : null;
+        if (tool && toolWrites(tool, (hatch ? msg.params?.arguments?.args : msg.params?.arguments) ?? {})) weave.noteTokenWrite(viewers.tokenWrite.accountId, { method: 'MCP', path: tool, status: 200 });
+      }
+    }
+    if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
+    if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
+    return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
+  }
+  if (route === 'POST /api/bulk' && role === 'editor') {
+    const { ids, op, ...params } = body ?? {};
+    const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
+    const list = ids == null ? [] : [].concat(ids);
+    const into = op === 'rollup' && params.table == null
+      ? (() => { try { return weave.relationTargetDbIds(weave.getField(weave.getEntity(list[0]).dbId, params.field)); } catch { return []; } })()
+      : [];
+    if (list.some((id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]))
+      || (params.table != null && sys(() => weave.getTable(params.table)))
+      || into.some((t) => weave.state.tables[t]?.system)) {
+      return deny(403, 'This token cannot change the schema');
+    }
+  }
+  if (route === 'POST /api/markdown') {
+    return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention, rawHtml: false }) });
+  }
+
+  if (route === 'GET /api/forms/manage' || route === 'POST /api/forms' || (rx.method === 'PATCH' && /^\/api\/forms\/[^/]+$/.test(path))) {
+    if ((weave.state.meta.requireAuth && !role) || !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Managing forms needs an architect on this workspace');
+    if (route === 'GET /api/forms/manage') {
+      const tableRef = rx.searchParams?.get('table');
+      const table = tableRef ? weave.getTable(tableRef) : null;
+      const forms = listForms(weave).filter(form => !table || form.tableId === table.id).map(form => getFormDefinition(weave, form.id));
+      return out(200, { forms, anonymousAllowed: anonymousForms, requireAuth: !!weave.state.meta.requireAuth }, { 'Cache-Control': 'no-store' });
+    }
+    if (route === 'POST /api/forms') {
+      if (body?.kind !== undefined) throw new WeaveError('The form builder creates record forms', 'invalid');
+      const form = createForm(weave, body);
+      return out(201, getFormDefinition(weave, form.id));
+    }
+    return out(200, updateForm(weave, decodeURIComponent(path.split('/').pop()), body));
+  }
+
+  if (route === 'GET /api/forms') {
+    if (isDocsWorkspace(weave)) { try { ensureBugForm(weave); } catch {} }
+    return out(200, listForms(weave));
+  }
+  if ((m = path.match(/^\/api\/forms\/([^/]+)$/)) && rx.method === 'GET') {
+    const { form, admitted } = formFor(m[1]);
+    if (!admitted) return deny(401, 'Sign in to open this form');
+    return out(200, form);
+  }
+  return NEXT;
+}
+async function leaveAndBugReportRoutes(c, fromRequest) {
+  const { actorForRequest, authz, body, canOpen, deny, hub, origin, out, remirror, route, rx, session, stamp } = c;
+  const { role, weave } = fromRequest;
+  if (route === 'POST /api/workspace/leave') {
+    refuseOnDocs(weave, 'left');
+    const me = session && session.engine === weave && !session.visitor ? session : role ? weave.verifyToken(authz?.slice(7).trim() ?? '') : null;
+    if (!me) return deny(401, 'Sign in to leave a workspace');
+    const left = leaveWorkspace(weave, me.id);
+    await remirror(weave);
+    return out(200, left);
+  }
+
+  if (route === 'POST /api/bug-report') {
+    const reporter = role == null ? 'bug-report' : `reporter: ${weave.actorName(actorForRequest)}`;
+    const docs = hub.get('weave') ?? hub.get('weaver');
+    const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
+    if (issues && role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
+    const target = bugForwardTarget();
+    let forwardFailure = null;
+    if (target) {
+      const sent = await forwardBugReport(target, body && typeof body === 'object' && !Array.isArray(body) ? body : {}, origin || process.env.WEAVE_ORIGIN || String(rx.header('host') ?? 'unknown'));
+      if (sent.ok) return out(201, { ...sent.data, forwardedTo: target.url });
+      forwardFailure = { url: target.url, reason: sent.reason };
+    }
+    const failed = forwardFailure ? { forward: 'failed', forwardError: forwardFailure.reason } : {};
+    if (!issues) {
+      return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported', ...failed });
+    }
+    docs.maybeRefresh();
+    const form = ensureBugForm(docs);
+    const instance = role != null && typeof body?.instance === 'string' && body.instance.trim() ? body.instance.trim().slice(0, 200) : null;
+    const filed = submitForm(docs, form.id, body ?? {}, { actor: docs === weave && role != null ? actorForRequest : reporter, server: { ...stamp(), instance, forwardFailure } });
+    return out(201, { ...filed, ...failed });
+  }
+  return NEXT;
+}
+async function registeredAndSpaceRoutes(c, fromRequest) {
+  const {
+    actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
+    remirror, roleOn, rx, scheme, share, useTemplateInto,
+  } = c;
+  const { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix } = fromRequest;
+  let m;
+  if (registered?.cmd.http.serve) {
+    const serveFile = (id) => {
+      const preview = rx.searchParams?.has('preview') ?? false;
+      const view = rx.searchParams?.has('view') ?? false;
+      const known = weave.readFileMeta(id);
+      if (!view || !isHtmlFile(known)) {
+        const etag = `"${id}${preview ? '-preview' : ''}"`;
+        const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
+        if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
+        const { meta, bytes } = weave.readFile(id, { preview });
+        const headers = { ...fileHeaders(meta, bytes, { view }), ...cache, 'Accept-Ranges': 'bytes' };
+        const range = byteRange(rx.header('range'), bytes.length);
+        if (range === 'unsatisfiable') return out(416, '', { ...headers, 'Content-Range': `bytes */${bytes.length}` });
+        if (range) return out(206, bytes.subarray(range.first, range.last + 1), { ...headers, 'Content-Range': `bytes ${range.first}-${range.last}/${bytes.length}` });
+        return out(200, bytes, headers);
+      }
+      const { meta, bytes } = weave.readFile(id, { preview });
+      if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
+      const page = viewHtml(bytes, frameLinkBase(bytes) + frameStorageScript(weave.readFileStorage(id).items) + FRAME_HEIGHT_SCRIPT);
+      return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
+    };
+    const serveLogo = () => {
+      const { bytes } = weave.getWorkspaceLogo();
+      const type = logoType(bytes);
+      return out(200, bytes, {
+        'Content-Type': type ?? 'application/octet-stream',
+        ...(type ? {} : { 'Content-Disposition': 'attachment; filename="logo"' }),
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "sandbox; default-src 'none'",
+      });
+    };
+    return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
+  }
+  if (registered) {
+    const registryCtx = {
+      viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, issuer: oidc?.issuer, remirror: () => remirror(weave), mailInvite, start: oidc ? `${startRoot}/start` : undefined,
+      workspaces: {
+        list: () => {
+          const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
+          const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
+          const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
+          const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
+          return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+            .sort((a, b) => rank(a) - rank(b) || 0)
+            .map((x) => ({
+              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+              ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
+            }));
+        },
+        move: (ref, position) => {
+          hub.move(ref, position, { workspace: weave, visible: canOpen });
+          return hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name)));
+        },
+      }, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
+    };
+    const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, registryCtx);
+    if (registered.cmd.http.finish) r.data = await registered.cmd.http.finish(r.data, registryCtx);
+    return out(r.status, r.data, r.headers);
+  }
+  if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
+    if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
+  }
+  if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
+
+  if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
+    if (rx.method === 'GET') {
+      const db = weave.getTable(m[1]);
+      const schema = weave.describeSchema().flatMap((s) => s.tables).find((d) => d.id === db.id);
+      return out(200, schema ?? { id: db.id, name: db.name, spaceId: db.spaceId, deletedAt: db.deletedAt ?? null });
+    }
+  }
+
+  if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
+    if (rx.method === 'GET') {
+      const limit = boundedLimit(rx.searchParams.get('limit'), QUERY_PAGE);
+      const offset = nonNegativeInteger('offset', rx.searchParams.get('offset'));
+      return out(200, weave.query(m[1], { limit, offset, viewerZone, workspace: member.state.meta.id }));
+    }
+  }
+  if ((m = path.match(/^\/api\/tables\/([^/]+)\/prefill$/)) && rx.method === 'GET') {
+    return out(200, prefillDraft(weave, m[1], rx.searchParams));
+  }
+
+  if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
+    return out(200, weave.referencesTo(m[1]));
+  }
+  if ((m = path.match(/^\/api\/entities\/([^/]+)\/view$/)) && rx.method === 'GET') {
+    const shape = rx.searchParams.get('shape') ?? 'chip';
+    const rawCfg = rx.searchParams.get('config');
+    let config = null;
+    if (rawCfg) {
+      try { config = JSON.parse(rawCfg); } catch { throw new WeaveError('config is a JSON object', 'invalid'); }
+    }
+    return out(200, weave.renderView(m[1], shape, { config }));
+  }
+  if ((m = path.match(/^\/api\/entities\/([^/]+)\/references-from$/)) && rx.method === 'GET') {
+    return out(200, weave.referencesFrom(m[1]));
+  }
+  if ((m = path.match(/^\/api\/entities\/([^/]+)\/version$/)) && rx.method === 'POST') {
+    const promote = ['1', 'true'].includes(rx.searchParams.get('promote') ?? '') || body.promote === true;
+    const { newSlideVersion } = await deckModule();
+    const made = newSlideVersion(weave, m[1], { promote });
+    return out(201, weave.readEntity(made.id));
+  }
+  if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
+
+  if ((m = path.match(/^\/api\/files\/([^/]+)\/storage$/))) {
+    if (rx.method === 'GET') return out(200, weave.readFileStorage(m[1]));
+    if (rx.method === 'PUT') return out(200, weave.writeFileStorage(m[1], body.items));
+  }
+  return NEXT;
+}
 export function createRequestHandler(hub, { version = 'unknown', uptime = () => 0, build = () => null, backup = () => null, cloudBackups = null, serveStatic = null, origin = null, trustProxy = false, limits = LIMITS, oidc = null, mcpOrigins = [], mail = null, baseDomain = null, openSignup = { on: false, limit: 1 }, clerkKey = null, billing = null, posthog = null, paintLog = null, signIn = () => null, anonymousForms = ['1', 'true'].includes(String(process.env.WEAVE_ANONYMOUS_FORMS ?? '').toLowerCase()) } = {}) {
   const clerkPane = (() => {
     if (!clerkKey || !oidc) return null;
@@ -319,65 +1882,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       return page ? { ...page, status: 404 } : out(404, json);
     };
 
-    if (path === '/api/paint') {
-      if (!paintLog || !rx.readBytes) return out(404, { error: 'Not found', code: 'not-found' });
-      if (rx.method !== 'POST') return out(405, { error: 'POST only', code: 'method-not-allowed' }, { Allow: 'POST' });
-      if (limited('paint', clientIp(rx)) || limited('paintAll', '*')) return out(429, { error: 'Too many paint reports: wait a minute', code: 'rate-limited' }, { 'Retry-After': '60' });
-      let rows;
-      try { rows = paintReports(JSON.parse(Buffer.from(await rx.readBytes(PAINT_MAX_BYTES)).toString('utf8'))); } catch (err) {
-        if (err instanceof WeaveError) return out(statusFor(err), errorBody(err));
-        rows = null;
-      }
-      if (!rows) return out(400, { error: 'A paint report is JSON with 1 to 10 shift or frame reports', code: 'invalid' });
-      for (const row of rows) paintLog(`weave: paint ${JSON.stringify(row)}`);
-      return { status: 204, headers: {}, body: '' };
-    }
-
-    if (path === '/ingest' || path.startsWith('/ingest/')) {
-      if (!posthog || !rx.readBytes) return out(404, { error: 'Not found', code: 'not-found' });
-      const rest = path.slice('/ingest'.length) || '/';
-      const query = rx.searchParams?.toString();
-      const target = `${/^\/(?:static|array)\//.test(rest) ? posthog.assets : posthog.host}${rest}${query ? `?${query}` : ''}`;
-      const headers = Object.fromEntries(INGEST_HEADERS.map((h) => [h, rx.header(h)]).filter(([, v]) => v));
-      headers['x-forwarded-for'] = clientIp(rx);
-      let res;
-      try {
-        const body = ['GET', 'HEAD'].includes(rx.method) ? undefined : await rx.readBytes(INGEST_MAX_BYTES);
-        res = await fetch(target, { method: rx.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(10000) });
-      } catch (err) {
-        if (err instanceof WeaveError) return out(statusFor(err), errorBody(err));
-        return out(502, { error: 'PostHog is not answering', code: 'bad-gateway' });
-      }
-      const kept = Object.fromEntries(['content-type', 'cache-control'].map((h) => [h, res.headers.get(h)]).filter(([, v]) => v).map(([h, v]) => [h === 'content-type' ? 'Content-Type' : 'Cache-Control', v]));
-      return { status: res.status, headers: { 'Content-Type': 'application/octet-stream', ...kept }, body: new Uint8Array(await res.arrayBuffer()) };
-    }
-
-    let weave = hub.get(hub.defaultName);
-    let wsPrefix = '';
-    const hostSlug = slugOfHost(rx.header('host'), baseDomain);
-    let hostOrigin = null;
-    let hostWs = null;
-    if (hostSlug !== null) {
-      const holder = hub.bySlug(hostSlug);
-      if (!holder) {
-        const moved = hub.aliasOf(hostSlug);
-        const q = rx.searchParams?.toString();
-        if (moved) return { status: 301, headers: { Location: `${scheme}//${String(moved.state.meta.name).toLowerCase()}${hostSuffix}${encodeURI(rx.path)}${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
-        if (oidc && rx.method === 'GET' && !path.includes('/api/')) {
-          const address = `${hostSlug}.${baseDomain}`;
-          return out(404, renderRefusalPage({
-            title: 'No workspace at this address',
-            lines: [`${address} matches no weave workspace. The name may have changed, or the address may have lost a character.`],
-            actions: [{ href: `${apexOrigin}/start?pick=1`, label: 'Find your workspaces' }],
-          }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-        }
-        return notFound({ error: 'Not found', code: 'not-found' });
-      }
-      weave = holder;
-      hostWs = holder;
-      hostOrigin = `${scheme}//${String(rx.header('host')).toLowerCase()}`;
-    }
-    const wsM = path.match(/^\/w\/([^/]+)(\/.*|$)/);
+    const step0 = await resolveWorkspaceHost({ apexOrigin, baseDomain, clientIp, hostSuffix, hub, limited, notFound, oidc, out, paintLog, posthog, rx, scheme }, { path });
+    if ('hit' in step0) return step0.hit;
+    const { hostSlug, wsM } = step0.next;
+    let { weave, wsPrefix, hostOrigin, hostWs } = step0.next;
     if (wsM && wsM[1] !== 'undefined') {
       const target = hub.get(wsM[1]) ?? hub.entries().find(([, w]) => w.state.meta.id === wsM[1])?.[1] ?? (wsM[1] === 'weaver' ? hub.get('weave') : null);
       if (!target || target.state.meta.deletedAt) return notFound({ error: `Workspace '${wsM[1]}' not found`, code: 'not-found' });
@@ -392,47 +1900,10 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     weave.maybeRefresh();
     versionOf = weave;
-    const hookDoor = rx.method === 'POST' ? matchRoute('POST', path) : null;
-    if (hookDoor?.cmd.http.door) {
-      let bytes = null;
-      try { bytes = rx.readBytes ? await rx.readBytes(HOOK_BODY_MAX) : Buffer.from(JSON.stringify(await rx.readBody())); } catch (err) { if (!(err instanceof WeaveError) || err.code !== 'too-large') throw err; }
-      const r = hookDoor.cmd.run(weave, hookDoor.params, { hook: { bytes, header: (n) => rx.header(n), size: Number(rx.header('content-length')) } });
-      return out(r.status, r.answer, { 'Cache-Control': 'no-store' });
-    }
-    if (baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      if (/^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
-        const holder = linkHolder(hub, path.slice(1, 2), path.slice(3)) ?? hub.get(hub.defaultName);
-        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' };
-      }
-    }
-    if (!wsPrefix && ['GET', 'HEAD'].includes(rx.method) && /^\/[est]\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(path)) {
-      const kind = path.slice(1, 2);
-      const id = path.slice(3);
-      const servesHere = holdsLink(weave, kind, id) || (weave.registryHost && holdsLink(weave.registryHost, kind, id));
-      const holder = servesHere ? null : linkHolder(hub, kind, id);
-      if (holder && hostOrigin) {
-        return { status: 301, headers: { Location: `${scheme}//${String(holder.state.meta.name).toLowerCase()}${hostSuffix}${path}`, 'Cache-Control': 'no-store' }, body: '' };
-      }
-      if (holder) {
-        const key = hub.list().find((x) => x.id === holder.state.meta.id)?.name ?? holder.state.meta.name;
-        return { status: 302, headers: { Location: `/w/${encodeURIComponent(key)}${path}`, 'Cache-Control': 'no-store' }, body: '' };
-      }
-    }
-    const updateWorkspace = (patch) => {
-      const slug = patch.name != null ? workspaceSlug(patch.name) : null;
-      const state = slug != null && patch.name !== weave.state.meta.name ? hub.slugState(slug, weave) : 'available';
-      if (state !== 'available') throw new WeaveError(WeaveSlugs.apiMessage(state, slug), `slug_${state}`);
-      const was = weave.state.meta.name;
-      const ws = weave.updateWorkspace(patch);
-      if (ws.name !== was) hub.rename(was, ws.name);
-      return ws;
-    };
-
-    const member = weave;
-
-    let actor = String(rx.header('x-weave-actor') || 'web').slice(0, 120);
-    weave.actor = actor;
-    if (oidc?.issuer) weave.inviteIssuer = oidc.issuer;
+    const step1 = await openHookDoor({ baseDomain, hostSuffix, hub, oidc, out, rx, scheme }, { hostOrigin, path, weave, wsPrefix });
+    if ('hit' in step1) return step1.hit;
+    const { updateWorkspace, member } = step1.next;
+    let { actor } = step1.next;
     path = path.replace(/^(\/api\/tables\/)([^/]+)/, (whole, head, key) => {
       if (!/%2f/i.test(key)) return whole;
       try { return head + (weave.findTable(key.replace(/%2f/gi, '/'))?.id ?? key); } catch { return whole; }
@@ -442,287 +1913,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     const deny = (code, error) => out(code, { error, code: code === 401 ? 'unauthorized' : 'forbidden' },
       code === 401 && mcpChallenge ? { 'WWW-Authenticate': mcpChallenge } : {});
 
-    {
-      const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
-      if (shareM && rx.method === 'GET') {
-        if (!weave.shareByToken(shareM[1])) return out(404, 'This share link is not (or no longer) valid.');
-        return { status: 302, headers: { Location: `${wsPrefix}/s/${shareM[1]}`, 'Cache-Control': 'no-store' }, body: '' };
-      }
-    }
-
-    if (path === '/t' || (path.startsWith('/t/') && !UUID_RE.test(path.slice(3)) && !UUID_RE.test(path.slice(3).replace(/\/new$/, '')))) {
-      const wantsBody = ['POST', 'PUT', 'PATCH'].includes(rx.method) && appletOn();
-      if (wantsBody && Number(rx.header('content-length') ?? 0) > MAX_BODY_BYTES) return out(413, { error: 'Body too large', code: 'too-large' });
-      const appletBody = wantsBody ? await rx.readBody().catch(() => ({})) : {};
-      try {
-        const hit = handleApplet({
-          weave,
-          rx: { method: rx.method, header: (n) => rx.header(n), searchParams: rx.searchParams, body: appletBody },
-          path,
-          out,
-          mount: `${wsPrefix}/t`,
-        });
-        if (hit) return hit;
-      } catch (err) {
-        const json = errorBody(err, 'error');
-        return err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json);
-      }
-    }
-
-    const shellMarker = () => `\n<meta name="weave-workspace" content="${metaAttr(weave.state.meta.name ?? '')}">`;
-    const linkPreview = (p, { signedOut = false } = {}) => {
-      const m = p.match(/^\/([est])\/([^/]+)$/);
-      if (p !== '/' && !m) return null;
-      if (signedOut && m && !UUID_RE.test(m[2])) return null;
-      const ws = weave.state.meta;
-      const site = ws.title ?? ws.name;
-      const canonical = baseDomain && ws.name ? `${scheme}//${String(ws.name).toLowerCase()}${hostSuffix}` : null;
-      const base = canonical ?? origin ?? `http://${rx.header('host')}`;
-      const home = canonical ? '' : `/w/${ws.name || hub.defaultName}`;
-      let image = `${base}/brand/weave-mark-512.png`;
-      if (ws.logo) {
-        try {
-          const { meta: logo, bytes } = weave.getWorkspaceLogo();
-          if (RASTER.has(logoType(bytes))) image = `${base}${home}/api/workspace/logo?v=${logo.id.slice(0, 8)}`;
-        } catch {}
-      }
-      const live = (tables) => tables.reduce((n, d) => n + weave.listEntities(d.id).length, 0);
-      let title, heading, trail, detail, url, route = null, fields = [];
-      try {
-        if (!m) {
-          const tables = weave.userTables();
-          title = site;
-          detail = plainLine(ws.description) || `${count(new Set(tables.map((d) => d.spaceId)).size, 'space')} · ${count(tables.length, 'table')}`;
-          url = `${home}/`;
-        } else if (m[1] === 'e') {
-          const e = weave.getEntity(m[2]);
-          if (e.deletedAt) return null;
-          const db = weave.state.tables[e.dbId];
-          const name = weave.entityName(e).trim();
-          const ref = `${db.name} #${e.publicId}`;
-          title = clip(`${ref}${name ? ` · ${name}` : ''}`, 80);
-          heading = clip(name || ref, 80);
-          trail = [site, weave.state.spaces[db.spaceId]?.name, ref];
-          fields = weave.previewFields(e.id);
-          detail = fields.map((f) => `${f.label} ${f.value}`).join(' · ');
-          url = `/e/${e.id}`;
-          route = `${wsPrefix}/#/entity/${e.id}`;
-        } else if (m[1] === 's') {
-          const sp = Object.hasOwn(weave.state.spaces, m[2]) ? weave.state.spaces[m[2]] : null;
-          if (!sp || sp.deletedAt) return null;
-          const tables = weave.listTables(sp.id);
-          title = `${sp.name} · space`;
-          trail = [site, sp.name];
-          detail = `${count(tables.length, 'table')} · ${count(live(tables), 'record')}`;
-          url = `/s/${sp.id}`;
-          route = `${wsPrefix}/#/space/${sp.id}`;
-        } else {
-          const db = weave.listTables().find((d) => d.id === m[2]);
-          if (!db) return null;
-          const space = weave.state.spaces[db.spaceId]?.name;
-          title = `${space} / ${db.name} · table`;
-          trail = [site, space, db.name];
-          detail = count(live([db]), 'record');
-          url = `/t/${db.id}`;
-          route = `${wsPrefix}/#/table/${db.id}`;
-        }
-      } catch (err) {
-        if (err instanceof WeaveError) return null;
-        throw err;
-      }
-      const description = m ? `${trail.filter(Boolean).join(' › ')}${detail ? `\n${detail}` : ''}` : detail;
-      const tag = (attr, key, value) => `<meta ${attr}="${key}" content="${metaAttr(value)}">`;
-      const head = [
-        `<title>${escapeHtml(title === site ? site : `${title} · ${site}`)}</title>`,
-        tag('name', 'description', description),
-        tag('property', 'og:title', heading ?? title),
-        tag('property', 'og:description', description),
-        tag('property', 'og:site_name', site),
-        tag('property', 'og:url', base + url),
-        tag('property', 'og:type', m?.[1] === 'e' ? 'article' : 'website'),
-        tag('property', 'og:image', image),
-        tag('name', 'twitter:card', 'summary'),
-        ...fields.flatMap((f, i) => [tag('name', `twitter:label${i + 1}`, f.label), tag('name', `twitter:data${i + 1}`, String(f.value))]),
-      ].join('\n');
-      return { head, route };
-    };
-
-    const carried = weavePrefill.clip(rx.searchParams).query;
-    const authHref = `${wsPrefix}/auth?next=${encodeURIComponent(wsPrefix + path + (carried ? `?${carried}` : ''))}`;
-    const wallPage = () => out(401, wallPageHtml(authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    const wall = () => (oidc ? { status: 302, headers: { Location: authHref, 'Cache-Control': 'no-store' }, body: '' } : wallPage());
-    const statusPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/status' || path === '/status/');
-    const legalPage = ['GET', 'HEAD'].includes(rx.method) && (path === '/privacy' || path === '/terms' || path === '/support' || path === '/docs');
-    const previewLogo = path === '/api/workspace/logo' && ['GET', 'HEAD'].includes(rx.method) && !!weave.state.meta.linkPreview;
-    const startDoor = path === '/start' || path === '/api/start' || path.startsWith('/api/start/');
-    const formDoor = (['GET', 'HEAD'].includes(rx.method) && /^\/(?:f|api\/forms)\/[^/]+$/.test(path)) || (rx.method === 'POST' && /^\/api\/forms\/[^/]+\/submit$/.test(path));
-    const openDoor = path === '/api/health' || path === '/auth' || path.startsWith('/api/auth/') || legalPage || statusPage || previewLogo || startDoor || formDoor
-      || (['GET', 'HEAD'].includes(rx.method) && (/\.(css|js|mjs|map|woff2?|ttf|otf|svg|png|jpe?g|gif|webp|ico)$/i.test(path) || /^\/brand\/[\w-]+\.html$/.test(path)));
-    let role = null;
-    let session = null;
-    let accountName = null;
-    let requestAccount = null;
-    const cookies = parseCookies(rx.header('cookie'));
-    if (cookies[LEGACY_COOKIE]) jar.push(clearCookie(LEGACY_COOKIE, rx));
-    const startRoot = baseDomain ? apexOrigin : '';
-    const startReturn = (back) => sameOriginPath(back, originFor(rx), null) === back && (WORKSPACE_LINK.test(back) || START_LINK.test(back) || inviteLink(back));
-    const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
-    const findWorkspaces = (logins) => {
-      const all = hub.entries();
-      const live = all.filter(([, w]) => !w.state.meta.deletedAt);
-      const accountFor = (w, me) => w.accountForIdentity(me);
-      const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
-      const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
-      const title = (name, w) => w.state.meta.title ?? name;
-      const seenOn = (w, account) => w.listSessions(account.id)[0]?.lastSeenAt ?? null;
-      const logoOf = (name, w) => (w.state.meta.logo ? `/api/start/logo/${encodeURIComponent(name)}?v=${w.state.meta.logo.id.slice(0, 8)}` : null);
-      const rows = [
-        ...live.filter(([, w]) => opener(w))
-          .map(([name, w]) => {
-            const me = opener(w);
-            const account = accountFor(w, me);
-            return { kind: 'workspace', name, id: w.state.meta.id, title: title(name, w), login: label(me), host: baseDomain ? `${name.toLowerCase()}.${baseDomain}` : null, role: Weave.roleName(account.role), logo: logoOf(name, w), seenAt: seenOn(w, account), open: `/api/start/open/${encodeURIComponent(name)}` };
-          })
-          .sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '')),
-        ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
-          .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
-      ];
-      const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
-      const names = [...new Set([...String(cookies.wv_rail ?? '').split(',').filter((n) => available.includes(n)), ...available])];
-      const signedUp = (me) => all.filter(([, w]) => w.state.meta.signup && sameLogin(w.state.meta.signup, me)).length;
-      const signup = openSignup.on ? logins.find((me) => signedUp(me) < openSignup.limit) ?? null : null;
-      const owner = signup ?? (billing ? logins[0] ?? null : null);
-      const accountName = logins.flatMap((me) => live.map(([, w]) => accountFor(w, me)?.name)).find(Boolean) ?? logins.map((me) => me.name).find(Boolean) ?? logins.map(label).find((l) => !l.includes('@'))
-        ?? logins.map((me) => me.email?.split('@')[0]).find(Boolean) ?? null;
-      const unpaid = async (me) => {
-        for (const [name, w] of all) {
-          if (Weave.roleName(w.accountForIdentity(me)?.role) !== 'architect') continue;
-          const { plan } = await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() });
-          if (plan == null || plan === 'trial') return name;
-        }
-        return null;
-      };
-      return { rows, names, logins: logins.map(label), accountIn: (w) => { const me = opener(w); return me ? { ...accountFor(w, me), login: me } : null; }, signup, owner, canCreate: !!owner, accountName, unpaid };
-    };
-    const creationAdmission = async (logins) => {
-      const found = findWorkspaces(logins);
-      const me = found.owner;
-      if (!me) return { response: out(403, { error: openSignup.on ? 'This sign-in has made as many workspaces as this server allows.' : 'Creating a workspace here needs an invite from the operator.', code: openSignup.on ? 'signup_limit' : 'signup_closed' }) };
-      if (billing) {
-        let waiting;
-        try { waiting = await found.unpaid(me); } catch (error) {
-          if (!(error instanceof BillingUnavailable)) throw error;
-          return { response: out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' }) };
-        }
-        if (waiting) {
-          const at = baseDomain ? `${scheme}//${String(waiting).toLowerCase()}${hostSuffix}/billing` : `/w/${encodeURIComponent(waiting)}/billing`;
-          return { response: out(402, { error: `${waiting} is still waiting on a plan. Subscribe on its billing page before starting another workspace.`, code: 'plan-required', waiting, billing: at }) };
-        }
-      }
-      return { found, me };
-    };
-    const heldStart = async () => {
-      prune(starts);
-      const key = cookies.wv_start ? await digest(cookies.wv_start) : null;
-      const held = key ? starts.get(key) : null;
-      return held ? { key, token: cookies.wv_start, logins: held.logins } : null;
-    };
-    const holdLogin = async (who) => {
-      const held = await heldStart();
-      const login = { issuer: who.issuer, subject: who.subject, email: who.email ?? null, ...(who.name ? { name: who.name } : {}) };
-      const logins = (held?.logins ?? []).map((l) => (sameLogin(l, login) ? login : l));
-      if (!logins.some((l) => sameLogin(l, login))) logins.push(login);
-      const token = held?.token ?? newChallenge();
-      starts.set(held?.key ?? await digest(token), { logins, expiresAt: Date.now() + START_TTL_MS });
-      return { token, logins };
-    };
-    const railDomain = baseDomain ? `; Domain=.${baseDomain}` : '';
-    const railCookie = (names) => `wv_rail=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`;
-    const clearRail = () => `wv_rail=; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=0${secureFlag(rx)}`;
-    const recent = String(cookies.wv_recent ?? '').toLowerCase().split(',').filter((n) => RECENT_NAME.test(n));
-    const stampRecent = (hit) => {
-      const name = hub.entries().find(([, w]) => w === weave)?.[0]?.toLowerCase();
-      if (hit && rx.method === 'GET' && hit.status < 400 && RECENT_NAME.test(name ?? '')) {
-        const names = [...new Set([name, ...recent])].slice(0, RECENT_CAP);
-        jar.push(`wv_recent=${names.join(',')}; HttpOnly; SameSite=Lax; Path=/${railDomain}; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`);
-      }
-      return hit;
-    };
-    const startCookies = ({ token, logins }) => [`wv_start=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${START_TTL_MS / 1000}${secureFlag(rx)}`, railCookie(findWorkspaces(logins).names)];
-    const withCookies = (res, more) => ({ ...res, headers: { ...res.headers, 'Set-Cookie': [res.headers['Set-Cookie'] ?? []].flat().concat(more) } });
-    if (path === '/' && baseDomain && oidc && !hostOrigin && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      const railed = (await heldStart()) ? null : String(cookies.wv_rail ?? '').split(',').filter(Boolean).map((n) => hub.bySlug(n)).find((w) => w && !w.state.meta.deletedAt && !isDocsWorkspace(w));
-      return { status: 302, headers: { Location: railed ? `${scheme}//${String(railed.state.meta.name).toLowerCase()}${hostSuffix}/#/resume` : '/start', 'Cache-Control': 'no-store' }, body: '' };
-    }
-    const resolved = new Map();
-    const ownSession = (w) => {
-      if (resolved.has(w)) return resolved.get(w);
-      const name = cookieName(w);
-      const own = cookies[name] ? w.verifySession(cookies[name]) : null;
-      const hit = own ? { ...own, engine: w, cookie: name } : null;
-      if (hit?.renewed) jar.push(sessionCookie(name, cookies[name], rx));
-      resolved.set(w, hit);
-      return hit;
-    };
-    const docsVisitor = (w) => {
-      if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
-      for (const name of Object.keys(cookies)) {
-        const from = name.startsWith(`${LEGACY_COOKIE}_`) ? hub.get(name.slice(LEGACY_COOKIE.length + 1)) : null;
-        const hit = from && from !== w ? ownSession(from) : null;
-        if (hit) return { ...hit, role: 'observer', visitor: true };
-      }
-      return null;
-    };
-    const docsToken = (w, token) => {
-      if (!isDocsWorkspace(w) || !w.state.meta.requireAuth) return null;
-      const from = hub.entries().find(([, x]) => x !== w && !x.state.meta.deletedAt && x.verifyToken(token))?.[1];
-      return from ? { ...from.verifyToken(token), role: 'observer', visitor: true } : null;
-    };
-    const sessionOn = (w) => ownSession(w) ?? docsVisitor(w);
-    const authz = rx.header('authorization');
-    let oauth = null;
-    let upload = null;
-    const uploadToken = /^Bearer (wvu_[A-Za-z0-9_-]+)$/i.exec(authz ?? '')?.[1];
-    if (uploadToken) {
-      prune(uploads);
-      prune(spentUploads);
-      upload = uploads.get(uploadToken);
-      const spent = upload ? null : spentUploads.get(uploadToken);
-      if (spent?.incomplete && path === '/api/uploads' && rx.method === 'PUT') {
-        return out(400, { error: 'The upload ended before all of its bytes arrived; prepare it again and send the whole file', code: 'incomplete-upload' }, { 'Cache-Control': 'no-store' });
-      }
-      if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || rx.method !== 'PUT') return deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP');
-      uploads.delete(uploadToken);
-      spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
-      upload.engine.maybeRefresh();
-      if (upload.accountId == null) {
-        if (upload.engine.listAccounts().length) return deny(401, 'This workspace now has accounts; prepare the upload again');
-      } else {
-        const account = upload.engine.listAccounts().find((a) => a.id === upload.accountId);
-        if (!account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id)) return deny(401, 'The upload account or sign-in link no longer exists');
-        if (upload.engine !== weave && Weave.roleName(account.role) !== 'architect') return deny(403, 'The upload account no longer administers this workspace');
-        oauth = { account, engine: upload.engine };
-      }
-    }
-    let mcpDoor = false;
-    if (path.startsWith('/.well-known/oauth-protected-resource') && !wsPrefix) {
-      const rest = path.slice('/.well-known/oauth-protected-resource'.length);
-      const wm = rest.match(/^\/w\/([^/]+)\/mcp$/);
-      if (!oidc || rx.method !== 'GET' || !(rest === '' || rest === '/mcp' || (wm && hub.get(wm[1])))) {
-        return notFound({ error: oidc ? 'No such protected resource' : 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
-      }
-      return out(200, {
-        resource: (hostOrigin ?? mcpOrigin(rx)) + rest,
-        authorization_servers: [oidc.issuer],
-        scopes_supported: ['profile', 'offline_access'],
-        bearer_methods_supported: ['header'],
-      });
-    }
-    if (path === '/.well-known/openai-apps-challenge' && !wsPrefix && ['GET', 'HEAD'].includes(rx.method)) {
-      const token = process.env.WEAVE_OPENAI_APPS_CHALLENGE?.trim();
-      if (!token) return notFound({ error: 'No apps challenge is configured', code: 'not-found' });
-      return out(200, token, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-    }
+    const step2 = await buildPagePreviews({ apexOrigin, baseDomain, clearCookie, hostSuffix, hub, jar, LEGACY_COOKIE, notFound, oidc, origin, out, rx, scheme }, { path, weave, wsPrefix });
+    if ('hit' in step2) return step2.hit;
+    const { shellMarker, linkPreview, authHref, wallPage, wall, statusPage, legalPage, startDoor, openDoor, cookies, startRoot } = step2.next;
+    let { role, session, accountName, requestAccount } = step2.next;
+    const step3 = await buildStartHelpers({
+      baseDomain, billing, cookieName, hostSuffix, hub, jar, LEGACY_COOKIE, oidc, openSignup, originFor, out, prune, rx, scheme, secureFlag, sessionCookie,
+      starts,
+    }, { cookies, hostOrigin, path, weave, wsPrefix });
+    if ('hit' in step3) return step3.hit;
+    const {
+      startReturn, findWorkspaces, creationAdmission, heldStart, holdLogin, railCookie, clearRail, recent, stampRecent, startCookies, withCookies,
+      ownSession, docsToken, sessionOn, authz, uploadToken,
+    } = step3.next;
+    let { oauth, upload } = step3.next;
+    const step4 = await resolveUploadAndMcpDoors({ deny, hub, mcpOrigin, notFound, oauth, oidc, out, prune, rx, spentUploads, upload, uploads, uploadToken }, { hostOrigin, path, weave, wsPrefix });
+    if ('hit' in step4) return step4.hit;
+    let { mcpDoor } = step4.next;
+    ({ oauth, upload } = step4.next);
     if (path === '/mcp') {
       if (oidc) mcpChallenge = `Bearer resource_metadata="${hostOrigin ?? mcpOrigin(rx)}/.well-known/oauth-protected-resource${wsPrefix}/mcp"`;
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
@@ -768,42 +1976,14 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         path = hit.path;
       } else if (door.rest.startsWith('/api/')) path = door.rest;
     }
-    if (share) role = null;
-    else if (authz && /^Bearer /i.test(authz) && !(upload && !oauth)) {
-      const account = oauth?.account ?? weave.verifyToken(authz.slice(7).trim()) ?? docsToken(weave, authz.slice(7).trim());
-      if (!account) return path.startsWith('/api/') ? deny(401, 'Invalid token') : wallPage();
-      weave.actor = actor = oauth ? `${accountActor(account.id)} via MCP` : actorOf(account);
-      accountName = account.name;
-      requestAccount = account;
-      role = Weave.roleName(account.role);
-    } else if ((session = sessionOn(weave))) {
-      weave.actor = actor = actorOf(session);
-      accountName = session.name;
-      requestAccount = session;
-      role = Weave.roleName(session.role);
-    } else if (weave.state.meta.requireAuth && !openDoor && cookies[cookieName(weave)]) {
-      if (weave.removedSession(cookies[cookieName(weave)])) {
-        const ws = weave.state.meta.name;
-        if (path.startsWith('/api/')) return out(403, { error: `Your access to ${ws} was removed`, code: 'access-removed' }, { 'Cache-Control': 'no-store' });
-        return out(403, renderRefusalPage({
-          title: `Your access to ${ws} was removed`,
-          lines: [`A workspace architect removed your account from ${ws}, so this browser's session there has ended.`, 'Ask an architect for a new invite link, open one of your other workspaces, or sign in with a different account.'],
-          actions: [{ href: `${startRoot}/start?pick=1`, label: 'Find your workspaces' }, { href: `${wsPrefix}/auth?signed-out=1`, label: 'Sign in with a different account' }],
-        }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      }
-      return path.startsWith('/api/')
-        ? deny(401, 'Session expired or revoked')
-        : { status: 302, headers: { Location: authHref, 'Set-Cookie': clearCookie(cookieName(weave), rx), 'Cache-Control': 'no-store' }, body: '' };
-    } else if (weave.state.meta.requireAuth && !openDoor) {
-      if (path.startsWith('/api/')) return deny(401, 'This workspace requires authentication');
-      const preview = weave.state.meta.linkPreview && ['GET', 'HEAD'].includes(rx.method) ? linkPreview(path, { signedOut: true }) : null;
-      if (preview) return out(200, previewPageHtml(preview.head, authHref), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return wall();
-    }
-    const localAccount = (w, a) => !!a && Object.hasOwn(w.state.meta.accounts ?? {}, a.accountId ?? a.id);
-    const viewerAs = (w, a) => (localAccount(w, a) ? viewerFor(a) : { accountId: null, role: Weave.roleName(a.role) ?? 'observer' });
-    let viewer = share ? { share } : role ? viewerAs(weave, { ...requestAccount, role }) : ANONYMOUS;
-    let unseated = null;
+    const step5 = await resolveSessionRole({ authz, clearCookie, cookieName, deny, oauth, out, rx, sessionOn, share, upload }, {
+      accountName, actor, authHref, cookies, docsToken, linkPreview, openDoor, path, requestAccount, role, session, startRoot, wall, wallPage, weave,
+      wsPrefix,
+    });
+    if ('hit' in step5) return step5.hit;
+    const { localAccount, viewerAs } = step5.next;
+    let { viewer, unseated } = step5.next;
+    ({ accountName, actor, requestAccount, role, session } = step5.next);
     const seatRequired = () => {
       const ws = weave.state.meta.name;
       const ended = weave.state.meta.trialFrom && billing?.trialDays ? `The free trial of ${ws} has ended, so creating and editing there needs a paid seat.` : `Creating and editing in ${ws} needs a paid seat.`;
@@ -841,189 +2021,18 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       const a = oauth ? (w === oauth.engine ? oauth.account : null) : bearer ? w.verifyToken(bearer) ?? docsToken(w, bearer) : sessionOn(w);
       return a ? viewerAs(w, a) : ANONYMOUS;
     };
-    const seen = new Map();
-    viewers.of = (w) => {
-      if (!seen.has(w)) seen.set(w, viewerOn(w));
-      return seen.get(w);
-    };
-    const pathSpace = () => unrestricted(() => {
-      try {
-        let m2;
-        if ((m2 = path.match(/^\/api\/tables\/([^/]+)/))) return weave.findTable(decodeURIComponent(m2[1]))?.spaceId ?? null;
-        if ((m2 = path.match(/^\/api\/spaces\/([^/]+)/))) return weave.findSpace(decodeURIComponent(m2[1]))?.id ?? null;
-        if ((m2 = path.match(/^\/api\/entities\/([^/]+)/))) return weave.findTable(weave.getEntity(decodeURIComponent(m2[1])).dbId)?.spaceId ?? null;
-      } catch {}
-      return null;
-    });
-    const targetSpace = role && !share ? pathSpace() : null;
-    if (requestAccount?.space && localAccount(weave, requestAccount)) viewers.tokenWrite = { engine: weave, accountId: requestAccount.accountId ?? requestAccount.id };
-    const actorForRequest = role || share || !guarded() ? actor : 'anonymous';
-    weave.actor = actorForRequest;
-    const requestActor = role ? actorForRequest : 'anonymous';
-    const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
-    const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
-    const cap = startDoor || targetHidden ? null
-      : targetSpace ? spaceRole(weave, viewer, weave.state.spaces[targetSpace])
-        : bulkRows ? 'editor'
-          : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
-    if (cap && cap !== 'architect') {
-      const m2 = rx.method;
-      const hit = matchRoute(m2, path);
-      const open = m2 === 'GET' || m2 === 'HEAD' || path.startsWith('/api/auth/')
-        || (m2 === 'POST' && path === '/api/mcp' && !!role)
-        || (m2 === 'POST' && path === '/api/markdown');
-      const need = hit && hit.cmd.writes !== 'keystore' && !hit.cmd.http.across ? hit.cmd.minRole : open ? 'observer' : path === '/api/onboarding' ? 'architect' : 'editor';
-      const sysM = (hit ? hit.cmd.writes !== 'none' : !open) && (path.match(/^\/api\/tables\/([^/]+)\/(?:entities|import\.csv)/) ?? path.match(/^\/api\/entities\/([^/]+)/));
-      const sysTouch = sysM && (() => {
-        try {
-          const ref = sysM[0].startsWith('/api/entities/')
-            ? weave.state.tables[weave.getEntity(sysM[1]).dbId]
-            : weave.findTable(decodeURIComponent(sysM[1]));
-          return !!ref?.system;
-        } catch { return false; }
-      })();
-      const owns = !!hit?.cmd.owns?.(weave, hit.params);
-      const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || (/^\/api\/forms\/[^/]+\/submit$/.test(path) && RANKS.get(cap) >= RANKS.get(FORM_MIN_ROLE.submit)));
-      if (RANKS.get(cap) < RANKS.get(need) && !owns && !submits) {
-        if (unseated) return out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
-        return deny(role ? 403 : 401, `${m2} ${path} needs an ${need} on this workspace${role ? `; your role here is ${cap}` : ': send a token or sign in'}`);
-      }
-      if (cap === 'editor' && sysTouch) return deny(403, 'This token cannot change the schema');
-    }
-    const accountOn = (w) => {
-      if (oauth) return w === oauth.engine ? oauth.account : null;
-      if (authz && /^Bearer /i.test(authz)) return w.verifyToken(authz.slice(7).trim()) ?? docsToken(w, authz.slice(7).trim());
-      return sessionOn(w);
-    };
-    const roleOn = (w) => {
-      if (w === weave) return role;
-      const account = accountOn(w);
-      return account ? workspaceRole(w, viewerAs(w, account)) : null;
-    };
-    const actorOn = (w) => w === weave ? actorForRequest : actorOf(accountOn(w)) ?? `from ${weave.state.meta.name}: ${weave.actorName(actorForRequest)}`;
-
-    const plainMention = (kind, ref) => {
-      try {
-        if (kind === 'workspace') {
-          return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
-        }
-        if (kind === 'space') {
-          const sp = weave.findSpace(ref);
-          return sp ? { href: `${wsPrefix}/#/space/${sp.id}`, label: sp.name } : null;
-        }
-        if (kind === 'table') {
-          const db = weave.findTable(ref);
-          return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
-        }
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
-          const e = weave.state.entities[ref];
-          if (!e || e.deletedAt || !weave.canSee(e.id)) return null;
-          return {
-            href: `${wsPrefix}/e/${e.id}/doc.html`,
-            label: weave.entityName(e),
-            name: weave.entityName(e),
-            home: weave.state.tables[e.dbId]?.name,
-            view: weave.renderView(e.id, 'chip'),
-            fields: weave.previewFields(e.id),
-          };
-        }
-        const m = /^(.+)#(\d+)$/.exec(ref);
-        if (!m) return null;
-        const db = weave.findTable(m[1].trim());
-        if (!db) return null;
-        const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === m[2]);
-        if (!entity) return null;
-        return {
-          href: `${wsPrefix}/e/${entity.id}/doc.html`,
-          label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
-          name: weave.entityName(entity),
-          home: db.name,
-          view: weave.renderView(entity.id, 'chip'),
-          fields: weave.previewFields(entity.id),
-        };
-      } catch {
-        return null;
-      }
-    };
-    const resolveMention = share ? scopedMention(weave, share, plainMention, `${wsPrefix}/s/${share.token}`) : plainMention;
-
-    if (rx.method === 'OPTIONS') {
-      return { status: 204, headers: { Allow: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' }, body: '' };
-    }
+    const step6 = await buildAccessHelpers({
+      actor, authz, deny, guarded, localAccount, oauth, out, requestAccount, rx, seatRequired, sessionOn, share, unseated, viewer, viewerAs, viewerOn,
+      viewers,
+    }, { docsToken, path, role, startDoor, weave, wsPrefix });
+    if ('hit' in step6) return step6.hit;
+    const { actorForRequest, requestActor, cap, roleOn, actorOn, resolveMention } = step6.next;
 
     try {
       let m;
-      if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
-        const entity = sharedRead(weave, share, m[1]);
-        const fieldRef = m[2] ?? null;
-        const markdown = weave.getDoc(m[1], fieldRef);
-        const docLabel = fieldRef ? ` • ${fieldRef}` : '';
-        const subtitle = `${entity.db} #${entity.publicId} • ${entity.name}${docLabel} • updated ${entity.updatedAt.slice(0, 10)}`;
-        if (m[3] === 'md') {
-          return out(200, markdown, { 'Content-Type': 'text/markdown; charset=utf-8' });
-        }
-        if (m[3] === 'mmd') {
-          return out(200, markdown, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
-        }
-        if (m[3] === 'html') {
-          if (isHtmlDocument(markdown)) return out(200, rx.searchParams.get('inline') === '1' ? viewHtml(Buffer.from(markdown), frameLinkBase(Buffer.from(markdown)) + FRAME_HEIGHT_SCRIPT) : markdown, sandboxedHtmlHeaders());
-          const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
-          return out(200, page, sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
-        }
-        const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
-        return out(200, pdf, fileHeaders({ name: `${entity.name || 'document'}.pdf`, mime: 'application/pdf' }, pdf));
-      }
-      if ((m = path.match(/^\/e\/([^/]+)\/entity\.(md|mmd|html|pdf)$/))) {
-        const entity = sharedRead(weave, share, m[1]);
-        const lines = [`# ${entity.name || '#' + entity.publicId}`, '', `${entity.db} #${entity.publicId} • updated ${entity.updatedAt.slice(0, 10)}`, '', '## Fields', '', '| Field | Value |', '|---|---|'];
-        for (const [k, v] of Object.entries(entity.fields)) {
-          if (k in entity.docs) continue;
-          const val = v == null ? '' : Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? x.name : x)).join(', ') : typeof v === 'object' ? (v.name ?? '') : String(v);
-          lines.push(`| ${k} | ${String(val).replace(/\|/g, '\\|')} |`);
-        }
-        for (const [docName, docText] of Object.entries(entity.docs)) {
-          lines.push('', '<div class="pagebreak"></div>', '', `## ${docName}`, '', docText || '_empty_');
-        }
-        if (entity.notice) lines.push('', entity.notice);
-        const md = lines.join('\n');
-        const subtitle = `${entity.db} #${entity.publicId} • full entity export`;
-        if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
-        if (m[2] === 'mmd') return out(200, md, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
-        if (m[2] === 'html') {
-          return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
-        }
-        const pdf = markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle });
-        return out(200, pdf, fileHeaders({ name: `${entity.name || 'entity'}.pdf`, mime: 'application/pdf' }, pdf));
-      }
-
-      if ((m = path.match(/^\/e\/([^/]+)\/deck\.(html|json)$/))) {
-        const { renderDeck } = await deckModule();
-        const built = renderDeck(weave, m[1], share ? { admit: (id) => withinScope(weave, share, { entityId: id }) } : {});
-        if (m[2] === 'json') {
-          return out(200, { model: built.model, errors: built.errors, warnings: built.warnings });
-        }
-        return out(200, built.html, sandboxedHtmlHeaders({ 'X-Weave-Deck-Warnings': String(built.warnings.length) }));
-      }
-
-      if ((m = path.match(/^\/t\/([^/]+)\/new$/)) && ['GET', 'HEAD'].includes(rx.method)) {
-        const preview = linkPreview(`/t/${m[1]}`);
-        if (!preview) throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
-        const q = weavePrefill.clip(rx.searchParams).query;
-        const to = `${wsPrefix}/#/table/${m[1]}/new${q ? `?${q}` : ''}`;
-        if (!serveStatic) return { status: 302, headers: { Location: to, 'Cache-Control': 'no-store' }, body: '' };
-        const hit = serveStatic('/', rx, { head: `${preview.head}${shellMarker()}\n<meta name="weave-route" content="${metaAttr(to)}">\n<script src="/permalink.js"></script>` });
-        if (hit) return stampRecent({ ...hit, headers: { ...hit.headers, 'Cache-Control': 'no-store' } });
-      }
-      if ((m = path.match(/^\/(e|s|t)\/([^/]+)$/)) && !['GET', 'HEAD'].includes(rx.method)) {
-        throw new WeaveError(`A permalink answers GET, not ${rx.method}`, 'not-found');
-      }
-      if (['GET', 'HEAD'].includes(rx.method) && (path === '/' || m)) {
-        const preview = linkPreview(path);
-        if (!preview && path !== '/') throw new WeaveError(`Nothing at ${wsPrefix}${path}`, 'not-found');
-        if (preview?.route && !serveStatic) return { status: 302, headers: { Location: preview.route }, body: '' };
-        const jump = preview?.route ? `\n<meta name="weave-route" content="${metaAttr(preview.route)}">\n<script src="/permalink.js"></script>` : '';
-        const hit = preview && serveStatic ? serveStatic('/', rx, { head: preview.head + shellMarker() + jump }) : null;
-        if (hit) return m?.[1] === 's' ? hit : stampRecent(hit);
+      {
+        const hit = await entityExportRoutes({ out, resolveMention, rx, serveStatic, share }, { linkPreview, path, shellMarker, stampRecent, weave, wsPrefix });
+        if (hit !== NEXT) return hit;
       }
 
       const formClient = () => {
@@ -1042,187 +2051,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         if (share) return { form, admitted: share.mode === 'submit' && form.enabled && share.formId === form.id && form.shareOnly && form.owner === weave && share.scope.id === form.tableId };
         return { form, admitted: formAdmits(form, { role: roleOn(form.owner), anonymous: anonymousForms }) };
       };
-      if ((m = path.match(/^\/f\/([^/]+)$/)) && ['GET', 'HEAD'].includes(rx.method)) {
-        const { form, admitted } = formFor(m[1]);
-        if (!admitted) return wall();
-        formClient();
-        const formParams = new URLSearchParams(rx.searchParams);
-        if (share) formParams.delete('preview');
-        return out(200, renderFormPage(form, { mount: share ? `${wsPrefix}/s/${share.token}` : wsPrefix, ...(share && rx.searchParams.get('preview') === '1' ? { submitUrl: `${wsPrefix}/s/${share.token}/api/forms/${form.id}/submit?preview=1` } : {}), searchParams: formParams }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      {
+        const hit = await formAndStatusRoutes({
+        apexOrigin, authz, baseDomain, billing, clerkPane, clientIp, deny, door, formClient, formFor, formLimited, isProviderReturn, limits, mcpOrigin,
+        notFound, oidc, openSignup, origin, originFor, out, posthog, requestActor, roleOn, rx, serveStatic, session, sessionOn, share, uptime, version,
+      }, { docsToken, findWorkspaces, heldStart, hostOrigin, hostSlug, legalPage, path, role, startReturn, startRoot, statusPage, wall, weave, wsPrefix });
+        if (hit !== NEXT) return hit;
       }
 
-      if ((m = path.match(/^\/api\/forms\/([^/]+)\/submit$/)) && rx.method === 'POST') {
-        if (share && rx.searchParams.get('preview') === '1') return deny(403, 'Preview does not submit entries');
-        const { form, admitted } = formFor(m[1]);
-        if (!admitted) return deny(401, 'Sign in to submit this form');
-        const ip = clientIp(rx);
-        const key = `${form.owner.state.meta.id}:${form.id}`;
-        const retry = formLimited([['server', limits.formServer ?? 1000], [`form:${key}`, limits.formTotal ?? 120], [`sender:${key}:${ip}`, limits.formSender ?? 20]]);
-        if (retry) return out(429, { error: 'Too many submissions. Try again later.', code: 'rate-limited' }, { 'Retry-After': String(retry) });
-        const signedIn = roleOn(form.owner) != null;
-        const actor = !signedIn ? 'anonymous' : form.owner === weave ? requestActor : actorOf((authz && /^Bearer /i.test(authz) ? form.owner.verifyToken(authz.slice(7).trim()) ?? docsToken(form.owner, authz.slice(7).trim()) : sessionOn(form.owner)) ?? null) ?? requestActor;
-        const body = await rx.readBody();
-        const idempotencyKey = rx.header('idempotency-key') ?? body?.idempotencyKey;
-        const client = formClient();
-        if (!signedIn && idempotencyKey != null && !/^[A-Za-z0-9_-]{32,200}$/.test(idempotencyKey)) throw new WeaveError('Anonymous Idempotency-Key must contain 32 to 200 letters, digits, hyphens or underscores', 'invalid');
-        const input = form.kind === 'Row' && body && typeof body === 'object' && !Array.isArray(body) && !Object.hasOwn(body, 'values') ? { values: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'idempotencyKey')) } : body;
-        const result = submitForm(weave, form.id, input ?? {}, {
-          actor,
-          ...(share ? { authorize: freshForm => {
-            const current = weave.shareByToken(door.token);
-            if (!current || current.mode !== 'submit' || current.formId !== freshForm.id || current.scope.id !== freshForm.tableId || !freshForm.shareOnly || freshForm.owner !== weave) throw new WeaveError('This submission link is no longer valid', 'forbidden');
-          } } : {}),
-          server: { version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name },
-          idempotencyKey,
-          scope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : idempotencyKey != null ? `key:${await digest(idempotencyKey)}` : `client:${client}`}`,
-          dedupScope: `${share ? `share:${share.token}:` : ''}${signedIn ? '' : `client:${client}`}`,
-        });
-        return out(result.replayed ? 200 : 201, share ? { submitted: true, ...(result.replayed ? { replayed: true } : {}), ...(result.duplicate ? { duplicate: true } : {}) } : result);
-      }
-
-      if (statusPage) {
-        const page = serveStatic?.('/status.html', rx);
-        return page ?? notFound({ error: 'Not found', code: 'not-found' });
-      }
-
-      if (path === '/auth') {
-        const startDoorAt = (next) => {
-          const q = new URLSearchParams();
-          if (next) q.set('next', next);
-          if (rx.searchParams?.get('mode') === 'signup') q.set('mode', 'signup');
-          return { status: 302, headers: { Location: `${hostOrigin ? apexOrigin : ''}/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
-        };
-        const hasDoor = oidc && (baseDomain || clerkPane);
-        if (hasDoor && !hostOrigin && !wsPrefix) {
-          const asked = rx.searchParams?.get('next');
-          return startDoorAt(startReturn(asked) ? asked : null);
-        }
-        if (oidc && !session && !role && !rx.searchParams?.has('signed-out')) {
-          const q = rx.searchParams?.toString() ?? '';
-          if (!origin && String(rx.header('host') ?? '').split(':')[0] === '127.0.0.1') {
-            return { status: 302, headers: { Location: `${originFor(rx)}${wsPrefix}/auth${q ? '?' + q : ''}`, 'Cache-Control': 'no-store' }, body: '' };
-          }
-          const n = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), null);
-          if (clerkPane && hostOrigin) {
-            const deep = hostPath(rx.searchParams?.get('next'));
-            if (isDocsWorkspace(weave)) return startDoorAt(`/w/${encodeURIComponent(hostSlug)}${deep ?? '/'}`);
-            return startDoorAt(`/api/start/open/${encodeURIComponent(hostSlug)}${deep && deep !== '/' ? `?path=${encodeURIComponent(deep)}` : ''}`);
-          }
-          if (hasDoor && wsPrefix && !hostOrigin) return startDoorAt(n?.startsWith(`${wsPrefix}/`) ? n : `${wsPrefix}/`);
-          const next = n ? `?next=${encodeURIComponent(n)}` : '';
-          return { status: 302, headers: { Location: `${wsPrefix}/api/auth/oidc/start${next}`, 'Cache-Control': 'no-store' }, body: '' };
-        }
-        return out(200, renderAuthPage({ mount: wsPrefix, workspace: weave.state.meta.name, provider: oidc?.name ?? null, analyticsKey: posthog?.key ?? null, signInPath: clerkPane ? `${wsPrefix}/auth` : null, signUpHref: oidc && openSignup.on ? `${startRoot}/start?mode=signup` : null }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      }
-
-      if (path === '/start' && ['GET', 'HEAD'].includes(rx.method)) {
-        if (hostOrigin && oidc) {
-          const q = rx.searchParams?.toString();
-          return { status: 302, headers: { Location: `${apexOrigin}/start${q ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
-        }
-        const asked = ['pick', 'setup', 'error', 'mode', 'next', 'redirect_url'].some((k) => rx.searchParams?.has(k));
-        const logins = !hostOrigin && !wsPrefix && oidc && !asked ? (await heldStart())?.logins ?? [] : [];
-        const found = logins.length ? findWorkspaces(logins) : null;
-        const last = found?.rows.find((r) => r.kind === 'workspace' && r.name.toLowerCase() === found.names[0]) ?? found?.rows.find((r) => r.kind === 'workspace');
-        if (last && !found.rows.some((r) => r.kind === 'invite')) return { status: 302, headers: { Location: `${last.open}?to=resume`, 'Cache-Control': 'no-store' }, body: '' };
-        const page = !hostOrigin && !wsPrefix && oidc && serveStatic ? serveStatic('/start.html', rx) : null;
-        const back = rx.searchParams?.get('next');
-        const workspaceReturn = back == null || startReturn(back);
-        const sentBack = rx.searchParams?.get('redirect_url');
-        const providerReturn = sentBack == null || isProviderReturn(sentBack);
-        if (page && !(workspaceReturn && providerReturn)) {
-          const q = new URLSearchParams(rx.searchParams);
-          if (!workspaceReturn) q.delete('next');
-          if (!providerReturn) q.delete('redirect_url');
-          return { status: 302, headers: { Location: `/start${q.size ? `?${q}` : ''}`, 'Cache-Control': 'no-store' }, body: '' };
-        }
-        if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
-        return notFound({ error: 'Not found', code: 'not-found' });
-      }
-
-      if (path === '/billing' && ['GET', 'HEAD'].includes(rx.method)) {
-        const page = billing && serveStatic ? serveStatic('/billing.html', rx) : null;
-        if (page) return { ...page, headers: { ...page.headers, 'Cache-Control': 'no-store' } };
-        return notFound({ error: 'Not found', code: 'not-found' });
-      }
-
-      if (legalPage) {
-        const [title, markdown] = new Map(Object.entries({
-          '/privacy': ['Privacy policy', PRIVACY],
-          '/terms': ['Terms of Service', TERMS],
-          '/support': ['Support', SUPPORT],
-          '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
-        })).get(path);
-        const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
-        return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
-      }
-
-      if (path === '/api/backups' || (m = path.match(/^\/api\/backups\/([^/]+)$/))) {
-        const archive = path === '/api/backups' ? null : m[1];
-        const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
-        const account = bearer.startsWith('wv_') ? weave.verifyToken(bearer) : null;
-        if (!account) return deny(401, 'Backups need the account token: send Authorization: Bearer wv_…');
-        const claimed = rx.header('x-weave-account');
-        let named = claimed;
-        try { named = claimed == null ? null : decodeURIComponent(claimed); } catch {}
-        if (named != null && named !== account.name) return deny(403, `This token belongs to the account ${account.name}, not ${named}`);
-        if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
-        if (rx.method === 'GET' && !archive) {
-          const backups = await cloudBackups.list(account.id);
-          return out(200, { account: account.name, quota: cloudBackups.quota, used: backups.reduce((n, b) => n + b.bytes, 0), backups });
-        }
-        if (rx.method === 'GET') {
-          const { body, bytes } = await cloudBackups.open(account.id, archive);
-          return out(200, body, { 'Content-Type': 'application/octet-stream', ...(bytes == null ? {} : { 'Content-Length': String(bytes) }), 'Content-Disposition': `attachment; filename="${archive}"`, 'Cache-Control': 'no-store' });
-        }
-        if (rx.method === 'PUT' && archive) {
-          if (!rx.bodyStream) return out(400, { error: 'This deployment cannot take an archive upload.', code: 'invalid' });
-          if (Number(rx.header('content-length')) > cloudBackups.quota) throw new WeaveError(`Body too large: ${cloudBackups.quota} bytes at most`, 'too-large');
-          return out(201, await cloudBackups.put(account.id, archive, rx.bodyStream()));
-        }
-        return out(405, { error: 'Backups answer GET /api/backups, GET /api/backups/<name> and PUT /api/backups/<name>', code: 'method-not-allowed' }, { Allow: 'GET, PUT' });
-      }
-
-      if (path === '/api/uploads' && upload) {
-        if (guarded() && !['editor', 'architect'].includes(role)) return deny(403, 'Uploading needs an editor account');
-        const entity = weave.getEntity(upload.entity);
-        if (entity.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
-        if (role === 'editor' && weave.state.tables[entity.dbId]?.system) return deny(403, 'This token cannot change the schema');
-        if (!rx.readBytes && !(rx.bodyStream && weave.filesOnDisk())) throw new WeaveError('This server cannot receive raw uploads', 'invalid');
-        if (Number(rx.header('content-length')) > upload.size) throw new WeaveError(`Body too large: ${upload.size} bytes at most`, 'too-large');
-        const attempt = spentUploads.get(uploadToken);
-        const cutShort = (err) => {
-          if (!(err instanceof WeaveError) || !['too-large', 'invalid'].includes(err.code)) attempt.incomplete = true;
-          return err;
-        };
-        const streamed = rx.bodyStream && weave.filesOnDisk()
-          ? await weave.streamBlob(rx.bodyStream(), upload.size).catch((err) => { throw cutShort(err); })
-          : null;
-        try {
-          const bytes = streamed ?? await rx.readBytes(upload.size).catch((err) => { throw cutShort(err); });
-          if ((streamed ? streamed.size : bytes.length) !== upload.size) {
-            attempt.incomplete = true;
-            throw new WeaveError('The upload ended before all of its bytes arrived; prepare it again and send the whole file', 'incomplete-upload');
-          }
-          upload.engine.maybeRefresh();
-          weave.maybeRefresh();
-          const byAccount = upload.accountId != null;
-          const account = byAccount ? upload.engine.listAccounts().find((a) => a.id === upload.accountId) : null;
-          const currentRole = Weave.roleName(account?.role);
-          const refused = byAccount
-            ? !account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id) || !['editor', 'architect'].includes(currentRole) || (upload.engine !== weave && currentRole !== 'architect')
-            : upload.engine.listAccounts().length > 0;
-          if (refused) return deny(403, 'The upload account no longer has permission');
-          if (currentRole === 'editor' && weave.state.tables[weave.getEntity(upload.entity).dbId]?.system) return deny(403, 'This token cannot change the schema');
-          if (weave.getEntity(upload.entity).deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
-          weave.actor = actorForRequest;
-          const file = { name: upload.name, mime: upload.mime, preview: upload.preview, ...(streamed ? { staged: streamed } : { bytes: Buffer.from(bytes) }) };
-          const landed = upload.field == null ? weave.attachFile(entity.id, file) : weave.attachToField(entity.id, upload.field, file);
-          spentUploads.get(uploadToken).landed = true;
-          return out(201, landed, { 'Cache-Control': 'no-store' });
-        } finally {
-          if (streamed) weave.dropStagedBlob(streamed.id);
-        }
+      {
+        const hit = await backupAndUploadRoutes({ actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploadToken }, { path, role, weave });
+        if (hit !== NEXT) return hit;
       }
 
       if (path.startsWith('/api/')) {
@@ -1268,317 +2107,24 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (gated) return out(gated.status, gated.data);
         }
 
-        if (path.startsWith('/api/auth/')) {
-          const ip = clientIp(rx);
-          const tooMany = () => out(429, { error: 'Too many attempts — wait a minute and try again', code: 'rate-limited' });
-          const who = () => session ?? (role ? weave.verifyToken(authz.slice(7).trim()) : null);
-          if (path.startsWith('/api/auth/oidc/')) {
-            if (!oidc) return notFound({ error: 'No identity provider is configured (WEAVE_OIDC_ISSUER)', code: 'not-found' });
-            let mount = wsPrefix;
-            const signInAgain = () => ({ href: `${mount}/auth?signed-out=1`, label: 'Back to sign in' });
-            const refusal = (status, title, detail, actions = [signInAgain()]) => out(status, renderRefusalPage({ title, lines: detail, actions }),
-              { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-            const tooMany = () => refusal(429, 'Too many sign-in attempts', 'Wait a minute, then sign in again.');
-            const redirectUri = `${originFor(rx)}/api/auth/oidc/callback`;
-            if (hostOrigin && route === 'GET /api/auth/oidc/start') {
-              const q = new URLSearchParams(rx.searchParams ?? '');
-              q.set('handoff', String(weave.state.meta.name).toLowerCase());
-              return { status: 302, headers: { Location: `${apexOrigin}/w/${encodeURIComponent(weave.state.meta.name)}/api/auth/oidc/start?${q}`, 'Cache-Control': 'no-store' }, body: '' };
-            }
-            if (route === 'GET /api/auth/oidc/start') {
-              if (limited('options', ip)) return tooMany();
-              const handoff = rx.searchParams?.get('handoff') || null;
-              if (handoff && (!baseDomain || hub.bySlug(handoff) !== weave)) return refusal(400, 'This sign-in link is not valid', 'Start again from the sign-in page of the workspace you want.');
-              const next = sameOriginPath(rx.searchParams?.get('next'), originFor(rx), handoff ? '/' : `${wsPrefix}/`);
-              const invite = rx.searchParams?.get('invite') || null;
-              if (invite && !weave.identityInvite(invite)) {
-                const member = session?.engine === weave || ((await heldStart())?.logins ?? []).some((me) => weave.accountForIdentity(me));
-                return refusal(410, 'This invite expired or was already used', member ? 'You already have access. Open your workspace to continue.' : 'If you already joined, sign in to open the workspace. Otherwise, ask the sender for a new invite.',
-                  [{ href: member ? `${mount}/` : `${mount}/auth`, label: member ? 'Open workspace' : 'Sign in to workspace' }, { href: '/start?pick=1', label: 'Find your workspaces' }]);
-              }
-              const heldLogins = invite && !rx.searchParams?.has('pick') ? (await heldStart())?.logins ?? [] : [];
-              if (heldLogins.length) {
-                const again = (extra) => { const u = new URLSearchParams(rx.searchParams ?? ''); for (const [k, v] of Object.entries(extra)) u.set(k, v); return `${mount}/api/auth/oidc/start?${u}`; };
-                const another = { label: WeaveSlugs.COPY.start.otherLogin, href: again({ fresh: '1', pick: '1' }) };
-                const as = rx.searchParams?.get('as');
-                if (as == null) {
-                  const labels = findWorkspaces(heldLogins).logins;
-                  return refusal(200, WeaveSlugs.fill(WeaveSlugs.COPY.start.chooserTitle, { workspace: weave.state.meta.name }), WeaveSlugs.COPY.start.chooserLead,
-                    [...labels.map((login, i) => ({ label: WeaveSlugs.fill(WeaveSlugs.COPY.start.acceptAs, { login }), href: again({ as: String(i) }) })), another]);
-                }
-                const me = heldLogins[Number(as)];
-                if (!me) return refusal(400, 'This choice expired', 'Open the invite link again.', [another]);
-                let account;
-                try { account = weave.redeemIdentityInvite(invite, me); await remirror(weave); } catch (err) {
-                  noteFailure(ip);
-                  if (err.code === 'conflict' && weave.accountForIdentity(me)) return refusal(409, `This login already opens ${weave.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or accept the invite with the login it was meant for.', [{ label: 'Open workspace', href: `${startRoot}/api/start/open/${encodeURIComponent(weave.state.meta.name)}` }, another, signInAgain()]);
-                  if (err.code === 'conflict') return refusal(409, 'This login already opens another account', 'The invite was not used. Accept it with the login it was meant for.', [another, signInAgain()]);
-                  return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
-                }
-                const kept = startCookies(await holdLogin(me));
-                const to = posthog ? joinedInvite(next) : next;
-                if (handoff) return withCookies(await handOff(weave, account.id, to, handoff), kept);
-                const minted = weave.createSession(account.id, { ua: rx.header('user-agent') });
-                return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(weave), minted.token, rx), ...kept], 'Cache-Control': 'no-store' }, body: '' };
-              }
-              if (invite && clerkPane && !hostOrigin && !rx.searchParams?.has('pick') && !rx.searchParams?.has('fresh')) {
-                const kept = new URLSearchParams([...rx.searchParams].filter(([k]) => INVITE_LINK_FIELDS.has(k)));
-                return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(`${wsPrefix}/api/auth/oidc/start?${kept}`)}`, 'Cache-Control': 'no-store' }, body: '' };
-              }
-              let trip;
-              try { trip = await oidc.begin({ redirectUri, fresh: rx.searchParams?.has('fresh') }); } catch (err) { return refusal(502, `${oidc.name} is not answering`, err.message); }
-              const binder = newChallenge();
-              const start = !hostOrigin && !wsPrefix && (rx.searchParams?.has('start') || !!baseDomain);
-              putChallenge({ kind: 'oidc', nonce: trip.nonce, verifier: trip.verifier, binder, next, holder: weave, invite, mount: wsPrefix, handoff, start, door: !!rx.searchParams?.has('door') }, trip.state);
-              const secure = originFor(rx).startsWith('https:') ? '; Secure' : '';
-              return { status: 302, headers: { Location: trip.url, 'Set-Cookie': `wv_oidc=${binder}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=${CHALLENGE_TTL_MS / 1000}${secure}`, 'Cache-Control': 'no-store' }, body: '' };
-            }
-            if (route === 'GET /api/auth/oidc/callback') {
-              if (limited('failed', ip, { peek: true })) return tooMany();
-              const c = takeChallenge(String(rx.searchParams?.get('state') ?? ''), 'oidc');
-              if (!c || !cookies.wv_oidc || cookies.wv_oidc !== c.binder) { noteFailure(ip); return refusal(400, 'This sign-in expired or was already used', 'Start again from the sign-in page, in the browser you want to sign in.'); }
-              mount = c.mount ?? '';
-              const toStart = (code) => ({ status: 302, headers: { Location: `/start?error=${code}`, 'Cache-Control': 'no-store' }, body: '' });
-              const fresh = (invite) => `${mount}/api/auth/oidc/start?fresh=1${c.handoff ? `&handoff=${encodeURIComponent(c.handoff)}` : ''}${invite ? `&invite=${encodeURIComponent(invite)}` : ''}&next=${encodeURIComponent(c.next)}`;
-              const differentAccount = async () => ({ label: 'Use a different account', href: await oidc.endSessionUrl({ postLogoutRedirectUri: `${originFor(rx)}${mount}/auth?signed-out=1` }).catch(() => null) ?? fresh() });
-              const broken = (code, where) => {
-                console.error(`weave: ALERT sign-in is broken: ${oidc.name} refused weave's own client at its ${where} (${code}); check WEAVE_OIDC_CLIENT_ID, WEAVE_OIDC_CLIENT_SECRET and the allowed scopes against the provider`);
-                return refusal(503, 'Sign-in is broken on weave\'s side', [`${oidc.name} refused weave's own credentials (${code}), so nobody can sign in until weave's configuration is fixed.`, 'Signing in again, or with a different account, will not help. The fault is logged for the people who run weave; try again later.'], []);
-              };
-              const refused = rx.searchParams.get('error');
-              if (CLIENT_FAULTS.has(refused)) { noteFailure(ip); return broken(refused, 'authorization endpoint'); }
-              if (refused || !rx.searchParams.get('code')) {
-                if (c.start) return toStart('signin_failed');
-                return refusal(400, `${oidc.name} did not sign you in`, String(rx.searchParams.get('error_description') ?? refused ?? 'No authorization code came back.'), [await differentAccount(), signInAgain()]);
-              }
-              let who;
-              try {
-                who = await oidc.redeem({ code: rx.searchParams.get('code'), redirectUri, verifier: c.verifier, nonce: c.nonce });
-              } catch (err) {
-                noteFailure(ip);
-                if (!(err instanceof WeaveError)) return c.start ? toStart('provider_down') : refusal(502, `${oidc.name} is not answering`, 'The identity provider could not be reached. Try again in a minute.');
-                if (CLIENT_FAULTS.has(err.provider)) return broken(err.provider, 'token endpoint');
-                return c.start ? toStart('signin_unverified') : refusal(401, `${oidc.name} sign-in could not be verified`, err.message, [await differentAccount(), signInAgain()]);
-              }
-              if (c.start) {
-                const link = START_LINK.exec(c.next);
-                let slug = link?.[1] ?? '';
-                try { slug = decodeURIComponent(slug); } catch {}
-                const opens = link && hub.bySlug(slug.toLowerCase())?.accountForIdentity(who);
-                const back = link ? (opens ? c.next : `/start?next=${encodeURIComponent(c.next)}`) : /^\/start(?:[?#]|$)/.test(c.next) || inviteLink(c.next) ? c.next : '/start';
-                return { status: 302, headers: { Location: back, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
-              }
-              let account = null;
-              let engine = null;
-              if (c.invite) {
-                try {
-                  account = c.holder.redeemIdentityInvite(c.invite, who);
-                  engine = c.holder;
-                  await remirror(c.holder);
-                } catch (err) {
-                  noteFailure(ip);
-                  if (err.code === 'conflict' && c.holder.accountForIdentity(who)) return refusal(409, `This login already opens ${c.holder.state.meta.name}`, 'You are already a member, so the invite was not used. Open the workspace, or sign in as the person it was meant for to use it.', [{ label: 'Open workspace', href: `${mount}/api/auth/oidc/start?${c.handoff ? `handoff=${encodeURIComponent(c.handoff)}&` : ''}next=${encodeURIComponent(c.next)}` }, { label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
-                  if (err.code === 'conflict') return refusal(409, 'This identity already opens another account', `You signed in at ${oidc.name} as someone this server already knows, so the invite was not used. Sign in as the person it was meant for to use it.`, [{ label: 'Use a different account', href: fresh(c.invite) }, signInAgain()]);
-                  return refusal(410, 'This invite expired or was already used', 'Ask whoever sent it for a new link.');
-                }
-              } else if ((account = c.holder.accountForIdentity(who))) engine = c.holder;
-              if (!engine && isDocsWorkspace(c.holder)) engine = hub.entries().map(([, w]) => w).find((e) => e !== c.holder && (account = e.accountForIdentity(who)));
-              if (!engine && c.door) return { status: 302, headers: { Location: `/start?next=${encodeURIComponent(c.next)}`, 'Set-Cookie': startCookies(await holdLogin(who)), 'Cache-Control': 'no-store' }, body: '' };
-              if (!engine) {
-                noteFailure(ip);
-                const ws = c.holder.state.meta.name;
-                const own = billing || openSignup.on ? [{ label: 'Start your own workspace', href: `${startRoot}/start` }] : [];
-                const page = refusal(403, `No access to ${ws}`, [`You signed in at ${oidc.name}, but that account has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces, or sign in with a different account.'], [...own, { label: 'Find your workspaces', href: `${startRoot}/start?pick=1` }, await differentAccount(), signInAgain()]);
-                return own.length ? withCookies(page, startCookies(await holdLogin(who))) : page;
-              }
-              const kept = startCookies(await holdLogin(who));
-              const to = posthog && c.invite ? joinedInvite(c.next) : c.next;
-              if (c.handoff) return withCookies(await handOff(engine, account.id, to, c.handoff), kept);
-              const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-              const back = cookies[outName(c.holder)] ? [clearCookie(outName(c.holder), rx)] : [];
-              return { status: 302, headers: { Location: to, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, ...kept], 'Cache-Control': 'no-store' }, body: '' };
-            }
-            return notFound({ error: 'Unknown auth route', code: 'not-found' });
-          }
-          if (route === 'GET /api/auth/handoff' && hostOrigin) {
-            if (limited('failed', ip, { peek: true })) return tooMany();
-            const key = await digest(String(rx.searchParams?.get('code') ?? ''));
-            const h = handoffs.get(key);
-            handoffs.delete(key);
-            if (!h || h.expiresAt <= Date.now() || h.host !== hostSlug) {
-              noteFailure(ip);
-              return out(400, renderRefusalPage({ title: 'This sign-in expired or was already used', lines: 'Start again from the sign-in page.', actions: [{ href: '/auth?signed-out=1', label: 'Back to sign in' }] }),
-                { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-            }
-            const minted = h.engine.createSession(h.accountId, { ua: rx.header('user-agent') });
-            return { status: 302, headers: { Location: h.next, 'Set-Cookie': sessionCookie(cookieName(h.engine), minted.token, rx), 'Cache-Control': 'no-store' }, body: '' };
-          }
-          if ((m = path.match(/^\/api\/auth\/open\/([^/]+)$/)) && rx.method === 'GET' && baseDomain) {
-            const target = hub.bySlug(String(m[1]).toLowerCase());
-            if (!target || target.state.meta.deletedAt) return notFound({ error: 'Not found', code: 'not-found' });
-            const host = String(target.state.meta.name).toLowerCase();
-            const hit = sessionOn(target);
-            if (hit) return handOff(hit.engine, hit.id, '/', host);
-            return { status: 302, headers: { Location: `${scheme}//${host}${hostSuffix}/`, 'Cache-Control': 'no-store' }, body: '' };
-          }
-          if (route === 'POST /api/auth/logout') {
-            const everywhere = ['1', 'true'].includes(rx.searchParams?.get('everywhere') ?? '');
-            const borrowed = !everywhere && !!session && session.engine !== weave;
-            const ending = everywhere ? hub.entries().map(([, w]) => ownSession(w)).filter(Boolean) : borrowed ? [] : [session].filter(Boolean);
-            for (const hit of ending) {
-              try { hit.engine.revokeSession(hit.id, { id: hit.sessionId }); } catch {}
-            }
-            const names = new Set(everywhere
-              ? [...Object.keys(cookies).filter((n) => n === LEGACY_COOKIE || n.startsWith(`${LEGACY_COOKIE}_`) || n.startsWith('wv_out_')), ...ending.map((hit) => hit.cookie)]
-              : borrowed ? [] : [session?.cookie ?? cookieName(weave)]);
-            const marks = borrowed ? [`${outName(weave)}=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Weave.SESSION_TTL_MS / 1000}${secureFlag(rx)}`] : [];
-            const held = everywhere ? await heldStart() : null;
-            if (held) starts.delete(held.key);
-            const startEnds = everywhere ? [clearCookie('wv_start', rx), clearRail()] : [];
-            return out(200, { ok: true }, { 'Set-Cookie': [...[...names].map((n) => clearCookie(n, rx)), ...marks, ...startEnds], 'Cache-Control': 'no-store' });
-          }
-          if (route === 'GET /api/auth/me') {
-            const account = who();
-            if (!account) return deny(401, 'Not signed in');
-            const engine = session ? session.engine : weave;
-            const sessions = engine.listSessions(account.id).map(({ accountId, ...s }) => ({ ...s, current: s.id === session?.sessionId }));
-            const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
-            const ids = pub.identities ?? [];
-            const user = posthog ? (ids.find((i) => i.issuer === oidc?.issuer) ?? ids[0])?.subject : null;
-            return out(200, { account: pub, role: account.role, sessions, ...(user ? { analytics: { user } } : {}) }, { 'Cache-Control': 'no-store' });
-          }
-          if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
-            const account = who();
-            if (!account) return deny(401, 'Not signed in');
-            const engine = session ? session.engine : weave;
-            if (m[1] === 'others') return out(200, engine.revokeSession(account.id, { all: true, except: session?.sessionId ?? null }));
-            return out(200, engine.revokeSession(account.id, { id: m[1] }));
-          }
-          return notFound({ error: 'Unknown auth route', code: 'not-found' });
+        {
+          const hit = await authRoutes({
+          apexOrigin, authz, baseDomain, billing, clearCookie, clerkPane, clientIp, cookieName, deny, handOff, handoffs, hostSuffix, hub, LEGACY_COOKIE, limited,
+          noteFailure, notFound, oidc, openSignup, originFor, out, outName, posthog, putChallenge, remirror, route, rx, scheme, secureFlag, session,
+          sessionCookie, sessionOn, starts, takeChallenge,
+        }, {
+          clearRail, cookies, findWorkspaces, heldStart, holdLogin, hostOrigin, hostSlug, ownSession, path, role, startCookies, startRoot, weave, withCookies,
+          wsPrefix,
+        });
+          if (hit !== NEXT) return hit;
         }
 
-        if (startDoor) {
-          if (hostOrigin || wsPrefix || !oidc) return notFound({ error: 'Not found', code: 'not-found' });
-          const held = await heldStart();
-          const logins = held?.logins ?? [];
-          if (route === 'POST /api/start/signout') {
-            if (held) starts.delete(held.key);
-            return out(200, { ok: true }, { 'Set-Cookie': [clearCookie('wv_start', rx), clearRail()], 'Cache-Control': 'no-store' });
-          }
-          if (route === 'GET /api/start' && !logins.length) return out(200, { signedIn: false, provider: oidc.name, ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key } } : {}) }, { 'Cache-Control': 'no-store' });
-          const navigation = ['GET', 'HEAD'].includes(rx.method) && (rx.header('sec-fetch-mode') === 'navigate' || prefersHtml(rx.header('accept')));
-          if (!logins.length && navigation) {
-            const q = rx.searchParams?.toString() ?? '';
-            const link = `${path}${q ? `?${q}` : ''}`;
-            return { status: 302, headers: { Location: START_LINK.test(link) ? `/start?next=${encodeURIComponent(link)}` : '/start', 'Cache-Control': 'no-store' }, body: '' };
-          }
-          if (!logins.length) return deny(401, 'Sign in first');
-          const found = findWorkspaces(logins);
-          const { accountIn } = found;
-          if (route === 'GET /api/start') {
-            const { canCreate, accountName } = found;
-            const trialOn = async (name) => {
-              const w = billing && hub.get(name);
-              if (!w || !billing.trial(w.billing())) return null;
-              return (await billing.standing({ workspace: w.billing(), accounts: w.listAccounts() })).trial;
-            };
-            const rows = await Promise.all(found.rows.map(async (r) => (r.kind === 'workspace' ? { ...r, trial: await trialOn(r.name) } : r)));
-            let waiting = null;
-            if (billing && found.owner) {
-              try { waiting = await found.unpaid(found.owner); } catch (error) {
-                if (!(error instanceof BillingUnavailable)) throw error;
-              }
-            }
-            return out(200, { signedIn: true, rows, logins: found.logins, canCreate, waiting, openSignup: openSignup.on, accountName, base: baseDomain, docs: hub.entries().filter(([, w]) => isDocsWorkspace(w)).map(([name]) => name), ...(clerkPane ? { clerk: clerkPane } : {}), ...(posthog ? { analytics: { key: posthog.key, user: logins[0].subject } } : {}) }, { 'Set-Cookie': railCookie(found.names), 'Cache-Control': 'no-store' });
-          }
-          if (route === 'GET /api/start/slug') {
-            if (limited('slugs', clientIp(rx))) return out(429, { error: 'Too many checks: wait a minute and try again', code: 'rate-limited' });
-            const slug = String(rx.searchParams?.get('slug') ?? '');
-            return out(200, { slug, state: hub.slugState(slug), base: baseDomain }, { 'Cache-Control': 'no-store' });
-          }
-          if ((m = path.match(/^\/api\/start\/open\/([^/]+)$/)) && rx.method === 'GET') {
-            const w = hub.bySlug(String(m[1]).toLowerCase());
-            const account = w && accountIn(w);
-            if (!account && navigation) {
-              const ws = w ? w.state.meta.name : String(m[1]);
-              return out(403, renderRefusalPage({ title: `No access to ${ws}`, lines: [`The account you signed in with has no access to ${ws}.`, 'A workspace architect can send you an invite link that adds you. Or open one of your own workspaces.'], actions: [{ href: '/start?pick=1', label: 'Find your workspaces' }] }),
-                { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-            }
-            if (!account) return deny(403, 'This sign-in opens no account on that workspace');
-            const engine = w;
-            const host = String(w.state.meta.name).toLowerCase();
-            const deep = hostPath(rx.searchParams?.get('path'));
-            const table = String(rx.searchParams?.get('table') ?? '');
-            const land = rx.searchParams?.get('to') === 'billing' ? 'billing'
-              : rx.searchParams?.get('to') === 'resume' ? '#/resume'
-              : /^[0-9a-f-]{36}$/.test(table) && w.listTables().some((t) => t.id === table) ? `#/table/${table}` : '';
-            const rail = railCookie(isDocsWorkspace(w) ? found.names : [host, ...found.names.filter((name) => name !== host)]);
-            if (baseDomain) return withCookies(await handOff(engine, account.id, deep ?? `/${land}`, host), [rail]);
-            const minted = engine.createSession(account.id, { ua: rx.header('user-agent') });
-            const back = cookies[outName(w)] ? [clearCookie(outName(w), rx)] : [];
-            return { status: 302, headers: { Location: `/w/${encodeURIComponent(w.state.meta.name)}/${land}`, 'Set-Cookie': [sessionCookie(cookieName(engine), minted.token, rx), ...back, rail], 'Cache-Control': 'no-store' }, body: '' };
-          }
-          if ((m = path.match(/^\/api\/start\/logo\/([^/]+)$/)) && rx.method === 'GET') {
-            const w = hub.bySlug(String(m[1]).toLowerCase());
-            if (!(w && accountIn(w))) return deny(403, 'This sign-in opens no account on that workspace');
-            if (!w.state.meta.logo) return notFound({ error: 'This workspace has no logo', code: 'not-found' });
-            const { bytes } = w.getWorkspaceLogo();
-            return out(200, bytes, { 'Content-Type': logoType(bytes), 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'" });
-          }
-          if ((m = path.match(/^\/api\/start\/invites\/([^/]+)\/([A-Za-z0-9_-]+)$/)) && rx.method === 'POST') {
-            const w = hub.bySlug(String(m[1]).toLowerCase());
-            if (!w) return notFound({ error: 'Not found', code: 'not-found' });
-            const me = logins.find((l) => l.email && w.invitesForEmail(l.email).some((i) => i.id === m[2])) ?? logins[0];
-            const account = w.acceptInvite(m[2], me);
-            await remirror(w);
-            return out(200, { name: w.state.meta.name, account: account.name, open: `/api/start/open/${encodeURIComponent(w.state.meta.name)}` });
-          }
-          if ((m = path.match(/^\/api\/start\/workspaces\/([^/]+)\/agent$/)) && rx.method === 'GET') {
-            const w = hub.bySlug(String(m[1]).toLowerCase());
-            const account = w && accountIn(w);
-            if (!account) return deny(403, 'This sign-in opens no account on that workspace');
-            const seen = w.agentSeen(account.id);
-            return out(200, { connected: !!seen, at: seen?.at ?? null, client: seen?.client ?? null }, { 'Cache-Control': 'no-store' });
-          }
-          if (route === 'POST /api/start/workspaces') {
-            const admission = await creationAdmission(logins);
-            if (admission.response) return admission.response;
-            const me = admission.me;
-            const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
-            if (body?.template && !template) return out(400, { error: `Unknown template '${body.template}'`, code: 'invalid' });
-            const ownerName = found.accountName || 'owner';
-            let asked = body?.name;
-            let slug = body?.slug ?? null;
-            if (body?.quick) {
-              asked = String(asked || ownerName);
-              const base = WeaveSlugs.slugify(asked) || 'workspace';
-              slug = [base, ...Array.from({ length: 50 }, (_, i) => `${base}-${i + 2}`)].find((s) => hub.slugState(s) === 'available') ?? null;
-            }
-            const w = hub.create(asked, { slug, actor: `creator: ${weave.actorName(actorForRequest)}` });
-            const owner = w.createAccount({ name: ownerName, role: 'architect' }).account;
-            w.redeemIdentityInvite(w.linkIdentity(owner.name, { issuer: me.issuer }).code, me);
-            w.state.meta.signup = { issuer: me.issuer, subject: me.subject };
-            w.save();
-            w.startTrial();
-            let table = null;
-            let templateError = null;
-            const built = { space: template?.space ?? null, tables: [] };
-            if (template) {
-              try {
-                const spec = WeaveStarters.spec(template);
-                const done = unrestricted(() => w.build(spec));
-                if (!done.ok) throw new Error(done.errors.map((e) => e.error).join('; '));
-                built.tables = spec.spaces[0].tables.map((t) => t.name);
-                table = w.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
-              } catch (err) { templateError = err.message; }
-            }
-            w.markOnboarded(owner.id);
-            const name = w.state.meta.name;
-            const host = String(name).toLowerCase();
-            const mcp = baseDomain ? `${scheme}//${host}${hostSuffix}/mcp` : `${originFor(rx)}/w/${encodeURIComponent(name)}/mcp`;
-            return out(201, { name, title: w.state.meta.title ?? name, open: `/api/start/open/${encodeURIComponent(name)}`, table, mcp, built, templateError });
-          }
-          return notFound({ error: 'Not found', code: 'not-found' });
+        {
+          const hit = await startRoutes({
+          actorForRequest, baseDomain, billing, body, clearCookie, clerkPane, clientIp, cookieName, deny, handOff, hostSuffix, hub, limited, notFound, oidc,
+          openSignup, originFor, out, outName, posthog, remirror, route, rx, scheme, sessionCookie, starts,
+        }, { clearRail, cookies, creationAdmission, findWorkspaces, heldStart, hostOrigin, path, railCookie, startDoor, weave, withCookies, wsPrefix });
+          if (hit !== NEXT) return hit;
         }
 
         if (route === 'GET /api/workspaces/slug') {
@@ -1655,244 +2201,25 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const headers = owner && ownSession(weave) ? { 'Set-Cookie': sessionCookie(cookieName(w), w.createSession(owner.account.id, { ua: rx.header('user-agent') }).token, rx) } : {};
           return { owner, headers };
         };
-        if (/^\/api\/workspaces(\/|$)/.test(path) && rx.method !== 'GET') {
-          const ref = /^\/api\/workspaces\/([^/]+)/.exec(path)?.[1];
-          const target = ref ? hub.get(decodeURIComponent(ref)) : weave;
-          if (!target) return notFound({ error: 'Workspace not found', code: 'not-found' });
-          const targetRole = roleOn(target);
-          const local = !hub.walled && !target.state.meta.requireAuth && !target.listAccounts().length;
-          if (!local && targetRole !== 'architect') return deny(targetRole ? 403 : 401, 'Managing a workspace needs its architect');
-        }
-        if (route === 'POST /api/workspaces' && body?.from != null) {
-          const source = String(body.from).match(/^backup:(.+)$/);
-          if (!source) throw new WeaveError('from takes backup:<archive>, an archive GET /api/backups lists', 'invalid');
-          if (body.key == null || body.key === '') throw new WeaveError('key is required: the passphrase the archive was sealed with', 'invalid');
-          if (!cloudBackups) return out(400, { error: 'This deployment keeps no backups: it has no bucket configured.', code: 'invalid' });
-          const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : '';
-          const caller = bearer ? weave.verifyToken(bearer) : ownSession(weave);
-          if (!caller) return deny(401, 'Migrating a backup needs an account on this workspace');
-          const { body: archive } = await cloudBackups.open(caller.id, source[1]);
-          const w = await hub.createFrom(body.name, { slug: body.slug ?? null, archive, key: body.key, workspace: body.workspace ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
-          const { owner, headers } = ownCreated(w);
-          return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, from: `backup:${source[1]}`, entities: w.storageStats().entities, ...(owner ? { owner } : {}) }, headers);
-        }
-        if (route === 'POST /api/workspaces') {
-          const w = hub.create(body.name, { slug: body.slug ?? null, actor: `creator: ${weave.actorName(actorForRequest)}` });
-          const { owner, headers } = ownCreated(w);
-          return out(201, { name: w.state.meta.name, url: `/w/${w.state.meta.name}/`, ...(owner ? { owner } : {}) }, headers);
-        }
-        if ((m = path.match(/^\/api\/workspaces\/([^/]+)\/restore$/)) && rx.method === 'POST') {
-          const w = hub.restore(m[1], { actor: actorOn(hub.get(m[1])) });
-          return out(200, { name: w.state.meta.name, deletedAt: null });
-        }
-        if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
-          if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
-          const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
-          if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorOn(hub.get(m[1])) }));
-          const w = hub.remove(m[1], { actor: actorOn(hub.get(m[1])) });
-          return out(200, { name: w.state.meta.name, deletedAt: w.state.meta.deletedAt });
+        {
+          const hit = await workspaceRoutes({
+          accountName, actorForRequest, actorOn, authz, billing, body, canOpen, cloudBackups, deny, hub, notFound, out, ownCreated, remirror, roleOn, route, rx,
+          session, unseated,
+        }, { ownSession, path, role, updateWorkspace, weave });
+          if (hit !== NEXT) return hit;
         }
 
-
-        if (path === '/api/onboarding') {
-          const token = authz && /^Bearer /i.test(authz) ? weave.verifyToken(authz.slice(7).trim()) : null;
-          const me = token ? { engine: weave, id: token.id, name: token.name }
-            : session ? { engine: session.engine, id: session.id, name: session.name }
-              : { engine: weave, id: null, name: null };
-          const taken = (n) => { const h = hub.get(n); return !!h && h !== weave; };
-          const firstName = WeaveStarters.workspaceName(String(me.name ?? '').trim().split(/\s+/)[0].toLowerCase());
-          const fallback = WeaveStarters.workspaceName(weave.state.meta.name) || 'workspace';
-          const byDefault = firstName && !taken(firstName) ? firstName : fallback;
-          if (rx.method === 'GET') {
-            const show = !me.engine.onboardedAt(me.id)
-              && (!role || role === 'architect')
-              && weave.state.meta.name !== 'weave'
-              && !weave.userTables().length
-              && hub.list().every((x) => x.name === 'weave' || !x.tables || hub.get(x.name) === weave || !canOpen(hub.get(x.name)));
-            return out(200, { show, name: byDefault }, { 'Cache-Control': 'no-store' });
-          }
-          if (rx.method === 'POST') {
-            const name = WeaveStarters.workspaceName(body?.name) || byDefault;
-            if (taken(name)) throw new WeaveError(slugTaken(name).message, 'slug_taken');
-            const template = body?.template ? WeaveStarters.TEMPLATES.find((t) => t.id === body.template) : null;
-            if (body?.template && !template) throw new WeaveError(`Unknown template '${body.template}'`, 'invalid');
-            let table = null;
-            if (template) {
-              const built = weave.build(WeaveStarters.spec(template));
-              if (!built.ok) throw new WeaveError(`Couldn't set up ${template.title}: ${built.errors.map((e) => e.error).join('; ')}`, 'invalid');
-              table = weave.findTable(`${template.space}/${WeaveStarters.firstTable(template)}`)?.id ?? null;
-            }
-            const ws = updateWorkspace({ name });
-            me.engine.markOnboarded(me.id);
-            return out(200, { id: ws.id, name: ws.name, url: `/w/${ws.id}/`, table });
-          }
-        }
-
-        if (route === 'GET /api/workspace/home') return out(200, weave.workspaceHome());
-
-        if (path === '/api/billing' || path === '/api/billing/organization') {
-          if (!billing) return notFound({ error: 'This deployment bills nobody: WEAVE_CLERK_SECRET_KEY and WEAVE_BILLING_PLAN are not set.', code: 'billing-off' });
-          const architect = (unseated ?? role) === 'architect' || mayAdminister(weave, unseated ?? role);
-          const standingNow = async () => {
-            const accounts = weave.listAccounts();
-            const s = await billing.standing({ workspace: weave.billing(), accounts });
-            return {
-              plan: s.plan, trial: s.trial ?? null, seats: s.seats, orgId: s.orgId, planSlug: billing.plan, publishableKey: billing.publishableKey,
-              seatPrice: s.plan === 'comped' ? null : await billing.seatPrice(),
-              me: accountName, architect,
-              members: accounts.map((a) => {
-                const mail = a.identities?.find((i) => i.verifiedEmail)?.verifiedEmail ?? null;
-                return { name: a.name, role: Weave.roleName(a.role), paid: PAID_ROLES.has(Weave.roleName(a.role)), seated: s.seated(a.name), ...(architect && mail ? { email: mail } : {}) };
-              }),
-            };
-          };
-          const answer = async (extra = {}) => {
-            try { return out(200, { ...(await standingNow()), ...extra }, { 'Cache-Control': 'no-store' }); } catch (error) {
-              if (!(error instanceof BillingUnavailable)) throw error;
-              return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
-            }
-          };
-          if (route === 'GET /api/billing') {
-            if (!role && !unseated && !mayAdminister(weave, role)) return deny(401, 'Sign in to see this workspace\'s plan');
-            return answer();
-          }
-          if (route === 'POST /api/billing/organization') {
-            if (!architect) return deny(role ? 403 : 401, 'Setting up billing needs an architect');
-            const me = weave.listAccounts().find((a) => a.name === accountName);
-            const createdBy = me ? billing.subjectOf(me) : null;
-            if (!createdBy) return out(400, { error: 'Your account has no sign-in identity at the billing provider, so it cannot own the billing organization. Sign in with the provider first.', code: 'invalid' });
-            weave.linkBillingOrg(await billing.ensureOrg({ workspace: weave.billing(), createdBy }));
-            const synced = await remirror(weave);
-            billing.forget();
-            return answer(synced?.refused?.length ? { refused: synced.refused } : {});
-          }
-          return out(405, { error: 'Billing answers GET /api/billing and POST /api/billing/organization', code: 'method-not-allowed' }, { Allow: 'GET, POST' });
-        }
-
-        if ((m = path.match(/^\/api\/mail\/preview\/([^/]+)$/)) && rx.method === 'GET') {
-          if (!mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Previewing email needs an architect token');
-          const make = { invite: inviteEmail, trial: trialEmail, 'trial-last': (o) => trialEmail({ ...o, stage: 'last' }) }[m[1]];
-          if (!make) return notFound({ error: `No email named '${m[1]}' (invite, trial, trial-last)`, code: 'not-found' });
-          const asked = rx.searchParams?.get('role') || 'editor';
-          if (!MAIL_ROLES[asked]) throw new WeaveError(`Invalid role '${asked}' (${Object.keys(MAIL_ROLES).join(', ')})`, 'invalid');
-          const o = originFor(rx);
-          const email = make({ inviter: 'kyle', workspace: 'weave', expires: 'October 10', role: asked,
-            daysLeft: 3, endsAt: '2026-10-10T00:00:00.000Z', billing: `${o}/w/weave/billing`,
-            link: `${o}/api/auth/oidc/start?invite=Zq7tK4mW2xR9pLc8`, origin: o,
-            theme: ['light', 'dark'].includes(rx.searchParams?.get('theme')) ? rx.searchParams.get('theme') : undefined });
-          return out(200, email.html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-        }
-        if ((m = path.match(/^\/api\/integrations\/([^/]+)\/credential$/))) {
-          if (!role || !mayAdminister(weave, roleOn(weave))) return deny(role ? 403 : 401, 'Setting an integration key needs an architect on this workspace');
-          if (rx.method !== 'PUT') return out(405, { error: 'An integration key is written with PUT and never read back', code: 'method-not-allowed' }, { Allow: 'PUT' });
-          return out(200, await weave.setIntegrationCredential(decodeURIComponent(m[1]), body?.value));
-        }
-        if (path.startsWith('/api/keys')) {
-          if (!role) return deny(401, 'Managing keys needs an account on this workspace');
-          const localRole = roleOn(weave);
-          const keyed = matchRoute(rx.method, path);
-          const need = keyed?.cmd.minRole ?? 'architect';
-          const target = keyed?.cmd.name === 'key.set' ? body?.name : keyed?.cmd.name === 'key.delete' ? keyed.params.name : null;
-          const owns = !!localRole && target != null && weave.ownsKey(target);
-          if (!mayAdminister(weave, localRole) && !(RANK[localRole] >= RANK[need]) && !owns) {
-            return deny(localRole ? 403 : 401, `${rx.method} ${path} needs an ${need} on this workspace${localRole ? `; your role here is ${localRole}` : ''}`);
-          }
-          if (keyed) { const r = httpReply(weave, keyed, keyed.cmd.http.body ? await rx.readBody() : body, rx.searchParams); return out(r.status, r.data, r.headers); }
-          if (/^\/api\/keys\/.+$/.test(path)) return out(404, { error: 'Secrets cannot be read back', code: 'not-found' });
-        }
-        if (route === 'POST /api/uploads') {
-          return out(201, prepareUpload({ entity: body.entity, field: body.field, name: body.name, mime: body.mime, size: body.size, preview: body.preview, sameOrigin: true }));
-        }
-        if (mcpDoor && rx.method !== 'POST') return out(405, { error: 'The MCP door takes POST: JSON-RPC in, JSON out, no stream', code: 'method-not-allowed' }, { Allow: 'POST' });
-        if (route === 'POST /api/mcp') {
-          const msgs = Array.isArray(body) ? body : [body];
-          const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-          const caller = { role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
-          const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
-          if (viewers.tokenWrite) {
-            for (const msg of msgs) {
-              const hatch = msg?.params?.name === 'weave_call';
-              const tool = msg?.method === 'tools/call' ? (hatch ? msg.params?.arguments?.name : msg.params?.name) : null;
-              if (tool && toolWrites(tool, (hatch ? msg.params?.arguments?.args : msg.params?.arguments) ?? {})) weave.noteTokenWrite(viewers.tokenWrite.accountId, { method: 'MCP', path: tool, status: 200 });
-            }
-          }
-          if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
-          if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
-          return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
-        }
-        if (route === 'POST /api/bulk' && role === 'editor') {
-          const { ids, op, ...params } = body ?? {};
-          const sys = (fn) => { try { return !!fn()?.system; } catch { return false; } };
-          const list = ids == null ? [] : [].concat(ids);
-          const into = op === 'rollup' && params.table == null
-            ? (() => { try { return weave.relationTargetDbIds(weave.getField(weave.getEntity(list[0]).dbId, params.field)); } catch { return []; } })()
-            : [];
-          if (list.some((id) => sys(() => weave.state.tables[weave.getEntity(id).dbId]))
-            || (params.table != null && sys(() => weave.getTable(params.table)))
-            || into.some((t) => weave.state.tables[t]?.system)) {
-            return deny(403, 'This token cannot change the schema');
-          }
-        }
-        if (route === 'POST /api/markdown') {
-          return out(200, { html: renderMarkdown(String(body.md ?? ''), { resolveMention, rawHtml: false }) });
-        }
-
-        if (route === 'GET /api/forms/manage' || route === 'POST /api/forms' || (rx.method === 'PATCH' && /^\/api\/forms\/[^/]+$/.test(path))) {
-          if ((weave.state.meta.requireAuth && !role) || !mayAdminister(weave, role)) return deny(role ? 403 : 401, 'Managing forms needs an architect on this workspace');
-          if (route === 'GET /api/forms/manage') {
-            const tableRef = rx.searchParams?.get('table');
-            const table = tableRef ? weave.getTable(tableRef) : null;
-            const forms = listForms(weave).filter(form => !table || form.tableId === table.id).map(form => getFormDefinition(weave, form.id));
-            return out(200, { forms, anonymousAllowed: anonymousForms, requireAuth: !!weave.state.meta.requireAuth }, { 'Cache-Control': 'no-store' });
-          }
-          if (route === 'POST /api/forms') {
-            if (body?.kind !== undefined) throw new WeaveError('The form builder creates record forms', 'invalid');
-            const form = createForm(weave, body);
-            return out(201, getFormDefinition(weave, form.id));
-          }
-          return out(200, updateForm(weave, decodeURIComponent(path.split('/').pop()), body));
-        }
-
-        if (route === 'GET /api/forms') {
-          if (isDocsWorkspace(weave)) { try { ensureBugForm(weave); } catch {} }
-          return out(200, listForms(weave));
-        }
-        if ((m = path.match(/^\/api\/forms\/([^/]+)$/)) && rx.method === 'GET') {
-          const { form, admitted } = formFor(m[1]);
-          if (!admitted) return deny(401, 'Sign in to open this form');
-          return out(200, form);
+        {
+          const hit = await mailKeyAndIntegrationRoutes({
+          anonymousForms, body, canOpen, deny, formFor, hub, mcpDoor, mcpOrigin, notFound, oauth, originFor, out, prepareUpload, requestAccount, resolveMention,
+          roleOn, route, rx, seatRequired, unseated, useTemplateInto, version, viewer, viewers,
+        }, { hostOrigin, path, role, updateWorkspace, weave, wsPrefix });
+          if (hit !== NEXT) return hit;
         }
         const stamp = () => ({ version, startedAt: STARTED_AT, uptime: Math.round(uptime()), workspace: weave.state.meta.name });
-        if (route === 'POST /api/workspace/leave') {
-          refuseOnDocs(weave, 'left');
-          const me = session && session.engine === weave && !session.visitor ? session : role ? weave.verifyToken(authz?.slice(7).trim() ?? '') : null;
-          if (!me) return deny(401, 'Sign in to leave a workspace');
-          const left = leaveWorkspace(weave, me.id);
-          await remirror(weave);
-          return out(200, left);
-        }
-
-        if (route === 'POST /api/bug-report') {
-          const reporter = role == null ? 'bug-report' : `reporter: ${weave.actorName(actorForRequest)}`;
-          const docs = hub.get('weave') ?? hub.get('weaver');
-          const issues = docs && (() => { try { return docs.getTable('Development/Issue'); } catch { return null; } })();
-          if (issues && role == null && !canOpen(docs)) return deny(401, 'The weave docs workspace requires authentication');
-          const target = bugForwardTarget();
-          let forwardFailure = null;
-          if (target) {
-            const sent = await forwardBugReport(target, body && typeof body === 'object' && !Array.isArray(body) ? body : {}, origin || process.env.WEAVE_ORIGIN || String(rx.header('host') ?? 'unknown'));
-            if (sent.ok) return out(201, { ...sent.data, forwardedTo: target.url });
-            forwardFailure = { url: target.url, reason: sent.reason };
-          }
-          const failed = forwardFailure ? { forward: 'failed', forwardError: forwardFailure.reason } : {};
-          if (!issues) {
-            return out(501, { error: 'No Development/Issue table to file into — this instance has no weave docs workspace', code: 'unsupported', ...failed });
-          }
-          docs.maybeRefresh();
-          const form = ensureBugForm(docs);
-          const instance = role != null && typeof body?.instance === 'string' && body.instance.trim() ? body.instance.trim().slice(0, 200) : null;
-          const filed = submitForm(docs, form.id, body ?? {}, { actor: docs === weave && role != null ? actorForRequest : reporter, server: { ...stamp(), instance, forwardFailure } });
-          return out(201, { ...filed, ...failed });
+        {
+          const hit = await leaveAndBugReportRoutes({ actorForRequest, authz, body, canOpen, deny, hub, origin, out, remirror, route, rx, session, stamp }, { role, weave });
+          if (hit !== NEXT) return hit;
         }
 
         const mailInvite = async (made) => {
@@ -1907,116 +2234,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           }
         };
         const registered = matchRoute(rx.method, path);
-        if (registered?.cmd.http.serve) {
-          const serveFile = (id) => {
-            const preview = rx.searchParams?.has('preview') ?? false;
-            const view = rx.searchParams?.has('view') ?? false;
-            const known = weave.readFileMeta(id);
-            if (!view || !isHtmlFile(known)) {
-              const etag = `"${id}${preview ? '-preview' : ''}"`;
-              const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
-              if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
-              const { meta, bytes } = weave.readFile(id, { preview });
-              const headers = { ...fileHeaders(meta, bytes, { view }), ...cache, 'Accept-Ranges': 'bytes' };
-              const range = byteRange(rx.header('range'), bytes.length);
-              if (range === 'unsatisfiable') return out(416, '', { ...headers, 'Content-Range': `bytes */${bytes.length}` });
-              if (range) return out(206, bytes.subarray(range.first, range.last + 1), { ...headers, 'Content-Range': `bytes ${range.first}-${range.last}/${bytes.length}` });
-              return out(200, bytes, headers);
-            }
-            const { meta, bytes } = weave.readFile(id, { preview });
-            if (!isHtmlFile(meta)) return out(200, bytes, fileHeaders(meta, bytes, { view }));
-            const page = viewHtml(bytes, frameLinkBase(bytes) + frameStorageScript(weave.readFileStorage(id).items) + FRAME_HEIGHT_SCRIPT);
-            return out(200, page, { ...fileHeaders(meta, bytes, { view }), 'Cache-Control': 'no-store' });
-          };
-          const serveLogo = () => {
-            const { bytes } = weave.getWorkspaceLogo();
-            const type = logoType(bytes);
-            return out(200, bytes, {
-              'Content-Type': type ?? 'application/octet-stream',
-              ...(type ? {} : { 'Content-Disposition': 'attachment; filename="logo"' }),
-              'Cache-Control': 'no-cache',
-              'X-Content-Type-Options': 'nosniff',
-              'Content-Security-Policy': "sandbox; default-src 'none'",
-            });
-          };
-          return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
-        }
-        if (registered) {
-          const registryCtx = {
-            viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, issuer: oidc?.issuer, remirror: () => remirror(weave), mailInvite, start: oidc ? `${startRoot}/start` : undefined,
-            workspaces: {
-              list: () => {
-                const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-                const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
-                const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
-                const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
-                return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
-                  .sort((a, b) => rank(a) - rank(b) || 0)
-                  .map((x) => ({
-                    ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
-                    ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
-                  }));
-              },
-              move: (ref, position) => {
-                hub.move(ref, position, { workspace: weave, visible: canOpen });
-                return hub.list({ workspace: weave }).filter((x) => canOpen(hub.get(x.name)));
-              },
-            }, shareLink: (grant) => ({ ...grant, url: `${baseDomain ? apexOrigin : ''}/w/${weave.state.meta.id}/s/${grant.token}` }), get author() { return (role ? !['architect', 'editor'].includes(role) : guarded()) ? actorForRequest : undefined; }, origin: `${originFor(rx)}${wsPrefix}`, get expectedRevision() { return ifMatchRevision(rx.header('if-match')); },
-          };
-          const r = httpReply(weave, registered, registered.cmd.http.body ? await rx.readBody() : body, rx.searchParams, registryCtx);
-          if (registered.cmd.http.finish) r.data = await registered.cmd.http.finish(r.data, registryCtx);
-          return out(r.status, r.data, r.headers);
-        }
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)$/))) {
-          if (rx.method === 'GET') return out(200, weave.getSpace(m[1]));
-        }
-        if ((m = path.match(/^\/api\/spaces\/([^/]+)\/home$/)) && rx.method === 'GET') return out(200, weave.spaceHome(m[1]));
-
-        if ((m = path.match(/^\/api\/tables\/([^/]+)$/))) {
-          if (rx.method === 'GET') {
-            const db = weave.getTable(m[1]);
-            const schema = weave.describeSchema().flatMap((s) => s.tables).find((d) => d.id === db.id);
-            return out(200, schema ?? { id: db.id, name: db.name, spaceId: db.spaceId, deletedAt: db.deletedAt ?? null });
-          }
-        }
-
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/entities$/))) {
-          if (rx.method === 'GET') {
-            const limit = boundedLimit(rx.searchParams.get('limit'), QUERY_PAGE);
-            const offset = nonNegativeInteger('offset', rx.searchParams.get('offset'));
-            return out(200, weave.query(m[1], { limit, offset, viewerZone, workspace: member.state.meta.id }));
-          }
-        }
-        if ((m = path.match(/^\/api\/tables\/([^/]+)\/prefill$/)) && rx.method === 'GET') {
-          return out(200, prefillDraft(weave, m[1], rx.searchParams));
-        }
-
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/references$/)) && rx.method === 'GET') {
-          return out(200, weave.referencesTo(m[1]));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/view$/)) && rx.method === 'GET') {
-          const shape = rx.searchParams.get('shape') ?? 'chip';
-          const rawCfg = rx.searchParams.get('config');
-          let config = null;
-          if (rawCfg) {
-            try { config = JSON.parse(rawCfg); } catch { throw new WeaveError('config is a JSON object', 'invalid'); }
-          }
-          return out(200, weave.renderView(m[1], shape, { config }));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/references-from$/)) && rx.method === 'GET') {
-          return out(200, weave.referencesFrom(m[1]));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/version$/)) && rx.method === 'POST') {
-          const promote = ['1', 'true'].includes(rx.searchParams.get('promote') ?? '') || body.promote === true;
-          const { newSlideVersion } = await deckModule();
-          const made = newSlideVersion(weave, m[1], { promote });
-          return out(201, weave.readEntity(made.id));
-        }
-        if ((m = path.match(/^\/api\/entities\/([^/]+)\/conditional$/)) && rx.method === 'POST') return out(200, weave.conditionalWrite(m[1], body));
-
-        if ((m = path.match(/^\/api\/files\/([^/]+)\/storage$/))) {
-          if (rx.method === 'GET') return out(200, weave.readFileStorage(m[1]));
-          if (rx.method === 'PUT') return out(200, weave.writeFileStorage(m[1], body.items));
+        {
+          const hit = await registeredAndSpaceRoutes({
+          actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
+          remirror, roleOn, rx, scheme, share, useTemplateInto,
+        }, { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix });
+          if (hit !== NEXT) return hit;
         }
 
 

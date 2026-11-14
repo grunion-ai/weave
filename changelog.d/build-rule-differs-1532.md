@@ -1,1 +1,0 @@
-- **Build re-run flags a changed rule** (Issue #1532): a `weave_build` re-run whose rule differs from the held rule of the same name still keeps the held rule, and now lists the differing `trigger` or `actions` under `ignored` at the rule's path.

@@ -1,1 +1,0 @@
-- `weave_import_csv`, `weave csv import` and `POST /api/tables/:db/import.csv` name every header that matches no field in an `ignored` list on the reply, so a typo'd column no longer imports as empty with `errors: []` (Issue #1562).

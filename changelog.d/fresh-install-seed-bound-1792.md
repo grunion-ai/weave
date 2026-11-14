@@ -1,1 +1,0 @@
-- The fresh install check in `test/fresh-install-seed.test.mjs` now asserts that a first serve reads none of weave's own test files, in place of a 2 s wall-clock bound that a loaded CI runner missed (Issue #1792).

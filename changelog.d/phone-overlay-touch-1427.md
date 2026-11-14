@@ -1,1 +1,0 @@
-- Phone tool-sheet Close and Add-level controls, filter checkboxes, and share-panel buttons use the shared touch target size. Seven tool/share overlays now enter the central touch sweep; the richer baseline fixtures remain, with repaired allowances removed (Issues #1182, #1186, #1229; partial #1427).

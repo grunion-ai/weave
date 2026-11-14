@@ -1,3 +1,0 @@
-- A record's breadcrumbs and toolbar stay on one row at every width, on the full page and in the dock. The toolbar no longer wraps under the breadcrumbs (Feature #377).
-- When the row is tight the toolbar keeps Show or hide fields, the three-dot menu and Close. Activity, Share and Collapse or Expand move into the three-dot menu (Feature #377).
-- Workspace, space and table crumbs show whole or fold into the "…" menu. The copy-permalink button stays beside the record number at every width (Feature #377).

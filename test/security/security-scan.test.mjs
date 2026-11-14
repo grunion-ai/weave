@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fingerprint, newFindings, settle, semgrepVerdict, SEMGREP_ARGS, summarize, onPath, steps, gitleaksArgs, ROOT } from '../../scripts/security-scan.mjs';
+import { fingerprint, newFindings, settle, semgrepVerdict, SEMGREP_ARGS, CUT_SHORT, summarize, onPath, steps, gitleaksArgs, ROOT } from '../../scripts/security-scan.mjs';
 import { tempDir } from '../lib/temp.mjs';
 
 const result = (rule, path, start, end = start) => ({ check_id: `security.semgrep.${rule}`, path, start: { line: start }, end: { line: end } });
@@ -146,4 +146,8 @@ test('a file whose taint analysis ran out of time fails the scan unless it is li
 
 test('the scan asks semgrep for its timing block, the only place it reports a taint analysis it cut short (Issue #1789)', () => {
   assert.ok(SEMGREP_ARGS.includes('--time'));
+});
+
+test('no file is excused for a taint analysis that ran out of time: the request handler is split so semgrep finishes it', () => {
+  assert.deepEqual(JSON.parse(readFileSync(CUT_SHORT, 'utf8')), []);
 });

@@ -1,1 +1,0 @@
-- **Working grabber on the phone group sheet** (Issue #1804): the group levels bottom sheet now opens with the same draggable grabber as the picker and menu sheets, so a drag or flick down dismisses it. The 36 by 5 pixel handle it drew before was a pseudo-element with no listener.

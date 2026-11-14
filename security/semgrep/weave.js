@@ -81,3 +81,11 @@ function bracketSafe(rx, table) {
   // ok: weave-bracket-access-request-key
   return Object.hasOwn(table, key) ? table[Number(key)] : null;
 }
+async function routePiece(c, fromRequest) {
+  const { table } = c;
+  const { path } = fromRequest;
+  // ok: weave-bracket-access-request-key
+  const fixed = table[c.name];
+  // ruleid: weave-bracket-access-request-key
+  return [fixed, table[path]];
+}

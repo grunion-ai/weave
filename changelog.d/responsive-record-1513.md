@@ -1,2 +1,0 @@
-- A record takes the available pane when the table and record cannot each fit 400px. Closing it restores the table. The split divider is 8px, and navigation uses the sidebar icon at every width (Issue #1513).
-- Pending-save and Retry controls follow the visible record or table header when the window resizes or the record closes (Issue #1513).
