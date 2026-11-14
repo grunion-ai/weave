@@ -19,6 +19,7 @@ import { bugForwardTarget, forwardBugReport } from './bugreport.js';
 import { inviteEmail, trialEmail, ROLES as MAIL_ROLES, longDate } from './mail.js';
 import { BillingUnavailable, PAID_ROLES } from './billing.js';
 import { ANONYMOUS, RANK, viewerFor, spaceRole, workspaceRole, topRole, withViewers, unrestricted } from './access.js';
+const RANKS = new Map(Object.entries(RANK));
 import '../public/starter-core.js';
 import '../public/prefill-core.js';
 const { WeaveStarters, WeaveSlugs, weavePrefill } = globalThis;
@@ -871,7 +872,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       })();
       const owns = !!hit?.cmd.owns?.(weave, hit.params);
       const submits = m2 === 'POST' && (path === '/api/bug-report' || path === '/api/workspace/leave' || /^\/api\/forms\/[^/]+\/submit$/.test(path));
-      if (RANK[cap] < RANK[need] && !owns && !submits) {
+      if (RANKS.get(cap) < RANKS.get(need) && !owns && !submits) {
         if (unseated) return out(402, { error: seatRequired(), code: 'seat-required', billing: `${wsPrefix}/billing` }, { 'Cache-Control': 'no-store' });
         return deny(role ? 403 : 401, `${m2} ${path} needs an ${need} on this workspace${role ? `; your role here is ${cap}` : ': send a token or sign in'}`);
       }
@@ -1134,12 +1135,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       if (legalPage) {
-        const [title, markdown] = {
+        const [title, markdown] = new Map(Object.entries({
           '/privacy': ['Privacy policy', PRIVACY],
           '/terms': ['Terms of Service', TERMS],
           '/support': ['Support', SUPPORT],
           '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
-        }[path];
+        })).get(path);
         const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
         return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
       }
