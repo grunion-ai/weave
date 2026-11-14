@@ -2,9 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from './lib/temp.mjs';
 import { readHttpTracker } from '../scripts/export-development.mjs';
 
 async function fixture(t, respond) {
@@ -96,7 +95,7 @@ for (const stage of ['headers', 'body']) {
   });
 }
 test('a bare run names the canonical command and reads nothing, so the local read copy is never exported by accident', () => {
-  const run = (...args) => spawnSync(process.execPath, ['scripts/export-development.mjs', '--out', join(mkdtempSync(join(tmpdir(), 'exp-')), 'out.json'), ...args], { encoding: 'utf8', env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), 'home-')) } });
+  const run = (...args) => spawnSync(process.execPath, ['scripts/export-development.mjs', '--out', join(tempDir('exp-'), 'out.json'), ...args], { encoding: 'utf8', env: { ...process.env, HOME: tempDir('home-') } });
   const bare = run();
   assert.equal(bare.status, 1);
   assert.match(bare.stderr, /--from https:\/\/weave\.grunion\.ai\/w\/weave --token-env WEAVE_TRACKER_TOKEN/);
