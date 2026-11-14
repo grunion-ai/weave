@@ -11,6 +11,7 @@ const { createWorkspaceHub } = await import('../../src/server.js');
 const { client, unwrapData } = await import('../lib/fixtures.mjs');
 const { handleMcpMessage, listTools, ROLE_TOOLS } = await import('../../src/mcp.js');
 const { COMMANDS } = await import('../../src/commands.js');
+const { FORM_MIN_ROLE } = await import('../../src/forms.js');
 
 let seq = 0;
 const tool = (name, args) => ({ jsonrpc: '2.0', id: ++seq, method: 'tools/call', params: { name, arguments: args } });
@@ -59,11 +60,11 @@ test('the role table: an observer holds the tools with a row it may run, an edit
   const rows = (name) => COMMANDS.filter((c) => c.tool?.name === name && !c.toolRefusal);
   for (const name of ROLE_TOOLS.observer) {
     assert.ok(byName[name], `${name} is a tool`);
-    assert.ok(name === 'weave_call' || rows(name).some((c) => c.minRole === 'observer' || c.owns), `${name} has no row an observer may run`);
+    assert.ok(name === 'weave_call' || (name === 'weave_form_submit' && FORM_MIN_ROLE.submit === 'observer') || rows(name).some((c) => c.minRole === 'observer' || c.owns), `${name} has no row an observer may run`);
   }
   for (const c of COMMANDS.filter((x) => x.tool && !x.toolRefusal && x.minRole === 'observer')) assert.ok(ROLE_TOOLS.observer.has(c.tool.name), `observer holds ${c.tool.name} for ${c.name}`);
   assert.deepEqual([...ROLE_TOOLS.editor].filter((n) => !ROLE_TOOLS.observer.has(n)).sort(), ['weave_attach_file', 'weave_bulk', 'weave_create_entity', 'weave_delete_entity', 'weave_doc_restore', 'weave_import_csv', 'weave_link', 'weave_restore_entity', 'weave_set_doc', 'weave_set_state', 'weave_unlink', 'weave_update_entity']);
-  for (const name of ROLE_TOOLS.editor) assert.ok(name === 'weave_call' || rows(name).some((c) => c.minRole !== 'architect'), `${name} is held by an editor without a row an editor may run`);
+  for (const name of ROLE_TOOLS.editor) assert.ok(name === 'weave_call' || name === 'weave_form_submit' || rows(name).some((c) => c.minRole !== 'architect'), `${name} is held by an editor without a row an editor may run`);
   assert.equal(ROLE_TOOLS.architect, undefined, 'an architect is not narrowed');
 });
 
