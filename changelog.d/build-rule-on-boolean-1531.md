@@ -1,1 +1,0 @@
-- **Build rule `on` as a boolean** (Issue #1531): a rule in a `weave_build` spec with `on` given as a string such as "false", "off" or the number 0 is still built On, and the result now lists `on` under `ignored` with the reason.

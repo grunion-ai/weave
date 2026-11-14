@@ -1,1 +1,0 @@
-- Browser regressions now cover credential Show/Copy and the 1Password link, slide expansion and version creation, and saving a related-table picker change (Issue #1082, partial coverage).

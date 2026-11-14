@@ -1,1 +1,0 @@
-- Rollup pickers show each aggregate name once, keeping mathematical glyphs in a fixed slot beside the label (Issue #995).

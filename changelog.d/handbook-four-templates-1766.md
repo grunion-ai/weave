@@ -1,1 +1,0 @@
-- The Handbook guide Making a workspace your own says an empty workspace offers four templates (Money, Work, People, Notes), where it said three. The docs drift test now reads the count and names from the featured starters (Issue #1766).
