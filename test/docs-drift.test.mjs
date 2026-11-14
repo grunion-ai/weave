@@ -172,6 +172,8 @@ test('every tool, CLI verb and vendored version a doc names outside the generate
     assert.deepEqual(staleVersions(text), [], `${file} names a vendored version security/vendor.lock.json does not pin`);
   }
   for (const page of [...GUIDES, ...FIELD_DOCS]) assert.deepEqual(unknownTools(page.doc), [], `Handbook "${page.name}" names tools src/mcp.js does not register`);
+  const REMOVED_VERBS = new Set(['`weave account invite`', '`weave account remove-credential`']);
+  for (const page of [...GUIDES, ...FIELD_DOCS]) assert.deepEqual(unknownVerbs(page.doc).filter((v) => !REMOVED_VERBS.has(v)), [], `Handbook "${page.name}" names CLI verbs weave help does not list (Issue #1765)`);
 });
 
 const PROBES = {
