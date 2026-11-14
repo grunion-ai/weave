@@ -65,6 +65,7 @@ rules:
       withinRoot or guardPath); stripping ".." is not a guard.
     pattern-sources:
       - pattern: rx.path
+      - pattern: fromRequest
       - pattern: rx.searchParams.get(...)
       - pattern: rx.header(...)
       - pattern: $R.searchParams.get(...)
@@ -172,6 +173,7 @@ rules:
       Object.create(null), or check Object.hasOwn first.
     pattern-sources:
       - pattern: rx.path
+      - pattern: fromRequest
       - pattern: rx.searchParams.get(...)
       - pattern: rx.header(...)
       - pattern: $R.searchParams.get(...)
