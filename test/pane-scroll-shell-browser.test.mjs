@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, engineOf, styleOf, settled, PHONE, phoneBrowser, phonePage, phoneProfile, touchScroll } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 import { barsOnEngine } from './lib/bars-engine.mjs';
 import { decodePng } from './lib/png.mjs';
 
@@ -344,7 +345,7 @@ if (s) {
     const want = { navScrolls: true, sidebarScrolls: false, holdsHead: false, holdsFoot: false, clearOfHead: true, clearOfFoot: true, barAtEdge: 0 };
     assert.deepEqual(await frame(), want, 'the in-flow sidebar');
     const column = { ...want, navScrolls: false, sidebarScrolls: true };
-    for (const [label, viewport, shape] of [['peek', { width: 1470, height: 794 }, want], ['tablet peek', { width: 800, height: 1000 }, want], ['phone drawer', phoneProfile().page.viewport, column]]) {
+    for (const [label, viewport, shape] of [['peek', { width: 1470, height: 794 }, want], ['tray-hidden peek', { width: WIDTH.widestTrayHidden, height: 1000 }, want], ['tablet menu', { width: WIDTH.tablet, height: 1000 }, column], ['phone drawer', phoneProfile().page.viewport, column]]) {
       await page.setViewportSize(viewport);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       await page.evaluate(() => document.querySelector('#app').classList.add('nav-collapsed', 'nav-peek'));

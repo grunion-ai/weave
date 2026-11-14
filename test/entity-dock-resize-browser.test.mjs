@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
+import { WIDTH, showTray } from './lib/viewports.mjs';
 
 let deals, a;
 const s = await launch('entity dock resize', (weave) => {
@@ -134,9 +135,10 @@ if (s) {
       const page = await openPinned(theme, 900, 1600);
       const wide = await geometry(page);
       assert.ok(wide.dockW >= 800, `the pin applies where it fits: ${wide.dockW}px`);
-      await page.setViewportSize({ width: 1000, height: 900 });
+      await page.setViewportSize({ width: WIDTH.narrowestDesktop, height: 900 });
+      await showTray(page);
       await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
-      assert.equal((await geometry(page)).main, 0, 'narrowed, the table gives the record the available width');
+      assert.equal((await geometry(page)).main, 0, 'narrowed with the tray shown, the table gives the record the available width');
       const narrow = await geometry(page);
       assert.ok(narrow.overflow <= 0, `narrowed, nothing spills past the window: ${narrow.overflow}px`);
       assert.equal(narrow.stored, '900', 'the narrow window never rewrites the pin');
@@ -162,21 +164,16 @@ if (s) {
       await page.close();
     });
 
-    test(`narrow viewports show a usable record and restore the table on close (Issue #1513, ${theme})`, async () => {
-      for (const width of [601, 729, 901, 1000, 1024]) {
+    test(`a narrow desktop with its tray shown gives the record the pane and restores the table on close (Issue #1513, Feature #377, ${theme})`, async () => {
+      for (const width of [WIDTH.narrowestDesktop, 1000, 1024]) {
         const page = await openPinned(theme, 900, width);
+        await showTray(page);
         await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
         const g = await geometry(page);
         assert.equal(g.main, 0, `${width}px yields the table`);
         assert.ok(g.dockW >= 400, `${width}px keeps the record readable: ${g.dockW}px`);
         assert.ok(g.overflow <= 0);
         assert.equal(g.stored, '900');
-        if (width <= 900) {
-          await page.click('#dock .nav-menu');
-          await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-held'));
-          await page.keyboard.press('Escape');
-          await page.waitForFunction(() => document.activeElement === document.querySelector('#dock .nav-menu'));
-        }
         await page.click('#dock .dock-close');
         await page.waitForFunction(() => getComputedStyle(document.querySelector('#main')).display !== 'none');
         assert.ok((await geometry(page)).main >= 360);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, painted } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 import { decodePng } from './lib/png.mjs';
 
 let shop, rows;
@@ -83,7 +84,7 @@ if (s) {
     return { ground: ground.join(','), foreign };
   };
 
-  const VIEWPORTS = [{ width: 1024, height: 600 }, { width: 640, height: 844 }];
+  const VIEWPORTS = [{ width: 1024, height: 600 }, { width: WIDTH.narrowestDesktop, height: 844 }];
   for (const [name, b] of engines) {
     for (const theme of ['light', 'dark']) {
       for (const viewport of VIEWPORTS) {
@@ -104,7 +105,7 @@ if (s) {
         if (viewport.width >= 1024) test(`${name}, ${theme}, 1280x${viewport.height}: the row open in the dock keeps its frozen pair opaque`, async () => {
           const page = await open(b, { theme, viewport: { ...viewport, width: 1280 }, docked: true });
           try {
-            await page.mouse.move(1, viewport.height - 1);
+            await page.mouse.move(viewport.width - 2, viewport.height - 1);
             await page.waitForTimeout(150);
             const rest = await sample(page, 0);
             assert.deepEqual(rest.foreign.slice(0, 6), [],
@@ -149,7 +150,7 @@ if (s) {
         await page.click('.wv-grid tbody tr.entity-row td.sel-cell .sel-box');
         await painted(page, '.wv-grid tbody tr.row-selected');
         await page.evaluate(() => document.activeElement?.blur());
-        await page.mouse.move(1, VIEWPORTS[0].height - 1);
+        await page.mouse.move(VIEWPORTS[0].width - 2, VIEWPORTS[0].height - 1);
         await page.waitForTimeout(250);
         const { ground, foreign } = await sample(page, 0);
         assert.deepEqual(foreign.slice(0, 6), [], `every frozen pixel is the chosen tint ${ground}`);

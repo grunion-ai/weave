@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const COLS = Array.from({ length: 10 }, (_, i) => `A rather wide column ${i}`);
 
@@ -24,7 +25,7 @@ if (s) {
   const { base, browser } = s;
 
   const openScrolled = async (theme) => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     if (theme) await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
@@ -100,7 +101,7 @@ if (s) {
   }
 
   test('the checkbox sits a small inset from the grid edge, the select-all box on the same line (Issue #410)', async () => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -151,7 +152,7 @@ if (s) {
   });
 
   test('the seam appears only once something is passing under the frozen column', async () => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -235,7 +236,7 @@ if (s) {
   });
 
   test('the Σ rollup row keeps its own frozen corner over the body scrolling under it', async () => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
@@ -296,7 +297,7 @@ if (s) {
   });
 
   test('a related grid, which has no checkbox column, freezes its # against the edge itself', async () => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'load' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');

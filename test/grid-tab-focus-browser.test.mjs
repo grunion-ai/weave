@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 let rows, second;
 const s = await launch('grid tab focus', (weave) => {
@@ -110,7 +111,7 @@ if (s) {
 
   test('the grid scroller keeps its sideways position across the redraw an edit causes (Issue #1698)', async () => {
     const page = await browser.newPage();
-    await page.setViewportSize({ width: 820, height: 400 });
+    await page.setViewportSize({ width: WIDTH.narrowestDesktop, height: 400 });
     await page.goto(`${base}/#/table/${rows.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`tr[data-eid="${second.id}"] td[data-field="Note"] .text-dressed`);
 

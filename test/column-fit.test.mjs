@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 let db, wide;
 const LONG = 'Design the onboarding wizard end to end';
@@ -92,7 +93,7 @@ if (s) {
     const t = weave.getTable(wide.id);
     for (const f of Object.values(t.fields)) weave.updateField(wide.id, f.id, { config: { width: null } });
     clearViewWidths(wide);
-    const page = await browser.newPage({ viewport: { width: 700, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${wide.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('table.wv-grid th.col-head');

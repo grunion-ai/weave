@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const s = await launch('nav resize', (weave) => {
   weave.createSpace({ name: 'Sales' });
@@ -114,13 +115,13 @@ if (s) {
     await page.close();
   });
 
-  test('a stored width leaves the narrow drawer at 264px (Issue #905)', async () => {
-    const page = await open(880);
+  test('a stored width leaves the tablet menu at the full window width (Issue #905, Feature #377)', async () => {
+    const page = await open(WIDTH.tablet);
     await page.evaluate(() => localStorage.setItem('weave-nav-width', '420'));
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar #nav', { state: 'attached' });
     await page.evaluate(() => document.querySelector('#app').classList.add('nav-peek'));
-    assert.equal(await eventually(() => navWidth(page), 264), 264, "the drawer keeps its own width");
+    assert.equal(await eventually(() => navWidth(page), WIDTH.tablet), WIDTH.tablet, 'the menu spans the window, whatever width the tray was dragged to');
     await page.close();
   });
 }

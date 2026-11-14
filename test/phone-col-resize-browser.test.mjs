@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phoneBrowser, phonePage, settled, eventually } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
-const LANDSCAPE = { viewport: { width: 852, height: 393 }, isLandscape: true };
+const LANDSCAPE = { viewport: { width: WIDTH.narrowestDesktop, height: 720 }, isLandscape: true };
 const MIN = 24;
 const COL = 'Name';
 const HAIRLINE = 6;
