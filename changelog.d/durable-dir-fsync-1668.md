@@ -1,0 +1,1 @@
+- **Durable file writes sync the directory entry** (Issue #1668): `writeFileDurable` now fsyncs the parent directory after the rename (skipped on Windows), so a committed row never points at a blob whose name was lost in a power cut.
