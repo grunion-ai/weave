@@ -246,6 +246,11 @@ export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fiel
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
+export function pageNumber(name, value, { negative = false } = {}) {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isInteger(n) || (n < 0 && !negative)) throw new WeaveError(`${name} must be a whole number of rows, not '${value}'`, 'invalid');
+  return n;
+}
 const describeValue = (v) => (v === null ? 'null' : Array.isArray(v) ? 'an array' : typeof v === 'object' ? 'an object' : `${typeof v} ${JSON.stringify(v)}`);
 function checkWhereNode(node, at) {
   if (Array.isArray(node)) {
@@ -8991,6 +8996,8 @@ export class Weave {
   #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null, shape = 'full' } = {}, workspace = null) {
     checkQueryDocs(where, sort);
     sort = sort ?? [];
+    limit = limit == null ? null : pageNumber('limit', limit, { negative: true });
+    offset = offset == null ? 0 : pageNumber('offset', offset);
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
