@@ -1307,7 +1307,7 @@ export const COMMANDS = [
     action: 'replace',
     actionArg: 'mode',
     toolDefault: true,
-    cli: { command: 'doc', sub: 'set', positional: ['entity'], args: docWriteArgs('set'), result: docWritten },
+    cli: { command: 'doc', sub: 'set', positional: ['entity'], helpFlags: ['content', 'file', 'field'], args: docWriteArgs('set'), result: docWritten },
     http: {
       method: 'PUT', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody,
       result: (r, a, ctx, w) => ({ ok: true, base: w.docBase(a.entity, a.field ?? null) }),
@@ -1330,7 +1330,7 @@ export const COMMANDS = [
     tool: SET_DOC_TOOL,
     action: 'append',
     actionArg: 'mode',
-    cli: { command: 'doc', sub: 'append', positional: ['entity'], args: docWriteArgs('append'), result: docWritten },
+    cli: { command: 'doc', sub: 'append', positional: ['entity'], helpFlags: ['content', 'file', 'field'], args: docWriteArgs('append'), result: docWritten },
     http: { method: 'POST', path: '/api/entities/:entity/doc', query: ['field'], args: docWriteBody, result: docWritten },
     run: (w, a) => { w.appendDoc(a.entity, a.markdown, a.field ?? null); return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length }; },
   },
@@ -1475,7 +1475,7 @@ export const COMMANDS = [
       inputSchema: { type: 'object', properties: { state: { type: 'object' } }, required: ['state'] },
     },
     cli: {
-      command: 'import',
+      command: 'import', helpFlags: ['file'],
       args: (a, flags, { file }) => {
         if (!flags.file) throw new WeaveError('import needs --file');
         return { state: JSON.parse(file(flags.file)) };
@@ -1645,7 +1645,7 @@ export const COMMANDS = [
       },
     },
     cli: {
-      command: 'file', sub: 'attach', default: true, positional: ['entity'],
+      command: 'file', sub: 'attach', default: true, positional: ['entity'], helpFlags: ['path', 'field', 'mime'],
       args: (a, flags, { entityRef, bytes }) => {
         if (!flags.path) throw new WeaveError('file attach needs --path');
         return { entity: entityRef(a.entity, flags.db), field: flags.field || null, [UPLOAD]: { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: bytes(flags.path).toString('base64') } };
@@ -1899,7 +1899,7 @@ export const COMMANDS = [
     tool: WORKSPACE_TOOL,
     action: 'logo',
     cli: {
-      command: 'workspace', sub: 'logo', use: logoFlagCommand,
+      command: 'workspace', sub: 'logo', use: logoFlagCommand, helpFlags: ['path', 'out', 'clear'],
       args: (a, flags, { bytes }) => {
         if (!flags.path) throw new WeaveError('workspace logo needs --path, --out or --clear');
         return { name: flags.path.split('/').pop(), bytes: bytes(flags.path).toString('base64') };
@@ -2046,7 +2046,7 @@ export const COMMANDS = [
     tool: ACCOUNTS_TOOL,
     action: 'revoke-session',
     cli: {
-      command: 'account', sub: 'revoke-session', positional: ['account'],
+      command: 'account', sub: 'revoke-session', positional: ['account'], helpFlags: ['all', 'id'],
       args: (a, flags) => {
         if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
         return { account: a.account, all: Boolean(flags.all), session: flags.all ? null : String(flags.id) };
@@ -2062,7 +2062,7 @@ export const COMMANDS = [
     writes: 'schema', minRole: 'architect', annotations: ADD,
     tool: ACCOUNTS_TOOL,
     action: 'link-identity',
-    cli: { command: 'account', sub: 'link', positional: ['account'], args: identityArgs('link') },
+    cli: { command: 'account', sub: 'link', positional: ['account'], helpFlags: ['issuer'], args: identityArgs('link') },
     http: { method: 'POST', path: '/api/accounts/:ref/identities', status: 201, args: (a, body, q, ctx) => ({ account: a.ref, issuer: body?.issuer ?? ctx?.issuer, email: body?.email }) },
     run: (w, a, ctx) => {
       const made = w.linkIdentity(a.account ?? a.name, { issuer: a.issuer ?? (ctx?.door === 'mcp' ? process.env.WEAVE_OIDC_ISSUER : undefined), email: a.email });
@@ -2075,7 +2075,7 @@ export const COMMANDS = [
     writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: ACCOUNTS_TOOL,
     action: 'unlink-identity',
-    cli: { command: 'account', sub: 'unlink', positional: ['account'], args: identityArgs('unlink') },
+    cli: { command: 'account', sub: 'unlink', positional: ['account'], helpFlags: ['issuer', 'subject'], args: identityArgs('unlink') },
     http: { method: 'DELETE', path: '/api/accounts/:ref/identities', args: (a, body, q) => ({ account: a.ref, issuer: q.get('issuer') ?? null, subject: q.get('subject') }) },
     run: (w, a) => w.unlinkIdentity(a.account ?? a.name, { issuer: a.issuer ?? null, subject: a.subject }),
   },
@@ -2086,7 +2086,7 @@ export const COMMANDS = [
     tool: ACCOUNTS_TOOL,
     action: 'invite',
     cli: {
-      command: 'invite',
+      command: 'invite', helpFlags: ['issuer', 'role'],
       args: (a, flags) => {
         const issuer = flags.issuer ?? trimmed(process.env.WEAVE_OIDC_ISSUER);
         if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
