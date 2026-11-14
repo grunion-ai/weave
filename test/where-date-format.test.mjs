@@ -127,3 +127,26 @@ test('weave_query and weave_stats answer the same rows as the engine', () => {
   const s = dispatchTool(w, 'weave_stats', { table: 'T', where: [['Due', '<', '2026-10-01']] });
   assert.equal(s.rows, 2);
 });
+test('a date formula with a grain compares and sorts on the stored date (Issue #1728)', () => {
+  const w = workspace({});
+  w.addField('T', { name: 'Shift', type: 'formula', config: { expression: 'dateAdd([Due], 1, "day")', grain: ['year', 'month', 'day'] } });
+  assert.deepEqual(names(w, [['Shift', '<', '2026-06-01']]), ['early', 'mid']);
+  assert.deepEqual(names(w, [['Shift', '=', '2026-11-11']]), ['late']);
+  assert.deepEqual(names(w, [['Shift', '>=', '2026-03-21']]), ['late', 'mid']);
+});
+test('a min or max rollup of a date compares and sorts on the stored date (Issue #1728)', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'S' });
+  w.createTable({ space: 'S', name: 'Proj' });
+  w.createTable({ space: 'S', name: 'Task' });
+  w.addField('Task', { name: 'Due', type: 'date', config: {} });
+  w.addRelation('Task', { name: 'Proj', targetDb: 'Proj' });
+  w.addField('Proj', { name: 'First', type: 'rollup', config: { relationField: 'Task', targetField: 'Due', aggregate: 'min' } });
+  w.createEntity('Proj', { name: 'p1', values: {} });
+  w.createEntity('Proj', { name: 'p2', values: {} });
+  w.createEntity('Task', { name: 't1', values: { Due: '2026-01-05', Proj: 'p1' } });
+  w.createEntity('Task', { name: 't2', values: { Due: '2026-11-10', Proj: 'p2' } });
+  assert.deepEqual(names(w, [['First', '<', '2026-06-01']], 'Proj'), ['p1']);
+  assert.deepEqual(names(w, [['First', '=', '2026-01-05']], 'Proj'), ['p1']);
+  assert.deepEqual(names(w, [['First', '>=', '2026-06-01']], 'Proj'), ['p2']);
+});
