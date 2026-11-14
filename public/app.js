@@ -6197,7 +6197,10 @@ function tableGroupButton(ref) {
     let pop;
     const rows = (db) => [tableControlHeader('Group', () => pop?.remove()), ...levelsBlock(db, 'group', (patch) => paneWrite(db, patch))];
     pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
-    if (pop) pop.refresh = (db) => { pop.replaceChildren(...rows(db)); pop.reposition?.(); };
+    if (!pop) return;
+    const grip = MENU_SHEET.matches ? sheetGrip(pop, () => pop.remove()) : null;
+    if (grip) pop.prepend(grip);
+    pop.refresh = (db) => { pop.replaceChildren(...(grip ? [grip] : []), ...rows(db)); pop.reposition?.(); };
   });
   return btn;
 }
