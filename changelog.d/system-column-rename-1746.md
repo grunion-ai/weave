@@ -1,1 +1,1 @@
-- **Built-in system columns refuse a rename** (Issue #1746): `updateField` now refuses to rename a system column such as `System/Users` Email, as `deleteField` refuses to delete one, so a later account or invite no longer fails with `Field 'Email' not found` after it has landed.
+- **Built-in system columns refuse a rename** (Issue #1746): `updateField` now refuses to rename a column of a system table, such as `System/Users` Email, as `deleteField` refuses to delete one, so a later account or invite no longer fails with `Field 'Email' not found`.
