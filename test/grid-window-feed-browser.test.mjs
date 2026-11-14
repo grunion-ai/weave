@@ -64,6 +64,7 @@ if (s) {
     const page = await open();
     try {
       let seen = [];
+      let restedOnMore = 0;
       for (let k = 0; k < 40; k++) {
         await scrollTo(page, 'max');
         const v = await view(page);
@@ -73,10 +74,12 @@ if (s) {
         if (v.more && v.top >= v.max - 2) {
           assert.equal(v.more.inView, true, `flick ${k}: the bottom of the scroll is not the load-more row`);
           assert.ok(v.more.running >= 1, `flick ${k}: the load-more row is on screen but nothing in it moves`);
+          restedOnMore++;
         }
         if (!v.more && v.rows.includes(N - 1)) break;
         await page.waitForTimeout(150);
       }
+      assert.ok(restedOnMore >= 1, `no flick rested at the bottom with the load-more row there, so the walk never checked it (${seen.length} flicks)`);
       const end = seen.at(-1);
       assert.ok(end.rows.includes(N - 1), `the feed reached row ${N - 1} (last view rows ${end.rows[0]}-${end.rows.at(-1)})`);
       assert.equal(end.more, null, 'the load-more row leaves once every row is here');
