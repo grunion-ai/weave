@@ -5889,7 +5889,7 @@ function paintTableChrome(db) {
 }
 
 function teardownGrid(host) {
-  host?.querySelector(':scope > .table-wrap')?.wvDestroy?.();
+  for (const wrap of host?.querySelectorAll('.table-wrap') ?? []) wrap.wvDestroy?.();
 }
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   const main = $('#main');
@@ -8729,6 +8729,7 @@ async function showSpace(spaceId) {
   state.route = { page: 'space', spaceId };
   renderNav();
   const main = $('#main');
+  teardownGrid(main);
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
@@ -10427,6 +10428,7 @@ async function showHome() {
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
+  teardownGrid(main);
   main.replaceChildren(
     viewHeader({
       crumbs: [],

@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let tasks, notes;
+let tasks, notes, product;
 const s = await launch('grid teardown', (weave) => {
-  weave.createSpace({ name: 'Product' });
+  product = weave.createSpace({ name: 'Product' });
   tasks = weave.createTable({ space: 'Product', name: 'Task' });
   weave.addField(tasks, { name: 'Note', type: 'text' });
   for (let i = 0; i < 8; i++) weave.createEntity(tasks, { name: `Task ${i}`, values: { Note: `note ${i}` } });
@@ -84,6 +84,43 @@ if (s) {
       assert.deepEqual(await held(page), before, 'the table it left is torn down');
       await drawTable(page, tasks.id);
       assert.deepEqual(await held(page), before, 'and so is the one it came back from');
+    } finally { await page.close(); }
+  });
+
+  const openRegistry = async (hash) => {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+    await page.addInitScript(WATCH);
+    await page.addInitScript(() => {
+      localStorage.setItem('weave-schema-open', '1');
+      localStorage.setItem('weave-space-overview-open', '1');
+    });
+    await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.wv-schema .wv-grid tbody tr.entity-row');
+    await page.waitForTimeout(100);
+    return page;
+  };
+
+  const redrawPage = async (page, call) => {
+    await page.evaluate(call);
+    await page.waitForSelector('.wv-schema .wv-grid tbody tr.entity-row');
+    await page.waitForTimeout(100);
+  };
+
+  test('a redraw of the space page leaves no registry grid observer or document listener behind (Issue #1806)', async () => {
+    const page = await openRegistry(`#/space/${product.id}`);
+    try {
+      const before = await held(page);
+      for (let i = 0; i < 4; i++) await redrawPage(page, `showSpace(${JSON.stringify(product.id)})`);
+      assert.deepEqual(await held(page), before, 'four space-page redraws hold exactly what one draw held');
+    } finally { await page.close(); }
+  });
+
+  test('a redraw of the home page leaves no registry grid observer or document listener behind (Issue #1806)', async () => {
+    const page = await openRegistry('');
+    try {
+      const before = await held(page);
+      for (let i = 0; i < 4; i++) await redrawPage(page, 'showHome()');
+      assert.deepEqual(await held(page), before, 'four home-page redraws hold exactly what one draw held');
     } finally { await page.close(); }
   });
 }
