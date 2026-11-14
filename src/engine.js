@@ -6596,6 +6596,7 @@ export class Weave {
     let rewritten = [];
     let settings = [];
     if (patch.name != null) refuseReserved('field', patch.name);
+    if (patch.name != null && patch.name !== field.name && field.system && db.system) throw new WeaveError(`Field '${field.name}' is part of the system registry`, 'invalid');
     if (patch.name != null && patch.name !== field.name) {
       const holder = this.findField(db, patch.name);
       if (holder && holder !== field) throw new WeaveError(`Field '${patch.name}' already exists`, 'conflict');
