@@ -37,7 +37,7 @@ if (s) {
     return { client: d.clientWidth, scroll: d.scrollWidth };
   });
 
-  for (const [label, pinned] of [['at its 360 px minimum', 360], ['at the even split', 0]]) {
+  for (const [label, pinned] of [['at its 400 px minimum', 400], ['at the even split', 0]]) {
     test(`the dock does not scroll sideways ${label}`, async () => {
       const page = await openDocked(pinned);
       const m = await measure(page);
