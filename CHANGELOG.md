@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.146 (2026-11-14)
+
+- **Browser lane refusal when the Playwright module is missing** (Issue #1675): `npm test` now stops with the install line when a checkout cannot resolve the pinned Playwright module, instead of starting the browser lane and reporting a green run for suites that only registered skips.
+- **Grid teardown on redraw** (Issue #1701): `renderTable` returns a `destroy` that disconnects the grid's resize observer and drops its document scroll, copy and paste listeners, and the draw calls it on the grid it is about to replace. An hour of editing used to leave one observer and three document listeners behind per redraw, each holding the table it drew.
+- **Registry grid teardown on a page redraw** (Issue #1806): the space page and the home page now tear down the registry grid in their Schema disclosure before they replace the page, so a save in the Tables or Spaces registry no longer leaves an observer and three document listeners holding the table it drew.
+
 ## v0.4.145 (2026-11-13)
 
 - **Record pages no longer pile up in server memory** (Issues #1638, #1639): every record, space and table page went into the server's compression cache, which had no limit and kept a separate copy for each spelling of a URL, and each page was also compressed again at Brotli's slowest setting in the background. Walking 2,000 record links grew the server's buffers from 5 MB to 129 MB. A page built for one request is now gzipped on the way out and never cached. The cache keeps static files only, one copy per file whatever the URL spelling, and lets the least recently used copy go once it holds 16 MiB, room for every compressible public file in both encodings three times over. The app shell is read, versioned and split around its title once per build instead of on every request, and a check at most once a second rebuilds it when `index.html` or a file it names changes. The same 2,000 pages now serve 3.7 times as fast and leave buffer memory under 8 MB.

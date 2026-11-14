@@ -1,1 +1,0 @@
-- **Browser lane refusal when the Playwright module is missing** (Issue #1675): `npm test` now stops with the install line when a checkout cannot resolve the pinned Playwright module, instead of starting the browser lane and reporting a green run for suites that only registered skips.

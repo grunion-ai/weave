@@ -1,1 +1,0 @@
-- **Grid teardown on redraw** (Issue #1701): `renderTable` returns a `destroy` that disconnects the grid's resize observer and drops its document scroll, copy and paste listeners, and the draw calls it on the grid it is about to replace. An hour of editing used to leave one observer and three document listeners behind per redraw, each holding the table it drew.
