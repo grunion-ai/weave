@@ -77,6 +77,55 @@ if (s) {
     }
   }
 
+  const dragSheet = async (page, sel, dy) => {
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i += 1) {
+      await page.waitForTimeout(40);
+      await page.mouse.move(x, y + (dy * i) / 6);
+    }
+    await page.mouse.up();
+  };
+  for (const [engine, b, profile] of engines) {
+    test(`on a phone the group sheet's handle is a grabber that dismisses the sheet (${engine}, Issue #1804)`, async () => {
+      const page = await open(b, profile, 'light');
+      try {
+        await page.click('#main .table-tools-btn');
+        await settled(page.locator('#main .crumb-actions'));
+        await page.click('#main .crumb-actions .table-group-btn');
+        await page.waitForSelector('.table-group-popover .group-level');
+        await atRest(page.locator('.table-group-popover'));
+        const drawn = await page.evaluate(() => {
+          const pop = document.querySelector('.table-group-popover');
+          const grip = pop.querySelector('.sheet-grip');
+          return {
+            pseudo: getComputedStyle(pop, '::before').content,
+            grip: grip ? Math.round(grip.getBoundingClientRect().height) : null,
+            first: pop.firstElementChild?.className ?? '',
+            height: Math.round(pop.getBoundingClientRect().height),
+          };
+        });
+        assert.equal(drawn.first, 'sheet-grip', 'the sheet opens with the picker sheets grabber at the top');
+        assert.ok(drawn.grip >= 44, `the grabber is a real target, got ${drawn.grip}px tall`);
+        assert.ok(['none', 'normal'].includes(drawn.pseudo), `and it is the only handle drawn, got ${drawn.pseudo}`);
+        await page.click('.table-group-popover .group-remove >> nth=1');
+        await page.waitForFunction(() => document.querySelectorAll('.table-group-popover .group-level').length === 1);
+        assert.equal(await page.locator('.table-group-popover > .sheet-grip').count(), 1, 'the grabber survives a refresh of the levels');
+        await dragSheet(page, '.table-group-popover', Math.round(drawn.height * 0.5));
+        await page.waitForSelector('.table-group-popover', { state: 'detached', timeout: 5000 });
+      } finally {
+        await page.evaluate(async (tid) => {
+          const t = (await (await fetch('/api/schema')).json()).flatMap((sp) => sp.tables).find((x) => x.id === tid);
+          const v = t?.views?.find((x) => x.name === 'Standard') ?? t?.view;
+          if (v) await fetch(`/api/tables/${tid}/views/${v.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group: [{ field: 'Severity' }, { field: 'Area' }] }) });
+        }, id).catch(() => {});
+        await page.close();
+      }
+    });
+  }
   test('on a desktop the group levels live in the View pane, beside the table (Issue #809, Feature #340)', async () => {
     const page = await open(browser, { viewport: { width: 1280, height: 900 } }, 'light');
     try {
