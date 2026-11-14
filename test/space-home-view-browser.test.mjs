@@ -303,15 +303,23 @@ if (s) {
   test('moving away while the home loads leaves the next page alone', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
+      let asked;
+      const requested = new Promise((resolve) => { asked = resolve; });
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
       await page.route('**/api/spaces/*/home', async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        asked();
+        await held;
         await route.continue();
-      });
+      }, { times: 1 });
       await page.goto(`${s.base}/#/space/${ids.sales}`);
-      await page.waitForFunction(() => location.hash.includes('/space/'));
+      await requested;
       await page.evaluate((id) => { location.hash = `#/table/${id}`; }, ids.deal);
-      await page.waitForResponse('**/api/spaces/*/home');
       await page.waitForFunction((id) => state.route?.dbId === id, ids.deal);
+      const answered = page.waitForResponse('**/api/spaces/*/home');
+      release();
+      await (await answered).finished();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       assert.equal(await page.locator('.space-home').count(), 0);
     } finally {
       await page.close();
