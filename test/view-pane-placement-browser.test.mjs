@@ -29,13 +29,13 @@ if (s) {
       assert.equal(await page.evaluate(() => innerWidth - document.querySelector('#view-pane').getBoundingClientRect().right), 8);
     } finally { await page.close(); }
   });
-  test('with an entity docked the pane sits right of the entity pane, both gaps gutter-wide (Feature #340)', async () => {
+  test('with an entity docked the view pane stays right of the compact split (Feature #340)', async () => {
     const page = await open(`#/table/${jobs.id}?e=${row.id}`);
     try {
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       const [main, dock, pane] = await Promise.all([box(page, '#main'), box(page, '#dock'), box(page, '#view-pane')]);
       assert.ok(pane.left >= dock.right, `pane ${pane.left} starts after the entity pane ends ${dock.right}`);
-      assert.equal(dock.left - main.right, GAP);
+      assert.equal(dock.left - main.right, 8);
       assert.equal(pane.left - dock.right, GAP);
     } finally { await page.close(); }
   });
@@ -46,7 +46,7 @@ if (s) {
       await page.click('#dock .activity-btn');
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
       const [dock, side, pane] = await Promise.all([box(page, '#dock'), box(page, '#side'), box(page, '#view-pane')]);
-      assert.equal(side.left - dock.right, GAP);
+      assert.equal(side.left - dock.right, 8);
       assert.ok(pane.left >= side.right, `pane ${pane.left} starts after the context pane ends ${side.right}`);
       assert.equal(pane.left - side.right, GAP);
     } finally { await page.close(); }

@@ -42,7 +42,7 @@ if (s) {
   for (const [label, opts] of [
     ['at 1440 with the nav open', {}],
     ['at 1440 with the nav collapsed', { collapsed: true }],
-    ['with the table at its 320 px floor', { pin: 2000 }],
+    ['with the table at its 400 px floor', { pin: 2000 }],
   ]) {
     test(`the docked table's crumb holds one line clear of the toolbar ${label}`, async () => {
       const page = await openDocked(opts);

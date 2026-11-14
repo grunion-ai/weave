@@ -139,6 +139,55 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a yielded tablet record keeps save feedback in its visible header (Issue #1513)', async () => {
+    const page = await open({ viewport: { width: 729, height: 900 } });
+    try {
+      await page.click(`tr[data-eid="${order.id}"] .open-link`);
+      await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
+      await page.evaluate(() => {
+        window.weaveSaves.push({ key: 'test:tablet', value: 'tablet', send: () => new Promise(() => {}) });
+      });
+      const mark = page.locator('#dock .save-glyph');
+      await mark.waitFor({ state: 'visible', timeout: 2000 });
+      assert.match(await mark.getAttribute('aria-label'), /Saving 1 change/);
+    } finally { await page.close(); }
+  });
+
+  for (const state of ['pending', 'failed']) {
+    test(`an existing ${state} save stays reachable across pane changes (Issue #1513)`, async () => {
+      const page = await open();
+      try {
+        await page.click(`tr[data-eid="${order.id}"] .open-link`);
+        await page.waitForSelector('#dock:not([hidden]) .dock-close');
+        await page.evaluate((state) => {
+          if (state === 'failed') { window.__down = 99; window.__job('resize'); }
+          else {
+            window.__slow = new Promise((resolve) => { window.__release = resolve; });
+            window.weaveSaves.push({ key: 'test:resize', value: 'resize', send: () => window.__slow });
+            window.weaveSaves.flush();
+          }
+        }, state);
+        await page.locator(`${GLYPH}[data-state="${state}"]`).waitFor({ state: 'visible' });
+        await page.evaluate(() => { window.__mark = document.querySelector('.save-glyph'); });
+        for (const width of [729, 1400, 729]) {
+          await page.setViewportSize({ width, height: 900 });
+          const home = width === 729 ? '#dock' : '#main';
+          await page.locator(`${home} .save-glyph[data-state="${state}"]`).waitFor({ state: 'visible', timeout: 2000 });
+          assert.equal(await page.evaluate(() => document.querySelector('.save-glyph') === window.__mark), true);
+        }
+        await page.click('#dock .dock-close');
+        await page.locator(`${GLYPH}[data-state="${state}"]`).waitFor({ state: 'visible', timeout: 2000 });
+        assert.equal(await page.evaluate(() => document.querySelector('.save-glyph') === window.__mark), true);
+        if (state === 'failed') {
+          await page.evaluate(() => { window.__down = 0; });
+          await page.click(GLYPH);
+          await page.waitForFunction(() => window.__sent.some((job) => job.value === 'resize'));
+        } else await page.evaluate(() => window.__release({ ok: true }));
+        await page.locator(`${GLYPH}[data-state="saved"]`).waitFor({ state: 'visible' });
+      } finally { await page.close(); }
+    });
+  }
+
   test('on a phone the glyph is a 44 px target with its name (Feature #217)', async () => {
     const phone = await phoneBrowser();
     const page = await open({}, phone ? (o) => phonePage(phone, o) : (o) => browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, ...o }));
