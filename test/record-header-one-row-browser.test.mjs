@@ -68,13 +68,13 @@ if (s) {
       assert.equal(wide.tight, false, 'a wide header is not condensed');
       assert.ok(wide.buttons.some((b) => b.name === 'Activity'), `Activity shows when there is room: ${wide.buttons.map((b) => b.name)}`);
       let tight = null;
-      for (let width = 1200; width >= 620 && !tight; width -= 20) {
+      for (let width = 1200; width >= 320 && !tight; width -= 20) {
         await page.setViewportSize({ width, height: 900 });
         await settle(page);
         const m = await read(page, '#main');
         if (m.tight) tight = m;
       }
-      assert.ok(tight, 'the header condenses somewhere above the phone width');
+      assert.ok(tight, 'the header condenses somewhere before the narrowest phone');
       const names = tight.buttons.map((b) => b.name);
       assert.ok(!names.includes('Activity') && !names.some((n) => /^Collapse/.test(n)), `Activity and Collapse leave the row: ${names}`);
       assert.ok(names.includes('Show or hide fields'), `Show or hide fields stays: ${names}`);

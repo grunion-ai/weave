@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 let issues;
 const s = await launch('phone drawer hold', (weave) => {
@@ -78,16 +79,16 @@ if (s) {
     const rail = document.querySelector('#ws-rail');
     return { inert: rail.inert, seen: rail.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && rail.getBoundingClientRect().width > 0 };
   });
-  test('between 600 and 900px the drawer carries the rail beside the sidebar, and the scrim gives the page back', async () => {
-    const page = await open([700, 844]);
+  test('a tablet opens the same full-screen menu as a phone, with the workspace rail live, and Esc gives the page back (Feature #377)', async () => {
+    const page = await open([WIDTH.tablet, 844]);
     try {
       assert.deepEqual(await railState(page), { inert: false, seen: false }, 'the rail is off screen until the menu button opens the drawer');
       await openMenu(page);
       assert.deepEqual(await state(page), HELD);
       assert.deepEqual(await railState(page), { inert: false, seen: true }, 'the drawer draws the rail and the hold leaves it live, so its workspaces still take a click (Issue #1546)');
       assert.equal(await focusIn(page), 'drawer');
-      await page.mouse.click(680, 500);
-      assert.deepEqual(await state(page), CLOSED, 'a tap on the scrim closes it and frees the page');
+      await page.keyboard.press('Escape');
+      assert.deepEqual(await state(page), CLOSED, 'Esc closes it and frees the page');
       assert.deepEqual(await railState(page), { inert: false, seen: false }, 'and the rail leaves the screen with the drawer');
       assert.equal(await focusIn(page), 'menu', 'focus returns to the menu button');
     } finally { await page.close(); }

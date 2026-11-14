@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
-const WIDTHS = [800, 920];
+const WIDTHS = [WIDTH.narrowestDesktop, WIDTH.widestTrayHidden];
 
 const READ = (to) => {
   const wrap = document.querySelector('#main .table-wrap');

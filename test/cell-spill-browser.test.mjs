@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const LONG = (i) => `Row ${i}: a name long enough that the grid column has to clip it before the end`;
 const SQUIRREL = 'Design a weekly squirrel digest run it from net.weave workflows';
@@ -119,7 +120,7 @@ if (s) {
   });
 
   test('a spill longer than the room left stops at the grid edge and fades', async () => {
-    const page = await grid({ width: 900 });
+    const page = await grid({ width: WIDTH.narrowestDesktop });
     try {
       const cell = await tag(page, 2, 'Tail');
       const got = await hoverAndRead(page, cell);
@@ -198,7 +199,7 @@ if (s) {
   }, gridEdge.toString());
 
   test('clicking a clipped name opens a textarea on the cell that spills, wraps and grows', async () => {
-    const page = await grid({ width: 640 });
+    const page = await grid({ width: WIDTH.narrowestDesktop });
     try {
       const cell = await tag(page, 10);
       const rest = await page.evaluate(() => {
@@ -222,7 +223,7 @@ if (s) {
       assert.equal(got.scrolls, false, 'it is as tall as its text, nothing scrolls inside');
       const before = got.box.height;
       await page.keyboard.press('End');
-      await page.keyboard.type(' and then a long tail of extra words so the value needs another line in the box');
+      await page.keyboard.type(' and then a long tail of extra words so the value needs another line in the box'.repeat(3));
       const grown = await readEditor(page);
       assert.ok(grown.box.height > before, `typing grows it (${grown.box.height} vs ${before})`);
       assert.equal(grown.scrolls, false, 'still nothing hidden');
@@ -256,7 +257,7 @@ if (s) {
   });
 
   test('Enter commits the spill editor and moves down', async () => {
-    const page = await grid({ width: 760 });
+    const page = await grid({ width: WIDTH.narrowestDesktop });
     try {
       await page.evaluate((id) => {
         const td = document.querySelector(`tr[data-eid="${id}"] td.name-cell`);
@@ -285,7 +286,7 @@ if (s) {
   });
 
   test('Esc cancels the spill editor and puts the value back', async () => {
-    const page = await grid({ width: 760 });
+    const page = await grid({ width: WIDTH.narrowestDesktop });
     try {
       const cell = await tag(page, 4);
       await cell.click({ position: { x: 30, y: 10 } });

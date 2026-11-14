@@ -1,6 +1,7 @@
 import { openPane, openViews } from './view-pane.mjs';
 import assert from 'node:assert/strict';
 import { eventually } from './browser.mjs';
+import { WIDTH } from './viewports.mjs';
 
 export function seedReorder(weave) {
   weave.createSpace({ name: 'Drag' });
@@ -95,7 +96,7 @@ export function surfaces({ weave, base, ids }) {
     {
       name: 'grid column headers',
       axis: 'x',
-      phone: { viewport: { width: 852, height: 393 } },
+      phone: { viewport: { width: WIDTH.narrowestDesktop, height: 720 } },
       reset: () => weave.tableView(viewRef(weave, grid), { fields: ['Ant', 'Bee', 'Cat', 'Name'] }),
       open: async (page) => {
         await page.goto(`${base}/#/table/${grid.id}`, { waitUntil: 'networkidle' });

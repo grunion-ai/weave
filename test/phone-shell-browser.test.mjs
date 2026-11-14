@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { engineOf, launch, painted, settled, PHONE, phoneBrowser, phonePage, phoneProfile } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const s = await launch('phone shell', (weave) => {
   weave.createSpace({ name: 'Product' });
@@ -93,7 +94,7 @@ if (s) {
     await openDrawer(page);
     await page.click('#nav-collapse');
     assert.equal(await isOpen(), false, 'the ‹ closes it');
-    assert.equal(await page.evaluate(() => localStorage.getItem('weave-nav-collapsed')), '', 'and does not persist a collapsed nav for the desktop');
+    assert.ok(!(await page.evaluate(() => localStorage.getItem('weave-nav-collapsed'))), 'and does not persist a collapsed nav for the desktop');
     await page.click('#main .nav-menu');
     await page.click('#sidebar a.nav-db:has-text("Guide")');
     await page.waitForFunction((h) => location.hash === h, views['Guide table']);
@@ -101,8 +102,8 @@ if (s) {
     await page.close();
   });
 
-  test('compact widths keep both navigation sections in the drawer (Issues #1457, #1513)', async () => {
-    for (const width of [601, 729, 900]) {
+  test('tablet widths keep both navigation sections in the full-screen menu (Issues #1457, #1513, Feature #377)', async () => {
+    for (const width of [WIDTH.tablet, WIDTH.widestPhoneFormat]) {
       const page = await open(views['Task record'], { width });
       try {
         let seen = await shell(page);
@@ -112,16 +113,13 @@ if (s) {
         assert.ok(seen.menu.width >= 32, 'the drawer button remains available');
         await openDrawer(page);
         seen = await shell(page);
-        assert.equal(seen.rail.width, 52, 'the workspace selector opens with the drawer');
-        assert.equal(seen.sidebar.left, 52, 'the sidebar opens beside the workspace selector');
-        assert.equal(seen.sidebar.width, 264);
+        assert.ok(seen.rail.width > 0, 'the workspace selector opens with the menu');
+        assert.equal(seen.sidebar.left, 0, 'the menu opens edge to edge, as on a phone');
+        assert.equal(seen.sidebar.width, width);
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => document.activeElement === document.querySelector('#main .nav-menu'));
         assert.equal((await shell(page)).rail.width, 0, 'closing hides the workspace selector again');
         await openDrawer(page);
-        await page.mouse.click(width - 20, 500);
-        assert.equal((await shell(page)).open, false, 'a tap outside closes both navigation sections');
-        assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap');
       } finally { await page.close(); }
     }
   });

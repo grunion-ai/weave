@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 let tasks, people, task;
 
@@ -34,7 +35,7 @@ const s = await launch('grid chrome', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
   async function grid(density) {
-    const page = await browser.newPage({ viewport: { width: 820, height: 900 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 900 } });
     if (density) {
       weave.tableView(`${tasks.id}/${weave.tableView(tasks).views[0].id}`, { density });
     }
@@ -126,7 +127,7 @@ if (s) {
   test('a cell that starts overflowing gets its marker without a redraw', async () => {
     const page = await grid();
     try {
-      await page.setViewportSize({ width: 640, height: 900 });
+      await page.setViewportSize({ width: WIDTH.narrowestDesktop, height: 900 });
       await page.waitForFunction(() => {
         const tds = [...document.querySelectorAll('.wv-grid tbody td[data-field]')];
         const wide = (n) => n.scrollWidth > n.clientWidth + 1;

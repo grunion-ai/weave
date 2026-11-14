@@ -870,7 +870,7 @@ function tableHop(db) {
   return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
-const dockCoversScreen = matchMedia('(max-width: 600px)');
+const dockCoversScreen = matchMedia('(max-width: 959px)');
 const saves = WeaveSaveQueue.createSaveQueue({
   delay: globalThis.__weaveSaveDelay ?? WeaveSaveQueue.DEBOUNCE_MS,
   send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
@@ -3089,7 +3089,7 @@ function menuBounds(node) {
   return viewport;
 }
 
-const MENU_SHEET = matchMedia('(max-width: 600px)');
+const MENU_SHEET = matchMedia('(max-width: 959px)');
 let openMenu = null;
 
 function menuRow(it, done) {
@@ -11585,7 +11585,8 @@ function wireWsNew() {
   }
 }
 
-const narrowShell = matchMedia('(max-width: 900px)');
+const narrowShell = matchMedia('(max-width: 959px)');
+const tightShell = matchMedia('(max-width: 1199px)');
 let navPeekDwell, navPeekLeave;
 function closeNavPeek() {
   clearTimeout(navPeekDwell);
@@ -11593,11 +11594,13 @@ function closeNavPeek() {
   navPeekDwell = navPeekLeave = null;
   $('#app').classList.remove('nav-peek');
 }
-function setNavCollapsed(collapsed) {
-  const app = $('#app');
-  app.classList.toggle('nav-collapsed', collapsed);
+function showNavCollapsed(collapsed) {
+  $('#app').classList.toggle('nav-collapsed', collapsed);
   closeNavPeek();
-  WeavePrefs.write('weave-nav-collapsed', collapsed ? '1' : '');
+}
+function setNavCollapsed(collapsed) {
+  showNavCollapsed(collapsed);
+  if (!tightShell.matches) WeavePrefs.write('weave-nav-collapsed', collapsed ? '1' : '');
 }
 function wireNavCollapse() {
   const app = $('#app');
@@ -11642,7 +11645,9 @@ function wireNavCollapse() {
     });
   }
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPeek(); });
-  apply(WeavePrefs.read('weave-nav-collapsed') === '1');
+  const rest = () => showNavCollapsed(tightShell.matches || WeavePrefs.read('weave-nav-collapsed') === '1');
+  rest();
+  tightShell.addEventListener('change', rest);
   const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);

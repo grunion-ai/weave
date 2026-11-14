@@ -66,7 +66,7 @@ test('one (pointer: coarse) :where() rule gives every touch target the --wv-hit 
   assert.deepEqual(floor.optOuts, ['input[type="checkbox"]', 'input[type="radio"]'], 'a bare checkbox or radio keeps its drawn box and its row takes the touch');
   assert.equal(new Set(floor.targets).size, floor.targets.length, 'each target is listed once');
   for (const target of ['.picker-pop :is(.picker-box, .picker-row)', '.wv-menu-row', '#cmdk-results .result']) {
-    assert.ok(floor.targets.includes(target), `${target} is one of the rows the review measured at desktop size on a coarse pointer wider than 600px`);
+    assert.ok(floor.targets.includes(target), `${target} is one of the rows the review measured at desktop size on a coarse pointer wider than the phone format`);
   }
   const rules = DECLS.filter((d) => d.prop === 'min-block-size' && d.value === 'var(--wv-hit)');
   assert.equal(rules.length, 1, 'one rule sets the floor');

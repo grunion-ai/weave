@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH, showTray } from './lib/viewports.mjs';
 import { closePane, openPane } from './lib/view-pane.mjs';
 let issues, row;
 const s = await launch('side panes hold their floors beside a docked entity (Issue #1286)', (weave) => {
@@ -91,10 +92,11 @@ if (s) {
       assert.ok(await page.locator('#main .table-view-btn').isVisible(), 'closing the side panes hands the table back');
     } finally { await page.close(); }
   });
-  test('1000px, table and entity alone: the record takes the available width (Issue #1513)', async () => {
-    const page = await s.browser.newPage({ viewport: { width: 1000, height: 900 } });
+  test('narrowest desktop with the tray shown, table and entity alone: the record takes the available width (Issue #1513, Feature #377)', async () => {
+    const page = await s.browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${issues.id}?e=${row.id}`, { waitUntil: 'networkidle' });
+      await showTray(page);
       await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
       await holds(page, 'record without the cramped table');
       assert.equal(await page.locator('#main').isVisible(), false);
