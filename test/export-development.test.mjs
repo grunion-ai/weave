@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { readHttpTracker } from '../scripts/export-development.mjs';
 
 async function fixture(t, respond) {
@@ -91,3 +95,12 @@ for (const stage of ['headers', 'body']) {
     await assert.rejects(readHttpTracker(base, 'fixture-token', { timeoutMs: 50 }), /abort|timeout/i);
   });
 }
+test('a bare run names the canonical command and reads nothing, so the local read copy is never exported by accident', () => {
+  const run = (...args) => spawnSync(process.execPath, ['scripts/export-development.mjs', '--out', join(mkdtempSync(join(tmpdir(), 'exp-')), 'out.json'), ...args], { encoding: 'utf8', env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), 'home-')) } });
+  const bare = run();
+  assert.equal(bare.status, 1);
+  assert.match(bare.stderr, /--from https:\/\/weave\.grunion\.ai\/w\/weave --token-env WEAVE_TRACKER_TOKEN/);
+  assert.match(bare.stderr, /explicit path/);
+  const named = run('/nonexistent/weave.db');
+  assert.doesNotMatch(named.stderr, /explicit path/, 'an explicit file path still selects file mode');
+});
