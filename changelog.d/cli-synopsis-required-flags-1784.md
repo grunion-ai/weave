@@ -1,0 +1,1 @@
+- `weave help` names the flag each of doc set, doc append, import, file attach, workspace logo, account revoke-session, account link, account unlink and invite requires; a registry test refuses a CLI refusal that names a flag its synopsis omits (Issue #1784).
