@@ -1,0 +1,1 @@
+- A `where` or sort on a date formula with a grain, or a min or max rollup of a date, compares the stored date instead of its reading (Issue #1728).
