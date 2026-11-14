@@ -5,7 +5,7 @@ import { guided } from './field-hints.js';
 import { Weave, WeaveError, FIELD_TYPES } from './engine.js';
 import { RANK } from './access.js';
 import '../public/starter-core.js';
-import { submitForm, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
+import { submitForm, FORM_MIN_ROLE, listForms, createForm, updateForm, getFormDefinition } from './forms.js';
 const PROTOCOL_VERSION = '2024-11-05';
 export { QUERY_PAGE, QUERY_CAP } from './commands.js';
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -276,8 +276,8 @@ const TITLES = {
 };
 const FORM_HINTS = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const DOOR_TOOLS = {
-  weave_forms: { minRole: 'architect', bound: false, annotations: FORM_HINTS },
-  weave_form_submit: { minRole: 'architect', bound: true, annotations: FORM_HINTS },
+  weave_forms: { minRole: FORM_MIN_ROLE.manage, bound: false, annotations: FORM_HINTS },
+  weave_form_submit: { minRole: FORM_MIN_ROLE.submit, bound: true, annotations: FORM_HINTS },
   weave_call: { minRole: 'observer', bound: true, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true } },
 };
 const ROWS = new Map(TOOLS.map((t) => [t.name, COMMANDS.filter((c) => c.tool?.name === t.name && !c.toolRefusal)]));

@@ -93,3 +93,11 @@ test('MCP management honors each workspace auth wall independently', () => {
   assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'get', form: form.id }, { caller }), /not found/);
   assert.throws(() => dispatchTool(member, 'weave_forms', { action: 'list' }, { caller: { role: null } }), /architect/);
 });
+test('an observer token submits a form over MCP, as it does over REST, and still cannot manage forms (Issue #1772)', () => {
+  const w = new Weave();
+  const form = seed(w);
+  const observer = { role: 'observer' };
+  const made = dispatchTool(w, 'weave_form_submit', { form: form.id, values: { Name: 'From an observer' } }, { caller: observer });
+  assert.ok(made.id);
+  assert.throws(() => dispatchTool(w, 'weave_forms', { action: 'list' }, { caller: observer }), /architect/);
+});
