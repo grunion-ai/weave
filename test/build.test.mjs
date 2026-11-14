@@ -267,3 +267,30 @@ test('a built row is one write: its relations are in place when its on-create au
   const blank = w.findEntity(review.id, 'Nothing picked');
   assert.deepEqual(blank.comments.map((c) => c.text), ['Review #2 opened for (no Font).'], 'an empty placeholder says so instead of leaving a gap');
 });
+
+test('an architect whose identity is bound to the live engine builds into a space it just made, on MCP (Issue #1799)', () => {
+  const w = new Weave();
+  const { account } = w.createAccount({ name: 'kyle', role: 'architect' });
+  const call = (id, name, args) => JSON.parse(unwrapData(w.asAccount(account, () => handleMcpMessage(w, { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } })).result.content[0].text));
+  call(1, 'weave_create_space', { name: 'Training' });
+  const spec = { spaces: [{ name: 'Training', tables: [{ name: 'Athlete', fields: [{ name: 'Age', type: 'number' }], records: [{ Name: 'Ada', Age: 30 }] }] }] };
+  const dry = call(2, 'weave_build', { spec, dryRun: true });
+  assert.deepEqual(dry.errors, []);
+  assert.equal(dry.ok, true);
+  const built = call(3, 'weave_build', { spec });
+  assert.deepEqual(built.errors, []);
+  assert.deepEqual(built.created, { spaces: 0, tables: 1, fields: 1, relations: 0, rows: 1 });
+  const fresh = call(4, 'weave_build', { spec: { spaces: [{ name: 'Racing', tables: [{ name: 'Race' }] }] } });
+  assert.deepEqual(fresh.errors, []);
+  assert.equal(fresh.created.spaces, 1);
+});
+
+test('the trial pass of a build keeps the caller\'s role: an observer is still refused (Issue #1799)', () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Training' });
+  const { account } = w.createAccount({ name: 'reader', role: 'observer' });
+  const built = w.asAccount(account, () => w.build({ spaces: [{ name: 'Training', tables: [{ name: 'Athlete' }] }] }));
+  assert.equal(built.ok, false);
+  assert.match(built.errors[0].error, /needs an architect of that space/);
+  assert.equal(w.findTable('Training/Athlete'), undefined);
+});
