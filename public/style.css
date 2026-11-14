@@ -1398,7 +1398,7 @@ span.nav-account-chip { cursor: default; }
 .filter-label { font-size: var(--fs-meta); text-transform: uppercase; letter-spacing: .05em; color: var(--tblr-secondary); margin-right: 2px; }
 .filter-chip { cursor: pointer; }
 .filter-chip.on { box-shadow: var(--wv-chip-selected-ring); }
-#dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
+#dock { --wv-pane-pad: 24px; --wv-pane-pad-x: 28px; flex: 1 1 0; width: auto; margin: 8px 8px 8px 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) 24px; background: var(--tblr-bg-surface); border-radius: 16px; box-shadow: var(--wv-panel-shadow); min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--wv-view-h, 0px); position: relative; }
 @media (min-width: 601px) { #app:has(> :is(#share-pane, #side, #view-pane):not([hidden])) #dock { min-width: 360px; } }
 #app.pane-over :is(#view-pane, #share-pane) { position: fixed; top: 0; bottom: 0; right: 0; z-index: 61; margin: 8px; box-shadow: var(--wv-lift-shadow); }
 #app.table-yield :is(#main, #dock-gutter) { display: none; }
@@ -1415,7 +1415,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 :is(#main:has(~ #side-gutter:not([hidden])), #dock:has(+ #side-gutter:not([hidden]))) { margin-right: 0; }
 #main:has(~ #side-gutter:not([hidden])) { min-width: 320px; }
 @media (max-width: 600px) {
-  #dock { --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) calc(72px + env(safe-area-inset-bottom, 0px)); border-radius: 0; box-shadow: none; min-height: 0; max-height: none; }
+  #dock { --wv-pane-pad: 14px; --wv-pane-pad-x: 14px; position: fixed; inset: 0; z-index: 62; align-self: auto; height: 100dvh; margin: 0; padding: var(--wv-pane-pad) var(--wv-pane-pad-x) calc(72px + env(safe-area-inset-bottom, 0px)); border-radius: 0; box-shadow: none; min-height: 0; max-height: none; }
   #dock-gutter:not([hidden]) { display: none; }
   #main:has(+ #share-pane[hidden] + #dock-gutter:not([hidden])), #main:has(~ #dock-gutter:not([hidden])) { min-width: 0; margin-right: 8px; }
   #side { display: contents; }
@@ -1864,6 +1864,7 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
 .crumb-row:has(> .dl-wrap) { position: relative; padding-right: 34px; }
 .crumb-row:has(> .dl-wrap)::before { content: ""; height: 34px; margin-right: -12px; }
 .crumb-row > .dl-wrap { position: absolute; top: 0; right: 0; height: 34px; display: flex; align-items: center; }
+@media (min-width: 601px) { #dock .view-header .crumb-row::before { content: ""; height: 34px; margin-right: -12px; } }
 @media (min-width: 601px) {
   .crumb-actions :is(.table-view-btn, .table-density-btn, .eye-btn, .table-sort-btn) .table-control-label { display: none; }
   #dock .crumb-row > .crumb-actions { gap: 2px; }
