@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage, headerAction } from './lib/browser.mjs';
 
 const para = (word, n) => Array.from({ length: n }, (_, i) => `${word} paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 
@@ -59,6 +59,7 @@ if (s) {
       expand: pick('.pose-btn'),
       close: pick('button[aria-label="Close"]'),
       share: pick('.table-share-btn'),
+      menu: pick('.dots-btn'),
       back: pick('.dock-back'),
       order: actions.map((n) => n.classList.contains('eye-btn') ? 'eye'
         : n.classList.contains('table-share-btn') ? 'share'
@@ -105,7 +106,6 @@ if (s) {
     const r = await read(page);
     visibleOneRow(r, 'back', r.back);
     assert.ok(r.back.left < r.path.left, `back is left of the crumb path: ${r.back.left} vs ${r.path.left}`);
-    visibleOneRow(r, 'expand', r.expand);
     visibleOneRow(r, 'close', r.close);
     await page.click('#dock .dock-back');
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Acme Working Capital');
@@ -122,7 +122,7 @@ if (s) {
     await page.close();
     page = await openDocked();
     await toBottom(page);
-    await page.click('#dock .crumb-row .pose-btn');
+    await headerAction(page, '#dock', '.pose-btn', 'Expand to the full page');
     await page.waitForSelector('#main .name-edit');
     assert.equal(await page.evaluate(() => location.hash), `#/entity/${acme.id}`);
     await page.close();
@@ -134,7 +134,7 @@ if (s) {
     const r = await read(page);
     assert.equal(r.dockHeads, 0);
     assert.equal(await page.locator('#dock .pose-btn').isVisible(), false, 'a full-screen dock has nothing to expand to');
-    for (const [name, ctl] of [['close', r.close], ['share', r.share]]) {
+    for (const [name, ctl] of [['close', r.close], ['menu', r.menu]]) {
       assert.ok(ctl?.inRow, `${name} sits in the crumb row`);
       assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1, `${name} is on screen: ${JSON.stringify(ctl)}`);
       assert.ok(ctl.reachable, `${name} answers a tap`);

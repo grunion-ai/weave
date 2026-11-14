@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, headerAction } from './lib/browser.mjs';
 
 let deals, contacts, acme, bluefin, jane;
 const s = await launch('crumb nav', (weave) => {
@@ -33,13 +33,13 @@ if (s) {
     const page = await docked();
     await hop(page, jane, 'Jane Rivera');
     assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera']);
-    await page.click('#dock .pose-btn');
+    await headerAction(page, '#dock', '.pose-btn', 'Expand to the full page');
     await named(page, '#main', 'Jane Rivera');
     const full = await page.$$eval('#main .view-header .crumb-path .crumb-item', (cs) => cs.map((c) => [[...c.classList].find((k) => k.startsWith('crumb-k-')), c.querySelector('.crumb-nm').textContent]));
     assert.deepEqual(full.map(([k]) => k), ['crumb-k-ws', 'crumb-k-space', 'crumb-k-table', 'crumb-k-row', 'crumb-k-row']);
     assert.deepEqual(full.slice(1).map(([, n]) => n), ['Sales', 'Deals', 'Acme Working Capital', 'Jane Rivera'],
       'the full page: workspace › space › table where the path started, then both hops');
-    await page.click('#main .view-header .pose-btn');
+    await headerAction(page, '#main', '.pose-btn', 'Collapse beside the table');
     await named(page, '#dock', 'Jane Rivera');
     assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera'], 'collapse keeps the path too');
     await page.close();
@@ -80,7 +80,7 @@ if (s) {
   test('the full page wears Back and Forward too, and they walk the same history', async () => {
     const page = await docked();
     await hop(page, jane, 'Jane Rivera');
-    await page.click('#dock .pose-btn');
+    await headerAction(page, '#dock', '.pose-btn', 'Expand to the full page');
     await named(page, '#main', 'Jane Rivera');
     const back = page.locator('#main .view-header .crumb-row .dock-back');
     const fwd = page.locator('#main .view-header .crumb-row .dock-forward');

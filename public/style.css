@@ -1820,7 +1820,16 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .crumb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .crumb-path { flex: 1 1 8rem; min-width: 0; white-space: nowrap; overflow: hidden; display: flex; align-items: center; gap: 1px; }
 #main .view-header .crumb-row > .crumb-path { flex-basis: auto; max-width: 100%; }
-@media (min-width: 601px) { #dock .crumb-row > .crumb-path:has(> .crumb-slot:nth-child(3)) { flex-basis: calc(13em + 42px); } }
+#app .view-header .crumb-row.crumb-row-fit { flex-wrap: nowrap; }
+#app .view-header .crumb-row.crumb-row-fit > .crumb-path { flex: 1 1 0; min-width: 0; max-width: none; }
+#app .view-header .crumb-row.crumb-row-fit > .crumb-actions { flex: none; flex-wrap: nowrap; }
+#app .crumb-row.crumb-row-tight > .crumb-actions > :is(.activity-btn, .table-share-btn, .pose-btn) { display: none; }
+#app .crumb-row-fit > .crumb-path > .crumb-slot:has(> :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table)) { flex: none; min-width: auto; }
+.crumb-path > .crumb-slot.crumb-lead > .crumb-sep { display: none; }
+@media (max-width: 600px) {
+  #app .crumb-row-fit > .crumb-path > .crumb-slot-cur { flex: none; min-width: max-content; }
+  #app .crumb-row-tight > .crumb-actions > .eye-btn { margin-inline-end: 4px; }
+}
 .crumb-sep { flex: none; padding: 0 2px; color: var(--tblr-secondary); }
 .crumb-slot { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .crumb-slot:not(.crumb-slot-cur) { min-width: 3em; overflow: hidden; }

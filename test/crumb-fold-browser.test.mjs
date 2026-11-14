@@ -49,13 +49,14 @@ if (s) {
     };
   });
 
-  test('a narrow dock wraps its actions so the first crumb and whole current crumb stay in the box (Issues #765, #1513)', async () => {
+  test('a narrow dock keeps one row: the first crumb and whole current crumb stay in the box (Issues #765, #1513, Feature #377)', async () => {
     const page = await walk();
+    await page.waitForSelector('#dock .crumb-more');
     const m = await read(page);
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
     assert.equal(m.shown[0], 'Step 0', 'the first crumb stays');
-    assert.deepEqual(m.shown, ['Step 0', 'Step 4', 'Step 5'], 'wrapping the actions preserves room for the previous hop beside the current crumb');
+    assert.deepEqual(m.shown, ['Step 0', 'Step 5'], 'the toolbar stays on the row, so the previous hop folds with the middle');
     assert.ok(m.cur.l >= m.path.l - 0.5 && m.cur.r <= m.path.r + 0.5, `the current crumb is inside the path box: ${JSON.stringify(m)}`);
     assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows');
     assert.ok(m.cur.nm.w > 40, `and some of its Name, ending in its own ellipsis: ${m.cur.nm.w}px`);
@@ -94,6 +95,7 @@ if (s) {
 
   test('widening the dock unfolds the trail (the fit follows the box)', async () => {
     const page = await walk({ to: 3 });
+    await page.waitForSelector('#dock .crumb-more');
     assert.ok((await read(page)).more, 'folded at 550px');
     await page.evaluate(() => { document.querySelector('#dock').style.flex = '0 1 1400px'; });
     await page.setViewportSize({ width: 2400, height: 800 });
