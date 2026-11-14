@@ -95,4 +95,32 @@ if (s) {
       oneRow(searching, 'while searching');
     } finally { await page.close(); }
   });
+
+  test('the condensed state holds still from frame to frame, with rows selected and a classic scrollbar (Feature #377)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    try {
+      await page.addStyleTag({ content: 'html { overflow-y: scroll; scrollbar-gutter: auto; } ::-webkit-scrollbar { width: 15px; }' }).catch(() => {});
+      await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .view-header .crumb-cur');
+      await page.addStyleTag({ content: '::-webkit-scrollbar { width: 15px; height: 15px; }' });
+      await page.click('#main .wv-grid tbody tr.entity-row td.sel-cell .sel-box');
+      const frames = (n) => page.evaluate((count) => new Promise((done) => {
+        const seen = [];
+        const row = document.querySelector('#main .view-header .crumb-row');
+        const share = row.querySelector('.table-share-btn');
+        const step = () => {
+          seen.push(`${row.classList.contains('crumb-row-tight') ? 'tight' : 'full'}:${share && share.getClientRects().length ? 'share' : 'none'}`);
+          if (seen.length < count) requestAnimationFrame(step); else done(seen);
+        };
+        requestAnimationFrame(step);
+      }), n);
+      for (const width of [1440, 1280, 1200, 1120, 1040, 1000, 960]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await settle(page);
+        const seen = await frames(16);
+        assert.equal(new Set(seen).size, 1, `${width}px: the header state changed between frames: ${seen.join(' ')}`);
+      }
+    } finally { await page.close(); }
+  });
+
 }
