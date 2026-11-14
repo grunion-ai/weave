@@ -1,1 +1,0 @@
-- The Handbook attachments page names the real `weave file attach` command, where it named `weave attach`, which does not exist. The docs drift test now checks CLI verbs on every Handbook page (Issue #1765).

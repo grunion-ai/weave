@@ -1,1 +1,0 @@
-- An agent that creates a record with a document over MCP can now replace that document without a base, because the create notes the base it wrote (Issue #1740).

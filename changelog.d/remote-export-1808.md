@@ -1,1 +1,0 @@
-- **Remote tracker export refuses unsafe or incomplete reads** (Issue #1808): authenticated export requires HTTPS except on loopback, refuses redirects and bounds every request to thirty seconds. Pagination advances by rows received and rejects missing, changing or inconsistent totals before writing the manifest. Local file export and release-note checks remain available.

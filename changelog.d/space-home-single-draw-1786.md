@@ -1,1 +1,0 @@
-- **Space home paints once when draws overlap** (Issue #1786): a second draw of the same space that started while the first was still loading left both on the page, so each recent record and every section showed twice. A draw that is no longer the newest now stops before it paints, on the desktop home and the phone launcher.
