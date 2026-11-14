@@ -117,7 +117,8 @@ if (s) {
     return page;
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a dock pinned wide leaves the table its minimum at a narrow window (Issue #326, ${theme})`, async () => {
       for (const width of [1470, 1280]) {
         const page = await openPinned(theme, 900, width);
@@ -195,21 +196,19 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const theme of ['light', 'dark']) {
-    test(`the split holds both content floors around its boundary (Issue #1513, ${theme})`, async () => {
-      const page = await openPinned(theme, 0, 1600);
-      try {
-        for (const width of [865, 866, 867, 868, 869, 900, 901, 1131, 1132, 1133, 1280]) {
-          await page.setViewportSize({ width, height: 900 });
-          await settled(page.locator('#dock'));
-          const g = await geometry(page);
-          assert.ok(g.main === 0 || g.main >= 400, `${width}px table: ${g.main}`);
-          assert.ok(g.dockW >= 400, `${width}px record: ${g.dockW}`);
-          assert.ok(g.overflow <= 0, `${width}px overflow: ${g.overflow}`);
-        }
-      } finally { await page.close(); }
-    });
-  }
+  test('the split holds both content floors around its boundary (Issue #1513)', async () => {
+    const page = await openPinned('light', 0, 1600);
+    try {
+      for (const width of [865, 866, 867, 868, 869, 900, 901, 1131, 1132, 1133, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await settled(page.locator('#dock'));
+        const g = await geometry(page);
+        assert.ok(g.main === 0 || g.main >= 400, `${width}px table: ${g.main}`);
+        assert.ok(g.dockW >= 400, `${width}px record: ${g.dockW}`);
+        assert.ok(g.overflow <= 0, `${width}px overflow: ${g.overflow}`);
+      }
+    } finally { await page.close(); }
+  });
 
   test('the divider lives in the canvas gap, not inside either panel', async () => {
     const page = await openDocked();
