@@ -464,6 +464,8 @@ const hookOut = (t) => Object.fromEntries(Object.keys(HOOK_PARTS).filter((k) => 
 const triggerOut = (t) => (t.type === 'schedule' ? scheduleOut(t) : t.type === 'listener-changed' ? listenerOut(t) : t.type === 'webhook-inbound' ? hookOut(t) : {});
 const LISTENER_ACTIONS = ['upsert-row', 'http-request', 'start-run', 'update-run'];
 const HOOK_RECORD_ACTIONS = ['set-field', 'add-comment'];
+const ACTION_TEXT_MAX = 200;
+const boundedText = (v) => (typeof v === 'string' && v.length > ACTION_TEXT_MAX ? `${v.slice(0, ACTION_TEXT_MAX)}…` : v);
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
 function whenWords({ table, trigger: t }, hookPath = null) {
@@ -10133,8 +10135,9 @@ export class Weave {
         trigger,
         ...(auto.hook ? { hook: auto.hook } : {}),
         actions: auto.actions.map((a) => {
-          if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId) };
-          if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null) };
+          if (a.type === 'set-field') return { type: a.type, field: fieldName(a.fieldId), value: boundedText(a.value) };
+          if (a.type === 'append-doc') return { type: a.type, field: a.fieldId ? fieldName(a.fieldId) : (db ? this.descriptionField(db)?.name ?? null : null), text: boundedText(a.text) };
+          if (a.type === 'add-comment') return { type: a.type, text: boundedText(a.text), ...(a.author && a.author !== 'automation' ? { author: a.author } : {}) };
           if (a.type === 'webhook') return { type: a.type, url: a.url };
           if (a.type === 'http-request') return { type: a.type, method: a.method, url: a.url, ...(a.integration ? { integration: a.integration } : {}) };
           if (a.type === 'upsert-row') {
