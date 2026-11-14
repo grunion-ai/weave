@@ -3537,7 +3537,10 @@ export class Weave {
   }
 
   build(spec, { dryRun = false, skipExistingRows = false } = {}) {
-    const trial = this.#buildCopy().#buildRun(spec, { keepGoing: true, skipExistingRows });
+    const viewer = viewerOf(this);
+    const copy = this.#buildCopy();
+    const tryOut = () => copy.#buildRun(spec, { keepGoing: true, skipExistingRows });
+    const trial = viewer ? withViewers({ of: (w) => (w === copy ? viewer : undefined) }, tryOut) : tryOut();
     if (dryRun || trial.errors.length) return { ok: !trial.errors.length, ...(dryRun ? { dryRun: true } : {}), ...trial };
     const run = this.#buildRun(spec, { keepGoing: false, skipExistingRows });
     return { ok: !run.errors.length, ...run };

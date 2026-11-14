@@ -1,0 +1,1 @@
+- **Build as the caller on a connected AI app** (Issue #1799): `weave_build` now checks its trial pass with the role of the account that sent it, so an architect signed in through an AI app builds tables, fields and records into a space, where the trial pass used to read that account as an anonymous observer and refuse every path.
