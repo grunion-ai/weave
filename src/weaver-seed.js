@@ -1,7 +1,4 @@
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { scanSuites, syncQualityMirror } from './quality-mirror.js';
 import { SYMPTOM_FIELD, SYMPTOM_OPTIONS } from './bugreport.js';
 
 import { DEFINABLE_TYPES } from './engine.js';
@@ -270,24 +267,6 @@ Weave has no runtime dependencies. The markdown renderer, PDF writer, CSV parser
 
 Workspace → spaces → tables → entities. Multiple workspaces share one web app (\`/w/<name>/\`). The direction of travel: spaces and the workspace itself become tables too, so schema, settings, users, and automations are all agent-editable through the same primitives.`,
   });
-
-  w.createSpace({ name: 'Quality', icon: 'lucide:shield-check', description: 'The Weave test suite, dogfooded' });
-  const suites = w.createTable({ space: 'Quality', name: 'Suite', icon: 'lucide:shield-check' });
-  const cases = w.createTable({ space: 'Quality', name: 'Case', icon: 'lucide:square-check' });
-  w.addField(cases, {
-    name: 'Status', type: 'workflow', config: {
-      states: [
-        { name: 'Failing', category: 'not-started' },
-        { name: 'Flaky', category: 'in-progress' },
-        { name: 'Passing', category: 'done', default: true },
-      ],
-    },
-  });
-  w.addRelation(cases, { name: 'Suite', targetDb: suites, cardinality: 'many-to-one', inverseName: 'Cases' });
-  w.addField(suites, { name: 'Case Count', type: 'rollup', config: { relationField: 'Cases', aggregate: 'count' } });
-  w.addField(suites, { name: 'File', type: 'text' });
-
-  syncQualityMirror(w, scanSuites(join(dirname(fileURLToPath(import.meta.url)), '..')));
 
   w.createSpace({ name: 'Development', icon: 'lucide:activity', description: 'Open issues and the roadmap, maintained as Weave is built' });
   const issues = w.createTable({ space: 'Development', name: 'Issue', icon: 'lucide:bug' });

@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -10,6 +10,16 @@ import { request } from '../../scripts/test-manager.mjs';
 import { tempDir } from './temp.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
+
+export function stubBrowserDriver(root) {
+  const dir = join(root, 'node_modules', 'playwright');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0-stub', main: 'index.js' }));
+  writeFileSync(join(dir, 'index.js'),
+    'const browser = { launch: async () => ({ close: async () => {} }) };\n'
+    + 'module.exports = { chromium: browser, firefox: browser, webkit: browser };\n');
+  return root;
+}
 
 export function fresh() {
   const w = new Weave();

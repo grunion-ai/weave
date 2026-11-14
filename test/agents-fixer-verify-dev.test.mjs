@@ -112,3 +112,12 @@ test('parseArgs refuses a missing or malformed sha and a bad timeout', () => {
   assert.throws(() => parseArgs(['not-a-sha']), /sha/);
   assert.throws(() => parseArgs([SHA, '--timeout', 'soon']), /timeout/);
 });
+
+test('verify sends the deploy token header only when it holds a token (Issue #1650)', async () => {
+  const sent = [];
+  const fetch = async (url, init) => { sent.push(init.headers); return respond(health())(); };
+  await verify({ sha: SHA, host: 'https://dev.example.test', timeoutMs: 900_000, token: 't'.repeat(40), fetch, clock: fakeClock() });
+  await verify({ sha: SHA, host: 'https://dev.example.test', timeoutMs: 900_000, fetch, clock: fakeClock() });
+  assert.equal(sent[0]['X-Weave-Deploy-Token'], 't'.repeat(40), 'the supervisor answers its block to the token only');
+  assert.equal('X-Weave-Deploy-Token' in sent[1], false, 'no token, no header');
+});

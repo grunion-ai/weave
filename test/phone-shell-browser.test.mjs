@@ -101,7 +101,7 @@ if (s) {
     await page.close();
   });
 
-  test('compact widths keep both navigation sections in the drawer (Issue #1513)', async () => {
+  test('compact widths keep both navigation sections in the drawer (Issues #1457, #1513)', async () => {
     for (const width of [601, 729, 900]) {
       const page = await open(views['Task record'], { width });
       try {
@@ -204,7 +204,7 @@ if (s) {
     const page = await openDock({ width: 1280 });
     const seen = await sheet(page);
     assert.equal(seen.position, 'relative');
-    assert.equal(seen.gutter.width, 8, 'with the divider between them');
+    assert.equal(seen.gutter.width, 16, 'with the divider between them');
     assert.ok(seen.main.width >= 320 && seen.dock.left > seen.main.left + seen.main.width, `the table keeps its floor (${seen.main.width}px) and the dock sits to its right`);
     await page.close();
   });

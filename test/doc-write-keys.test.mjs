@@ -98,7 +98,8 @@ test('MCP: weave_set_doc needs its markdown', () => {
   assert.throws(() => dispatchTool(w, 'weave_set_doc', { entity: e.id }), /needs its text/);
   assert.throws(() => dispatchTool(w, 'weave_set_doc', { entity: e.id, mode: 'append' }), /needs its text/);
   assert.equal(w.getDoc(e.id), KEPT);
-  assert.equal(dispatchTool(w, 'weave_set_doc', { entity: e.id, markdown: '' }).length, 0);
+  assert.equal(dispatchTool(w, 'weave_get_doc', { entity: e.id }), KEPT);
+  assert.equal(dispatchTool(w, 'weave_set_doc', { entity: e.id, markdown: '' }).length, 0, 'an agent that read the text can clear it');
 });
 
 test('CLI: doc set with neither --content nor --file is refused', () => {

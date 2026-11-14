@@ -33,7 +33,7 @@ test('schema loading awaits the local API and lets a failure reach its caller', 
 });
 
 test('a record or view that fails to open says so before falling back home (Issue #265)', () => {
-  assert.match(fnBody('showEntity'), /catch \(err\) \{\s*toast\(`Couldn't open that record/);
+  assert.match(fnBody('showEntity'), /catch \(err\) \{\s*if \(!navOwns\(gen\)\) return;\s*toast\(`Couldn't open that record/);
   assert.match(fnBody('showView'), /catch \(err\) \{ toast\(`Couldn't open that view/);
 });
 

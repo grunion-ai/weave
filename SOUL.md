@@ -8,15 +8,15 @@ Read this before writing copy about weave: the README, docs pages, release notes
 
 ## Audience
 
-Two readers, as equals: "People and agents use Weave to organize related records in workspaces" (`PRODUCT.md`), and weave is built "for humans and agents as equals" (`README.md`).
+Two readers, as equals: "People and agents use Weave to organize related records in workspaces" (`PRODUCT.md`), and weave is built "for people and AI agents as equals" (`README.md`).
 
 - People whose work lives in Airtable, ClickUp or Fibery and who want to run the tool themselves. They already know linked records, rollups, formulas and views; the comparison pages map those concepts onto weave's (`README.md` FAQ, `docs/comparison/`).
 - Agents that connect over MCP, REST or the CLI. They start at AGENTS.md › Using weave (`README.md` "For agents").
-- Operators who host it: "one Node process and one file; run it on a laptop or a small VPS behind your own TLS and login" (`README.md`).
+- Operators who host it: a workspace is "one SQLite file next to your project, served by one Node process on a laptop or a small VPS behind your own TLS and login" (`README.md`).
 
 ## Voice
 
-- Plain enough to rule weave out: "Stated plainly, so you can rule it out fast." (`README.md`, "What weave is not")
+- Plain enough to rule weave out: "Stated plainly, so you can rule it out fast" (`README.md`, "What weave is not")
 - Honest about gaps: the Airtable page "is honest about what is missing" (`docs/comparison/airtable.md`); the Fibery page covers "the honest gaps" (`docs/README.md`); the alternatives page shows where weave fits among them and where it does not (`docs/comparison/alternatives.md`).
 - Generous to peers: "The open-source options in this space are all worth a look, and several are far more mature than weave." When a limit is a dealbreaker, name Baserow, NocoDB and Grist. (`README.md`)
 - Concrete: counts, commands and file names stand in for adjectives. "One SQLite file. Zero dependencies. No build step. MIT." "Do I need Docker, Postgres, or npm install? No, no, and no." (`README.md`)
@@ -25,7 +25,7 @@ Two readers, as equals: "People and agents use Weave to organize related records
 
 ## Positioning
 
-weave is "an open-source, self-hosted alternative to Airtable, Fibery, Notion databases, and ClickUp, built so that AI agents are first-class users, not an afterthought" (`README.md`). It is meant to "replace the SaaS your work already lives in", running on your laptop or your own server "with no per-seat bill and no vendor holding the export button" (`README.md`). Against the SaaS tools, "the difference from every other tool in this category is the second audience": everything the web UI can do, the REST API, the CLI and the MCP server can do too, on the same engine and the same file (`README.md`). Fibery is the closest model, and weave implements it "as an MIT-licensed program you run yourself, against a single SQLite file" (`docs/comparison/fibery.md`). Against the open-source alternatives: "Pick weave if you want connected tables plus markdown documents plus an MCP server, with no container, no database server, and no dependency tree" (`README.md`). The badge ring reads DATA · AGENTS over SYSTEMS (`brand/kit/labels.json`, `brand/kit/README.md`).
+weave is "an open-source, self-hosted work database and Airtable alternative", where "People use the web UI and AI agents use the built-in MCP server, REST API or CLI, on the same tables" (`README.md`). It "replaces the SaaS your work already lives in", running on your laptop or your own server "with no per-seat bill and no vendor holding the export button" (`README.md`). Against the SaaS tools, the second audience is the difference: "everything the web UI can do, the REST API, the CLI and the built-in MCP server can do too, on the same engine and the same data file on your disk" (`README.md`). Fibery is the closest model, and weave implements it "as an MIT-licensed program you run yourself, against a single SQLite file" (`docs/comparison/fibery.md`). Against the open-source alternatives: "Pick weave if you want connected tables plus markdown documents plus an MCP server, with no container, no database server, and no dependency tree" (`README.md`). The badge ring reads DATA · AGENTS over SYSTEMS (`brand/kit/labels.json`, `brand/kit/README.md`).
 
 ## Refusals
 

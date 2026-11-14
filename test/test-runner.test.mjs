@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir, userInfo } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { RETRIES, argsFor, browserConcurrency, browserProblem, childEnv, lanes, run, testFiles } from '../scripts/test.mjs';
+import { PLAYWRIGHT_MISSING, RETRIES, argsFor, browserConcurrency, browserProblem, childEnv, lanes, run, testFiles } from '../scripts/test.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,25 +176,47 @@ test('a run with no browser suite never checks for a browser (Issue #557)', () =
   } finally { rmSync(f.dir, { recursive: true, force: true }); }
 });
 
-test('the browser check reports a launch that cannot find its executable (Issue #557)', (t) => {
+test('the browser check reports a launch that cannot find its executable (Issue #557)', () => {
   const empty = tempDir('weave-no-browsers-');
   try {
     const env = { ...childEnv(), PLAYWRIGHT_BROWSERS_PATH: empty };
     const problem = browserProblem(env);
-    if (problem === undefined) return t.skip('playwright is not installed here');
-    assert.match(problem, /Executable doesn't exist/);
     assert.ok(!problem.includes('\n'), 'one line');
+    if (problem !== PLAYWRIGHT_MISSING) assert.match(problem, /Executable doesn't exist/);
   } finally { rmSync(empty, { recursive: true, force: true }); }
 });
 
-test('npm test exits non-zero in seconds when the browser is missing (Issue #557)', (t) => {
+test('the browser check refuses a checkout that cannot resolve playwright (Issue #1675)', () => {
+  const bare = tempDir('weave-no-playwright-');
+  const problem = browserProblem(childEnv(), bare);
+  assert.equal(problem, PLAYWRIGHT_MISSING);
+  assert.match(problem, /npm ci --prefix \.github\/test-tools/, 'the refusal names the install line');
+  assert.ok(!problem.includes('\n'), 'one line');
+});
+
+test('a checkout without the playwright module never starts the browser lane (Issue #1675)', () => {
+  const bare = tempDir('weave-no-playwright-');
+  const f = fixture('flaky');
+  const browserish = join(f.dir, 'late-browser.test.mjs');
+  writeFileSync(browserish, `import test from 'node:test';\nimport { writeFileSync } from 'node:fs';\ntest('late', () => writeFileSync(${JSON.stringify(join(f.dir, 'late-ran'))}, '1'));\n`);
+  try {
+    const said = [];
+    const code = run([f.good, browserish], [], { out: (l) => said.push(l), browserCheck: () => browserProblem(childEnv(), bare) });
+    assert.equal(code, 1);
+    assert.ok(!readdirSync(f.dir).includes('late-ran'), 'the browser lane never started');
+    assert.match(said.join('\n'), /# BROWSER MISSING: playwright is not installed/);
+    assert.ok(!said.join('\n').includes('npx playwright install'), 'the hint names the module install, not the browser download');
+    assert.equal(said.at(-1), '# RESULT red: browser missing, no lane ran');
+  } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('npm test exits non-zero in seconds when the browser is missing (Issue #557)', () => {
   const f = fixture('flaky');
   const browserish = join(f.dir, 'late-browser.test.mjs');
   writeFileSync(browserish, "import test from 'node:test';\ntest('late', () => {});\n");
   const env = { ...childEnv(), PLAYWRIGHT_BROWSERS_PATH: join(f.dir, 'no-browsers'), WEAVE_TEST_MANAGER_DIR: join(f.dir, 'manager'), WEAVE_TEST_JOB: '',
     WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   try {
-    if (browserProblem(env) === undefined) return t.skip('playwright is not installed here');
     const started = Date.now();
     let out = '', status = 0;
     try { execFileSync(process.execPath, ['scripts/test.mjs', f.good, browserish], { cwd: ROOT, encoding: 'utf8', env, timeout: 120000 }); }

@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { realIO as sheriffIO, isRevert } from './sheriff.mjs';
+import { realIO as sheriffIO, isRevert, trackerWrite } from './sheriff.mjs';
 
 export const REPO = 'grunion-ai/weave';
 export const BRANCH = 'production';
@@ -18,6 +18,7 @@ const batchHours = (everyHours) => Math.max(1, Math.floor(everyHours) || 1);
 export const due = (now, last, everyHours) => !last || now - last >= (batchHours(everyHours) - 0.5) * 3_600_000;
 export const revertsCommit = (message, sha) => String(message).includes(`This reverts commit ${sha}`);
 export const pushArgs = (sha) => ['push', '--porcelain', `git@github.com:${REPO}.git`, `${sha}:refs/heads/${BRANCH}`];
+export const lagLine = (c, now, everyHours) => `weave promote: production lags ${short(c.sha)} by ${((now - c.at) / 3_600_000).toFixed(1)} hours, more than the ${batchHours(everyHours)}-hour batch; the tests and dev-soak completion triggers missed it`;
 export const issueName = (sha) => `Error: production rolled back the promotion of ${short(sha)}`;
 
 export function verdict(health, sha) {
@@ -42,17 +43,11 @@ export async function select(io, { paused = false, now = new Date(), event = 'wo
   const { status, commits } = await io.range(head);
   if (status === 'identical') return skip(`${BRANCH} is already at main (${short(head)})`);
   if (status !== 'ahead') throw new Error(`${BRANCH} ${short(head)} is not an ancestor of main (compare: ${status})`);
-  let from = 0;
-  const health = await io.health();
-  if (health?.supervisor?.commit !== head) {
-    const at = commits.findLastIndex((c) => revertsCommit(c.message, head));
-    if (at < 0) return skip(`prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(head)}; waiting for a main commit that reverts it`);
-    from = at;
-  }
-  for (const c of commits.slice(from).reverse()) {
+  for (const c of commits.toReversed()) {
     if (await io.gate(c.sha) !== 'success') continue;
     if (await io.soak(c.sha) !== 'success') continue;
-    return { action: 'promote', sha: c.sha, from: head };
+    const stale = c.at && now - c.at > batchHours(everyHours) * 3_600_000 ? lagLine(c, now, everyHours) : undefined;
+    return { action: 'promote', sha: c.sha, from: head, ...(stale && { stale }) };
   }
   return skip(`no main commit newer than ${short(head)} has CI gate and ${SOAK} success`);
 }
@@ -71,9 +66,20 @@ async function waitLive(io, sha, { deadlineMs, pollMs, sleep }) {
   }
 }
 
-export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pollMs = 15_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), self } = {}) {
+async function heldBack(io, { sha, from }) {
+  const health = await io.health();
+  if (health?.supervisor?.commit === from) return null;
+  const { commits } = await io.range(from, sha);
+  if (commits.some((c) => revertsCommit(c.message, from))) return null;
+  return { ...skip(`prod serves ${health?.supervisor?.release ?? 'unknown'}, not the ${BRANCH} head ${short(from)}; waiting for a main commit that reverts it`), sha, from };
+}
+
+export async function promote(io, { sha, from, stale }, { deadlineMs = 25 * 60_000, pollMs = 15_000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), self } = {}) {
   const head = await io.production();
   if (head !== from && head !== sha) throw new Error(`production moved to ${short(head)} since ${short(from)} was selected`);
+  const held = head === from ? await heldBack(io, { sha, from }) : null;
+  if (held) return held;
+  if (stale) await io.alert(stale);
   if (head !== sha) await io.push(sha);
   let hook;
   try { hook = await io.check(); } catch (error) { hook = { error: error.message }; }
@@ -110,8 +116,9 @@ export async function promote(io, { sha, from }, { deadlineMs = 25 * 60_000, pol
     }
   } else if (outcome.state === 'timeout') note = 'No revert opened: the watch never finished, so the commit is not known bad.';
   const prLine = revert?.html_url ? `Revert PR: ${revert.html_url}` : note;
-  const issue = await io.fileIssue({ name: issueName(sha), description: [...lines, '', prLine, '', 'Fix shape: reproduce on dev with the promoted commit, land the fix as a new PR; promotion resumes once main carries a commit that reverts or supersedes it with CI gate and dev-soak success.', '', `Filed by the promote workflow, ${new Date().toISOString().slice(0, 10)}.`].join('\n') });
-  await io.alert(`weave promote: production rejected ${short(sha)} (${outcome.why}); ${prLine}${issue?.url ? `; Issue ${issue.url}` : ''}`);
+  const filed = await trackerWrite(() => io.fileIssue({ name: issueName(sha), description: [...lines, '', prLine, '', 'Fix shape: reproduce on dev with the promoted commit, land the fix as a new PR; promotion resumes once main carries a commit that reverts or supersedes it with CI gate and dev-soak success.', '', `Filed by the promote workflow, ${new Date().toISOString().slice(0, 10)}.`].join('\n') }));
+  const issue = filed.value;
+  await io.alert(`weave promote: production rejected ${short(sha)} (${outcome.why}); ${prLine}${issue?.url ? `; Issue ${issue.url}` : ''}${filed.failed ? `; ${filed.failed}` : ''}`);
   return { action: 'failed', sha, from, reason: outcome.why, revert, issue };
 }
 
@@ -134,7 +141,7 @@ export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
       const commits = [...first.commits];
       for (let page = 2; commits.length < first.total_commits && page <= 20; page++) commits.push(...api(`${base}/compare/${from}...${to}?per_page=100&page=${page}`).commits);
       if (commits.length !== first.total_commits) throw new Error(`compare ${short(from)}...${to} returned ${commits.length} of ${first.total_commits} commits`);
-      return { status: first.status, commits: commits.map((c) => ({ sha: c.sha, message: c.commit.message })) };
+      return { status: first.status, commits: commits.map((c) => ({ sha: c.sha, message: c.commit.message, at: c.commit.committer?.date ? new Date(c.commit.committer.date) : undefined })) };
     },
     gate: async (sha) => {
       let seen = null;
@@ -151,7 +158,7 @@ export function realIO(env = process.env, { cwd = process.cwd() } = {}) {
       return api(`${base}/commits/${sha}/check-runs?check_name=${SOAK}&filter=latest`).check_runs[0]?.conclusion ?? null;
     },
     health: async () => {
-      const r = await fetch(`${PROD}/api/health`, { headers: { 'cache-control': 'no-cache' }, signal: AbortSignal.timeout(10_000) });
+      const r = await fetch(`${PROD}/api/health`, { headers: { 'cache-control': 'no-cache', ...(env.PROD_DEPLOY_TOKEN ? { 'x-weave-deploy-token': env.PROD_DEPLOY_TOKEN } : {}) }, signal: AbortSignal.timeout(10_000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     },
@@ -189,16 +196,16 @@ async function main(env = process.env) {
     const out = await select(io, { paused: env.PROMOTION_PAUSED === 'true', event: env.PROMOTION_EVENT, everyHours: Number(env.PROMOTION_EVERY_HOURS || 2) });
     console.log(JSON.stringify(out));
     const dry = env.PROMOTION_DRY_RUN === 'true';
-    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, reason: out.reason ?? (dry ? 'dry run' : 'promote') });
+    output(env, { sha: out.action === 'promote' && !dry ? out.sha : '', from: out.from, pick: out.sha, reason: out.reason ?? (dry ? 'dry run' : 'promote'), stale: out.stale });
     return;
   }
   if (process.argv[2] === 'promote') {
     if (env.PROMOTION_PAUSED === 'true') { console.log('PROMOTION_PAUSED is true'); return; }
     if (!/^[0-9a-f]{40}$/.test(env.SHA ?? '') || !/^[0-9a-f]{40}$/.test(env.FROM ?? '')) throw new Error('Expected SHA and FROM as full commit SHAs');
-    const out = await promote(io, { sha: env.SHA, from: env.FROM }, { self });
+    const out = await promote(io, { sha: env.SHA, from: env.FROM, stale: env.STALE || undefined }, { self });
     console.log(JSON.stringify({ ...out, health: out.health?.supervisor }));
     output(env, { result: out.action, sha: out.sha, reason: out.reason });
-    if (out.action !== 'promoted') process.exitCode = 1;
+    if (out.action === 'failed') process.exitCode = 1;
     return;
   }
   throw new Error('usage: node scripts/promote.mjs select|promote');

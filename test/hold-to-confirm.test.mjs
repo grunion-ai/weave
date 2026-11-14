@@ -15,7 +15,7 @@ class FakeEl {
   constructor(tag, attrs = {}) {
     this.tagName = tag; this.attrs = attrs; this.children = [];
     this.listeners = new Map(); this.classes = new Set(String(attrs.class ?? '').split(/\s+/).filter(Boolean));
-    this.text = ''; this.captured = []; this.captureThrows = false;
+    this.text = ''; this.captured = []; this.captureThrows = false; this.animations = [];
     this.classList = {
       add: (c) => this.classes.add(c), remove: (c) => this.classes.delete(c), contains: (c) => this.classes.has(c),
     };
@@ -26,18 +26,23 @@ class FakeEl {
   addEventListener(type, fn) { (this.listeners.get(type) ?? this.listeners.set(type, []).get(type)).push(fn); }
   fire(type, evt = {}) { for (const fn of this.listeners.get(type) ?? []) fn({ type, preventDefault() { evt.prevented = true; }, ...evt }); return evt; }
   setPointerCapture(id) { if (this.captureThrows) throw new Error('gone'); this.captured.push(id); }
+  getAnimations() { return this.animations; }
   find(cls) { return this.children.find((c) => c instanceof FakeEl && c.classes.has(cls)); }
 }
 const el = (tag, attrs = {}, ...kids) => { const n = new FakeEl(tag, attrs); n.append(...kids); return n; };
 const iconEl = (name, cls) => el('i', { class: cls, 'data-icon': name });
+const getComputedStyle = () => ({ transitionDuration: '0.9s' });
+const SWEEP = 900;
+const pending = () => ({ finished: new Promise(() => {}) });
 
 const src = fnBody('holdToConfirm');
-const holdToConfirm = liftFunction('holdToConfirm', { el, iconEl });
+const holdToConfirm = liftFunction('holdToConfirm', { el, iconEl, getComputedStyle });
 
-const make = () => {
+const make = ({ animations = [pending()] } = {}) => {
   let confirms = 0;
   const btn = holdToConfirm('Delete', async () => { confirms++; }, { holdingLabel: 'Hold to delete…' });
   const fill = btn.find('hold-fill');
+  fill.animations = animations;
   const sweep = () => fill.fire('transitionend', { propertyName: 'transform' });
   return { btn, fill, sweep, confirms: () => confirms };
 };
@@ -166,4 +171,44 @@ test('the fill collapses untransitioned and sweeps on holding, so only a full ho
   const sweep = CSS.match(/\n\.hold-btn\.holding \.hold-fill \{[^}]*\}/)?.[0] ?? '';
   assert.match(sweep, /transform: scaleX\(1\)/);
   assert.match(sweep, /transition: transform \.9s linear/);
+});
+
+test('a sweep the browser never ran still finishes the hold (Issue #1439)', async () => {
+  const { btn, confirms } = make({ animations: [] });
+  btn.fire('pointerdown', { pointerId: 1 });
+  assert.ok(btn.classes.has('holding'));
+  await sleep(300);
+  assert.equal(confirms(), 0, 'the press is not short-circuited: the fill duration still has to pass');
+  await sleep(SWEEP + GRACE + 120 - 300);
+  assert.equal(confirms(), 1, 'no transitionend ever fired, and the press still finished');
+  assert.ok(!btn.classes.has('holding'), 'and the button let go');
+});
+
+test('a release before a never-run sweep would end cancels it (Issue #1439)', async () => {
+  const { btn, confirms } = make({ animations: [] });
+  btn.fire('pointerdown', { pointerId: 1 });
+  await sleep(120);
+  btn.fire('pointerup');
+  assert.ok(!btn.classes.has('holding'));
+  await sleep(SWEEP + GRACE + 120);
+  assert.equal(confirms(), 0, 'the stand-in timer belongs to a press that is over');
+});
+
+test("a sweep that finishes fires the hold with no transitionend (Issue #1439)", async () => {
+  let ran;
+  const { btn, confirms } = make({ animations: [{ finished: new Promise((r) => { ran = r; }) }] });
+  btn.fire('pointerdown', { pointerId: 1 });
+  await sleep(40);
+  assert.equal(confirms(), 0, 'the sweep is still running');
+  ran();
+  await sleep(GRACE + 80);
+  assert.equal(confirms(), 1);
+});
+
+test('a sweep still running is never cut short by the clock (Issue #1439)', async () => {
+  const { btn, confirms } = make({ animations: [pending()] });
+  btn.fire('pointerdown', { pointerId: 1 });
+  await sleep(SWEEP + GRACE + 200);
+  assert.equal(confirms(), 0, 'a paused or slowed sweep decides when the hold is done, not a wall clock');
+  assert.ok(btn.classes.has('holding'));
 });

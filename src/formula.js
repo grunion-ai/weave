@@ -1,6 +1,22 @@
+export const MAX_RESULT_CHARS = 65536;
+export const MAX_EXPRESSION_CHARS = 8192;
+export const MAX_EXPRESSION_DEPTH = 100;
+
+function joined(parts) {
+  const out = [];
+  let chars = 0;
+  for (const part of parts) {
+    const s = part == null ? '' : String(part);
+    chars += s.length;
+    if (chars > MAX_RESULT_CHARS) throw new Error(`Formula result is longer than ${MAX_RESULT_CHARS} characters`);
+    out.push(s);
+  }
+  return out.join('');
+}
+
 const FUNCS = {
   if: (c, a, b) => (truthy(c) ? a : b),
-  concat: (...xs) => xs.map((x) => (x == null ? '' : String(x))).join(''),
+  concat: (...xs) => joined(xs),
   round: (x, n = 0) => {
     const f = 10 ** n;
     return Math.round(Number(x) * f) / f;
@@ -67,10 +83,12 @@ function truthy(v) {
 function tokenize(src) {
   const tokens = [];
   let i = 0;
-  const push = (type, value) => tokens.push({ type, value });
+  let at = 0;
+  const push = (type, value) => tokens.push({ type, value, at });
   while (i < src.length) {
     const ch = src[i];
     if (/\s/.test(ch)) { i++; continue; }
+    at = i;
     if (ch === '[') {
       const end = src.indexOf(']', i);
       if (end < 0) throw new Error('Unclosed [field] reference');
@@ -128,7 +146,13 @@ function tokensOf(expression) {
   return t;
 }
 
-export function evaluate(expression, getField) {
+function callFunction(name, args) {
+  const fn = FUNCS[name.toLowerCase()];
+  if (!fn) throw new Error(`Unknown function '${name}'`);
+  return fn(...args);
+}
+
+export function evaluate(expression, getField, call = callFunction) {
   const tokens = tokensOf(expression);
   let pos = 0;
   const peek = () => tokens[pos];
@@ -136,6 +160,15 @@ export function evaluate(expression, getField) {
   const expectOp = (v) => {
     const t = next();
     if (!t || t.type !== 'op' || t.value !== v) throw new Error(`Expected '${v}'`);
+  };
+  let depth = 0;
+  const nestedIn = (parse) => {
+    if (++depth > MAX_EXPRESSION_DEPTH) throw new Error(`Formula nests more than ${MAX_EXPRESSION_DEPTH} levels deep`);
+    try {
+      return parse();
+    } finally {
+      depth--;
+    }
   };
 
   function parseOr() {
@@ -180,7 +213,7 @@ export function evaluate(expression, getField) {
       const right = parseProd();
       if (op === '+') {
         left = typeof left === 'string' || typeof right === 'string'
-          ? String(left ?? '') + String(right ?? '')
+          ? joined([left, right])
           : Number(left) + Number(right);
       } else {
         left = Number(left) - Number(right);
@@ -201,15 +234,15 @@ export function evaluate(expression, getField) {
   }
   function parseUnary() {
     const t = peek();
-    if (t?.type === 'op' && t.value === '-') { next(); return -Number(parseUnary()); }
-    if (t?.type === 'op' && t.value === '!') { next(); return !truthy(parseUnary()); }
+    if (t?.type === 'op' && t.value === '-') { next(); return -Number(nestedIn(parseUnary)); }
+    if (t?.type === 'op' && t.value === '!') { next(); return !truthy(nestedIn(parseUnary)); }
     return parseAtom();
   }
   function parseAtom() {
     const t = next();
     if (!t) throw new Error('Unexpected end of formula');
     if (t.type === 'number' || t.type === 'string') return t.value;
-    if (t.type === 'field') return getField(t.value);
+    if (t.type === 'field') return getField(t.value, t);
     if (t.type === 'ident') {
       if (t.value === 'true') return true;
       if (t.value === 'false') return false;
@@ -218,21 +251,19 @@ export function evaluate(expression, getField) {
         next();
         const args = [];
         if (!(peek()?.type === 'op' && peek().value === ')')) {
-          args.push(parseOr());
+          args.push(nestedIn(parseOr));
           while (peek()?.type === 'op' && peek().value === ',') {
             next();
-            args.push(parseOr());
+            args.push(nestedIn(parseOr));
           }
         }
         expectOp(')');
-        const fn = FUNCS[t.value.toLowerCase()];
-        if (!fn) throw new Error(`Unknown function '${t.value}'`);
-        return fn(...args);
+        return call(t.value, args);
       }
-      return getField(t.value);
+      return getField(t.value, t);
     }
     if (t.type === 'op' && t.value === '(') {
-      const v = parseOr();
+      const v = nestedIn(parseOr);
       expectOp(')');
       return v;
     }
@@ -245,7 +276,11 @@ export function evaluate(expression, getField) {
 }
 
 export function check(expression, fieldNames = []) {
-  if (!String(expression ?? '').trim()) return { ok: false, error: 'Formula is empty' };
+  const source = String(expression ?? '');
+  if (!source.trim()) return { ok: false, error: 'Formula is empty' };
+  if (source.length > MAX_EXPRESSION_CHARS) {
+    return { ok: false, error: `Formula is longer than ${MAX_EXPRESSION_CHARS} characters` };
+  }
   const known = new Set([...fieldNames, 'PublicId']);
   try {
     evaluate(expression, (name) => {
@@ -267,4 +302,35 @@ export function references(expression) {
     });
   } catch {}
   return names;
+}
+
+const KEYWORDS = new Set(['and', 'or', 'true', 'false', 'null']);
+
+export function spelling(name) {
+  const s = String(name ?? '');
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && !KEYWORDS.has(s) && !FUNCS[s.toLowerCase()]) return s;
+  return s && s === s.trim() && !s.includes(']') ? `[${s}]` : null;
+}
+
+export function renameReferences(expression, reads, to) {
+  const source = String(expression ?? '');
+  const hits = [];
+  try {
+    evaluate(source, (name, token) => {
+      if (reads(name)) hits.push(token);
+      return 0;
+    }, () => 0);
+  } catch {
+    return source;
+  }
+  if (!hits.length) return source;
+  const spelled = spelling(to);
+  if (spelled == null) return null;
+  let out = '';
+  let from = 0;
+  for (const t of hits.sort((a, b) => a.at - b.at)) {
+    out += source.slice(from, t.at) + spelled;
+    from = t.type === 'field' ? source.indexOf(']', t.at) + 1 : t.at + t.value.length;
+  }
+  return out + source.slice(from);
 }

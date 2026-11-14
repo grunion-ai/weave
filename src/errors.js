@@ -33,7 +33,7 @@ export function contractFor(err) {
 export const statusFor = (err) => contractFor(err).http;
 
 export function errorBody(err) {
-  if (err instanceof WeaveError) return { error: err.message, code: err.code ?? 'weave-error' };
+  if (err instanceof WeaveError) return { ...(err.detail ?? null), error: err.message, code: err.code ?? 'weave-error' };
   const id = crypto.randomUUID().slice(0, 8);
   if (typeof console !== 'undefined') console.error(`weave: request ${id} failed:`, err);
   if (storageFull(err)) return { error: 'The weave server is out of storage, so nothing was saved. Ask whoever runs your weave to add storage.', code: 'storage-full', id };
@@ -44,7 +44,7 @@ export function mcpToolError(err) {
   const error = err?.message ?? String(err);
   const { code, mcp } = contractFor(err);
   const named = err instanceof WeaveError ? err.code ?? code : code;
-  return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true, structuredContent: { error, code: named, rpc: mcp } };
+  return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true, structuredContent: { ...(err?.detail ?? null), error, code: named, rpc: mcp } };
 }
 
 export function cliFailure(err) {

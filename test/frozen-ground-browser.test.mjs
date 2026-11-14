@@ -31,8 +31,7 @@ if (s) {
   const { base, browser } = s;
   const engines = [['default', browser]];
   if (process.env.WEAVE_BROWSER !== 'webkit') {
-    const webkit = await engineOf('webkit');
-    if (webkit) engines.push(['webkit', webkit]);
+    engines.push(['webkit', await engineOf('webkit')]);
   }
 
   const open = async (b, { theme, viewport, docked }) => {
@@ -102,8 +101,8 @@ if (s) {
           } finally { await page.close(); }
         });
 
-        if (viewport.width >= 1024) test(`${name}, ${theme}, 1280x${viewport.height}: the row open in the dock keeps its frozen pair opaque`, async () => {
-          const page = await open(b, { theme, viewport: { ...viewport, width: 1280 }, docked: true });
+        if (viewport.width >= 1024) test(`${at}: the row open in the dock keeps its frozen pair opaque`, async () => {
+          const page = await open(b, { theme, viewport, docked: true });
           try {
             await page.mouse.move(1, viewport.height - 1);
             await page.waitForTimeout(150);

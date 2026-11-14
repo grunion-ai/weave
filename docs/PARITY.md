@@ -82,12 +82,12 @@ Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 | 52 | Outgoing webhooks | ✅ | automation action, fire-and-forget JSON POST |
 | 53 | REST API | ✅ | full surface, honest status codes, CORS |
 | 54 | Query language w/ relation traversal | ✅ | dotted paths, and/or, select/sort/paginate |
-| 55 | Full-text search | ✅ | SQLite FTS5 over names, documents and comments; ranked with snippets |
+| 55 | Full-text search | ✅ | Substring match over names, text values, documents and comments; ranked with snippets |
 | 56 | CSV export | ✅ | display values, proper quoting |
 | 57 | CSV import | ✅ | typed coercion, atomic rows, error report |
 | 58 | JSON backup / restore | ✅ | JSON export and import, plus `weave backup`: one sealed tar of every workspace, attachments and keystore |
 | 59 | CLI | ✅ | the whole surface; Fibery itself has no official CLI |
-| 60 | MCP server for agents | ✅ | 65 tools over stdio or HTTP, 17 listed by default |
+| 60 | MCP server for agents | ✅ | 66 tools over stdio or HTTP, 17 listed by default |
 | 61 | External integrations (Slack/GitHub/Jira sync) | ❌ | webhooks and the REST API are the escape hatch |
 | 62 | AI assist features | ❌ | MCP, CLI and REST access for your own agent instead |
 

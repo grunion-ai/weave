@@ -1,7 +1,8 @@
 import { createServer as createHttpServer } from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
-import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, renameSync, copyFileSync, mkdtempSync, writeFileSync, rmSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pipeline } from 'node:stream/promises';
 import { join, dirname, extname, basename } from 'node:path';
 import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -97,6 +98,41 @@ export function acceptsCoding(header, coding) {
 
 export const acceptsGzip = (header) => acceptsCoding(header, 'gzip');
 
+export const COMPRESSED_CACHE_BYTES = 16 * 1024 * 1024;
+
+export function createByteCache(cap) {
+  const entries = new Map();
+  let bytes = 0;
+  const drop = (key) => {
+    bytes -= entries.get(key)?.length ?? 0;
+    return entries.delete(key);
+  };
+  return {
+    get(key) {
+      const value = entries.get(key);
+      if (value !== undefined) {
+        entries.delete(key);
+        entries.set(key, value);
+      }
+      return value;
+    },
+    set(key, value) {
+      drop(key);
+      const size = value?.length ?? 0;
+      if (size > cap) return;
+      entries.set(key, value);
+      bytes += size;
+      for (const old of entries.keys()) {
+        if (bytes <= cap) break;
+        drop(old);
+      }
+    },
+    delete: drop,
+    get size() { return entries.size; },
+    get bytes() { return bytes; },
+  };
+}
+
 function brotliLater(cache, key, body, size) {
   cache.set(key, null);
   const params = { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: size };
@@ -109,7 +145,9 @@ export function gzipOutcome({ status, headers, body }, acceptEncoding, { cache =
   const vary = headers.Vary ? `${headers.Vary}, Accept-Encoding` : 'Accept-Encoding';
   const size = typeof body === 'string' ? Buffer.byteLength(body) : body?.length ?? 0;
   if (status !== 200 || size < GZIP_MIN) return { headers: { ...headers, Vary: vary }, body };
-  const key = headers.ETag && !/\bprivate\b/.test(headers['Cache-Control'] ?? '') && `${path} ${headers.ETag}`;
+  const policy = headers['Cache-Control'] ?? '';
+  const perRequest = /^text\/html/i.test(type) && /\bno-(?:cache|store)\b/.test(policy);
+  const key = headers.ETag && !perRequest && !/\bprivate\b/.test(policy) && `${path} ${headers.ETag}`;
   if (key && cache && acceptsCoding(acceptEncoding, 'br')) {
     const br = cache.get(`br ${key}`);
     if (br) return { headers: { ...headers, Vary: vary, 'Content-Encoding': 'br' }, body: br };
@@ -136,6 +174,9 @@ export function revalidateApi(outcome, { method, path, ifNoneMatch }) {
   return etagMatches(ifNoneMatch, etag) ? { status: 304, headers: tagged, body: '' } : { status, headers: tagged, body };
 }
 
+const sized = (status, headers, body) => (status < 200 || status === 204 || status === 304 || typeof body?.pipe === 'function' || headers['Content-Length'] != null
+  ? headers : { ...headers, 'Content-Length': Buffer.byteLength(body ?? '') });
+
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const requestIsHttps = (req, trustProxy) => !!req.socket?.encrypted
   || (trustProxy && String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase() === 'https');
@@ -150,19 +191,47 @@ export function crossSiteWrite(req, { origin = null, trustProxy = false } = {}) 
   return !ok.includes(String(from).toLowerCase());
 }
 
-export const CSP_REPORT_ONLY = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+export const CSP_REPORT_PATH = '/csp-report';
+const CSP_FRAME_SOURCES = "'self' https://challenges.cloudflare.com https://*.protect.clerk.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com";
+export const CSP_ENFORCED = `frame-src ${CSP_FRAME_SOURCES}; object-src 'none'; base-uri 'self'; form-action 'self'`;
+export const CSP_REPORT_ONLY = `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; ${CSP_ENFORCED}; report-uri ${CSP_REPORT_PATH}`;
 export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
 export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
   const html = /^text\/html/i.test(headers['Content-Type'] ?? '');
+  const own = headers['Content-Security-Policy'];
+  const ancestors = ["frame-ancestors 'self'", ...frameAncestors].join(' ');
   return {
     ...headers,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    ...(html ? {
-      'Content-Security-Policy': [headers['Content-Security-Policy'], ["frame-ancestors 'self'", ...frameAncestors].join(' ')].filter(Boolean).join('; '),
+    ...(html && own ? { 'Content-Security-Policy': `${own}; ${ancestors}` } : {}),
+    ...(html && !own ? {
+      'Content-Security-Policy': `${CSP_ENFORCED}; ${ancestors}; report-uri ${CSP_REPORT_PATH}`,
       'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY,
     } : {}),
     ...(https ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}),
+  };
+}
+
+const CSP_REPORT_MAX = 16 * 1024;
+const CSP_DIRECTIVES = new Set(['default-src', 'script-src', 'script-src-elem', 'script-src-attr', 'style-src', 'style-src-elem', 'style-src-attr', 'img-src', 'font-src', 'connect-src', 'media-src', 'object-src', 'frame-src', 'child-src', 'worker-src', 'manifest-src', 'base-uri', 'form-action', 'frame-ancestors']);
+const cspReportOf = (bytes) => {
+  let report;
+  try { report = JSON.parse(bytes.toString('utf8'))?.['csp-report']; } catch { return null; }
+  return report && typeof report === 'object' && !Array.isArray(report) ? report : null;
+};
+function cspCount() {
+  const since = new Date().toISOString();
+  const tally = { blocked: {}, reported: {} };
+  return {
+    add(report) {
+      const name = [report['effective-directive'], report['violated-directive']].find((d) => typeof d === 'string')?.split(' ')[0];
+      const directive = CSP_DIRECTIVES.has(name) ? name : 'other';
+      const kind = report.disposition === 'enforce' ? 'blocked' : 'reported';
+      const n = tally[kind][directive] = (tally[kind][directive] ?? 0) + 1;
+      if (/^10*$/.test(String(n))) console.warn(`weave: content security policy ${kind} ${directive}: ${n} since ${since}`);
+    },
+    read: () => ({ since, blocked: { ...tally.blocked }, reported: { ...tally.reported } }),
   };
 }
 
@@ -454,7 +523,7 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       const scratch = mkdtempSync(join(tmpdir(), 'weave-migrate-'));
       try {
         const sealed = join(scratch, 'archive.tar.enc');
-        writeFileSync(sealed, archive);
+        await pipeline(archive, createWriteStream(sealed));
         if (!isEncrypted(sealed)) throw new WeaveError('A migration takes a sealed archive only', 'invalid');
         const landed = join(scratch, 'data');
         const r = await restoreArchive({ source: sealed, dataDir: landed, env: { WEAVE_BACKUP_PASSPHRASE: String(key) } });
@@ -480,6 +549,10 @@ export function createWorkspaceHub(defaultWeave, { workspaces = {}, walled = fal
       scan();
       for (const w of instances.values()) w.maybeRefresh();
       return [...instances.entries()];
+    },
+    close() {
+      for (const w of instances.values()) w.store.close?.();
+      return instances.size;
     },
   };
 }
@@ -534,6 +607,7 @@ export function hostCheckFor({ host, env = process.env }) {
   return { enforce: false, warning: `weave: bound to ${host} with neither WEAVE_ORIGIN nor WEAVE_ALLOWED_HOSTS set, so any Host header is answered; set one to refuse DNS-rebound requests` };
 }
 
+const ASSET_REF = /(\b(?:src|href)="|\bfrom ")(\/[^"?#]+\.(?:js|mjs|css|svg|ico|png))"/g;
 export function createAssetVersions(dir) {
   const known = new Map();
   const version = (file) => {
@@ -547,20 +621,53 @@ export function createAssetVersions(dir) {
     known.set(full, { mtimeMs: st.mtimeMs, size: st.size, v });
     return v;
   };
-  const rewrite = (html) => html.replace(/(\b(?:src|href)="|\bfrom ")(\/[^"?#]+\.(?:js|mjs|css|svg|ico|png))"/g,
-    (all, lead, url) => { const v = version(url); return v ? `${lead}${url}?v=${v}"` : all; });
+  const rewrite = (html) => html.replace(ASSET_REF, (all, lead, url) => { const v = version(url); return v ? `${lead}${url}?v=${v}"` : all; });
   return { version, rewrite };
+}
+
+const SHELL_TITLE = /<title>[^<]*<\/title>/;
+const APP_TAG = '<script src="/app.js" defer></script>';
+const shellTag = (body) => `W/"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`;
+export function createShell(dir, { assets = createAssetVersions(dir), extra = '', every = 1000, now = Date.now } = {}) {
+  const file = join(dir, 'index.html');
+  const stamp = (refs, st = statSync(file)) => [st.mtimeMs, st.size, ...refs.map((url) => assets.version(url))].join(' ');
+  const build = () => {
+    const st = statSync(file);
+    const raw = readFileSync(file, 'utf8');
+    const text = extra ? raw.replace(APP_TAG, (tag) => `${extra}${tag}`) : raw;
+    const refs = [...text.matchAll(ASSET_REF)].map((m) => m[2]);
+    const seen = stamp(refs, st);
+    const page = assets.rewrite(text);
+    const title = SHELL_TITLE.exec(page);
+    return { refs, stamp: seen, page, etag: shellTag(page), slot: title && [page.slice(0, title.index), page.slice(title.index + title[0].length)] };
+  };
+  let shell = null;
+  let checked = -Infinity;
+  return (head = null) => {
+    const t = now();
+    if (t - checked >= every) {
+      checked = t;
+      if (!shell || stamp(shell.refs) !== shell.stamp) shell = build();
+    }
+    if (!head || !shell.slot) return { body: shell.page, etag: shell.etag };
+    const body = `${shell.slot[0]}${assets.rewrite(head)}${shell.slot[1]}`;
+    return { body, etag: shellTag(body) };
+  };
 }
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const VENDOR_CACHE = 'public, max-age=3600';
+const SHUTDOWN_DRAIN_MS = 5000;
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), paintLog = origin ? (line) => console.log(line) : null, scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const schedules = armSchedules(() => {
     for (const { name } of hub.list()) {
-      try { hub.get(name)?.runSchedules(); } catch (err) { console.error(`weave: schedules on '${name}' failed: ${err?.message ?? err}`); }
+      try { hub.get(name)?.runSchedules(); }
+      catch (err) { console.error(`weave: schedules on '${name}' failed: ${err?.message ?? err}`); }
+      try { hub.get(name)?.runMaintenance({ mail, origin }).catch((err) => console.error(`weave: run maintenance on '${name}' failed: ${err?.message ?? err}`)); }
+      catch (err) { console.error(`weave: run maintenance on '${name}' failed: ${err?.message ?? err}`); }
     }
   }, { every: scheduleEvery });
   const sweepTrials = () => sweepTrialMail({ hub, billing, mail, origin })
@@ -580,6 +687,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const NOT_A_PAGE = /^(?:\/w\/[^/]+)?\/(?:api|mcp|ingest)(?:\/|$)|^\/(?:_supervisor|\.well-known)\//;
 
   const assets = createAssetVersions(PUBLIC_DIR);
+  const shell = createShell(PUBLIC_DIR, {
+    assets,
+    extra: `${paintLog ? `<script src="/paint.js" data-build="${VERSION}" defer></script>\n` : ''}${posthog ? `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n` : ''}`,
+  });
   const minified = createMinified();
   const serveStatic = (path, rx, { head = null } = {}) => {
     const file = path === '/' ? '/index.html'
@@ -591,15 +702,9 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     const match = rx?.header?.('if-none-match');
     const matches = (etag) => etagMatches(match, etag);
     if (file === '/index.html') {
-      const raw = readFileSync(full, 'utf8');
-      const shell = posthog ? raw.replace('<script src="/app.js" defer></script>', (tag) => `<script src="/consent.js" data-posthog-key="${posthog.key}" defer></script>\n${tag}`) : raw;
-      const body = assets.rewrite(head ? shell.replace(/<title>[^<]*<\/title>/, () => head) : shell);
-      const headers = {
-        'Content-Type': MIME['.html'],
-        'Cache-Control': 'no-cache',
-        ETag: `W/"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`,
-      };
-      return matches(headers.ETag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
+      const { body, etag } = shell(head);
+      const headers = { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache', ETag: etag };
+      return matches(etag) ? { status: 304, headers, body: '' } : { status: 200, headers, body };
     }
     const v = rx?.searchParams?.get?.('v');
     const st = statSync(full);
@@ -636,18 +741,27 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
     openSignup,
     clerkKey,
     posthog,
+    paintLog,
     signIn: () => signIn,
     ...(limits ? { limits } : {}),
   });
 
-  const gzCache = new Map();
+  const gzCache = createByteCache(COMPRESSED_CACHE_BYTES);
+  const violations = cspCount();
   const secure = (req, headers) => securityHeaders(headers, { https: requestIsHttps(req, trustProxy), frameAncestors });
   const fail = (res, status, error, code, id) => {
     if (res.headersSent) return res.destroy();
-    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json' }));
-    res.end(JSON.stringify({ error, code, ...(id ? { id } : {}) }));
+    const body = JSON.stringify({ error, code, ...(id ? { id } : {}) });
+    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }));
+    res.end(body);
   };
+  const inflight = new Set();
+  let stopping = null;
+  let settle = () => {};
   const server = createHttpServer(async (req, res) => {
+    inflight.add(res);
+    res.once('close', () => { inflight.delete(res); settle(); });
+    if (stopping) res.shouldKeepAlive = false;
     try {
       const url = new URL(req.url, 'http://localhost');
       let path;
@@ -656,18 +770,31 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         return fail(res, 421, 'This server does not answer to that Host; add it to WEAVE_ALLOWED_HOSTS', 'misdirected');
       }
       if (elsewhere.size && ['GET', 'HEAD'].includes(req.method) && elsewhere.has(hostnameOf(String(req.headers.host ?? ''))) && !NOT_A_PAGE.test(path)) {
-        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store' }));
+        res.writeHead(308, secure(req, { Location: `${origin}${req.url}`, 'Cache-Control': 'no-store', 'Content-Length': 0 }));
         return res.end();
       }
-      if (path === '/_supervisor/workspaces' && deployToken) {
+      const supervised = !deployToken ? null
+        : path === '/_supervisor/workspaces' ? () => hub.list().map(({ name }) => ({ name, requireAuth: !!hub.get(name).state.meta.requireAuth }))
+        : path === '/_supervisor/csp' ? violations.read
+        : null;
+      if (supervised) {
         const given = Buffer.from(String(req.headers.authorization ?? ''));
         const want = Buffer.from(`Bearer ${deployToken}`);
         if (given.length !== want.length || !timingSafeEqual(given, want)) return fail(res, 401, 'unauthorized', 'unauthorized');
         if (req.method !== 'GET') return fail(res, 405, 'GET only', 'method-not-allowed');
-        res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }));
-        return res.end(JSON.stringify(hub.list().map(({ name }) => ({ name, requireAuth: !!hub.get(name).state.meta.requireAuth }))));
+        const answer = JSON.stringify(supervised());
+        res.writeHead(200, secure(req, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(answer) }));
+        return res.end(answer);
       }
       if (crossSiteWrite(req, { origin, trustProxy })) return fail(res, 403, 'Cross-site write refused', 'forbidden');
+      if (path === CSP_REPORT_PATH) {
+        if (req.method !== 'POST') return fail(res, 405, 'POST a violation report', 'method-not-allowed');
+        const report = cspReportOf(await readBytes(req, CSP_REPORT_MAX));
+        if (!report) return fail(res, 400, 'A violation report is JSON with a csp-report object', 'invalid');
+        violations.add(report);
+        res.writeHead(204, secure(req, { 'Cache-Control': 'no-store' }));
+        return res.end();
+      }
       const outcome = await handle({
         method: req.method,
         path,
@@ -679,23 +806,45 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         remote: req.socket?.remoteAddress ?? null,
       });
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
-      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path: url.pathname });
-      res.writeHead(fresh.status, secure(req, headers));
-      res.end(body);
+      const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path });
+      res.writeHead(fresh.status, secure(req, sized(fresh.status, headers, body)));
+      if (typeof body?.pipe === 'function') await pipeline(body, res);
+      else res.end(body);
     } catch (err) {
       const { error, code, id } = errorBody(err);
       console.error(`weave: ${req.method} ${req.url} failed${id ? ` as request ${id}` : `: ${err?.message}`}`);
       fail(res, statusFor(err), error, code, id);
     }
   });
-  server.on('close', () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); });
+  const stopTimers = () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); };
+  server.on('close', stopTimers);
+  server.shutdown = ({ drainMs = SHUTDOWN_DRAIN_MS } = {}) => stopping ??= new Promise((resolve) => {
+    let cut = 0;
+    const bound = setTimeout(() => {
+      cut = inflight.size;
+      inflight.clear();
+      server.closeAllConnections();
+      settle();
+    }, drainMs);
+    settle = () => {
+      if (inflight.size) return;
+      settle = () => {};
+      clearTimeout(bound);
+      stopTimers();
+      server.closeAllConnections();
+      resolve({ workspaces: hub.close(), cut });
+    };
+    server.close();
+    for (const res of inflight) if (!res.headersSent) res.shouldKeepAlive = false;
+    settle();
+  });
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, paintLog, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(paintLog !== undefined ? { paintLog } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

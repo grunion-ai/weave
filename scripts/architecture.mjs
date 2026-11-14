@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { render, atRevision } from './region-index.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const specPath = join(root, 'docs', 'architecture', 'weave.architecture.json');
@@ -65,4 +66,5 @@ if (bare !== origin) {
 }
 
 execFileSync(process.execPath, [archify, 'deliver', 'architecture', specPath, htmlPath, '--quality', 'showcase', '--repo-root', root], { env, stdio: 'inherit' });
-console.log(`architecture map pinned to ${revision.slice(0, 7)}`);
+writeFileSync(join(root, 'docs', 'regions.md'), render(atRevision(revision), revision));
+console.log(`architecture map and region index pinned to ${revision.slice(0, 7)}`);

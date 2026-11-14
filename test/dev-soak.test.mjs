@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CONTEXT, DEFAULTS, judge, judgeBatch, describe, soak, report, config, smoke, writableTable } from '../scripts/dev-soak.mjs';
+import { CONTEXT, DEFAULTS, judge, judgeBatch, describe, soak, report, config, smoke, writableTable, realIO } from '../scripts/dev-soak.mjs';
 
 const SHA = 'a'.repeat(40);
 const NEWER = 'b'.repeat(40);
@@ -443,4 +443,20 @@ test('the dev-soak workflow follows Deploy dev on main, queues merges behind the
   assert.match(wf, /statuses: write/);
   assert.match(wf, /node scripts\/dev-soak\.mjs/);
   assert.match(wf, /github\.event\.workflow_run\.conclusion == 'success'/);
+});
+
+test('the soak reads dev health with the dev deploy token, which only the dev environment holds (Issue #1650)', async () => {
+  const wf = readFileSync(new URL('../.github/workflows/dev-soak.yml', import.meta.url), 'utf8');
+  assert.match(wf, /environment:\n      name: dev\n      deployment: false\n/, 'the dev environment lends its secret without a deployment record');
+  assert.match(wf, /DEV_DEPLOY_TOKEN: \$\{\{ secrets\.DEV_DEPLOY_TOKEN \}\}/);
+  const was = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url, init) => { sent.push([String(url), init.headers]); return new Response(JSON.stringify({ ok: true, name: 'weave' })); };
+  try {
+    await realIO({ ...DEFAULTS, base: 'https://dev.example.test' }, { DEV_DEPLOY_TOKEN: 'd'.repeat(40) }).health();
+    await realIO({ ...DEFAULTS, base: 'https://dev.example.test' }, {}).health();
+  } finally { globalThis.fetch = was; }
+  assert.equal(sent[0][0], 'https://dev.example.test/api/health');
+  assert.equal(sent[0][1]['X-Weave-Deploy-Token'], 'd'.repeat(40));
+  assert.equal('X-Weave-Deploy-Token' in sent[1][1], false, 'no token, no header');
 });

@@ -1,6 +1,10 @@
 name: promote
 
 on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [tests, dev-soak]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
@@ -20,12 +24,18 @@ concurrency:
 
 jobs:
   select:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       sha: ${{ steps.select.outputs.sha }}
       from: ${{ steps.select.outputs.from }}
+      stale: ${{ steps.select.outputs.stale }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -67,6 +77,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.select.outputs.sha }}
           FROM: ${{ needs.select.outputs.from }}
+          STALE: ${{ needs.select.outputs.stale }}
           PROMOTION_PAUSED: ${{ vars.PROMOTION_PAUSED }}
           PROMOTION_DEPLOY_KEY: ${{ secrets.PROMOTION_DEPLOY_KEY }}
           PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}

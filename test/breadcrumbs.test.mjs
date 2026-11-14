@@ -64,6 +64,15 @@ test('foldPlan: given each crumb\'s floor, the last-but-one folds only when the 
   assert.deepEqual(foldPlan([60, 80, 70, 120, 120, 400], 200, { from: 5, more: 40, mins: [39, 39, 39, 39, 39, 130] }), [], 'the head kept by from never folds');
 });
 
+test('foldFloor: the room the kept crumbs still need, which drops a path too narrow to hold even the current crumb (Issue #1403)', () => {
+  const { foldFloor } = globalThis.weaveBreadcrumbs;
+  assert.equal(foldFloor([39, 85], [], { more: 40, mins: [39, 84.5] }), 123.5, 'a phone record trail needs both floors and no fold button');
+  assert.equal(foldFloor([39, 85], [], {}), 124, 'without floors a crumb needs its drawn width');
+  assert.equal(foldFloor([200, 200, 400], [1], { more: 40, mins: [39, 39, 130] }), 209, 'a folded crumb gives its room to the button');
+  assert.equal(foldFloor([], [], { more: 40 }), 0, 'an empty trail needs nothing');
+  assert.ok(foldFloor([39, 85], [], { more: 40, mins: [39, 84.5] }) > 9, 'the 9 px left on an iPhone SE record bar cannot hold the trail, so the path drops out');
+});
+
 test('foldPlan: the first crumb and the last two never fold, whatever the box', () => {
   const { foldPlan } = globalThis.weaveBreadcrumbs;
   for (const n of [3, 4, 6, 12]) {

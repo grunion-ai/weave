@@ -13,9 +13,8 @@ const s = await launch('menu phone sheet', (weave) => {
 
 if (s) {
   const { base, browser, entity, space } = s;
-  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]];
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
   const open = async (b, profile, theme, hash) => {
     const page = await b.newPage(profile);
@@ -68,7 +67,12 @@ if (s) {
             const seen = await read(page);
             assert.equal(seen.theme, theme);
             assert.equal(seen.sheet, true, 'the same menu() draws a sheet');
-            assert.deepEqual(seen.labels, desktop.labels, 'same rows, same order as the desktop menu');
+            const phoneOnly = ['Report a problem'];
+            assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels,
+              'the desktop rows, in the desktop order');
+            assert.deepEqual(seen.labels.filter((l) => phoneOnly.includes(l)),
+              what === 'record' ? ['Report a problem'] : [],
+              'plus the rows a phone has no other route to (Issue #1023)');
             assert.ok(seen.heights.every((h) => h >= 44), `every row is a 44px target: ${seen.heights}`);
             assert.ok(Math.abs(seen.box.bottom - seen.vh) <= 1, `pinned to the bottom edge (${seen.box.bottom} vs ${seen.vh})`);
             assert.ok(seen.box.left <= 0.5 && seen.box.right >= seen.vw - 0.5, 'full width');
@@ -79,5 +83,44 @@ if (s) {
         });
       }
     }
+  }
+
+  const dragSheet = async (page, sel, dy) => {
+    const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i += 1) {
+      await page.waitForTimeout(40);
+      await page.mouse.move(x, y + (dy * i) / 6);
+    }
+    await page.mouse.up();
+  };
+
+  for (const [engine, b, profile] of engines) {
+    test(`on a phone the record menu sheet's handle is a grabber that dismisses the sheet (${engine}, Issue #1383)`, async () => {
+      const page = await open(b, profile, 'light', entity);
+      try {
+        await page.click('#main .view-header .dots-btn');
+        await page.waitForSelector('.chip-pop.wv-menu-sheet .wv-menu-row');
+        await settled(page.locator('.chip-pop.wv-menu-sheet'));
+        const drawn = await page.evaluate(() => {
+          const pop = document.querySelector('.chip-pop.wv-menu-sheet');
+          const grip = pop.querySelector('.sheet-grip');
+          return {
+            pseudo: getComputedStyle(pop, '::before').content,
+            grip: grip ? Math.round(grip.getBoundingClientRect().height) : null,
+            first: pop.firstElementChild?.className ?? '',
+            height: Math.round(pop.getBoundingClientRect().height),
+          };
+        });
+        assert.equal(drawn.first, 'sheet-grip', "the sheet opens with the picker sheets' grabber at the top");
+        assert.ok(drawn.grip >= 44, `the grabber is a real target, got ${drawn.grip}px tall`);
+        assert.ok(['none', 'normal'].includes(drawn.pseudo), `and it is the only handle drawn, got ${drawn.pseudo}`);
+        await dragSheet(page, '.chip-pop.wv-menu-sheet', Math.round(drawn.height * 0.5));
+        await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached', timeout: 5000 });
+      } finally { await page.close(); }
+    });
   }
 }

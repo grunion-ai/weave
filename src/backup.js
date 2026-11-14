@@ -1,23 +1,29 @@
 import {
-  readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync,
-  openSync, readSync, writeSync, closeSync, mkdtempSync, rmSync, renameSync, createReadStream,
+  readFileSync, mkdirSync, existsSync, readdirSync, statSync,
+  openSync, readSync, writeSync, closeSync, fsyncSync, mkdtempSync, rmSync, renameSync, createReadStream, createWriteStream,
 } from 'node:fs';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { fork as forkChild } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomBytes, scryptSync, createCipheriv, createDecipheriv } from 'node:crypto';
-import { WeaveError, writeFileDurable } from './store.js';
+import { WeaveError } from './store.js';
 import { openKeyStore, keystoreFilePath } from './keystore.js';
 
 let DatabaseSync = null;
 try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
 
-const VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+const SELF = fileURLToPath(import.meta.url);
+const VERSION = JSON.parse(readFileSync(join(dirname(SELF), '..', 'package.json'), 'utf8')).version;
+const nightlyRun = new AsyncLocalStorage();
 
 export const ARCHIVE_PREFIX = 'weave-backup-';
 export const RETAIN = 30;
 const CHUNK = 1024 * 1024;
+const STREAM_CHUNK = 16 * 1024;
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
 const BLOCK = 512;
@@ -195,26 +201,44 @@ export function encryptFile(src, dst, passphrase, { salt, iv } = {}) {
   } finally { closeSync(s); closeSync(d); }
 }
 
+const cannotDecrypt = () => new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
+const SEALED_HEAD = MAGIC.length + 16 + 12;
+
+function decipherOf(path, passphrase) {
+  const size = statSync(path).size;
+  if (size < SEALED_HEAD + 16 || !isEncrypted(path)) throw new WeaveError('Not an encrypted weave archive', 'invalid');
+  const head = Buffer.alloc(SEALED_HEAD), tag = Buffer.alloc(16);
+  const fd = openSync(path, 'r');
+  try {
+    readSync(fd, head, 0, SEALED_HEAD, 0);
+    readSync(fd, tag, 0, 16, size - 16);
+  } finally { closeSync(fd); }
+  const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), head.subarray(MAGIC.length, MAGIC.length + 16), 32), head.subarray(MAGIC.length + 16), { authTagLength: 16 });
+  decipher.setAuthTag(tag);
+  return { decipher, size };
+}
+
+async function* unsealed(path, passphrase) {
+  const { decipher, size } = decipherOf(path, passphrase);
+  if (size > SEALED_HEAD + 16) {
+    for await (const chunk of createReadStream(path, { start: SEALED_HEAD, end: size - 17, highWaterMark: STREAM_CHUNK })) yield decipher.update(chunk);
+  }
+  let last;
+  try { last = decipher.final(); } catch { throw cannotDecrypt(); }
+  yield last;
+}
+
 export function decryptFile(src, dst, passphrase) {
-  const size = statSync(src).size;
-  const headLen = MAGIC.length + 16 + 12;
-  if (size < headLen + 16 || !isEncrypted(src)) throw new WeaveError('Not an encrypted weave archive', 'invalid');
+  const { decipher, size } = decipherOf(src, passphrase);
   const s = openSync(src, 'r');
   let d = null;
   try {
-    const head = Buffer.alloc(headLen);
-    readSync(s, head, 0, headLen, 0);
-    const tag = Buffer.alloc(16);
-    readSync(s, tag, 0, 16, size - 16);
-    const salt = head.subarray(MAGIC.length, MAGIC.length + 16), iv = head.subarray(MAGIC.length + 16);
-    const decipher = createDecipheriv('aes-256-gcm', scryptSync(String(passphrase), salt, 32), iv, { authTagLength: 16 });
-    decipher.setAuthTag(tag);
     d = openSync(dst, 'w');
-    pump(s, d, (c) => decipher.update(c), { start: headLen, end: size - 16 });
+    pump(s, d, (c) => decipher.update(c), { start: SEALED_HEAD, end: size - 16 });
     try { writeSync(d, decipher.final()); } catch {
       closeSync(d); d = null;
       rmSync(dst, { force: true });
-      throw new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
+      throw cannotDecrypt();
     }
   } finally { closeSync(s); if (d != null) closeSync(d); }
 }
@@ -283,8 +307,31 @@ export function inspect(path) {
 
 const stamp = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
 const fileStream = (path) => Readable.toWeb(createReadStream(path, { highWaterMark: CHUNK }));
+const opened = (res) => {
+  const length = res.headers.has('content-encoding') ? null : res.headers.get('content-length');
+  return { body: res.body ? Readable.fromWeb(res.body) : Readable.from([]), bytes: length == null ? null : Number(length) };
+};
 
-export async function backup({
+export async function backup(options) {
+  const nightly = nightlyRun.getStore();
+  return nightly ? backupInChild(nightly.fork, options) : backupInProcess(options);
+}
+
+function backupInChild(fork, { env = process.env, ...options }) {
+  return new Promise((done, fail) => {
+    const child = fork(SELF, [JSON.stringify(options)], { env, execArgv: [], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    let answer = null;
+    child.on('message', (m) => { answer = m; });
+    child.on('error', fail);
+    child.on('close', (code, signal) => {
+      if (answer?.error) fail(new WeaveError(answer.error.message, answer.error.code));
+      else if (answer) done(answer.result);
+      else fail(new WeaveError(`The backup process ended (${signal ?? `exit code ${code}`}) before it reported a result`, 'invalid'));
+    });
+  });
+}
+
+async function backupInProcess({
   dataDir, out = process.cwd(), dest = null, env = process.env, passphraseEnv = null,
   workspace = null, now = () => new Date(), fetchImpl = fetch, keep = true, keyStore = null,
 }) {
@@ -376,13 +423,13 @@ export async function backup({
 }
 
 export function heldOpen(dbPath) {
-  if (existsSync(`${dbPath}-wal`) || existsSync(`${dbPath}-shm`)) return true;
-  if (!DatabaseSync) return false;
+  if (!DatabaseSync || !existsSync(dbPath)) return false;
   let db = null;
   try {
     db = new DatabaseSync(dbPath);
     db.exec('PRAGMA busy_timeout = 0');
-    db.exec('BEGIN IMMEDIATE');
+    db.exec('PRAGMA locking_mode = EXCLUSIVE');
+    db.exec('BEGIN EXCLUSIVE');
     db.exec('ROLLBACK');
     return false;
   } catch (err) {
@@ -390,9 +437,57 @@ export function heldOpen(dbPath) {
   } finally { db?.close(); }
 }
 
+function refuseLive(dataDir) {
+  const held = readdirSync(dataDir).filter((n) => n.endsWith('.db')).sort().map((n) => join(dataDir, n)).find(heldOpen);
+  if (held) throw new WeaveError(`${held} is held open by a running process: weave serve, weave mcp or another weave command. Stop the server first, then restore. --force does not override this, because that process would keep writing to the file the restore replaces`, 'conflict');
+}
+
+const LANDS = /^(?:[^/]+\.db|files\/[^/.][^/]*|_hub\.json|keystore\.json)$/;
+const READS = new Set(['manifest.json', 'keys.json']);
+
+async function unpack(chunks, dir) {
+  mkdirSync(dir);
+  const entries = [];
+  await streamTar(chunks, (name, bytes) => {
+    const e = { name, bytes, path: join(dir, String(entries.length)), sha256: null };
+    entries.push(e);
+    const fd = openSync(e.path, 'w');
+    const hash = createHash('sha256');
+    return {
+      write: (buf) => { writeSync(fd, buf); hash.update(buf); },
+      close: () => { closeSync(fd); e.sha256 = hash.digest('hex'); },
+    };
+  });
+  return entries;
+}
+
+function fileSha256(path) {
+  const hash = createHash('sha256');
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(CHUNK);
+    for (let n; (n = readSync(fd, buf, 0, CHUNK, null)) > 0;) hash.update(buf.subarray(0, n));
+  } finally { closeSync(fd); }
+  return hash.digest('hex');
+}
+
+function landFile(from, to, mode) {
+  mkdirSync(dirname(to), { recursive: true });
+  const temporary = `${to}.${randomBytes(8).toString('hex')}.tmp`;
+  try {
+    const src = openSync(from, 'r'), dst = openSync(temporary, 'wx', mode);
+    try {
+      pump(src, dst, (c) => c);
+      fsyncSync(dst);
+    } finally { closeSync(src); closeSync(dst); }
+    renameSync(temporary, to);
+  } finally { rmSync(temporary, { force: true }); }
+}
+
 export async function restore({ source, dataDir, env = process.env, passphraseEnv = null, force = false, fetchImpl = fetch, keyStore = null }) {
   dataDir = resolve(dataDir);
   mkdirSync(dataDir, { recursive: true });
+  refuseLive(dataDir);
   const scratch = mkdtempSync(join(tmpdir(), 'weave-restore-'));
   try {
     let local = join(scratch, 'source');
@@ -404,58 +499,68 @@ export async function restore({ source, dataDir, env = process.env, passphraseEn
         if (!backups.length) throw new WeaveError(`${source} holds no backups yet`, 'not-found');
         name = backups.at(-1).name;
       }
-      writeFileSync(local, await c.get(name));
+      await pipeline((await c.open(name)).body, createWriteStream(local));
     } else if (/^s3:\/\//.test(source)) {
       const { bucket, prefix: key } = s3.parse(source);
-      writeFileSync(local, await s3.client({ env, fetchImpl }).get(bucket, key));
+      await pipeline((await s3.client({ env, fetchImpl }).open(bucket, key)).body, createWriteStream(local));
     } else if (/^https?:\/\//.test(source)) {
       const res = await fetchImpl(source);
       if (!res.ok) throw new WeaveError(`GET ${source} → ${res.status}`, 'not-found');
-      writeFileSync(local, Buffer.from(await res.arrayBuffer()));
+      await pipeline(opened(res).body, createWriteStream(local));
     } else {
       if (!existsSync(source)) throw new WeaveError(`Archive not found: ${source}`, 'not-found');
       local = resolve(source);
     }
-    let tarPath = local;
-    if (isEncrypted(local)) {
-      const passphrase = resolvePassphrase({ env, dataDir, passphraseEnv });
-      if (!passphrase) throw new WeaveError('The archive is encrypted — set WEAVE_BACKUP_PASSPHRASE (or WEAVE_KEYSTORE_PASSPHRASE, or --passphrase-env NAME) to the passphrase it was sealed with', 'invalid');
-      tarPath = join(scratch, 'plain.tar');
-      decryptFile(local, tarPath, passphrase);
+    const sealed = isEncrypted(local);
+    const passphrase = sealed ? resolvePassphrase({ env, dataDir, passphraseEnv }) : null;
+    if (sealed && !passphrase) throw new WeaveError('The archive is encrypted — set WEAVE_BACKUP_PASSPHRASE (or WEAVE_KEYSTORE_PASSPHRASE, or --passphrase-env NAME) to the passphrase it was sealed with', 'invalid');
+    let entries;
+    try {
+      entries = await unpack(sealed ? unsealed(local, passphrase) : createReadStream(local, { highWaterMark: STREAM_CHUNK }), join(scratch, 'entries'));
+    } catch (err) {
+      throw sealed && err instanceof WeaveError && err.code === 'invalid' ? cannotDecrypt() : err;
     }
-    const entries = readTar(tarPath);
-    const mf = entries.find((e) => e.name === 'manifest.json');
+    const byName = new Map();
+    for (const e of entries) {
+      if (byName.has(e.name)) throw new WeaveError(`The archive carries ${e.name} twice`, 'invalid');
+      byName.set(e.name, e);
+    }
+    const mf = byName.get('manifest.json');
     if (!mf) throw new WeaveError('Not a weave backup: the archive has no manifest.json', 'invalid');
-    const manifest = JSON.parse(mf.data.toString('utf8'));
+    const manifest = JSON.parse(readFileSync(mf.path, 'utf8'));
+    const foreign = entries.find((e) => !READS.has(e.name) && !LANDS.test(e.name));
+    if (foreign) throw new WeaveError(`The archive carries ${foreign.name}, which weave backup never writes: restore lands only workspaces, files/, _hub.json and keystore.json`, 'invalid');
+    const listed = new Set((manifest.entries ?? []).map((m) => m.name));
+    const unlisted = entries.find((e) => e.name !== 'manifest.json' && !listed.has(e.name));
+    if (unlisted) throw new WeaveError(`The archive carries ${unlisted.name}, which its manifest does not list`, 'invalid');
     let verified = 0;
     for (const m of manifest.entries ?? []) {
-      const e = entries.find((x) => x.name === m.name);
+      const e = byName.get(m.name);
       if (!e) throw new WeaveError(`The archive is missing ${m.name} that its manifest lists`, 'invalid');
-      if (sha256(e.data) !== m.sha256) throw new WeaveError(`sha256 mismatch on ${m.name}: the archive does not match its manifest`, 'invalid');
+      if (e.sha256 !== m.sha256) throw new WeaveError(`sha256 mismatch on ${m.name}: the archive does not match its manifest`, 'invalid');
       verified += 1;
     }
-    const landing = entries.filter((e) => e.name !== 'manifest.json' && e.name !== 'keystore.key' && e.name !== 'keys.json' && !e.name.split('/').includes('..') && !e.name.startsWith('/'));
-    const named = entries.find((e) => e.name === 'keys.json');
+    const landing = entries.filter((e) => LANDS.test(e.name));
+    const named = byName.get('keys.json');
     let keys = null;
     if (named) {
-      const { names = [] } = JSON.parse(named.data.toString('utf8'));
+      const { names = [] } = JSON.parse(readFileSync(named.path, 'utf8'));
       const held = (keyStore ?? openKeyStore({ path: keystorePath(env, dataDir), env })).read().keys;
       keys = { store: 'keychain', names, missing: names.filter((n) => !Object.hasOwn(held, n)) };
     }
-    for (const e of landing.filter((x) => /^[^/]+\.db$/.test(x.name))) {
+    refuseLive(dataDir);
+    const clash = force ? null : landing.find((e) => {
       const target = join(dataDir, e.name);
-      if (!existsSync(target)) continue;
-      if (!force && heldOpen(target)) throw new WeaveError(`${target} is held open — a -wal/-shm sidecar is beside it or a writer holds its lock. Stop the server first (or pass --force)`, 'conflict');
-      if (!force) throw new WeaveError(`${target} exists — pass --force to overwrite it`, 'conflict');
-    }
-    const ks = join(dataDir, 'keystore.json');
-    if (!force && landing.some((e) => e.name === 'keystore.json') && existsSync(ks)) throw new WeaveError(`${ks} exists — pass --force to overwrite it`, 'conflict');
+      if (!existsSync(target)) return false;
+      return /^[^/]+\.db$/.test(e.name) || e.name === 'keystore.json' || statSync(target).size !== e.bytes || fileSha256(target) !== e.sha256;
+    });
+    if (clash) throw new WeaveError(`${join(dataDir, clash.name)} exists: pass --force to overwrite it`, 'conflict');
 
     const landed = [];
     for (const e of landing) {
       const target = join(dataDir, e.name);
       if (e.name.endsWith('.db')) for (const s of ['-wal', '-shm']) rmSync(target + s, { force: true });
-      writeFileDurable(target, e.data, e.name === 'keystore.json' ? { mode: 0o600 } : {});
+      landFile(e.path, target, e.name === 'keystore.json' ? 0o600 : undefined);
       landed.push(e.name);
     }
     return {
@@ -541,33 +646,44 @@ export const s3 = {
       if (!res.ok) throw new WeaveError(`${method} ${key || bucket} → ${res.status} ${(await res.text()).replace(/\s+/g, ' ').slice(0, 200)}`.trim(), res.status === 404 ? 'not-found' : 'invalid');
       return res;
     };
-    const parted = async (bucket, key, path, partBytes) => {
-      const started = await (await call('POST', bucket, key, { query: '?uploads' })).text();
-      const uploadId = started.match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
-      if (!uploadId) throw new WeaveError(`POST ${key}?uploads answered no UploadId`, 'invalid');
-      const held = `uploadId=${uriEncode(unxml(uploadId))}`;
+    const send = async (bucket, key, chunks, partBytes) => {
+      const part = Buffer.allocUnsafe(partBytes);
       const parts = [];
+      let fill = 0, held = null;
+      const flush = async () => {
+        if (!held) {
+          const started = await (await call('POST', bucket, key, { query: '?uploads' })).text();
+          const uploadId = started.match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
+          if (!uploadId) throw new WeaveError(`POST ${key}?uploads answered no UploadId`, 'invalid');
+          held = `uploadId=${uriEncode(unxml(uploadId))}`;
+        }
+        const number = parts.length + 1;
+        const res = await call('PUT', bucket, key, { query: `?partNumber=${number}&${held}`, body: part.subarray(0, fill) });
+        parts.push(`<Part><PartNumber>${number}</PartNumber><ETag>${xml(res.headers.get('etag') ?? '')}</ETag></Part>`);
+        fill = 0;
+      };
       try {
-        const fd = openSync(path, 'r');
-        try {
-          const buf = Buffer.alloc(partBytes);
-          for (let n, number = 1; (n = readSync(fd, buf, 0, partBytes, null)) > 0; number += 1) {
-            const res = await call('PUT', bucket, key, { query: `?partNumber=${number}&${held}`, body: buf.subarray(0, n) });
-            parts.push(`<Part><PartNumber>${number}</PartNumber><ETag>${xml(res.headers.get('etag') ?? '')}</ETag></Part>`);
+        for await (const chunk of chunks) {
+          for (let at = 0; at < chunk.length;) {
+            if (fill === partBytes) await flush();
+            const n = Math.min(partBytes - fill, chunk.length - at);
+            part.set(chunk.subarray(at, at + n), fill);
+            fill += n;
+            at += n;
           }
-        } finally { closeSync(fd); }
+        }
+        if (!held) return await call('PUT', bucket, key, { body: part.subarray(0, fill) });
+        await flush();
+        return await call('POST', bucket, key, { query: `?${held}`, body: `<CompleteMultipartUpload>${parts.join('')}</CompleteMultipartUpload>` });
       } catch (err) {
-        await call('DELETE', bucket, key, { query: `?${held}` }).catch(() => {});
+        if (held) await call('DELETE', bucket, key, { query: `?${held}` }).catch(() => {});
         throw err;
       }
-      return call('POST', bucket, key, { query: `?${held}`, body: `<CompleteMultipartUpload>${parts.join('')}</CompleteMultipartUpload>` });
     };
     return {
-      put: (bucket, key, body) => call('PUT', bucket, key, { body }),
-      upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => (statSync(path).size > partBytes
-        ? parted(bucket, key, path, partBytes)
-        : call('PUT', bucket, key, { body: readFileSync(path) })),
-      get: async (bucket, key) => Buffer.from(await (await call('GET', bucket, key)).arrayBuffer()),
+      send: (bucket, key, chunks, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, chunks, partBytes),
+      upload: (bucket, key, path, { partBytes = s3.partBytes(env) } = {}) => send(bucket, key, createReadStream(path, { highWaterMark: CHUNK }), partBytes),
+      open: async (bucket, key) => opened(await call('GET', bucket, key)),
       delete: (bucket, key) => call('DELETE', bucket, key),
       list: async (bucket, prefix) => (await objects(bucket, prefix)).map((o) => o.key),
       objects,
@@ -582,7 +698,7 @@ export function nextFireAt(now = new Date(), hour = 4) {
   return d;
 }
 
-export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, log = console.log, hour = 4 }) {
+export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, log = console.log, hour = 4, fork = forkChild }) {
   const state = { lastAt: null, lastStatus: null, lastError: null, nextAt: null };
   let timer = null, stopped = false;
   const arm = () => {
@@ -595,7 +711,7 @@ export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = 
   const fire = async () => {
     state.lastAt = new Date(now()).toISOString();
     try {
-      const r = await run();
+      const r = await nightlyRun.run({ fork }, run);
       state.lastStatus = 'completed';
       state.lastError = null;
       const orphans = r?.orphans?.count ?? 0;
@@ -658,7 +774,7 @@ export const cloud = {
       ...d,
       put: async (name, body) => (await call('PUT', name, body)).json(),
       list: async () => (await call('GET')).json(),
-      get: async (name) => Buffer.from(await (await call('GET', name)).arrayBuffer()),
+      open: async (name) => opened(await call('GET', name)),
       migrate: async ({ name = null, slug = null, archive, key, workspace = null }) => {
         const url = `${d.origin}/api/workspaces`;
         const res = await fetchImpl(url, {
@@ -676,6 +792,22 @@ export const cloud = {
     };
   },
 };
+
+const notSealed = () => new WeaveError('weave cloud keeps encrypted archives only: this body is not one. Back up with WEAVE_BACKUP_PASSPHRASE set', 'invalid');
+
+async function* sealedWithin(body, quota, counted) {
+  let bytes = 0;
+  for await (const chunk of Buffer.isBuffer(body) ? [body] : body) {
+    const head = Math.min(MAGIC.length - bytes, chunk.length);
+    if (head > 0 && !MAGIC.subarray(bytes, bytes + head).equals(chunk.subarray(0, head))) throw notSealed();
+    bytes += chunk.length;
+    if (bytes > quota) throw new WeaveError(`The archive runs past this account's quota of ${quota} bytes`, 'too-large');
+    yield chunk;
+  }
+  if (!bytes) throw new WeaveError('The archive is empty', 'invalid');
+  if (bytes < MAGIC.length) throw notSealed();
+  counted(bytes);
+}
 
 export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } = {}) {
   const bucket = String(env.WEAVE_BACKUP_BUCKET ?? '').trim();
@@ -697,13 +829,11 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
     list,
     async put(account, name, body) {
       named(name);
-      if (!body?.length) throw new WeaveError('The archive is empty', 'invalid');
-      if (!body.subarray(0, MAGIC.length).equals(MAGIC)) throw new WeaveError('weave cloud keeps encrypted archives only: this body is not one. Back up with WEAVE_BACKUP_PASSPHRASE set', 'invalid');
-      if (body.length > quota) throw new WeaveError(`The archive is ${body.length} bytes, past this account's quota of ${quota} bytes`, 'too-large');
       const c = client();
-      await c.put(bucket, base(account) + name, body);
+      let bytes = 0;
+      await c.send(bucket, base(account) + name, sealedWithin(body, quota, (n) => { bytes = n; }));
       const others = (await list(account)).filter((o) => o.name !== name);
-      const kept = [...others, { name, bytes: body.length, at: null }];
+      const kept = [...others, { name, bytes, at: null }];
       const pruned = [];
       let used = kept.reduce((n, o) => n + o.bytes, 0);
       while (kept.length > 1 && (kept.length > RETAIN || used > quota)) {
@@ -712,10 +842,18 @@ export function cloudStore({ env = process.env, fetchImpl = fetch, now = null } 
         used -= gone.bytes;
         pruned.push(gone.name);
       }
-      return { name, bytes: body.length, used, quota, kept: kept.length, pruned };
+      return { name, bytes, used, quota, kept: kept.length, pruned };
     },
-    async get(account, name) {
-      return client().get(bucket, base(account) + named(name));
+    async open(account, name) {
+      return client().open(bucket, base(account) + named(name));
     },
   };
+}
+
+if (process.send && process.argv[1] === SELF) {
+  const answer = await backupInProcess(JSON.parse(process.argv[2])).then(
+    (result) => ({ result }),
+    (err) => ({ error: { message: err.message, code: err.code } }),
+  );
+  process.send(answer, () => { if (process.connected) process.disconnect(); });
 }

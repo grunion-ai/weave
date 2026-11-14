@@ -1,1 +1,0 @@
-- Architecture maps pin the shared main ancestor and reject branch-only revisions before rendering, so squash merges preserve their code citations (Issue #1507).

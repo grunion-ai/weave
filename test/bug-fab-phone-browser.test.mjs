@@ -19,7 +19,7 @@ if (s) {
   });
 
   const phone = await phoneBrowser();
-  const engines = [['chromium 390x844', (o) => browser.newPage({ viewport: { width: 390, height: 844 }, ...o })]];
+  const engines = [['chromium 390x844', (o) => browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, ...o })]];
   if (phone) engines.push(['webkit iPhone 15', (o) => phonePage(phone, o)]);
   const drawn = (page) => page.evaluate(() => [...document.querySelectorAll('.bug-fab')].filter((b) => b.getClientRects().length).length);
 

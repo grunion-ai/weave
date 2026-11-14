@@ -59,6 +59,48 @@ export function dueBetween(cron, zone, since, until) {
   return null;
 }
 
+export const POLL_WINDOW_MS = 60 * MINUTE;
+export const POLL_SLOWEST_DEFAULT = 60;
+export const POLL_SLOWEST_MAX = 24 * 60;
+
+export function nextEvery(every, changed, slowest) {
+  return changed ? 1 : Math.min(Math.max(1, every) * 2, slowest);
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+export function diffItems(snapshot, items, keyOf) {
+  const changes = [];
+  const seen = {};
+  for (const item of items) {
+    const key = keyOf(item);
+    if (key == null || key === '' || typeof key === 'object') continue;
+    const k = String(key);
+    seen[k] = item;
+    if (!snapshot) continue;
+    const prev = Object.hasOwn(snapshot, k) ? snapshot[k] : undefined;
+    if (prev !== undefined && same(prev, item)) continue;
+    const fields = item && typeof item === 'object' ? Object.keys(item) : [];
+    const changed = prev && typeof prev === 'object'
+      ? [...new Set([...fields, ...Object.keys(prev)])].filter((f) => !same(prev[f], item?.[f]))
+      : fields;
+    changes.push({ key: k, item, values: Object.fromEntries(changed.filter((f) => item && f in item).map((f) => [f, item[f]])) });
+  }
+  return { changes, seen };
+}
+
+export function retryAfterMs(header, now) {
+  if (header == null || header === '') return null;
+  const text = String(header).trim();
+  if (/^\d+$/.test(text)) return Number(text) * 1000;
+  const at = Date.parse(text);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
+
+export function pollPrune(log, now) {
+  return (log ?? []).filter((at) => now - at < POLL_WINDOW_MS);
+}
+
 export function armSchedules(tick, { every = MINUTE, setTimer = setInterval, clearTimer = clearInterval, log = console.error } = {}) {
   const timer = setTimer(() => {
     try { tick(); } catch (err) { log(`weave: schedule tick failed: ${err?.message ?? err}`); }

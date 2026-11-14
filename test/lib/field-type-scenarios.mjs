@@ -92,7 +92,7 @@ export const UPDATE_CASES = [
   ['formula', { expression: '1 + 1' }, [{ expression: '2 * 3' }, { format: 'percent' }, { grain: ['year'] }, { format: 'iso' }, { grain: null }, { expression: 'Nope +' }, { decimals: 1 }]],
   ['rollup', { relationField: 'Company', targetField: 'Size', aggregate: 'sum' }, [{ format: 'currency', currency: 'EUR' }, { decimals: 1 }, { format: null }, { aggregate: 'avg' }, { display: 'ring' }]],
   ['lookup', { relationField: 'Company', targetField: 'Size' }, [{ width: 150 }, { targetField: 'Name' }]],
-  ['key', {}, [{ kind: 'token' }, { keystore: '1password' }]],
+  ['key', {}, [{ kind: 'token' }, { keystore: '1password' }, { kind: 'pair' }, { parts: ['client', { name: 'secret', secret: true }] }, { kind: 'token' }, { kind: 'nope' }]],
   ['field', {}, [{ depth: 3 }]],
   ['checkbox', {}, [{ default: true }, { default: null }]],
   ['url', {}, [{ default: 'https://a.b' }]],

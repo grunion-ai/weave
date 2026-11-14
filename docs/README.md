@@ -17,19 +17,23 @@ weave is, the quickstart, self-hosting and the FAQ.
 | [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
 | [Screenshots](screenshots/) | Table, board, phone, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
+| [The grid](grid.md) | Which function owns each visible grid behaviour, which pure core holds its logic, and where a change goes |
+| [Region index](regions.md) | `public/app.js` and `src/engine.js` cut into regions of at most 200 lines, with each grid behaviour placed by line at the commit the architecture map pins |
 
 ## Elsewhere in the repo
 
 | Document | What it covers |
 | --- | --- |
-| [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md) | Agent-facing map: repo layout, the 65 MCP tools, entity-ref forms, rules for changing the repo |
+| [AGENTS.md](https://github.com/grunion-ai/weave/blob/main/AGENTS.md) | Agent-facing map: repo layout, the 66 MCP tools, entity-ref forms, rules for changing the repo |
 | [CONTRIBUTING.md](https://github.com/grunion-ai/weave/blob/main/CONTRIBUTING.md) | Setup, the zero-dependency and no-build-step rules, PR expectations |
 | [SECURITY.md](https://github.com/grunion-ai/weave/blob/main/SECURITY.md) | Threat model, what is in scope, private reporting |
 | [llms.txt](https://github.com/grunion-ai/weave/blob/main/llms.txt) | Machine-readable index of this documentation |
 
 ## The live docs
 
-Every running instance provisions a self-documenting **weave** workspace at
-`/w/weave/` — a Handbook, a Wiki, the roadmap and issue tracker, and a Quality
-space mirroring the test suite. It is queryable through the same REST API as any
-other workspace, so the tool documents itself in its own data model.
+Every running instance provisions a self-documenting **weave** docs workspace at
+`/w/weave/`: a Handbook, a Wiki and the Showcase examples. It is queryable
+through the same REST API as any other workspace, so the tool documents itself
+in its own data model. weave's own roadmap, issue tracker and the Quality space
+mirroring the test suite live only in the weave docs workspace on weave cloud,
+https://weave.grunion.ai/w/weave.

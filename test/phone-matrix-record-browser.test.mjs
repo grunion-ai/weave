@@ -149,7 +149,7 @@ if (s) {
     });
   });
 
-  test('the phone record top bar never overlaps its items on a record reached from another record (Issue #1403)', { todo: 'Issue #1403' }, async (t) => {
+  test('the phone record top bar never overlaps its items on a record reached from another record (Issue #1403)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t4);
       if (!(await recordCoversScreen(page))) return WIDE;

@@ -79,7 +79,7 @@ test('the dialog core mirrors the engine lists and round-trips the look', () => 
   assert.deepEqual(back.files, { preview: 'auto', size: 'medium', fit: 'fill' });
   assert.deepEqual(core.definitionFromFieldView({ type: 'attachments', multiple: true, preview: 'inline', size: 'small' }).config, { multiple: true, preview: 'inline', size: 'small' });
   const patch = core.editPatchConfig({ type: 'attachments' }, { type: 'attachments', config: { preview: 'link' } }, { multiple: true, files: { preview: 'link', size: 'medium', fit: 'trim' } });
-  assert.deepEqual(patch, { multiple: true, preview: 'link', size: null, fit: null }, 'every lane is sent, a null clears');
+  assert.deepEqual(patch, { multiple: true, preview: 'link', size: null, fit: null, displayInline: false }, 'every display setting is sent, optional values clear explicitly');
 });
 
 const HTML = Buffer.from('<!doctype html><p id="p">page</p><script>document.getElementById("p").textContent="ran"</script>');

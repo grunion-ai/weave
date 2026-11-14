@@ -198,6 +198,26 @@ const follow = async (s, location, opts) => {
 };
 const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`));
 
+test('host routing: an unknown workspace host names the address and offers the apex picker (Issue #1332)', async () => {
+  const s = await serveSignIn();
+  try {
+    const page = await s.at('nosuchworkspace.weave.test')('GET', '/');
+    assert.equal(page.status, 404);
+    assert.match(page.headers['content-type'], /text\/html/);
+    assert.match(page.text, /nosuchworkspace\.weave\.test/, 'the page names the address that failed');
+    assert.match(page.text, /href="http:\/\/weave\.test\/start\?pick=1"/, 'the way out is the apex picker');
+    assert.doesNotMatch(page.text, /href="\/"/, 'no link back to the same dead host');
+    const deep = await s.at('nosuchworkspace.weave.test')('GET', '/e/abc');
+    assert.equal(deep.status, 404);
+    assert.match(deep.text, /start\?pick=1/, 'every page on a dead host offers the picker');
+    const api = await s.at('nosuchworkspace.weave.test')('GET', '/api/workspace');
+    assert.equal(api.status, 404);
+    assert.match(api.headers['content-type'], /application\/json/);
+    assert.equal(api.json().code, 'not-found');
+    assert.ok(!/acme|other/i.test(api.text), `a refusal names no existing workspace: ${api.text}`);
+  } finally { s.stop(); }
+});
+
 test('central sign-in: a slug host signs in at the apex and gets back a single-use code for its own host-only cookie', async () => {
   const s = await serveSignIn();
   const acme = s.at('acme.weave.test');

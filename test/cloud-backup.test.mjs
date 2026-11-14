@@ -113,7 +113,7 @@ test('the store keeps archives under the bucket prefix and the account, cipherte
   const r = await store.put('acct-1', 'weave-backup-all-1.tar.enc', body);
   assert.deepEqual(r, { name: 'weave-backup-all-1.tar.enc', bytes: body.length, used: body.length, quota: CLOUD_QUOTA_BYTES, kept: 1, pruned: [] });
   assert.ok(bucket.objects.get('acct-1/weave-backup-all-1.tar.enc').body.equals(body));
-  assert.ok((await store.get('acct-1', 'weave-backup-all-1.tar.enc')).equals(body));
+  assert.ok(Buffer.concat(await (await store.open('acct-1', 'weave-backup-all-1.tar.enc')).body.toArray()).equals(body));
   const listed = await store.list('acct-1');
   assert.deepEqual(listed.map((b) => [b.name, b.bytes]), [['weave-backup-all-1.tar.enc', body.length]]);
   assert.match(listed[0].at, /^2026-10-12T/);
@@ -121,7 +121,7 @@ test('the store keeps archives under the bucket prefix and the account, cipherte
   await assert.rejects(store.put('acct-1', 'plain.tar', Buffer.from('ustar plain bytes')), /encrypted archives only/);
   await assert.rejects(store.put('acct-1', '../escape', sealed()), /not an archive name/);
   await assert.rejects(store.put('acct-1', '.hidden', sealed()), /not an archive name/);
-  await assert.rejects(store.get('acct-1', 'nope.tar.enc'), (err) => err.code === 'not-found');
+  await assert.rejects(store.open('acct-1', 'nope.tar.enc'), (err) => err.code === 'not-found');
 });
 
 test('a put prunes past the newest thirty and past the quota, oldest first, and never the archive it just stored', async () => {

@@ -74,8 +74,8 @@ if (s) {
       });
     }
   }
-  test('1280px, View then Activity: the row still overflows with the table aside, so the View pane floats and the entity pane stays uncovered (Issue #1286)', async () => {
-    const page = await s.browser.newPage({ viewport: { width: 1280, height: 900 } });
+  test('1100px, View then Activity: the row still overflows with the table aside, so the View pane floats and the entity pane stays uncovered (Issue #1286)', async () => {
+    const page = await s.browser.newPage({ viewport: { width: 1100, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${issues.id}?e=${row.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
@@ -91,13 +91,15 @@ if (s) {
       assert.ok(await page.locator('#main .table-view-btn').isVisible(), 'closing the side panes hands the table back');
     } finally { await page.close(); }
   });
-  test('1000px, table and entity alone: the record takes the available width (Issue #1513)', async () => {
+  test('1000px, table and entity alone: the table stays and the entity pane takes what is left (Issue #326, Issue #1286)', async () => {
     const page = await s.browser.newPage({ viewport: { width: 1000, height: 900 } });
     try {
       await page.goto(`${s.base}/#/table/${issues.id}?e=${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
-      await holds(page, 'record without the cramped table');
-      assert.equal(await page.locator('#main').isVisible(), false);
+      await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const got = await page.evaluate(() => ({ main: document.querySelector('#main').getBoundingClientRect().width, classes: document.querySelector('#app').className }));
+      assert.ok(got.main >= 320, `the table keeps its floor: ${got.main}px`);
+      assert.doesNotMatch(got.classes, /pane-over|table-yield/);
     } finally { await page.close(); }
   });
 }

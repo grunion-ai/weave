@@ -101,18 +101,18 @@ test('a share link over the whole workspace never carries the key', async () => 
   } finally { server.close(); }
 });
 
-test('no MCP read carries the key, and the MCP keystore tool cannot reveal, overwrite or delete it', async () => {
+test('no MCP read carries the key, and the MCP keystore tool cannot reveal, overwrite or delete it (Issue #1723)', async () => {
   const { w, t, row } = await seed();
-  for (const [name, args] of [
-    ['weave_get_entity', { entity: row.id }],
-    ['weave_query', { db: t.id }],
-    ['weave_search', { text: 'Fibery' }],
-    ['weave_schema', {}],
-    ['weave_keys', { action: 'list' }],
+  for (const [name, args, reached] of [
+    ['weave_get_entity', { entity: row.id }, row.id],
+    ['weave_query', { db: t.id }, row.id],
+    ['weave_search', { query: 'Fibery' }, row.id],
+    ['weave_schema', {}, '"Integrations"'],
+    ['weave_keys', { action: 'list' }, '"keys":['],
   ]) {
-    let out;
-    try { out = await dispatchTool(w, name, args); } catch (err) { out = err.message; }
-    leaks(name, JSON.stringify(out));
+    const out = JSON.stringify(await dispatchTool(w, name, args));
+    assert.ok(out.includes(reached), `${name} answered without reading what holds the key: ${out.slice(0, 200)}`);
+    leaks(name, out);
   }
   for (const args of [{ action: 'set', name: `integration:${row.id}`, value: 'x' }, { action: 'delete', name: `integration:${row.id}` }, { action: 'share', name: `integration:${row.id}`, account: true }]) {
     assert.throws(() => dispatchTool(w, 'weave_keys', args), /Integrations row/, args.action);

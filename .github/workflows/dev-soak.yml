@@ -36,6 +36,9 @@ jobs:
     concurrency:
       group: dev-soak-${{ github.event.workflow_run.head_branch || github.ref_name }}
       cancel-in-progress: false
+    environment:
+      name: dev
+      deployment: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -69,6 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEV_SOAK_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
           DEV_SMOKE_TOKEN: ${{ secrets.DEV_SMOKE_TOKEN }}
+          DEV_DEPLOY_TOKEN: ${{ secrets.DEV_DEPLOY_TOKEN }}
           DEV_SMOKE_WORKSPACE: ${{ vars.DEV_SMOKE_WORKSPACE }}
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
           SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}

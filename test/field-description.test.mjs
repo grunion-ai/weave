@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { VOCABULARY } from '../src/vocabulary.js';
 import { TOOLS } from '../src/mcp.js';
+import { cliHelp } from '../src/commands.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -96,9 +97,9 @@ test('the agent surface names it: vocabulary, MCP tool descriptions, CLI usage, 
   for (const name of ['weave_add_field', 'weave_update_field']) {
     assert.match(TOOLS.find((t) => t.name === name).description, /description/, `${name} says the key exists`);
   }
-  const cli = readFileSync(join(ROOT, 'bin/weave.js'), 'utf8');
-  assert.match(cli, /field add <table> <name> <type> \[--config '\{json\}'\] \[--description/, 'the CLI usage names the flag on add');
-  assert.match(cli, /--description "what it holds"\|null/, 'and on update, with null to clear');
+  const cli = cliHelp('field');
+  assert.match(cli, /field add <db> <name> <type> \[--config\] \[--description/, 'the CLI usage names the flag on add');
+  assert.match(cli, /field update <db> <field> .*\[--description\]/, 'and on update');
   assert.match(readFileSync(join(ROOT, 'AGENTS.md'), 'utf8'), /Every field can say what it means/, 'AGENTS.md tells an agent to read and write it');
   const { GUIDES } = await import('../src/handbook.js');
   assert.match(GUIDES.find((g) => g.name === 'Making a workspace your own').doc, /## What a field means/, 'the customization guide has the section');

@@ -81,8 +81,9 @@ test('versions are cached per mtime and follow a content change', () => {
 test('every classic boot script is deferred; the file on disk keeps plain URLs', () => {
   const live = INDEX.replace(/<template\b[\s\S]*?<\/template>/g, '');
   const tags = [...live.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
-  const classic = tags.filter((a) => /\bsrc=/.test(a));
+  const classic = tags.filter((a) => /\bsrc=/.test(a) && !/\/theme-boot\.js/.test(a));
   assert.ok(classic.length >= 24, `expected the boot list, saw ${classic.length}`);
   for (const a of classic) assert.match(a, /\bdefer\b/, `<script${a}> blocks the parser`);
+  assert.equal(tags.filter((a) => /\/theme-boot\.js/.test(a)).length, 1, 'the theme is the one script that runs before first paint (Issue #1714)');
   assert.doesNotMatch(INDEX, /\?v=/);
 });

@@ -8,8 +8,9 @@ import { tempDir } from '../lib/temp.mjs';
 process.env.WEAVE_KEYSTORE = join(tempDir('weave-ks-'), 'keystore.json');
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
-const { client } = await import('../lib/fixtures.mjs');
-const { handleMcpMessage, listTools, ROLE_TOOLS, SEATLESS_TOOLS } = await import('../../src/mcp.js');
+const { client, unwrapData } = await import('../lib/fixtures.mjs');
+const { handleMcpMessage, listTools, ROLE_TOOLS } = await import('../../src/mcp.js');
+const { COMMANDS } = await import('../../src/commands.js');
 
 let seq = 0;
 const tool = (name, args) => ({ jsonrpc: '2.0', id: ++seq, method: 'tools/call', params: { name, arguments: args } });
@@ -53,18 +54,20 @@ test('no credentials, accounts present: accounts, keys and import are refused ov
   assert.equal((await call('POST', '/api/import', { body: state })).status, 401, 'REST import takes the same gate');
 });
 
-test('the role table: an observer reads and comments, an editor adds row writes and file attach, an architect has every tool (Issue #508)', () => {
+test('the role table: an observer holds the tools with a row it may run, an editor adds the record writes, an architect has every tool (Issue #508, Feature #363)', () => {
   const byName = Object.fromEntries(listTools('all').map((t) => [t.name, t]));
+  const rows = (name) => COMMANDS.filter((c) => c.tool?.name === name && !c.toolRefusal);
   for (const name of ROLE_TOOLS.observer) {
     assert.ok(byName[name], `${name} is a tool`);
-    assert.ok(byName[name].annotations.readOnlyHint || ['weave_add_comment', 'weave_call'].includes(name), `${name} writes, so an observer may not hold it`);
+    assert.ok(name === 'weave_call' || rows(name).some((c) => c.minRole === 'observer' || c.owns), `${name} has no row an observer may run`);
   }
-  for (const name of SEATLESS_TOOLS) assert.ok(ROLE_TOOLS.observer.has(name), `observer holds ${name}`);
-  assert.deepEqual([...ROLE_TOOLS.editor].filter((n) => !ROLE_TOOLS.observer.has(n)).sort(), ['weave_attach_file', 'weave_create_entity', 'weave_delete_entity', 'weave_update_entity']);
+  for (const c of COMMANDS.filter((x) => x.tool && !x.toolRefusal && x.minRole === 'observer')) assert.ok(ROLE_TOOLS.observer.has(c.tool.name), `observer holds ${c.tool.name} for ${c.name}`);
+  assert.deepEqual([...ROLE_TOOLS.editor].filter((n) => !ROLE_TOOLS.observer.has(n)).sort(), ['weave_attach_file', 'weave_bulk', 'weave_create_entity', 'weave_delete_entity', 'weave_doc_restore', 'weave_import_csv', 'weave_link', 'weave_restore_entity', 'weave_set_doc', 'weave_set_state', 'weave_unlink', 'weave_update_entity']);
+  for (const name of ROLE_TOOLS.editor) assert.ok(name === 'weave_call' || rows(name).some((c) => c.minRole !== 'architect'), `${name} is held by an editor without a row an editor may run`);
   assert.equal(ROLE_TOOLS.architect, undefined, 'an architect is not narrowed');
 });
 
-test('tools/list holds the tools the caller\'s role may call; tools/call on any other answers as an unknown tool (Issue #508)', async () => {
+test('tools/list holds the tools the caller\'s role may call; tools/call on any other names the role it needs (Issue #508, Issue #1560)', async () => {
   const { root, call, reader, writer, admin } = build();
   root.createSpace({ name: 'Dev' });
   root.createTable({ space: 'Dev', name: 'Task' });
@@ -72,12 +75,13 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
   const spaces = () => root.listSpaces().length;
   const rpc = (token, method, params) => call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: ++seq, method, params } });
   const text = (r) => r.json.result.content[0].text;
-  const unknown = text(await rpc(admin, 'tools/call', { name: 'weave_nope', arguments: {} })).replace('weave_nope', '<name>');
-  const asUnknown = async (token, name, args, shown = name) => {
+  assert.equal(text(await rpc(admin, 'tools/call', { name: 'weave_nope', arguments: {} })), 'Error: Unknown tool: weave_nope', 'a name that is no tool stays unknown');
+  const asRefused = async (token, name, args, who, shown = name) => {
     const r = await rpc(token, 'tools/call', { name, arguments: args });
     assert.equal(r.status, 200, name);
     assert.equal(r.json.result.isError, true, name);
-    assert.equal(text(r), unknown.replace('<name>', shown), `${name} answers as an unknown tool`);
+    assert.match(text(r), new RegExp(`^Error: ${shown} needs an (?:editor|architect) token on this workspace; this token is ${who}$`), `${name} names the role it needs`);
+    assert.equal(r.json.result.structuredContent.code, 'forbidden', name);
   };
   const works = async (token, name, args) => {
     const r = await rpc(token, 'tools/call', { name, arguments: args });
@@ -95,20 +99,20 @@ test('tools/list holds the tools the caller\'s role may call; tools/call on any 
     await works(token, 'weave_call', { name: 'weave_search', args: { query: 'seed' } });
     await works(token, 'weave_add_comment', { entity: row.id, text: `from ${role}` });
   }
-  for (const [name, args] of [['weave_create_entity', { db: 'Dev/Task', name: 'x' }], ['weave_delete_entity', { entity: row.id }], ['weave_create_space', { name: 'S' }], ['weave_accounts', { action: 'list' }], ['weave_export_json', {}]]) {
-    await asUnknown(reader, name, args);
+  for (const [name, args] of [['weave_create_entity', { db: 'Dev/Task', name: 'x' }], ['weave_delete_entity', { entity: row.id }], ['weave_create_space', { name: 'S' }], ['weave_accounts', { action: 'list' }], ['weave_bulk', { ids: [row.id], op: 'delete' }]]) {
+    await asRefused(reader, name, args, 'observer');
   }
   const posed = await works(reader, 'weave_add_comment', { entity: row.id, text: 'posing', author: 'root-admin' });
-  assert.notEqual(JSON.parse(text(posed)).author, 'root-admin', 'an observer comments under its own name, as over REST');
-  await asUnknown(reader, 'weave_call', { name: 'weave_create_entity', args: { db: 'Dev/Task', name: 'x' } }, 'weave_create_entity');
+  assert.notEqual(JSON.parse(unwrapData(text(posed))).author, 'root-admin', 'an observer comments under its own name, as over REST');
+  await asRefused(reader, 'weave_call', { name: 'weave_create_entity', args: { db: 'Dev/Task', name: 'x' } }, 'observer', 'weave_create_entity');
   const made = await works(writer, 'weave_create_entity', { db: 'Dev/Task', name: 'by the editor' });
-  const id = JSON.parse(text(made)).id;
+  const id = JSON.parse(unwrapData(text(made))).id;
   await works(writer, 'weave_update_entity', { entity: id, values: { Name: 'renamed by the editor' } });
   await works(writer, 'weave_delete_entity', { entity: id });
-  for (const [name, args] of [['weave_create_space', { name: 'S' }], ['weave_create_table', { space: 'Dev', name: 'T2' }], ['weave_add_field', { db: 'Dev/Task', name: 'Due', type: 'date' }], ['weave_accounts', { action: 'list' }], ['weave_keys', { action: 'list' }], ['weave_import_json', { state: root.exportJSON() }], ['weave_bulk', { ids: [row.id], op: 'delete' }]]) {
-    await asUnknown(writer, name, args);
+  for (const [name, args] of [['weave_create_space', { name: 'S' }], ['weave_create_table', { space: 'Dev', name: 'T2' }], ['weave_add_field', { db: 'Dev/Task', name: 'Due', type: 'date' }], ['weave_accounts', { action: 'list' }], ['weave_keys', { action: 'list' }], ['weave_import_json', { state: root.exportJSON() }], ['weave_delete_table', { db: 'Dev/Task' }]]) {
+    await asRefused(writer, name, args, 'editor');
   }
-  await asUnknown(writer, 'weave_call', { name: 'weave_create_space', args: { name: 'S' } }, 'weave_create_space');
+  await asRefused(writer, 'weave_call', { name: 'weave_create_space', args: { name: 'S' } }, 'editor', 'weave_create_space');
   const help = await rpc(writer, 'tools/call', { name: 'weave_call', arguments: { name: 'help', args: { tool: 'weave_create_space' } } });
   assert.equal(help.json.result.isError, true, 'help describes no tool the caller cannot call');
   const before = spaces();
@@ -157,4 +161,18 @@ test('REST and MCP ask one function', () => {
   const routes = readFileSync(new URL('../../src/routes.js', import.meta.url), 'utf8');
   assert.match(routes, /import \{[^}]*mayAdminister[^}]*\} from '\.\/mcp\.js'/);
   assert.equal(/listAccounts\(\)\.length && role !== 'admin'/.test(routes), false, 'no inline copy of the gate is left in routes.js');
+});
+
+
+test('the runs family allows observer reads but refuses its mutations through either MCP entry', async () => {
+  const { root, call, reader, writer } = build();
+  const run = root.startRun({ name: 'Security check' });
+  for (const [name, args] of [
+    ['weave_runs', { action: 'start', name: 'Denied' }],
+    ['weave_runs', { action: 'update', run: run.id, patch: { status: 'succeeded' } }],
+    ['weave_call', { name: 'weave_runs', args: { action: 'update', run: run.id, patch: { status: 'succeeded' } } }],
+  ]) assert.ok(refused(await mcp(call, '', name, args, reader)));
+  assert.equal(refused(await mcp(call, '', 'weave_runs', { action: 'list' }, reader)), false);
+  assert.equal(root.listRuns()[0].status, 'queued');
+  assert.equal(refused(await mcp(call, '', 'weave_runs', { action: 'update', run: run.id, patch: { status: 'succeeded' } }, writer)), false);
 });

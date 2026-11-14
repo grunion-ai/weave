@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { TOOLS, listTools, handleMcpMessage } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliHelp, cliCommand, matchRoute, registeredTool, httpPaths } from '../src/commands.js';
 import { startServer } from '../src/server.js';
 import { seedWeaver } from '../src/weaver-seed.js';
 import { unwrapData } from './lib/fixtures.mjs';
@@ -23,32 +23,17 @@ const README = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const REGISTERED = COMMANDS.map((c) => [c.name, c.engine, c.tool?.name ?? null, c.cli ? `${c.cli.command}${c.cli.sub ? ` ${c.cli.sub}` : ''}` : null, c.http ? httpPaths(c).map((p) => `${c.http.method} ${p}`) : []]);
 
 const HAND_WRITTEN = [
-  ['schema.describe', ['describeSchema'], 'weave_schema', 'schema', ['GET /api/schema']],
-  ['schema.apply', ['applySchema'], 'weave_apply_schema', 'schema apply', ['PUT /api/schema']],
-  ['build', ['build'], 'weave_build', 'build', ['POST /api/build']],
-  ['vocabulary', [], 'weave_vocabulary', 'vocabulary', ['GET /api/vocabulary']],
-  ['space.list', ['listSpaces'], 'weave_schema', 'space', ['GET /api/spaces']],
-  ['space.members', ['spaceMembers', 'setSpaceMember', 'removeSpaceMember'], 'weave_update_space', 'space members', ['GET /api/spaces/:ref/members', 'PUT /api/spaces/:ref/members/:ref', 'DELETE /api/spaces/:ref/members/:ref']],
-  ['template.list', ['listTemplates'], 'weave_template_list', 'template list', ['GET /api/templates']],
-  ['template.use', ['useTemplate'], 'weave_template_use', 'template use', ['POST /api/spaces/:ref/use']],
-  ['table.list', ['listTables'], 'weave_schema', 'table', ['GET /api/tables']],
-  ['table.view', ['tableView'], 'weave_table_view', 'table view', ['GET /api/tables/:ref/views', 'GET /api/tables/:ref/views/:ref', 'PATCH /api/tables/:ref/views/:ref', 'DELETE /api/tables/:ref/views/:ref']],
-  ['file.attach', ['attachFile', 'attachToField'], 'weave_attach_file', 'file attach', ['POST /api/entities/:ref/files', 'POST /api/entities/:ref/fields/:ref/files']],
-  ['file.read', ['readFile'], 'weave_files', 'file read', ['GET /api/files/:ref']],
-  ['file.delete', ['deleteFile'], 'weave_files', 'file delete', ['DELETE /api/entities/:ref/files/:ref']],
-  ['share.current', [], 'weave_shares', 'share list', ['GET /api/share']],
-  ['workspace.record', ['getWorkspace', 'updateWorkspace'], 'weave_workspace', 'workspace', ['GET /api/workspace', 'PATCH /api/workspace']],
-  ['workspace.logo', ['setWorkspaceLogo', 'getWorkspaceLogo', 'deleteWorkspaceLogo'], 'weave_workspace', 'workspace logo', ['GET /api/workspace/logo', 'PUT /api/workspace/logo', 'DELETE /api/workspace/logo']],
-  ['workspace.order', ['workspaceOrder', 'moveWorkspace'], 'weave_workspace', 'workspace order', ['GET /api/workspaces', 'PATCH /api/workspaces/:ref']],
-  ['accounts', ['createAccount', 'listAccounts', 'setAccountRole', 'deleteAccount', 'setRequireAuth'], 'weave_accounts', 'account', ['GET /api/accounts', 'POST /api/accounts', 'PATCH /api/accounts/:ref', 'DELETE /api/accounts/:rest']],
-  ['auth.identities', ['linkIdentity', 'identityInvite', 'redeemIdentityInvite', 'unlinkIdentity', 'accountForIdentity'], 'weave_accounts', 'account link', ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback']],
-  ['auth.invites', ['inviteMember', 'listInvites', 'revokeInvite'], 'weave_accounts', 'invite', ['GET /api/invites', 'POST /api/invites', 'DELETE /api/invites/:ref']],
-  ['auth.sessions', ['createSession', 'listSessions', 'revokeSession'], 'weave_accounts', 'account sessions', ['GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref']],
+  ['auth.cookie', ['createSession', 'accountForIdentity', 'redeemIdentityInvite', 'identityInvite'], null, null, ['GET /api/auth/oidc/start', 'GET /api/auth/oidc/callback', 'POST /api/auth/logout', 'GET /api/auth/me', 'DELETE /api/auth/sessions/:ref'], 'The one deliberate exception to the registry: cookie and redirect plumbing. OIDC start and callback redirect the browser and set the session cookie, logout clears it, GET /api/auth/me and DELETE /api/auth/sessions/:ref read the cookie session. None answers one JSON result from one set of arguments, which is what a registry entry is, and an agent signs in with a token instead.'],
 ];
 
 const SURFACE = [...HAND_WRITTEN, ...REGISTERED];
+test('every hand-written surface row says why it is not in the registry (Feature #179)', () => {
+  assert.deepEqual(HAND_WRITTEN.map(([name]) => name), ['auth.cookie']);
+  for (const [name, , , , , why] of HAND_WRITTEN) assert.ok(why && why.length > 40, `${name} names its reason`);
+});
 
 const INTERNAL = {
+  runMaintenance: 'server timer plumbing: expires external runs and delivers persisted HTML confirmations; start, update and list use weave_runs',
   actorName: 'read helper (Issue #699): every read path renders a stored account:<id> actor as the account\'s current name before it answers, so an agent only ever sees names',
   isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   readFileMeta: 'revalidation helper (Issue #1430): the file route checks the row is visible and answers 304 before readFile loads any bytes; an agent reads files through readFile',
@@ -119,6 +104,9 @@ const INTERNAL = {
   runSchedules: 'process plumbing (Feature #312): the server\'s minute ticker fires every due schedule rule on each hub workspace; an agent writes the rule as a Workflows row and the clock does the rest',
   runDeliveries: 'process plumbing (Feature #311): the minute ticker, through runSchedules, sends every failed delivery whose retry is due; an agent reads the wait from the rule\'s Health and Health Reason',
   pendingDeliveries: 'test plumbing (Feature #311): the deliveries waiting to be sent again; an agent reads the same wait from the rule\'s Health Reason',
+  claimInbound: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint acknowledges a delivery key it already ran instead of running it again',
+  isEcho: 'engine plumbing (Feature #311, wired by Feature #227): the inbound webhook endpoint drops a change that repeats a write weave just sent to that source',
+  hookDeliveries: 'read helper (Feature #227): the delivery log of a webhook-inbound rule, newest first; an agent reads the latest delivery from weave_automations describe (hook.last) and the rule\'s Health Reason',
 };
 
 const toolNames = new Set(TOOLS.map((t) => t.name));
@@ -141,6 +129,7 @@ test('every capability has an MCP tool that exists and dispatches', () => {
 
 test('every capability has a CLI command that exists', () => {
   for (const [capability, , , cli] of SURFACE) {
+    if (!cli) continue;
     const [command, sub] = cli.split(' ');
     if (cliCommand(command, sub)) continue;
     assert.match(CLI, new RegExp(`case '${command}'`), `${capability}: no CLI command '${command}'`);
@@ -172,7 +161,7 @@ test('every capability has an HTTP route that exists', () => {
 });
 
 test('the key actions MCP offers are the CLI\'s minus reveal, and nothing else has drifted', () => {
-  const keys = COMMANDS.filter((c) => c.cli.command === 'key');
+  const keys = COMMANDS.filter((c) => c.cli?.command === 'key');
   const offered = keys.filter((c) => !c.toolRefusal).map((c) => c.action);
   assert.deepEqual(offered, keys.map((c) => c.cli.sub).filter((a) => a !== 'reveal' && a !== 'migrate'), 'reveal (Feature #143) and migrate (Feature #213) are the only sanctioned differences');
   assert.match(keys.find((c) => c.action === 'migrate').toolRefusal, /not an agent action/);
@@ -221,7 +210,7 @@ test('the docs that count the MCP tools count them right', () => {
 });
 
 test('every CLI command is documented in AGENTS.md', () => {
-  const commands = [...new Set(SURFACE.map(([, , , cli]) => cli))];
+  const commands = [...new Set(SURFACE.map(([, , , cli]) => cli).filter(Boolean))];
   const undocumented = commands.filter((c) => !AGENTS.includes(`weave ${c}`));
   assert.deepEqual(undocumented, [], `CLI commands missing from AGENTS.md: ${undocumented.join(', ')}`);
 });
@@ -285,7 +274,7 @@ test('every query option reaches every door', () => {
     assert.ok(mcpBlock.includes(`a.${k}`), `weave_query drops ${k}`);
     if (!CLI_EXEMPT[k]) assert.ok(cliBlock.includes(`${k}:`), `weave query lacks --${k}`);
   }
-  assert.match(CLI, /--fields 'A,B'\] \[--relations chip\]/, 'the usage names the two flags');
+  assert.match(cliHelp('query'), /\[--fields\] \[--relations\]/, 'the usage names the two flags');
   assert.match(String(cmd.http.args), /options: \{ \.\.\.body, limit:/, 'POST /api/tables/:ref/query passes its body through');
   assert.match(String(cmd.run), /viewerZone: ctx\?\.viewerZone, workspace: ctx\?\.workspace/, 'the query runs in the caller\'s zone, scoped to the asking workspace (Issue #875)');
   assert.match(ROUTES, /workspace: member\.state\.meta\.id/, 'the HTTP door names the asking workspace (Issue #875)');

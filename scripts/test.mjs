@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPORTER = pathToFileURL(join(ROOT, 'scripts/failed-files.mjs')).href;
+const CI_REPORTER = `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs')).href}`;
 
 export const RETRIES = 1;
 
@@ -19,7 +20,7 @@ export function testFiles(root = ROOT) {
     .sort();
 }
 
-const BROWSER = /^(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
+const BROWSER = /(?:^|;)\s*(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
 export function lanes(files, root = ROOT) {
   const browser = [], unit = [];
   for (const f of files) {
@@ -51,9 +52,11 @@ export function readFailed(failedPath) {
 
 export const childEnv = ({ NODE_TEST_CONTEXT, ...rest } = process.env) => rest;
 
+export const PLAYWRIGHT_MISSING = 'playwright is not installed in this checkout: npm ci --prefix .github/test-tools && ln -s .github/test-tools/node_modules node_modules';
+
 export function browserProblem(env = process.env, root = ROOT) {
   let modulePath;
-  try { modulePath = createRequire(join(root, 'package.json')).resolve('playwright'); } catch { return undefined; }
+  try { modulePath = createRequire(join(root, 'package.json')).resolve('playwright'); } catch { return PLAYWRIGHT_MISSING; }
   const kind = env.WEAVE_BROWSER || 'chromium';
   const probe = `import(${JSON.stringify(pathToFileURL(modulePath).href)}).then(async (m) => { const pw = m.default || m; await (await pw[${JSON.stringify(kind)}].launch()).close(); })`
     + `.catch((e) => { process.stderr.write(String(e.message).split('\\n')[0]); process.exit(1); });`;
@@ -70,7 +73,7 @@ export function run(files, extraArgs = [], opts = {}) {
     const problem = browserCheck();
     if (problem) {
       out(`# BROWSER MISSING: ${problem}`);
-      out(`# Install it with \`npx playwright install ${process.env.WEAVE_BROWSER || 'chromium'}\` from this checkout, then rerun.`);
+      if (problem !== PLAYWRIGHT_MISSING) out(`# Install it with \`npx playwright install ${process.env.WEAVE_BROWSER || 'chromium'}\` from this checkout, then rerun.`);
       out('# RESULT red: browser missing, no lane ran');
       return 1;
     }
@@ -93,6 +96,12 @@ export function sandboxHome(dir) {
   return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json') };
 }
 
+function recordRetried(files, out, env, extraArgs) {
+  out(`# RETRIED and green: ${files.length} file(s) failed the first run and passed the second: ${files.join(' ')}`);
+  if (!env.WEAVE_CI_REPORT || !extraArgs.includes(CI_REPORTER)) return;
+  appendFileSync(env.WEAVE_CI_REPORT, files.map((file) => `${JSON.stringify({ type: 'retried', data: { file: relative(ROOT, resolve(ROOT, file)).split('\\').join('/') } })}\n`).join(''));
+}
+
 function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-test-'));
   const laneEnv = { ...env, ...sandboxHome(dir) };
@@ -102,11 +111,10 @@ function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, 
       const failedPath = join(dir, `failed-${i}`);
       const status = spawnSync(process.execPath, argsFor(attempt, failedPath, extraArgs, undefined, cap),
         { cwd: ROOT, stdio: 'inherit', env: laneEnv }).status;
-      if (status === 0) {
-        if (i) out(`# RETRIED and green: ${attempt.length} file(s) failed the first run and passed the second — ${attempt.join(' ')}`);
-        return 0;
-      }
-      const failed = readFailed(failedPath);
+      const failed = status === 0 ? [] : readFailed(failedPath);
+      const green = !i ? [] : status === 0 ? attempt : failed.length ? attempt.filter((f) => !failed.includes(f)) : [];
+      if (green.length) recordRetried(green, out, env, extraArgs);
+      if (status === 0) return 0;
       if (i >= retries || !failed.length) {
         if (i) out(`# RETRIED and still red: ${failed.join(' ') || 'the run failed without naming a file'}`);
         return status || 1;
@@ -156,8 +164,9 @@ if (!process.env.NODE_TEST_CONTEXT && process.argv[1] && resolve(process.argv[1]
     if (argv.includes('--plan')) { console.log(JSON.stringify(selection, null, 2)); process.exit(0); }
     if (process.env.WEAVE_TEST_JOB) process.exit(run(selection.files, flags));
     console.log(`# TEST SELECTION ${selection.mode}: ${selection.reasons.join(' ')}`);
-    const result = await request({ type: 'run', root: ROOT, node: process.execPath, files: selection.files, flags, timeout,
-      env: childEnv(), fingerprint: fingerprint(ROOT, selection.files) }, { start: true, onMessage(message) {
+    const lane = lanes(selection.files).browser.length ? 'browser' : 'unit';
+    const result = await request({ type: 'run', root: ROOT, node: process.execPath, files: selection.files, flags, timeout, lane, scope: 'reach',
+      env: childEnv(), fingerprint: fingerprint(ROOT, selection.files, 'reach') }, { start: true, onMessage(message) {
         if (message.stream) process[message.stream].write(Buffer.from(message.data, 'base64'));
         if (message.event) console.log(message.event);
       } });

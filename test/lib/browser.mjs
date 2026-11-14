@@ -161,11 +161,22 @@ test.after(async () => {
   for (const browser of extraEngines.values()) await browser?.close().catch(() => {});
   extraEngines.clear();
 });
+export async function launchEngine(api, name) {
+  if (!api[name]) throw new Error(`playwright has no ${name} engine, so the cases that need it cannot run`);
+  if (process.env.WEAVE_TEST_ENGINE_FAIL?.split(',').includes(name)) {
+    throw new Error(`${name} launch refused by WEAVE_TEST_ENGINE_FAIL`, { cause: new Error(`WEAVE_TEST_ENGINE_FAIL names ${name}`) });
+  }
+  try {
+    return await api[name].launch();
+  } catch (cause) {
+    throw new Error(`${name} did not launch, so the cases that need it cannot run: ${cause.message}`, { cause });
+  }
+}
 export async function engineOf(name) {
   if (!pw) return null;
   if (!extraEngines.has(name)) {
-    const browser = pw[name] ? await pw[name].launch().catch(() => null) : null;
-    if (browser && THROTTLE) throttle(browser);
+    const browser = await launchEngine(pw, name);
+    if (THROTTLE) throttle(browser);
     extraEngines.set(name, browser);
   }
   return extraEngines.get(name);

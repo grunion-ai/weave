@@ -63,7 +63,7 @@ test('a missing limit, an empty one and a number page exactly as they did (Issue
   try {
     assert.equal(count(await (await fetch(`${base}/api/audit`)).json()), 2, 'no limit keeps its default');
     assert.equal(count(await (await fetch(`${base}/api/audit?limit=`)).json()), 0, 'an empty limit reads as it always did');
-    assert.equal(count(await (await fetch(`${base}/api/undo`)).json()), 3);
+    assert.equal(count(await (await fetch(`${base}/api/undo`, { headers: { 'x-weave-actor': 'local' } })).json()), 3);
     assert.equal(count(await (await fetch(`${base}/api/tables/${t.id}/entities?limit=2`)).json()), 2, 'a number still pages');
     assert.equal((await (await fetch(`${base}/api/tables/${t.id}/entities?limit=2`)).json()).total, 3, 'and the total still counts every row');
   } finally { server.close(); }

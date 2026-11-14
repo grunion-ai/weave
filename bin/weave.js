@@ -7,15 +7,14 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 const CLI_ACTOR = process.env.WEAVE_ACTOR || (() => { try { return userInfo().username; } catch { return 'cli'; } })();
-import { Weave, WeaveError, deferMigrations, runDeferredMigrations, inviteUrl } from '../src/engine.js';
+import { Weave, WeaveError, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { startServer, openDefaultWorkspace, createWorkspaceHub } from '../src/server.js';
 import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
-import { cliCommand, cliRun, cliMiss } from '../src/commands.js';
+import { cliCommand, cliRun, cliMiss, cliHelp } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
 import { markdownToPdf } from '../src/pdf.js';
-import { vocabularyView } from '../src/vocabulary.js';
-import { listForms, getForm, submitForm, leaveWorkspace, createForm, updateForm, getFormDefinition } from '../src/forms.js';
+import { listForms, getForm, submitForm, createForm, updateForm, getFormDefinition } from '../src/forms.js';
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -56,21 +55,6 @@ function numberFlag(name, fallback = null) {
   return value;
 }
 
-function pickFlags(names) {
-  const patch = {};
-  for (const n of names) if (flags[n] != null && flags[n] !== true) patch[n] = n === 'position' ? Number(flags[n]) : flags[n];
-  return patch;
-}
-
-const splitList = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
-function viewRowFlags(flags) {
-  const on = (v) => ['on', 'true', 'yes', '1', true].includes(v);
-  const out = {};
-  if (flags.deleted != null) out.deleted = on(flags.deleted);
-  if (flags.rollups != null) out.rollups = flags.rollups === 'table' ? null : on(flags.rollups);
-  return out;
-}
-
 function resolveEntityRef(w, ref, dbFlag) {
   const m = String(ref).match(/^(.+)#(\d+)$/);
   if (m) {
@@ -84,9 +68,10 @@ function resolveEntityRef(w, ref, dbFlag) {
   return w.getEntity(ref);
 }
 
-const HELP = `weave — local, open-source, agent-accessible work platform
+const HELP_SERVER = `weave — local, open-source, agent-accessible work platform
 
 Usage: weave <command> [args] [--data path]
+       weave <command> --help
 
 Server
   serve [--port 4400] [--host 127.0.0.1]
@@ -97,173 +82,33 @@ Server
                                       when WEAVE_AUTO_UPDATE=1 (plain serve otherwise)
   mcp [--tools all]                   Start the MCP stdio server (for agents); core tools + weave_call by default
 
-Service (macOS launchd — auto-start on login, restart on crash)
+Service (macOS launchd: auto-start on login, restart on crash)
   service install [--port 4400] [--data path] [--label ai.grunion.weave.<port>]
-                                      Write + load the launch agent; logs to ~/Library/Logs/weave/
-  service uninstall [--label name]    Stop the agent and remove its plist
-  service status [--port 4400]        Plist, launchctl state, live /api/health probe
-  quality sync --data weave.db        Reconcile Quality/Suite + Case rows to the test
-                                      files (generated mirror; check = report drift)
-  handbook sync --data weave.db       Re-apply the Handbook pages from src/handbook/
-                                      (serve does it once per build; check = report drift)
+  service uninstall [--label name]
+  service status [--port 4400]
+  quality sync|check --data weave.db  Reconcile Quality/Suite + Case rows to the test files
+  handbook sync|check --data weave.db Re-apply the Handbook pages from src/handbook/
 
-Backup and restore (Feature #222 phase 3, #209 — --data names the data dir or any file in it)
+Backup and restore (--data names the data dir or any file in it)
   backup [--out dir|file.tar] [--dest s3://bucket/prefix|weave://host/account] [--workspace name]
          [--passphrase-env NAME] [--now]
-                                      VACUUM INTO every .db + files/ + keystore.json into one
-                                      tar; AES-256-GCM when a passphrase or key file exists
-                                      (keystore.key never leaves); SigV4 upload; 30 kept.
-                                      weave:// sends the sealed archive to a weave cloud
-                                      account with WEAVE_BACKUP_TOKEN (ciphertext only)
   restore <archive|s3://…|https://…> --data <dir> [--passphrase-env NAME] [--force]
   restore --from weave://host/account[/archive] --data <dir>
-                                      Verify the manifest, unpack beside --data; refuses a
-                                      db a server holds open. --from pulls the newest (or the
-                                      named) cloud archive. (restore <ref> is the entity verb)
-  serve with WEAVE_BACKUP_DEST set runs backup daily at 04:00 UTC — audit rows
-  backup-completed / backup-failed, last result on /api/health as "backup"
-
-Schema
-  ontology [--concept T] [--since E]  The schema as a short outline, one table, or what changed
-  schema                              Describe spaces, tables, fields
-  schema export [--out file]          The schema as an editable JSON document
-  schema apply --file doc.json [--dry-run] [--allow-destructive] [--partial]
-                                      Grow the workspace to match the document
-  build <spec.json> [--dry-run] [--skip-existing-rows]
-                                      Spaces, tables, fields, relations and rows in one
-                                      call (spec: weave_build in AGENTS.md); --dry-run
-                                      checks it all and writes nothing
-  vocabulary [section [query]]        Every legal config value and what it looks like
-                                      (icons are lucide:<name>; colors are hex from the palette;
-                                      "vocabulary icons <query>" searches the icon names;
-                                      "vocabulary icons,optionColors" answers several sections)
-  space create <name> [--description] [--icon lucide:briefcase] [--template true]
-  space list | update <ref> [--name] [--description] [--icon lucide:briefcase] [--template true|false]
-              [--position N]          its place in the sidebar, 0 first
-  space delete <ref>
-  template list                       The template spaces (Feature #261)
-  template use <space> --into <other.db> [--name <name>]
-                                      Copy a template space's schema, never its rows,
-                                      into another workspace file
-  table create <space> <name> [--description] [--icon]
-  table list | delete <ref>
-  table update <ref> [--name] [--description] [--icon lucide:wallet] [--noun invoice]
-              [--hidden A,B] [--system 'Created At'] [--order Name,A,B]
-              [--rollup-row on|off] [--position N]
-  table move <ref> <space> [--position N]
-                                      Another space, last there unless --position says
-  table view <table/view> [--fields A,B] [--filters '{json}'] [--sort '[json]'] [--search text] [--density compact]
-              [--layout table|board] [--subtotals all|top|none] [--groups stacked|side] [--picture off|small|medium|large] [--group Trip,Priority|'[{"field":"Trip","heading":"chip"}]']
-              [--completed-by Done|none] [--order 3,1,2] [--collapsed '["Completed"]']
-              [--phone-row '{"lead":"Status","chips":["Severity"],"labels":true,"wrap":true}'|none]
-  field add <table> <name> <type> [--config '{json}'] [--description "what it holds"]
-  field list <table> | delete <table> <field> [--hard] | restore <table> <field>
-  field update <table> <field> [--name] [--type] [--config '{json}'] [--width 240|null]
-               [--description "what it holds"|null]
-  relation add <table> <name> <targetTable> [--cardinality many-to-one] [--inverse Name] [--target-dbs 'A,B,C']
-  registry [report|rebuild]           The meta-model rows that mirror the schema
-  map                                 Relation map as mermaid
-
-Entities
-  query <db> [--view name] [--group-by view] [--where '[["Field","=",1]]'] [--search text] [--select 'A,B'] [--sort Field] [--limit n]
-        [--fields 'A,B'] [--relations chip]   Entity rows cut to these fields; related rows as references + chips
-        [--shape row]                         Lean list rows: id, publicId, name, fields and the raw a renderer reads
-  get <ref> [--db name]               Read one entity ("Task#3" or id)
-  create <db> <name> [--values '{json}'] [--doc 'markdown']
-  update <ref> --values '{json}'
-  delete <ref> [--hard]               Soft by default (recoverable); --hard purges
-  restore <ref>                       Bring a soft-deleted entity back
-  trash [table]                       Deleted entities, one table or all
-  stats <table> [--by F] [--where J]  Every column summarised (sum/avg/median/min/max/stdev, histograms,
-                                      distributions, date spans), the space rollups on the table, groups by F;
-                                      --field F answers for one column and its rollups
-  state <ref> <field> <state>         Move workflow state
-  link <ref> <field> <target...>
-  bulk <set|link|move|rollup> <ref...> [--values '{json}'] [--field F --targets a,b] [--table T] [--name N]
-  unlink <ref> <field> <target...>
-
-Documents (entities can carry several document fields; --field picks one,
-default is the table's first document field, usually "Description")
-  doc get <ref> [--field Name]
-  doc set <ref> (--content 'md' | --file path) [--field Name]
-  doc append <ref> (--content 'md' | --file path) [--field Name]
-  doc export <ref> --format md|html|pdf [--out path] [--field Name]
-  doc-revisions <ref> [--field Name] [--limit 50]   History newest first: seq, at, actor, len
-  doc-revisions <ref> --seq <n> [--field Name]      One revision with its text
-  doc-restore <ref> --seq <n> [--field Name]        Write that revision back (an ordinary write; undoable)
-
-Credentials (#64, #143 — secrets live encrypted in ~/.weave/keystore.json, never in data)
-  key set <name> (--value <secret> | reads stdin)
-  key list                            Names, owners and who each is shared with
-  key reveal <name> [--copy]          Prints the secret — owner or grantee only, always audited
-  key share <name> --with <account>   Open one credential to one account
-  key unshare <name> --with <account>
-  key delete <name>
-  key migrate --to keychain|file      Move every value between keystore.json and the macOS keychain
-Accounts & audit (Feature #14)
-  account create <name> [--role architect|editor|observer]   Default editor; admin|writer|reader are deprecated aliases
-  account set <name> --role architect|editor|observer   Change role without rotating credentials
-  account list
-  account delete <ref>
-  audit [--limit 50]
-Browser sessions (Feature #222)
-  account sessions <name>                             Browser sessions the account holds
-  account revoke-session <name> (--all | --id <id>)  End sessions — the lost-phone verb
-Provider sign-in (Feature #212, door C; Feature #252)
-  account link <name> [--issuer <url>]         Mint a one-time link (7 days); whoever opens it and signs in at the provider is linked
-  account unlink <name> --subject <sub>        Close the account to that provider subject (see account list)
-Invite a new person (Issue #569)
-  invite <email> [--role editor] [--issuer <url>]   A one-time sign-in link that makes the account at that role
-  invite list                                       Pending invites
-  invite revoke <id>                                Cancel one
-Undo (entity mutations only — schema work is not undoable)
-  undo [--steps n]                    Revert the last n entity mutations
-  undo --list [--limit 20]           Show what undo would revert, newest first
-Views & automations
-  view list [--trash] | get <id> | delete <id> [--hard] | restore <id> | share <id> | unshare <id>
-  share list [--kind entity|entities|table|space|view|workspace] [--id <id>] [--include-inactive]
-  share mint <kind> <id> [--ids '["id"]'] [--mode read|submit|edit|manage] [--form ID] [--private] [--label L] [--expiry 1h|1d|7d|30d|90d|never] [--expires ISO]
-  share update <share id> [--label L] [--expiry PRESET | --expires ISO]
-  share regenerate <share id> [--expiry PRESET | --expires ISO]   Replace the public link
-  share renew <share id>              Thirty more days on the same link
-  share revoke <share id>             Ends a link
-  view create <name> --blocks '[{"table":"Task","where":[["Status","=","Open"]]}]'
-  automation list [<table>] | describe [<table>] | delete <id>
-  automation create <table> --name N --trigger '{json}' --actions '[json]'
-                                      trigger {"type":"schedule","cron":"0 9 * * 1-5","zone":"UTC","where":[...]} fires on the clock
-  automation update <id> --patch '{json}'
-
-The workspace itself
-  workspace [get]                     Name, description, logo, auth
-  workspace set [--name] [--description]
-  workspace logo (--path file | --out file | --clear)
-  workspace order | move <name> --position N
-                                      The hub's workspaces in rail order (run on the hub root)
-  workspace require-auth [--off]
-  workspace link-preview [--off]      Link preview before sign-in: a walled permalink unfurls
-  workspace leave [--account name]    Remove your own account (never the docs workspace, never its last architect)
   workspace migrate --from weave://host/account[/archive] [--name N] [--workspace W] [--passphrase-env NAME]
-                                      Create a cloud workspace from a stored archive; the key
-                                      travels once and is never stored
-  form [list] | get <form>            The forms whose table lives here (System/Forms rows)
-  form config <form>                 Editable form definition
-  form create --definition '{json}'  Create a native table form
-  form update <form> --definition '{json}'  Edit or pause; preserve its link
-  form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]   One row through a form
-  activity [<id>] [--entity ref] [--table name] [--kinds a,b] [--since iso] [--limit n|-1]
-     (prints one page of 500 by default; --limit -1 prints the whole log)
 
-Collaboration & data
-  comment <ref> <text> [--author name]
-  comment delete <ref> <commentId>
-  search <text>
-  csv <db>                            Export a table as CSV
-  csv import <db> [--file path]       Import rows (stdin when --file is absent)
-  file attach <ref> --path file [--field Name] [--mime type]
-  file read <fileId> [--out path]
-  file delete <ref> <fileId>
-  export [--out path]                 Full workspace JSON
-  import --file path
+Forms
+  form [list] | get <form> | config <form>
+  form create --definition '{json}'
+  form update <form> --definition '{json}'
+  form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]
+
+Documents
+  doc export <ref> --format md|html|pdf [--out path] [--field Name]
+
+Registry commands (the same operations the MCP tools and the REST API carry)
+`;
+
+const HELP_FOOT = `
 
 Refs: entities accept "Table#publicId" (e.g. Task#3), a UUID, or a name with --db.
 Data file: --data flag > WEAVE_DATA env > ~/.weave/workspace.json
@@ -287,8 +132,13 @@ Env: PORT, WEAVE_HOST (bind; 0.0.0.0 in a container), WEAVE_DATA, WEAVE_ORIGIN (
      attachment types served in place beside images, PDF and plain text; the rest download),
      WEAVE_MAX_ROWS (most rows one API call returns for a named limit; 500)`;
 
+const helpFor = (given) => {
+  const entries = given ? cliHelp(given) : null;
+  return entries ? `weave ${given}\n\n${entries}` : `${HELP_SERVER}${cliHelp()}${HELP_FOOT}`;
+};
+
 async function main() {
-  if (!command || command === 'help' || flags.help) return out(HELP);
+  if (!command || command === 'help' || flags.help) return out(helpFor(command === 'help' ? null : command));
 
   if (command === 'supervise') {
     const { autoUpdateFromEnv, startSupervisor } = await import('../src/supervisor.js');
@@ -327,10 +177,10 @@ async function main() {
         console.warn(`Docs workspace sync skipped: ${err.message}`);
       }
       try {
-        const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
         if (docsW && process.env.WEAVE_TRACKER_CANONICAL === '1') {
           console.log('Development sync skipped: this server is the canonical tracker (WEAVE_TRACKER_CANONICAL=1)');
-        } else if (docsW) {
+        } else if (docsW?.state.meta.developmentSync) {
+          const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'development.json'), 'utf8'));
           const { syncDevelopment } = await import('../src/weaver-seed.js');
           const r = syncDevelopment(docsW, manifest);
           if (r.applied) console.log(`Development sync v${manifest.version}: ${r.created} created, ${r.updated} updated`);
@@ -357,6 +207,16 @@ async function main() {
       } catch (err) {
         console.warn(`Showcase sync skipped: ${err.message}`);
       }
+      try {
+        if (docsW) {
+          const { syncDocumentationPresentation } = await import('../src/documentation-presentation.js');
+          const r = syncDocumentationPresentation(docsW);
+          if (r.applied) console.log(`Documentation presentation: ${r.attached} attachments, ${r.fields} fields, ${r.descriptions} descriptions`);
+          for (const conflict of r.conflicts) console.warn(`Documentation presentation preserved ${conflict}`);
+        }
+      } catch (err) {
+        console.warn(`Documentation presentation skipped: ${err.message}`);
+      }
       if (docsW && docsW !== w) docsW.store.close?.();
     };
     if (!deferred) await bootWrites();
@@ -372,7 +232,12 @@ async function main() {
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    const { port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
+    const { server, port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
+    let stopped = null;
+    const stop = (why) => stopped ??= server.shutdown()
+      .then(({ workspaces, cut }) => console.log(`Weave stopped (${why}): ${workspaces} workspace${workspaces === 1 ? '' : 's'} closed${cut ? `, ${cut} unfinished request${cut === 1 ? '' : 's'} cut off` : ''}`))
+      .finally(() => process.exit(0));
+    for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => stop(sig));
     {
       const { createReleaseCheck, updateCheckFromEnv } = await import('../src/update-check.js');
       const { armReleaseCheck, VERSION } = await import('../src/server.js');
@@ -397,7 +262,7 @@ async function main() {
     if (wide) console.log(`Bound to ${host} — every workspace on this network can reach it.`);
     console.log(`Docs workspace: http://${shown}:${actual}/w/weave/`);
     if (process.send) {
-      process.on('disconnect', () => process.exit(0));
+      process.on('disconnect', () => stop('IPC channel closed'));
       if (deferred) {
         process.on('message', async (m) => {
           if (m?.weave !== 'migrate') return;
@@ -565,118 +430,13 @@ async function main() {
 
   const registered = cliCommand(command, args[0]);
   if (registered) {
-    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), write: (path, data) => writeFileSync(path, data), entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.replace(/\/+$/, '') ?? '' });
-    return registered.cli.raw ? process.stdout.write(result) : out(result);
+    const result = cliRun(registered, w, args, flags, { json: parseJsonFlag, stdin: () => readFileSync(0, 'utf8'), file: (path) => readFileSync(path, 'utf8'), bytes: (path) => readFileSync(path), openInto: (into) => { const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true }); return { weave: target, done: () => { if (target !== w) target.store.close?.(); } }; }, write: (path, data) => writeFileSync(path, data), actor: CLI_ACTOR, withHub: (fn) => { const hub = createWorkspaceHub(w); try { return fn(hub); } finally { for (const [, on] of hub.entries()) on.store.close?.(); } }, entityRef: (ref, db) => resolveEntityRef(w, ref, db).id, origin: process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '' });
+    return (typeof registered.cli.raw === 'function' ? registered.cli.raw(flags) : registered.cli.raw) ? process.stdout.write(result) : out(result);
   }
   const miss = cliMiss(command, args[0]);
   if (miss) throw miss;
 
   switch (command) {
-    case 'schema': {
-      const [sub] = args;
-      if (sub === 'apply') {
-        const doc = JSON.parse(readFileSync(flags.file, 'utf8'));
-        return out(w.applySchema(doc, { dryRun: !!flags['dry-run'], allowDestructive: !!flags['allow-destructive'], partial: !!flags.partial }));
-      }
-      if (sub === 'export') {
-        const json = JSON.stringify(w.describeSchema(), null, 2);
-        if (flags.out) { writeFileSync(flags.out, json); return out({ ok: true, out: flags.out }); }
-        return out(json);
-      }
-      return out(w.describeSchema());
-    }
-    case 'build': {
-      const file = args[0] ?? flags.file;
-      if (!file || file === true) throw new WeaveError('Usage: weave build <spec.json> [--dry-run]', 'invalid');
-      const r = w.build(JSON.parse(readFileSync(file, 'utf8')), { dryRun: !!flags['dry-run'], skipExistingRows: !!flags['skip-existing-rows'] });
-      if (!r.ok) process.exitCode = 1;
-      return out(JSON.stringify(r));
-    }
-    case 'account': {
-      const [sub, ref] = args;
-      if (sub === 'create') return out(w.createAccount({ name: ref, role: flags.role ?? 'editor' }));
-      if (sub === 'set') return out(w.setAccountRole(ref, flags.role));
-      if (sub === 'delete') return out(w.deleteAccount(ref));
-      if (sub === 'list' || !sub) return out(w.listAccounts());
-      if (sub === 'sessions') return out(w.listSessions(ref));
-      if (sub === 'revoke-session') {
-        if (!flags.all && (flags.id == null || flags.id === true)) throw new WeaveError('account revoke-session needs --all or --id <session id>', 'invalid');
-        return out(w.revokeSession(ref, { all: Boolean(flags.all), id: flags.all ? null : String(flags.id) }));
-      }
-      if (sub === 'link' || sub === 'unlink') {
-        if (!ref) throw new WeaveError(`account ${sub} needs an account name`, 'invalid');
-        if (flags.email !== undefined) throw new WeaveError('weave no longer links by email (Feature #252): run account link <name> and send the invite link it prints', 'invalid');
-        const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
-        if (sub === 'unlink') {
-          if (!flags.subject || flags.subject === true) throw new WeaveError('account unlink needs --subject <provider subject> (account list shows it)', 'invalid');
-          return out(w.unlinkIdentity(ref, { issuer: issuer ?? null, subject: String(flags.subject) }));
-        }
-        if (!issuer) throw new WeaveError('account link needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
-        const made = w.linkIdentity(ref, { issuer });
-        return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-      }
-      throw new WeaveError(`Unknown account subcommand '${sub}'. Try: create, set, list, delete, sessions, revoke-session, link, unlink`);
-    }
-    case 'invite': {
-      const [sub, ref] = args;
-      if (sub === 'list') return out(w.listInvites());
-      if (sub === 'revoke') return out(w.revokeInvite(ref));
-      const issuer = flags.issuer ?? (process.env.WEAVE_OIDC_ISSUER?.trim().replace(/\/+$/, '') || null);
-      if (!issuer) throw new WeaveError('invite needs --issuer <url>, or WEAVE_OIDC_ISSUER set', 'invalid');
-      const made = w.inviteMember({ email: sub, role: flags.role ?? 'editor', issuer });
-      return out({ ...made, url: inviteUrl(process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '', made.code) });
-    }
-    case 'space': {
-      const [sub, name] = args;
-      if (sub === 'list' || !sub) return out(w.listSpaces());
-      if (sub === 'members') {
-        const [, , account] = args;
-        if (account && flags.remove) return out(w.removeSpaceMember(name, account));
-        if (account) return out(w.setSpaceMember(name, account, { role: flags.role ?? null }));
-        return out(w.spaceMembers(name));
-      }
-      throw new WeaveError(`Unknown space subcommand '${sub}'. Try: create, list, update, members, delete, restore`);
-    }
-    case 'template': {
-      const [sub, ref] = args;
-      if (sub === 'list' || !sub) return out(w.listTemplates());
-      if (sub === 'use') {
-        if (!ref) throw new WeaveError('Usage: weave template use <space> --into <other.db> [--name <name>]', 'invalid');
-        if (!flags.into || flags.into === true) throw new WeaveError('template use needs --into <other.db>: the workspace file to build in', 'invalid');
-        const into = String(flags.into);
-        const target = into === dataPath ? w : new Weave({ path: into, actor: CLI_ACTOR, localKeyAccess: true });
-        try {
-          return out(w.useTemplate(ref, target, { name: flags.name == null || flags.name === true ? undefined : String(flags.name) }));
-        } finally { if (target !== w) target.store.close?.(); }
-      }
-      throw new WeaveError(`Unknown template subcommand '${sub}'. Try: list, use`);
-    }
-    case 'table':
-    case 'db': {
-      const [sub, space] = args;
-      if (sub === 'view') {
-        const patch = {};
-        for (const k of ['fields', 'show', 'hide']) if (flags[k] != null && flags[k] !== true) patch[k] = splitList(flags[k]);
-        if (flags.move != null) patch.move = { field: flags.move, ...(flags.before != null ? { before: flags.before } : { after: flags.after }) };
-        for (const k of ['filters', 'sort', 'widths']) if (flags[k] != null) patch[k] = parseJsonFlag(k);
-        if (flags.frozen != null) patch.frozen = Number(flags.frozen);
-        for (const k of ['density', 'layout', 'subtotals', 'groups', 'picture', 'search']) if (flags[k] != null) patch[k] = flags[k] === true ? '' : String(flags[k]);
-        if (flags.group != null) patch.group = String(flags.group).trim().startsWith('[') ? parseJsonFlag('group') : String(flags.group);
-        if (flags['completed-by'] != null) patch.completedBy = flags['completed-by'] === 'none' ? null : flags['completed-by'];
-        if (flags.collapsed != null) patch.collapsed = parseJsonFlag('collapsed');
-        if (flags.order != null) patch.order = splitList(flags.order);
-        if (flags['phone-row'] != null) patch.phoneRow = flags['phone-row'] === 'none' ? null : parseJsonFlag('phone-row');
-        Object.assign(patch, viewRowFlags(flags));
-        if (flags.name != null) patch.name = flags.name;
-        if (flags.from != null) patch.from = flags.from;
-        if (flags.position != null) patch.position = Number(flags.position);
-        if (flags.default) patch.default = true;
-        if (flags.delete) patch.delete = true;
-        return out(w.tableView(space, Object.keys(patch).length ? patch : null));
-      }
-      if (sub === 'list' || !sub) return out(w.listTables().map((d) => w.qualifiedName(d)));
-      throw new WeaveError(`Unknown table subcommand '${sub}'. Try: create, list, update, view, move, duplicate, delete, restore`);
-    }
     case 'field': {
       const [sub, db] = args;
       if (sub === 'list' || !sub) return out(w.getTable(db).fieldOrder.map((id) => w.getTable(db).fields[id]));
@@ -713,38 +473,6 @@ async function main() {
       }
       throw new WeaveError(`Unknown doc subcommand '${sub}'`);
     }
-    case 'vocabulary': {
-      const [section, ...query] = args;
-      try { return out(vocabularyView(section, query.join(' '))); }
-      catch (e) { throw new WeaveError(e.message, 'invalid'); }
-    }
-    case 'workspace': {
-      const [sub] = args;
-      if (sub === 'logo') {
-        if (flags.clear) { w.deleteWorkspaceLogo(); return out({ logo: false }); }
-        if (flags.out) {
-          const logo = w.getWorkspaceLogo();
-          if (!logo) throw new WeaveError('This workspace has no logo');
-          writeFileSync(flags.out, Buffer.from(logo.bytes));
-          return out({ ok: true, path: flags.out, mime: logo.mime });
-        }
-        if (!flags.path) throw new WeaveError('workspace logo needs --path, --out or --clear');
-        const bytes = readFileSync(flags.path).toString('base64');
-        return out(w.setWorkspaceLogo({ name: flags.path.split('/').pop(), mime: flags.mime ?? 'image/png', bytes }));
-      }
-      if (sub === 'set' || sub === 'update') return out(w.updateWorkspace(pickFlags(['name', 'description'])));
-      if (sub === 'require-auth') return out(w.setRequireAuth(flags.off ? false : true));
-      if (sub === 'link-preview') return out({ linkPreview: w.updateWorkspace({ linkPreview: !flags.off }).linkPreview });
-      if (sub === 'order' || sub === 'move') {
-        const hub = createWorkspaceHub(w);
-        try {
-          return out(sub === 'order' ? hub.list({ workspace: w }) : hub.move(args[1], Number(flags.position), { workspace: w }));
-        } finally { for (const [, on] of hub.entries()) on.store.close?.(); }
-      }
-      if (sub === 'leave') return out(leaveWorkspace(w, flags.account ?? CLI_ACTOR));
-      if (sub === 'get' || !sub) return out(w.getWorkspace());
-      throw new WeaveError(`Unknown workspace subcommand '${sub}'. Try: get, set, logo, require-auth, link-preview, order, move, leave`);
-    }
     case 'form': {
       const [sub, ref] = args;
       if (sub === 'list' || !sub) return out(listForms(w));
@@ -762,22 +490,6 @@ async function main() {
         return out(submitForm(w, ref, input, { actor: CLI_ACTOR, idempotencyKey: flags['idempotency-key'], server: { version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, workspace: w.state.meta.name } }));
       }
       throw new WeaveError(`Unknown form subcommand '${sub}'. Try: list, get, config, create, update, submit`);
-    }
-    case 'file': {
-      const [sub, ref, fileId] = args;
-      if (sub === 'attach') {
-        if (!flags.path) throw new WeaveError('file attach needs --path');
-        const e = resolveEntityRef(w, ref, flags.db);
-        const file = { name: flags.path.split('/').pop(), mime: flags.mime ?? 'application/octet-stream', bytes: readFileSync(flags.path).toString('base64') };
-        return out(flags.field ? w.attachToField(e.id, flags.field, file) : w.attachFile(e.id, file));
-      }
-      if (sub === 'read') {
-        const { meta, bytes } = w.readFile(ref);
-        if (flags.out) { writeFileSync(flags.out, Buffer.from(bytes)); return out({ ...meta, path: flags.out }); }
-        return process.stdout.write(Buffer.from(bytes));
-      }
-      if (sub === 'delete') return out(w.deleteFile(resolveEntityRef(w, ref, flags.db).id, fileId));
-      throw new WeaveError(`Unknown file subcommand '${sub}'. Try: attach, read, delete`);
     }
     default:
       console.error(`Unknown command '${command}'. Run: weave help`);

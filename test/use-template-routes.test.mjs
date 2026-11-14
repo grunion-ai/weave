@@ -118,7 +118,7 @@ test('weave_template_use over HTTP MCP reaches the hub', async () => {
     assert.deepEqual(listed.templates.map((s) => s.name), ['CRM']);
     const used = await rpc('weave_template_use', { space: 'CRM', workspace: 'acme', name: 'Sales' });
     assert.ok(!used.isError, used.content[0].text);
-    const body = JSON.parse(used.content[0].text);
+    const body = JSON.parse(unwrapData(used.content[0].text));
     assert.equal(body.url, `/w/acme/#/space/${acme.getSpace('Sales').id}`);
     const again = await rpc('weave_template_use', { space: 'CRM', workspace: 'acme', name: 'Sales' });
     assert.ok(again.isError);

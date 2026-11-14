@@ -127,10 +127,12 @@ workspaces, attachments and keystore stay in the `weave-data` volume at `/data`:
 docker run -d --name weave -p 127.0.0.1:4400:4400 -v weave-data:/data ghcr.io/grunion-ai/weave:latest
 ```
 
-Open http://127.0.0.1:4400 and press **⌘K** to search everything. A
-self-documenting **weave** docs workspace is provisioned alongside your data at
-`/w/weave/`: handbook, wiki, the public issue tracker and roadmap, and a
-Quality space mirroring the test suite.
+Open http://127.0.0.1:4400 and press **⌘K** to search everything. weave
+provisions a self-documenting **weave** docs workspace alongside your data at
+`/w/weave/`: the handbook, the wiki, the Showcase examples, and an Issue table
+that collects this instance's bug reports. weave's own issue tracker, roadmap
+and test suite mirror live in the weave docs workspace on weave cloud,
+https://weave.grunion.ai/w/weave, which every weave cloud account can read.
 
 If weave replaces a SaaS seat for you, star the repo so other teams can find it.
 
@@ -169,10 +171,10 @@ your account to your provider sign-in first: run `weave account link <account>`,
 which prints a one-time invite, and open that invite in a browser. Any role
 connects, and `tools/list` names only the tools that role may call.
 
-The server lists 17 tools by default: the 16 a workspace build uses,
-`weave_build` among them, and `weave_call`, which runs the other 48.
-`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 65. The 65 include
-the same undo the UI has, and `weave_vocabulary`, which returns the allowed
+The server lists 17 tools by default: the ones a workspace build uses,
+`weave_build` among them, and `weave_call`, which runs the other 49.
+`weave mcp --tools all` (or `WEAVE_MCP_TOOLS=all`) lists all 66, among them
+the same undo the UI has and `weave_vocabulary`, which returns the allowed
 values so an agent reads them instead of guessing. Full map:
 [Agents: MCP, REST, and CLI](#agents-mcp-rest-and-cli).
 
@@ -181,7 +183,7 @@ values so an agent reads them instead of guessing. Full map:
 | Documents on every record | Relation map | Search across workspaces |
 | --- | --- | --- |
 | <img src="docs/screenshots/document.png" alt="weave entity page: a markdown document rendered beside the entity's fields" width="290"> | <img src="docs/screenshots/map.png" alt="weave relation map of a Launch workspace: Milestone, Person and Task tables with their row counts, joined by relation lines with a cardinality label" width="290"> | <img src="docs/screenshots/search.png" alt="weave command-K search palette showing cross-workspace results with copyable permalinks" width="290"> |
-| Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. | The schema, drawn: each table with its row count, and relations labelled with cardinality. Automations appear on the same map. | ⌘K across every workspace, backed by SQLite FTS5, with copyable permalinks. |
+| Every entity carries markdown documents, addressable as `.md`, `.html`, and `.pdf` URLs. | The schema, drawn: each table with its row count, and relations labelled with cardinality. Automations appear on the same map. | ⌘K across every workspace, matching names, text, documents and comments, with copyable permalinks. |
 
 <img src="docs/screenshots/dock.png" alt="weave table with one row opened in the dock beside it, the breadcrumb on one line above the table toolbar" width="900">
 
@@ -230,15 +232,15 @@ more mature than weave. They differ mainly in what they optimize for:
 | Views | Every table view takes a layout: table, list or board. Board draws kanban columns or a picture gallery with small, medium or large covers and adds swimlanes from a second group level; drag a card to another column or lane to change its field, with Undo. Pick two to four cards to Compare them side by side, or drop a picture on a card to set its cover. The View pane beside the table holds filters, sort (three keys), group (five levels, with subtotals) and saved views, and `weave_query` can name a saved view. Entity pages dock beside the table or open full page, and the relation map draws the schema with its automations. Inline editing everywhere. |
 | Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams, raw HTML and math render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. Math is KaTeX only (`$…$` / `$$…$$`, vendored + offline); the other fence engines Vditor knows (graphviz, echarts, plantuml, mindmap, abc, flowchart) are deliberately not vendored, so those fences stay plain code blocks. |
 | Automations | Triggers (created / field changed / state changed) → set field, append doc, add comment, outgoing webhook. |
-| Search | Universal ⌘K across workspaces with copyable permalinks, backed by a SQLite FTS5 index. |
+| Search | Universal ⌘K across workspaces with copyable permalinks, matching names, text values, documents and comments. |
 | Storage | One workspace = one `.db` file (WAL, row-level writes, crash-safe). Legacy JSON workspaces migrate automatically; `exportJSON`/`importJSON` remain the human-readable interchange. CLI, server, and MCP can run concurrently. |
 | Forms | A form lets someone without write access add one row to one table, as themselves, from a page at `/f/<id>` that takes prefilled values from its URL. Build it in the form editor or with `weave form create`, `update` and `config`; submissions arrive through the page, `weave form submit` or `weave_form_submit` over MCP. Submitting needs an observer account unless the operator sets `WEAVE_ANONYMOUS_FORMS=1`. Prefill links (`/t/<table>/new?Field=value`) open a table's New row form with fields set. |
 | Sharing | A share link (a `wvs_` token) opens one row, table, space, saved view or the whole workspace at read, edit or manage access, public or for signed-in accounts only. Architects mint, renew and revoke links. Each lasts thirty days unless renewed, and none reaches the schema or anything outside its scope. |
-| Templates | Forty starter templates in twelve categories at setup, searchable by the tool they resemble ("asana", "jira"). **Use template** copies a template space, such as the CRM or Money space in the docs workspace, into your workspace. |
+| Templates | Forty-two starter templates in thirteen categories at setup, searchable by the tool they resemble ("asana", "jira"). **Use template** copies a template space, such as the CRM or Money space in the docs workspace, into your workspace. |
 | Phone | At 600 px and under, menus, pickers and the Group popover open as bottom sheets and touch targets are 44 px. Search and + float at the bottom, and the New row sheet stays open for the next row. Board columns snap at 85% of the screen width, and a 250 ms hold lifts a card. |
 | Distribution | Every release publishes `ghcr.io/grunion-ai/weave:<version>` and `:latest`, plus an Official MCP Registry entry, `io.github.grunion-ai/weave`, that runs the image over stdio. The repository is also a Claude Code plugin marketplace for weave cloud. |
 | History | Each row's Activity panel lists its events, field diffs and document revisions, with Restore. The audit log records the account behind each write; a signed-in caller cannot write under another name. `PATCH /api/entities/:id` with `If-Match` refuses a stale revision (412) and writes nothing; the grid sends it, so two people editing one cell in the browser cannot overwrite each other. |
-| Interfaces | Web UI (vanilla JS, no build step) · REST API · CLI (`bin/weave.js`) · MCP server: `weave mcp` over stdio, or HTTP with OAuth 2.1 sign-in on an instance with a provider configured. 65 tools, 17 listed by default; `tools/list` names only the tools the caller's role may call. |
+| Interfaces | Web UI (vanilla JS, no build step) · REST API · CLI (`bin/weave.js`) · MCP server: `weave mcp` over stdio, or HTTP with OAuth 2.1 sign-in on an instance with a provider configured. 66 tools, 17 listed by default; `tools/list` names only the tools the caller's role may call. |
 
 ## Agents: MCP, REST, and CLI
 
@@ -259,7 +261,7 @@ servers, so one config block works in each of them:
 }
 ```
 
-It exposes the whole platform as 65 tools. `tools/list` names the core build
+It exposes the whole platform as 66 tools. `tools/list` names the core build
 set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave_create_entity`,
 `weave_update_entity`, `weave_create_space`, `weave_create_table`,
 `weave_add_field`, `weave_update_field`, `weave_add_relation`,
@@ -270,7 +272,7 @@ set (`weave_ontology`, `weave_schema`, `weave_query`, `weave_get_entity`, `weave
 `weave_views`, `weave_automations`, `weave_activity` and the rest) in one line
 each; `weave_call {name: "help", args: {tool}}` returns a tool's full schema.
 Add `--tools all` to the `mcp` args, or set `WEAVE_MCP_TOOLS=all`, to list all
-65 directly. An agent designs a schema,
+66 directly. An agent designs a schema,
 fills it, and configures how it reads (icons, option colors, column widths and
 order, hidden columns, saved views) without a human opening the UI.
 
@@ -382,15 +384,15 @@ file you own. See [docs/PARITY.md](docs/PARITY.md) for the feature-by-feature
 matrix.
 
 **Can AI agents use it?**
-Yes, with the same reach as people. The MCP server exposes 65 tools: schema
+Yes, with the same reach as people. The MCP server exposes 66 tools: schema
 design, CRUD, documents, relations, workflow states, search, automations and
-CSV import and export. It lists 17 by default and runs the other 48 through
+CSV import and export. It lists 17 by default and runs the other 49 through
 `weave_call`. Agents build the schema as well as the rows.
 
 **Do I need Docker, Postgres, or npm install?**
 No, no, and no. One `git clone` and a Node runtime. Storage is Node's built-in
-`node:sqlite`; the only third-party code (mermaid, Tabler, Vditor, KaTeX and
-the DejaVu Sans font) is vendored and pinned in the repo.
+`node:sqlite`; the only third-party code is vendored and pinned in the repo,
+listed under [Third-party](#third-party-vendored-pinned).
 
 **Where does my data actually live?**
 In `<workspace>.db`, a plain SQLite file, plus a `files/` directory for
@@ -427,18 +429,27 @@ escape.
 npm test
 ```
 
-The test suite is mirrored as entities in the docs workspace (Quality space),
-and the roadmap and issue tracker live there too (`/w/weave/`), so weave tracks
-its own development. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR;
+The weave docs workspace on weave cloud mirrors the test suite as entities in
+its Quality space, beside the roadmap and issue tracker
+(https://weave.grunion.ai/w/weave).
+`node bin/weave.js quality sync --data <weave.db>` builds the same mirror in a
+local docs workspace. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR;
 README screenshots are regenerated with `node scripts/screenshots.mjs`.
 
 ## Third-party (vendored, pinned)
 
-- [mermaid](https://github.com/mermaid-js/mermaid) 11.4.1, MIT © Knut Sveidqvist & contributors
+<!-- third-party:start (generated from security/vendor.lock.json by scripts/agent-docs.mjs) -->
+- [mermaid](https://github.com/mermaid-js/mermaid) 11.17.2, MIT © Knut Sveidqvist & contributors
+- [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.17 (bundled inside mermaid), Apache-2.0 and MPL-2.0 © Cure53 and other contributors
+- [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads), MIT © B3log (full text in `public/vendor/vditor/LICENSE`)
+- [KaTeX](https://github.com/KaTeX/KaTeX) 0.18.11 (js + css + woff2 fonts + mhchem, inside Vditor), MIT © Khan Academy & contributors
+- [highlight.js](https://github.com/highlightjs/highlight.js) 11.7.0 (inside Vditor), BSD-3-Clause © Ivan Sagalaev & contributors
 - [@tabler/core](https://github.com/tabler/tabler) 1.4.0, MIT © Paweł Kuna & The Tabler Authors
-- [Vditor](https://github.com/Vanessa219/vditor) 3.11.3 (pruned: only the assets weave loads), MIT © Vanessa219
-- [KaTeX](https://github.com/KaTeX/KaTeX) 0.18.11 (js + css + woff2 fonts + mhchem), MIT © Khan Academy & contributors
-- [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback), Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `public/vendor/fonts/DejaVuSans-LICENSE.txt`)
+- [Lucide](https://github.com/lucide-icons/lucide) (no version recorded; icon shapes, with motion CSS from movingicons.dev under MIT), ISC © Lucide Contributors
+- [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback), Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `src/vendor/fonts/DejaVuSans-LICENSE.txt`)
+- [decklet](https://github.com/grunion-ai/decklet) 0.3.3+cf73916 (the slide engine, pinned by commit), MIT
+- [Lobe Icons](https://github.com/lobehub/lobe-icons) 1.95.1 (brand marks), MIT © LobeHub
+<!-- third-party:end -->
 
 ## Security
 

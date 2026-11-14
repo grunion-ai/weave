@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave, TYPE_MIGRATIONS } from '../src/engine.js';
 import { handleMcpMessage } from '../src/mcp.js';
+import { unwrapData } from './lib/fixtures.mjs';
 
 function ledger() {
   const w = new Weave();
@@ -98,6 +99,6 @@ test('weave_update_field converts over MCP', () => {
   const { w, rows } = ledger();
   const res = handleMcpMessage(w, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_update_field', arguments: { db: 'Transaction', field: 'Account', type: 'relation', config: { targetDb: 'Account' } } } });
   assert.ok(!res.result.isError, res.result.content[0].text);
-  assert.equal(JSON.parse(res.result.content[0].text).type, 'relation');
+  assert.equal(JSON.parse(unwrapData(res.result.content[0].text)).type, 'relation');
   assert.deepEqual(names(w, rows[2].id, 'Account'), ['Savings']);
 });

@@ -1,13 +1,4 @@
 {
-  "_": "Hit-area debt the phone touch gate holds out, one entry per held state in PROBES.touch. The key is '<surface> | <theme>'; offenders is the fingerprint list test/phone-touch-targets-browser.test.mjs measures, naming each control and the axis that misses and never its pixels, so a second offender on a held surface fails the gate and a held surface that comes clean fails it too, asking for the hold to be dropped. This file only shrinks. Issue #1450.",
-  "offenders": {
-    "menu | light": {
-      "issue": 1163,
-      "offenders": ["a.nav-space \"Lab\" misses the 44px minimum across"]
-    },
-    "menu | dark": {
-      "issue": 1163,
-      "offenders": ["a.nav-space \"Lab\" misses the 44px minimum across"]
-    }
-  }
+  "_": "Hit-area debt the phone touch gate holds out, one entry per held state in PROBES.touch. The key is '<surface> | <theme>', and '<surface> | <theme> | <platform>' where the hold in test/lib/states.mjs names a platform, so a hold that holds on macOS alone records its offenders there and the Linux runner reads none (Issue #1542); offenders is the fingerprint list test/phone-touch-targets-browser.test.mjs measures, naming each control and the axis that misses and never its pixels, so a second offender on a held surface fails the gate and a held surface that comes clean fails it too, asking for the hold to be dropped. This file only shrinks. Issue #1450.",
+  "offenders": {}
 }

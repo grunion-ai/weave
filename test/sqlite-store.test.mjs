@@ -141,20 +141,15 @@ test('guards: foreign sqlite refused, garbage refused, non-workspace json still 
   assert.ok(!existsSync(join(dir, 'package.db')), 'must not create a db beside non-workspace json');
 });
 
-test('FTS5 index exists and tracks entity lifecycle', () => {
+test('search tracks entity lifecycle across a reopen', () => {
   const dir = tmp();
   const dbPath = join(dir, 'fts.db');
   const w = seed(new Weave({ path: dbPath }));
-  const hits = () => {
-    const db = new DatabaseSync(dbPath, { readOnly: true });
-    const rows = db.prepare("SELECT id FROM entities_fts WHERE entities_fts MATCH 'searchable'").all();
-    db.close();
-    return rows.map((r) => r.id);
-  };
+  const hits = () => new Weave({ path: dbPath }).search('searchable').map((h) => h.id);
   const e = w.findEntity('Task', '#1');
   assert.deepEqual(hits(), [e.id]);
   w.deleteEntity(e.id);
-  assert.deepEqual(hits(), [], 'deleted entity still in FTS index');
+  assert.deepEqual(hits(), [], 'a deleted entity leaves search');
 });
 
 test('failed create rolls back cleanly: no orphan row persisted', () => {
@@ -292,10 +287,9 @@ function importInto(snapshot, name) {
   return { elapsed, path };
 }
 
-test('Issue #1094: an imported workspace keeps every row, its values and its FTS entry', () => {
+test('Issue #1094: an imported workspace keeps every row, its values and its search hit', () => {
   const rows = 500;
   const snapshot = generated(rows);
-  const live = Object.values(snapshot.entities).filter((e) => !e.deletedAt).length;
   const { path } = importInto(snapshot, 'faithful.db');
   const reopened = new Weave({ path });
   const table = reopened.getTable('Bulk/Row');
@@ -303,14 +297,8 @@ test('Issue #1094: an imported workspace keeps every row, its values and its FTS
   const one = reopened.findEntity(table.id, '#300');
   assert.equal(reopened.entityName(one), 'Row 299');
   assert.equal(reopened.getEntity(one.id).values[reopened.findField(table, 'Amount').id], 299);
+  assert.deepEqual(reopened.search('Row 299').map((h) => h.id), [one.id], 'the imported row is findable by search');
   reopened.store.close?.();
-
-  const db = new DatabaseSync(path, { readOnly: true });
-  const hits = db.prepare('SELECT id FROM entities_fts WHERE entities_fts MATCH ?').all('"Row 299"');
-  const indexed = db.prepare('SELECT count(*) AS n FROM entities_fts').get().n;
-  db.close();
-  assert.deepEqual(hits.map((h) => h.id), [one.id], 'the imported row is findable in the FTS index');
-  assert.equal(indexed, live, 'the FTS index holds one entry per live entity');
 });
 
 const IMPORT_SCALE_SAMPLES = 3;

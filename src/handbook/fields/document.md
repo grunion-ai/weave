@@ -6,6 +6,10 @@ The first one is a **role**, not a name. Rename it to `Notes` and it is still th
 
 ## Config
 
+**Display inline** (`displayInline` set to `true`) renders the content directly in the record body without its field heading or collapse control. Editors open **Field options** beneath the content to reach settings, source and file controls. The field keeps its identity, permissions and place in the schema. Move it using the existing body order to put it above Fields or elsewhere; enabling inline display does not change its position. Turn it off to restore the standard display.
+
+HTML keeps its sandbox and expands to fit its content. Empty inline documents have no reader-facing section. The setting is available in the field editor and through the same config in MCP, REST and CLI.
+
 `kind` — `markdown` (the unmarked default), `html`, or `code`.
 
 ```bash
@@ -30,6 +34,8 @@ Every document is addressable as MD, HTML, MMD and PDF at `/e/<id>/doc/<Field>.<
 
 A write over HTTP carries its text under `doc` or `markdown`: `PUT /api/entities/<id>/doc` replaces, `POST` appends, and `field` in the body picks a named document. A body with neither key is a 400. Clearing stays explicit, `{"doc": ""}` over HTTP and `weave doc set --content ''` from the CLI, so leaving the text out is a mistake rather than a blank document.
 
+A replace can carry `base`, the SHA-256 of the text it started from. If the document has changed since, the answer is a 412 that writes nothing and carries the current text and base. Through MCP, a replace with `weave_set_doc`, or a document value in `weave_update_entity`, lands only on the text that agent last read with `weave_get_doc` or `weave_get_entity`, or on an empty document, and a refusal names the current base. The server forgets those reads when it restarts, so read again before writing. An append needs no base.
+
 ## History
 
 Every document keeps its own revisions. A revision is one editing session: writes by the same actor to the same field within ten minutes fold into one, so a pause is not a snapshot and a keystroke log never builds up. Identical text records nothing. Two hundred revisions are kept per document, oldest trimmed; the trash keeps them, a purge drops them with the record.
@@ -53,3 +59,5 @@ Headings that fold, tables, task lists, code blocks that detect their own langua
 ## Gotchas
 
 The editor renders as you type — there is no edit mode and no save button. A document written by an automation lands the same way a person's typing does.
+
+When a save is refused, or the tab closes before a long document gets out, the typing is written to this browser and offered back the next time you open the record: **Restore draft** puts it in the editor and saves it, **Discard draft** throws it away. The draft sits in that browser alone, so another device sees only what the server took.

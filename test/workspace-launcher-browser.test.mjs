@@ -44,8 +44,7 @@ if (s) {
   const payload = fullPayload(ids);
   const recents = fullRecents(ids);
   const engines = [['chromium 390x844', browser, { viewport: { width: 390, height: 844 } }]];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push(['webkit iPhone 15', webkit, IPHONE]);
+  engines.push(['webkit iPhone 15', await engineOf('webkit'), IPHONE]);
 
   const open = async (b, profile, { theme = 'light', load = payload, seen = recents, real = false } = {}) => {
     const page = await b.newPage(profile);

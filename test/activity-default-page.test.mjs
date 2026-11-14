@@ -77,7 +77,7 @@ test('weave activity prints one page by default, --limit -1 prints the whole log
     assert.equal(page.items.length, ACTIVITY_PAGE, 'one page');
     assert.equal(cli('activity', '--limit', '-1').items.length, page.total, '--limit -1 prints the whole log');
     const help = execFileSync('node', [BIN, 'help'], { encoding: 'utf8' });
-    const line = help.split('\n').findIndex((l) => /^\s+activity \[<id>\]/.test(l));
+    const line = help.split('\n').findIndex((l) => /^\s+activity <id>/.test(l));
     assert.ok(line >= 0, 'help lists activity');
     assert.match(help.split('\n').slice(line, line + 2).join('\n'), /500[\s\S]*-1/, 'help names the default page and -1');
   } finally { rmSync(dir, { recursive: true, force: true }); }

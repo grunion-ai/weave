@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
-import { streak, verdict, SUSTAINED } from '../scripts/ci-trend.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -82,7 +81,7 @@ test('the full suite runs on main pushes only and always validates shards', asyn
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(workflow, /node scripts\/ci-test.mjs aggregate ci-results/);
   assert.match(workflow, /max-parallel: 10/);
-  assert.match(workflow, /node scripts\/ci\/install-browsers\.mjs chromium webkit/);
+  assert.match(workflow, /image: \$\{\{ matrix\.lane == 'browser' && 'mcr\.microsoft\.com\/playwright:v[\d.]+-noble@sha256:[0-9a-f]{64}' \|\| '' \}\}\n/);
 });
 
 const RESULT = (id, lane, durations) => ({
@@ -171,23 +170,20 @@ test('every job that rebuilds the manifest reads the same durations (Issue #966)
   for (const [name, job] of Object.entries(jobs)) {
     assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, `the ${name} job weighs by the run's own durations`);
     assert.match(job, /node scripts\/ci-test\.mjs (plan|run|aggregate)/, `the ${name} job rebuilds the manifest`);
-    if (name !== 'plan') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, `the ${name} job takes the plan job's copy, and plans by byte size if it is not there`);
+    if (name === 'test') assert.match(job, /uses: actions\/download-artifact@[0-9a-f]{40}\n        with:\n          pattern: plan-history\n          path: ci-history\n/, 'the test job takes the plan job\'s copy, and a pattern that matches no artifact leaves it planning by byte size');
+    if (name === 'gate') assert.match(job, /gh run download "\$GITHUB_RUN_ID" [^\n]*-n plan-history -D ci-history \|\| echo /, 'the gate job takes the plan job\'s copy, and plans by byte size if it is not there');
   }
   assert.doesNotMatch(jobs.gate, /pattern: plan-\*|pattern: '?\*/, 'the shard results and the durations land in separate directories');
   assert.match(jobs.gate, /pattern: ci-\*\n          path: ci-results\n/,
     'the durations artifact is named plan-history so the ci-* pattern never mixes a past run\'s shard results into this run\'s evidence');
 });
 
-test('only the browser lanes of the full suite download browser engines (Issue #967)', () => {
+test('only the browser lanes of the full suite start from the browser image (Issue #967)', () => {
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
-  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/,
-    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open');
-  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/ms-playwright\n/,
-    'the engine cache is restored for the lanes that use it');
-  assert.match(workflow, /- if: matrix.lane == 'browser'\n        uses: actions\/cache@[0-9a-f]{40}[^\n]*\n        with:\n          path: ~\/\.cache\/weave-apt\n/,
-    'the apt package cache is restored for the lanes that use it (Issue #1438)');
-  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 4,
-    'the lane condition guards the image version, the two caches and the install, and nothing else');
+  assert.match(workflow, /\n    container:\n      image: \$\{\{ matrix\.lane == 'browser' && '[^']+' \|\| '' \}\}\n/,
+    'the two unit shards of run 39439094335 spent 46 and 37 seconds downloading engines they never open; an empty image runs a unit shard on the bare runner');
+  assert.equal([...workflow.matchAll(/matrix\.lane == 'browser'/g)].length, 1,
+    'the lane condition picks the container, and nothing else');
 });
 
 const STATIC_PLAYWRIGHT = /^\s*import\s(?:[^;]*?from\s*)?['"]playwright['"]/m;
@@ -317,10 +313,12 @@ test('the reached tier drops a token the whole lane names and stops at its file 
 test('the PR plan shards the reached browser suites beside the named ones', () => {
   const unit = Array.from({ length: 30 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
   const browser = [...Object.keys(sheetSources), ...SMOKE];
-  const shards = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  const shards = prPlan({ unit, browser }, ['public/chip-core.js'], sheetRead, () => 1, sheetDiff);
   const picked = shards.filter((s) => s.lane === 'browser').flatMap((s) => s.files);
   assert.ok(picked.includes('test/phone-picker-sheet-browser.test.mjs'));
   assert.equal(picked.length, SMOKE.length + 2);
+  const monolith = prPlan({ unit, browser }, ['public/app.js'], sheetRead, () => 1, sheetDiff);
+  assert.equal(monolith.filter((s) => s.lane === 'browser').flatMap((s) => s.files).length, browser.length, 'a public/app.js diff plans the full browser lane (Feature #368)');
 });
 
 test('the sheet grabber tokens reach the phone sheet suites of this repository, which file names cannot', async () => {
@@ -346,8 +344,8 @@ test('the PR plan runs every unit file and the touched browser tests through the
   assert.deepEqual(small.filter(s => s.lane === 'unit').flatMap(s => s.files).sort(), unit);
   assert.deepEqual(small.filter(s => s.lane === 'browser').map(s => s.id), ['browser-1']);
   assert.deepEqual(small.filter(s => s.lane === 'browser').flatMap(s => s.files).sort(), [...SMOKE].sort());
-  const wide = prPlan({ unit, browser }, ['test/lib/browser.mjs'], () => "from './lib/browser.mjs'", () => 1);
-  assert.equal(wide.filter(s => s.lane === 'browser').length, 4);
+  const wide = prPlan({ unit, browser }, ['test/lib/browser.mjs'], file => (file.startsWith('test/lib/') ? '' : "from './lib/browser.mjs'"), () => 1);
+  assert.equal(wide.filter(s => s.lane === 'browser').length, 8);
   assert.equal(wide.filter(s => s.lane === 'browser').flatMap(s => s.files).length, browser.length);
   const mid = prPlan({ unit, browser }, many.slice(0, 30), read, () => 1);
   assert.equal(mid.filter(s => s.lane === 'browser').length, 3);
@@ -365,12 +363,11 @@ test('pr.yml runs the fast tier on ready pull requests and one PR gate requires 
   assert.match(workflow, /name: PR gate\n    if: \$\{\{ always\(\) && !github.event.pull_request.draft \}\}\n    needs: \[plan, test\]/);
   assert.match(workflow, /node scripts\/ci-test.mjs pr-aggregate ci-results/);
   assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
-  assert.match(workflow, /node scripts\/ci\/install-browsers\.mjs chromium webkit/);
-  assert.match(workflow, /name: Install browsers and system dependencies\n        if: matrix.lane == 'browser'\n/);
+  assert.match(workflow, /image: \$\{\{ matrix\.lane == 'browser' && 'mcr\.microsoft\.com\/playwright:v[\d.]+-noble@sha256:[0-9a-f]{64}' \|\| '' \}\}\n/);
 });
 
-test('every gating workflow bounds the browser install inside the job budget', () => {
-  for (const [file, from, to, jobBudget] of [['pr.yml', '  test:', '  gate:', 20], ['test.yml', '  test:', '  gate:', 30], ['dev-soak.yml', '  soak:', null, 30], ['budgets.yml', '  trend:', null, 30]]) {
+test('every workflow that installs browsers on the runner bounds the install inside the job budget', () => {
+  for (const [file, from, to, jobBudget] of [['dev-soak.yml', '  soak:', null, 30], ['budgets.yml', '  trend:', null, 30]]) {
     const workflow = readFileSync(`.github/workflows/${file}`, 'utf8');
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
@@ -423,29 +420,19 @@ test('onboarding journeys are mandatory even for unrelated changes and cannot si
   assert.equal(ONBOARDING.length, 4);
 });
 
-test('the wall-clock budget suites leave every gating plan for the trend lane, and nothing else does', async () => {
-  const { testFiles, lanes } = await import('../scripts/test.mjs');
+test('render, vitals, feedback and query-volume budgets leave every gating plan for the trend lane, and nothing else does (Issue #1709)', () => {
   const all = lanes(testFiles());
-  assert.deepEqual(TREND.filter((f) => !all.browser.includes(f)), [], 'every trend suite is a browser test of this repository');
-  for (const f of ['test/click-budget-browser.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget.test.mjs', 'test/feedback-budget.test.mjs']) assert.ok(!TREND.includes(f), `${f} counts or checks reasons, never milliseconds, and stays on the gate`);
+  assert.deepEqual([...TREND].sort(), ['test/feedback-budget-browser.test.mjs', 'test/query-volume.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs']);
+  assert.deepEqual(TREND.filter((f) => ![...all.unit, ...all.browser].includes(f)), [], 'every trend suite is a test of this repository');
+  for (const f of ['test/click-budget-browser.test.mjs', 'test/render-budget.test.mjs', 'test/vitals-budget.test.mjs', 'test/feedback-budget.test.mjs']) assert.ok(!TREND.includes(f), `${f} counts clicks or checks raise reasons, never a reading of the runner, and stays on the gate`);
   const kept = gating(all);
-  assert.equal(kept.browser.length + TREND.length, all.browser.length);
-  assert.deepEqual(kept.unit, all.unit);
-  assert.ok(currentPlan().every((s) => s.files.every((f) => !TREND.includes(f))));
-  const pr = prPlan(kept, ['test/vitals-budget-browser.test.mjs', 'public/app.js'], () => '', () => 1);
-  assert.ok(pr.every((s) => s.files.every((f) => !TREND.includes(f))), 'a PR touching a trend suite does not pull it back onto the gate');
-});
-
-test('a budget red alerts only once it repeats on consecutive main pushes; cancelled runs neither count nor break the streak', () => {
-  const run = (id, conclusion, minute) => ({ id, conclusion, created_at: `2026-11-01T10:${String(minute).padStart(2, '0')}:00Z` });
-  assert.equal(streak([run(5, 'failure', 50), run(4, 'failure', 40), run(3, 'cancelled', 30), run(2, 'failure', 20), run(1, 'success', 10)], 5), 2);
-  assert.equal(streak([run(4, 'success', 40), run(3, 'failure', 30)], 9), 0);
-  assert.equal(streak([], 1), 0);
-  assert.equal(verdict(0, 7).level, 'held');
-  assert.equal(verdict(1, 0).level, 'warn');
-  assert.equal(verdict(1, SUSTAINED - 2).level, 'warn');
-  assert.equal(verdict(1, SUSTAINED - 1).level, 'alert');
-  assert.ok(SUSTAINED >= 2);
+  assert.equal(kept.unit.length + kept.browser.length + TREND.length, all.unit.length + all.browser.length);
+  assert.ok(!kept.unit.includes('test/query-volume.test.mjs'), 'the unit lane drops the query-volume ratio as well');
+  assert.ok(currentPlan().every((s) => s.files.every((f) => !TREND.includes(f))), 'the main CI gate plans no trend suite');
+  for (const changed of [[...TREND], [...TREND, 'public/app.js'], ['test/lib/journeys.mjs']]) {
+    const pr = prPlan(kept, changed, (file) => (file.includes('/lib/') ? '' : "from './lib/journeys.mjs'"), () => 1);
+    assert.ok(pr.every((s) => s.files.every((f) => !TREND.includes(f))), `a PR changing ${changed.join(', ')} asserts no millisecond on a shared runner`);
+  }
 });
 
 test('budgets.yml runs the trend lane on main pushes only, outside the tests workflow the sheriff, release and promotion read', async () => {
@@ -458,6 +445,26 @@ test('budgets.yml runs the trend lane on main pushes only, outside the tests wor
   assert.match(yml, /permissions:\n      contents: read\n      actions: read\n/);
   const sheriff = readFileSync('.github/workflows/sheriff.yml', 'utf8');
   assert.match(sheriff, /workflows: \[tests\]/, 'the sheriff judges the tests workflow alone, so a budget red never reaches it');
+});
+
+test('budgets.yml records each run as one point of the series and judges it against the points before it (Issue #1709)', () => {
+  const yml = readFileSync('.github/workflows/budgets.yml', 'utf8');
+  const step = (name) => yml.slice(yml.indexOf(`- name: ${name}`)).split(/\n(?=      - )/)[0];
+  const history = step('Series from the earlier budget runs');
+  assert.match(history, /gh run list -R "\$GITHUB_REPOSITORY" --workflow budgets\.yml --branch main --event push --status completed --limit \d+ --json databaseId -q '\.\[\]\.databaseId' \|\| true\)\n/, 'the earlier main pushes, and none at all on a first run');
+  assert.match(history, /gh run download "\$run" -R "\$GITHUB_REPOSITORY" -n trend-series -D "trend-history\/\$run" \|\| echo /, 'a run that kept no series is skipped in the shell');
+  assert.match(history, /GH_TOKEN: \$\{\{ github\.token \}\}\n/);
+  const judge = step('Run the timing budgets and judge the trend');
+  assert.match(judge, /WEAVE_TREND_HISTORY: trend-history\n/);
+  assert.match(judge, /WEAVE_TREND_SERIES: trend-series\n/);
+  assert.match(judge, /WEAVE_TRACKER_TOKEN: \$\{\{ secrets\.WEAVE_TRACKER_TOKEN \}\}\n/, 'a miss files its trend note on the tracker');
+  assert.ok(yml.indexOf('- name: Series from the earlier budget runs') < yml.indexOf('- name: Run the timing budgets and judge the trend'));
+  const keep = step('Keep this run\'s readings for the next runs');
+  assert.match(keep, /if: always\(\)\n/, 'a faulted run keeps the readings it took');
+  assert.match(keep, /uses: actions\/upload-artifact@[0-9a-f]{40}\n/);
+  assert.match(keep, /name: trend-series\n          path: trend-series\/\n/);
+  assert.match(keep, /overwrite: true\n/, 'a re-run replaces its own point rather than failing on the name');
+  assert.doesNotMatch(yml, /continue-on-error/);
 });
 
 test('the main plan spreads the browser lane over eight shards and runs every shard at once, so none meets the 20-minute job timeout (Issue #1351)', () => {

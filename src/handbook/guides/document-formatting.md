@@ -109,7 +109,7 @@ Any document opens full screen from its frame, and markdown editing works there 
 
 ## Kinds
 
-A document field carries a `kind`: `markdown` (the default), `html`, or `code`. The declared kind rules how the entity page renders the document — an `html` field runs in its frame with the `</>` source toggle, a `code` field edits directly in the monospace code box — and a field that declares nothing falls back to sniffing its content: a complete HTML file runs as an app, a mermaid source draws as a diagram with the same `</>` source toggle, a JSON model edits in the code box, and anything else is markdown. A `code` document is what the `Workflows` registry's `Script` column uses — a document that is a program rather than prose.
+A document field carries a `kind`: `markdown` (the default), `html`, or `code`. The declared kind rules how the entity page renders the document — an `html` field runs in its frame with the `</>` source toggle, a `code` field edits directly in the monospace code box — and a field that declares nothing falls back to sniffing its content: a complete HTML file runs as an app, a mermaid source draws as a diagram with the same `</>` source toggle, a JSON model edits in the code box, and anything else is markdown. The source toggle is a button: Tab reaches it, Enter and Space work it, it reports whether the source is showing, and it reads "Hide source" while the source is up. Pressing it puts the caret straight in the source box, and pressing it again returns the drawing and the focus to the button. A `code` document is what the `Workflows` registry's `Script` column uses — a document that is a program rather than prose.
 
 ## Getting it back out
 

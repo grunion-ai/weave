@@ -29,7 +29,10 @@ test('addField refuses a formula that closes a cycle a dropped field left open',
   const { w, t } = seeded();
   w.addField(t.id, { name: 'Total', type: 'text' });
   w.addField(t.id, { name: 'Bonus', type: 'formula', config: { expression: 'Total + 1' } });
+  w.deleteField(t.id, 'Bonus');
   w.deleteField(t.id, 'Total');
+  w.restoreField(t.id, 'Bonus');
+  assert.equal(w.getField(t.id, 'Bonus').config.expression, 'Total + 1', 'the restored formula still names the dropped field');
   assert.throws(
     () => w.addField(t.id, { name: 'Total', type: 'formula', config: { expression: 'Bonus + 1' } }),
     /cycle: Total → Bonus → Total/,

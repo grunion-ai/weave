@@ -22,7 +22,8 @@ const BIN = join(ROOT, 'bin', 'weave.js');
 const IMAGE_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 const NEXT = '9.9.9';
 const SHA = 'a'.repeat(40);
-const ENV = { ...process.env, WEAVE_UPDATE_CHECK: 'off' };
+const DEPLOY_TOKEN = 'k'.repeat(32);
+const ENV = { ...process.env, WEAVE_UPDATE_CHECK: 'off', WEAVE_DEPLOY_TOKEN: DEPLOY_TOKEN };
 delete ENV.WEAVE_AUTO_UPDATE;
 delete ENV.WEAVE_DEFER_MIGRATIONS;
 const scratch = tempDir('weave-supervise-');
@@ -104,7 +105,7 @@ async function supervise(dataPath, gh, extra = {}) {
   return { sup, events, base: `http://127.0.0.1:${sup.port}` };
 }
 
-const health = async (base) => (await fetch(`${base}/api/health`)).json();
+const health = async (base) => (await fetch(`${base}/api/health`, { headers: { 'x-weave-deploy-token': DEPLOY_TOKEN } })).json();
 const releasesOf = (dataPath) => readdirSync(join(dataPath, '..', 'releases')).sort();
 
 function plantRelease(releasesDir, name, { version = name.slice(1), served = null } = {}) {
@@ -641,7 +642,7 @@ test('a deploy hook with the right token checks main at once; any other caller i
 test('without a deploy token the hook path is not special', async () => {
   const dataPath = dataDir('track-nohook');
   const gh = fakeMain({ heads: { main: MAIN_A } });
-  const { sup, base } = await supervise(dataPath, gh, { env: TRACK });
+  const { sup, base } = await supervise(dataPath, gh, { env: { ...TRACK, WEAVE_DEPLOY_TOKEN: '' } });
   try {
     const r = await fetch(`${base}/_supervisor/check`, { method: 'POST', headers: { authorization: 'Bearer ' } });
     assert.notEqual(r.status, 200);

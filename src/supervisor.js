@@ -25,6 +25,7 @@ const GITHUB = { accept: 'application/vnd.github+json', 'user-agent': 'weave' };
 const GIT = { accept: 'application/x-git-upload-pack-advertisement', 'user-agent': 'weave' };
 const UA = { 'user-agent': 'weave' };
 const REF_LINE = /([0-9a-f]{40}) ([^\0\n]+)/;
+const TOKEN_HEADER = 'x-weave-deploy-token';
 
 export function shaFromRefs(advertisement, ref) {
   for (const line of String(advertisement).split('\n')) {
@@ -56,6 +57,11 @@ class Refusal extends Error {}
 
 const versionOf = (dir) => { try { return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version; } catch { return null; } };
 const forwardable = (headers, drop = []) => Object.fromEntries(Object.entries(headers).filter(([k]) => !HOP.has(k) && !drop.includes(k)));
+const sameSecret = (given, want) => {
+  const a = Buffer.from(String(given ?? ''));
+  const b = Buffer.from(want);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function unpackRelease(tgz, dir) {
@@ -220,8 +226,8 @@ export async function startSupervisor({
       if (!done) { done = true; if (--w.inflight === 0) w.idle?.(); }
       if (!res.writableFinished) up.destroy();
     });
-    const health = req.method === 'GET' && /^\/api\/health(\?|$)/.test(req.url);
-    const up = request({ host: target, port: w.port, method: req.method, path: req.url, headers: forwardable(req.headers, health ? ['accept-encoding'] : []), agent: false }, (ur) => {
+    const health = !!deployToken && req.method === 'GET' && /^\/api\/health(\?|$)/.test(req.url) && sameSecret(req.headers[TOKEN_HEADER], deployToken);
+    const up = request({ host: target, port: w.port, method: req.method, path: req.url, headers: forwardable(req.headers, health ? [TOKEN_HEADER, 'accept-encoding'] : [TOKEN_HEADER]), agent: false }, (ur) => {
       tally(w, ur.statusCode);
       if (!health || ur.statusCode !== 200) {
         res.writeHead(ur.statusCode, forwardable(ur.headers));
@@ -249,9 +255,7 @@ export async function startSupervisor({
   function deployHook(req, res) {
     const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
     if (req.method !== 'POST') return send(405, { error: 'POST only' });
-    const given = Buffer.from(String(req.headers.authorization ?? ''));
-    const want = Buffer.from(`Bearer ${deployToken}`);
-    if (given.length !== want.length || !timingSafeEqual(given, want)) return send(401, { error: 'unauthorized' });
+    if (!sameSecret(req.headers.authorization, `Bearer ${deployToken}`)) return send(401, { error: 'unauthorized' });
     check().then((r) => send(200, { ...r, commit: current.commit ?? null }), (err) => send(502, { error: err.message }));
   }
 

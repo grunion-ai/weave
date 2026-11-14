@@ -1,3 +1,4 @@
+import { TRIAL_DAYS } from './billing.js';
 export const PRIVACY = `# Privacy policy
 
 *Effective date: 2026-10-16*
@@ -29,6 +30,10 @@ We store on our servers the content that you upload or receive or maintain in yo
 ### Sign-in data
 
 We record the browser description (user agent) and the times of each signed-in session for security and fraud prevention purposes, and we keep this login data for as long as your account is active. We use the IP address of a sign-in request to limit repeated sign-in attempts.
+
+### Display performance
+
+When a weave page jumps or stalls while it draws, your browser sends our server a short report: how far the page moved or how long it stalled, the tag and style class names of the element that moved, the page address with workspace names and record ids removed, the window size, the browser engine and the weave version. The report sets no cookie and carries no account, name, email address or workspace content, and we do not keep the IP address it came from. We write it to the server log so we can find and fix the jump. A self-hosted weave instance writes these reports only to its own server log, and a local install sends none.
 
 ### Cookies
 
@@ -128,7 +133,7 @@ Adapted from the Basecamp open-source policies ([github.com/basecamp/policies](h
 
 export const TERMS = `# Terms of Service
 
-*Effective date: 2026-10-02*
+*Effective date: 2026-11-10*
 
 From everyone at [Entity name], thank you for using weave! We build it to help you do your best work. Because we don't know every one of our customers personally, we have put in place some Terms of Service.
 
@@ -150,6 +155,18 @@ If you violate any of the Terms, we may terminate your account. That's a broad s
 2. You may not use the Services for any purpose outlined in the Use Restrictions section below, and you may not permit any of your users to do so, either.
 3. You are responsible for all content posted to and activity that occurs under your account, including content posted by and activity of any users in your account.
 4. You must be a human. Accounts registered by "bots" or other automated methods are not permitted. An account holder may issue access tokens to agents and scripts; activity through those tokens is activity under that account.
+
+## Billing and Seats
+
+1. Each workspace pays for weave by the seat. Each Editor and each Architect takes a paid seat. Observers read and comment for free and take no seat.
+2. A new workspace starts with a free trial of ${TRIAL_DAYS} days. The trial needs no payment card. During the trial, every Editor and Architect can create and edit.
+3. At the end of the trial, weave charges you nothing. Your records stay in the workspace, and everyone can still read and comment. Creating and editing then need a paid seat.
+4. An Architect subscribes on the workspace's Billing page. The price of a seat is the price shown on the Billing page and at checkout, before you pay. Clerk Billing runs the checkout and Stripe processes the payment. The subscription renews each month and charges the card on file for every paid seat.
+5. Add a seat during a month and you pay only for the part of the month that remains. Removing an Editor or Architect, or making them an Observer, frees their seat, which stays on the subscription until it renews. At renewal, the seat count matches the paid people in the workspace.
+6. To cancel, an Architect cancels the subscription on the workspace's Billing page. You can also write to [weave@grunion.ai](mailto:weave@grunion.ai) and we will cancel it for you. Your paid seats keep working until the end of the month you paid for. After that, weave makes no further charge, and Editors and Architects keep reading and commenting until you subscribe again.
+7. Clerk Billing does not issue refunds. You get no refund when you cancel, remove a seat or stop using weave partway through a month. Any refund is one we issue by hand through Stripe. To ask about a charge, write to [weave@grunion.ai](mailto:weave@grunion.ai).
+8. A workspace made before weave began billing is never charged.
+9. Our mailing address for billing questions is 4845 Pearl East Cir STE 118 PMB 720820, Boulder, CO 80301.
 
 ## Cancellation and Termination
 

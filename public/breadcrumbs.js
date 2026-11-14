@@ -47,12 +47,15 @@
     }
     const last = widths.length - 2;
     if (!mins || last < Math.max(1, from)) return out;
-    const floor = widths.reduce((sum, width, i) => (out.includes(i) ? sum : sum + Math.min(width, mins[i] ?? width)), out.length ? more : 0);
-    if (floor > box) out.push(last);
+    if (foldFloor(widths, out, { more, mins }) > box) out.push(last);
     return out;
   }
 
   const navCurrent = (nav) => nav?.stack?.[nav.idx] ?? null;
+  function foldFloor(widths, fold, { more = 0, mins = null } = {}) {
+    return widths.reduce((sum, width, i) => (fold.includes(i) ? sum : sum + Math.min(width, mins?.[i] ?? width)), fold.length ? more : 0);
+  }
+
   function navOpen(nav, hop) {
     if (navCurrent(nav)?.id === hop.id) return nav;
     return { stack: [hop], idx: 0 };
@@ -95,7 +98,7 @@
   }
 
   root.weaveBreadcrumbs = {
-    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, docTitle, rowTitle, ROW_MARK,
+    pushTrail, rowCrumb, entityCrumbs, dockCrumbs, foldPlan, foldFloor, docTitle, rowTitle, ROW_MARK,
     navOpen, navHop, navBack, navForward, navCanBack, navCanForward, navCurrent, navPath, navUpdate,
   };
 })(globalThis);

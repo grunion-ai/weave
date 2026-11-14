@@ -98,6 +98,7 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
       if (xhr.status >= 200 && xhr.status < 300) {
         noteRevisions('POST', path, data);
         noteUsage('POST', path, raw ? {} : body, data);
+        if (!raw) noteWrite(null, 'POST', path, data, { took: 0, date: Date.parse(xhr.getResponseHeader('Date')) });
         return end(resolve, data);
       }
       if (data.code === 'seat-required') seatToast(data);
@@ -292,9 +293,10 @@ function noteRevisions(method, path, data) {
   for (const id of Array.isArray(data?.affected) ? data.affected : []) if (id !== data.id) rowRevisions.delete(id);
   for (const row of [data, data?.entity, ...(Array.isArray(data?.items) ? data.items : [])]) {
     if (row?.id && typeof row.revision === 'string') rowRevisions.set(row.id, row.revision);
+    if (row?.id && (method === 'GET' || path.endsWith('/query'))) pinClaims(row);
   }
 }
-async function api(method, path, body, { signal, quiet = false } = {}) {
+async function api(method, path, body, { signal, quiet = false, gesture = null } = {}) {
   if (method === 'GET' && warmGets.has(path)) {
     const hit = warmGets.get(path);
     warmGets.delete(path);
@@ -303,6 +305,7 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
   if (method !== 'GET') warmGets.clear();
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
+  const sent = performance.now();
   let res;
   try {
     res = await fetch(WS_PREFIX + '/api' + path, {
@@ -326,12 +329,13 @@ async function api(method, path, body, { signal, quiet = false } = {}) {
   }
   if (!res.ok) {
     const said = uploadCore.serverError(res.status, data.error) ?? uploadCore.statusText(res.status, method, data.id);
-    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity });
+    throw Object.assign(new Error(said), { status: res.status, code: data.code, entity: data.entity, base: data.base });
   }
   if (method !== 'GET' && data?.id && Array.isArray(data.activity)) {
     noteAutomationWrites(data, Date.parse(res.headers.get('Date')) || Date.now());
   }
   if (!quiet) noteUsage(method, path, body, data);
+  if (method !== 'GET' && gesture !== false) noteWrite(gesture, method, path, data, { seen, took: performance.now() - sent, date: Date.parse(res.headers.get('Date')) });
   return data;
 }
 
@@ -352,7 +356,7 @@ function startUsage() {
     q.delete('joined');
     history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`);
   }
-  const daily = () => { if (consent.active() && WeaveUsage.opened(localStorage)) usage('app_opened'); };
+  const daily = () => { const store = WeavePrefs.of(); if (store && consent.active() && WeaveUsage.opened(store)) usage('app_opened'); };
   daily();
   addEventListener('grunion:consent-granted', daily);
 }
@@ -531,6 +535,20 @@ function holdPage(back, box, label = box.querySelector('h2')) {
   }).observe(document.body, { childList: true });
 }
 
+const submitsInFlight = new WeakSet();
+
+function holdSubmit(form) {
+  if (submitsInFlight.has(form)) return false;
+  submitsInFlight.add(form);
+  form.setAttribute('aria-busy', 'true');
+  return true;
+}
+
+function freeSubmit(form) {
+  submitsInFlight.delete(form);
+  form.removeAttribute('aria-busy');
+}
+
 function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass = 'btn-primary') {
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
@@ -548,11 +566,14 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
       done));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!holdSubmit(form)) return;
     try {
       await onSubmit?.(new FormData(form));
       close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      freeSubmit(form);
     }
   });
   const box = el('div', { id: 'modal' }, el('h2', {}, title), form);
@@ -582,11 +603,14 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false
       el('button', { class: 'btn btn-primary', type: 'submit' }, submitLabel)));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!stay && !holdSubmit(form)) return;
     try {
       await onSubmit(new FormData(form));
       if (!stay) close();
     } catch (err) {
       if (!err.shown) toast(err.message, true);
+    } finally {
+      if (!stay) freeSubmit(form);
     }
   });
   const box = el('div', { id: 'tray', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tray-title' },
@@ -623,9 +647,7 @@ function holdRow(item) {
 }
 
 async function openEntity(id, { drill = false } = {}) {
-  const here = allTables().find((d) => d.id === state.route?.dbId);
-  const docs = (here?.fields ?? []).filter((f) => f.type === 'document').map((f) => `/doc/revisions?field=${encodeURIComponent(f.name)}&limit=2`);
-  for (const tail of ['/references', '/references-from', ...docs]) warmGet(`/entities/${id}${tail}`);
+  for (const tail of ['/references', '/references-from']) warmGet(`/entities/${id}${tail}`);
   const fetching = warmGet(`/entities/${id}`);
   const held = heldRows.get(id);
   let entity = held && allTables().some((d) => d.id === held.dbId) ? held : null;
@@ -692,10 +714,12 @@ const markStuckHeads = () => {
     if (th) grid.parentElement.classList.toggle('wv-head-stuck', th.getBoundingClientRect().top - grid.getBoundingClientRect().top > 0.5);
   }
 };
+const atSideEnd = (wrap) => wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 1;
 addEventListener('scroll', (e) => {
   const wrap = e.target;
   if (wrap instanceof HTMLElement && wrap.classList.contains('table-wrap')) {
     wrap.classList.toggle('wv-scrolled-x', wrap.scrollLeft >= 1);
+    wrap.classList.toggle('wv-at-end-x', atSideEnd(wrap));
   }
   headCheck ||= requestAnimationFrame(markStuckHeads);
 }, { capture: true, passive: true });
@@ -709,6 +733,8 @@ function termOfTable(id) {
 }
 
 let dock = null;
+let dockRead = 0;
+const dockOwns = (gen) => !!dock && dockRead === gen;
 let compare = null;
 
 function markDockedRow() {
@@ -793,6 +819,7 @@ async function collapseToSplit(entity) {
 
 function dockClose() {
   if (!dock && !compare) return;
+  dockRead += 1;
   compare = null;
   commitActiveEdit();
   releaseDockPanel();
@@ -846,12 +873,18 @@ const dockCoversScreen = matchMedia('(max-width: 600px)');
 const saves = WeaveSaveQueue.createSaveQueue({
   delay: globalThis.__weaveSaveDelay ?? WeaveSaveQueue.DEBOUNCE_MS,
   send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
-  onFail: (err, j) => toast(j.failText?.(err) ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true),
+  onFail: (err, j) => (j.onFail ? j.onFail(err) : toast(j.failText?.(err) ?? (err.code === 'offline' ? `${j.field} was not saved: could not reach the server` : err.message), true)),
 });
 WeaveSaveQueue.bindPageHide(saves);
 WeaveSaveQueue.bindEscape(saves);
 window.weaveSaves = saves;
-const dockHoldsSaveMark = () => (dockCoversScreen.matches || $('#app').classList.contains('table-yield')) && !!$('#dock:not([hidden])');
+const queuedWrites = new WeakSet();
+saves.onSaved((written, job) => {
+  if (!written?.affected) return;
+  queuedWrites.add(written);
+  $('#main > .table-wrap')?.wvSaved?.(written, job.field).catch((err) => toast(err.message, true));
+});
+const dockHoldsSaveMark = () => dockCoversScreen.matches && !!$('#dock:not([hidden])');
 const saveMark = WeaveSaveQueue.saveGlyph(saves, {
   icon: iconEl,
   place: () => (dockHoldsSaveMark() && $('#dock .view-header .crumb-row')) || $('#main .view-header .crumb-row'),
@@ -897,6 +930,7 @@ function dockGo(next) {
 
 async function drawDock() {
   if (!dock) return;
+  const gen = (dockRead += 1);
   const top = dock.state.chain[dock.state.chain.length - 1];
   const held = dock.held?.id === top.id ? dock.held : null;
   dock.held = null;
@@ -912,8 +946,13 @@ async function drawDock() {
     });
     later.catch(() => {});
   } else {
-    try { [entity, refs] = await full; } catch (err) { dockClose(); return toast(err.message, true); }
+    try { [entity, refs] = await full; } catch (err) {
+      if (!dockOwns(gen)) return;
+      dockClose();
+      return toast(err.message, true);
+    }
   }
+  if (!dockOwns(gen)) return;
   crumbNav = weaveBreadcrumbs.navUpdate(crumbNav, entityHop(entity));
   syncDockChain();
   noteEntityRecent(entity);
@@ -931,7 +970,7 @@ async function drawDock() {
   panel.replaceChildren(host);
   if (swapped) panel.scrollTop = 0;
   const dockControls = {
-    nav: [navMenuButton(), ...navArrows(dockGo)],
+    nav: navArrows(dockGo),
     pose: [
       el('button', {
         class: 'btn btn-sm btn-ghost-secondary pose-btn', type: 'button',
@@ -949,21 +988,21 @@ async function drawDock() {
   markDockedRow();
 }
 
-const DOCK_PANE = { grip: '#dock-gutter', key: 'wv-dock-width', min: 400 };
+const DOCK_PANE = { grip: '#dock-gutter', key: 'wv-dock-width', min: 360 };
 const SIDE_PANE = { grip: '#side-gutter', key: 'wv-side-width', min: 300 };
 function pinPane(panel, px) {
   panel.style.width = '';
   panel.style.flex = px ? `0 1 ${px}px` : '';
 }
 function applyPaneWidth(panel, pane) {
-  const px = Number(localStorage.getItem(pane.key));
-  pinPane(panel, Number.isFinite(px) && px > 0 ? Math.max(pane.min, px) : 0);
+  const px = Number(WeavePrefs.read(pane.key));
+  pinPane(panel, px >= pane.min ? px : 0);
 }
 function fitPanes() {
   const app = $('#app');
   app.classList.remove('pane-over', 'table-yield');
   const floats = !($('#view-pane').hidden && $('#share-pane').hidden);
-  if ($('#dock').hidden || dockCoversScreen.matches) return;
+  if ($('#dock').hidden || dockCoversScreen.matches || (!floats && $('#side').hidden)) return;
   const tight = () => app.scrollWidth > app.clientWidth;
   if (tight()) app.classList.add('table-yield');
   if (tight() && floats) app.classList.add('pane-over');
@@ -989,13 +1028,13 @@ function wirePaneGutter(panel, pane) {
       grip.removeEventListener('pointermove', move);
       grip.removeEventListener('pointerup', up);
       const px = Math.max(pane.min, Math.round(panel.getBoundingClientRect().width));
-      localStorage.setItem(pane.key, String(px));
+      WeavePrefs.write(pane.key, String(px));
     };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
   });
   grip.addEventListener('dblclick', () => {
-    localStorage.removeItem(pane.key);
+    WeavePrefs.drop(pane.key);
     applyPaneWidth(panel, pane);
   });
 }
@@ -1045,7 +1084,7 @@ function registryWorkflows(dbId) {
 
 async function loadSchema() {
   const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
-  const formPermission = state.canManageForms === undefined ? Promise.all([api('GET', '/auth/me').catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
+  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -1165,7 +1204,8 @@ function publishHeaderOn(holder, box, pane) {
   const h = box.getBoundingClientRect().height;
   const keyboard = keyboardInset();
   const writing = keyboard > 0 && dockCoversScreen.matches;
-  const holds = h <= (pane - keyboard) / (writing ? 4 : 2);
+  const banner = !!box.querySelector(':scope > .entity-cover');
+  const holds = !banner && h <= (pane - keyboard) / (writing ? 4 : 2);
   holder.classList.toggle('view-header-loose', !holds);
   const v = holds ? `${h}px` : '0px';
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
@@ -1185,6 +1225,9 @@ function crumbIconEl(c) {
   if (c.kind === 'ws') return wsMarkEl();
   if (c.avatar) return chipElFrom(chipView.avatarHtml(c.avatar, { cls: 'crumb-ic crumb-av' }));
   return iconEl(c.icon, 'wv-icon crumb-ic') ?? (CRUMB_ICON_FALLBACK[c.kind] ? iconEl(CRUMB_ICON_FALLBACK[c.kind], 'wv-icon crumb-ic') : null);
+}
+function navIconEl(icon, kind) {
+  return iconEl(icon, 'wv-icon nav-icon') ?? iconEl(CRUMB_ICON_FALLBACK[kind], 'wv-icon nav-icon');
 }
 function crumbInner(c) {
   return [
@@ -1226,7 +1269,12 @@ function fitCrumbs(path, foldFrom) {
   const widths = slots.map((sl) => sl.getBoundingClientRect().width);
   path.classList.remove('crumb-measure');
   const mins = slots.map((sl) => { const min = parseFloat(getComputedStyle(sl).minWidth); return Number.isNaN(min) ? Infinity : min; });
-  const fold = weaveBreadcrumbs.foldPlan(widths, path.clientWidth, { from: foldFrom, more: CRUMB_MORE_PX, mins });
+  const room = path.clientWidth;
+  const fold = weaveBreadcrumbs.foldPlan(widths, room, { from: foldFrom, more: CRUMB_MORE_PX, mins });
+  if (weaveBreadcrumbs.foldFloor(widths, fold, { more: CRUMB_MORE_PX, mins }) > room) {
+    for (const sl of slots) sl.hidden = true;
+    return;
+  }
   if (!fold.length) return;
   for (const i of fold) slots[i].hidden = true;
   const hidden = fold.map((i) => slots[i].crumb);
@@ -1282,7 +1330,9 @@ function refreshWsMarks() {
 }
 
 function titleEdit(tag, modifier, value, attrs) {
-  const node = el(tag, { placeholder: 'Untitled', ...attrs, class: `title-edit wv-edit ${modifier}` });
+  const node = el(tag, { placeholder: 'Untitled', spellcheck: 'false', ...attrs, class: `title-edit wv-edit ${modifier}` });
+  node.addEventListener('focus', () => { node.spellcheck = true; });
+  node.addEventListener('blur', () => { node.spellcheck = false; });
   node.value = value;
   return node;
 }
@@ -1369,8 +1419,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       const body = el('div', { class: 'view-desc-body wv-prose clamped' });
       if (descriptionKey) body.classList.add('desc-clamp');
       try {
-        const { html } = await api('POST', '/markdown', { md });
-        body.innerHTML = html;
+        await renderMarkdownInto(body, md);
       } catch {
         body.textContent = md;
       }
@@ -1445,14 +1494,15 @@ function navDrag(handle, source, { items, home, save }) {
     });
   });
 }
+const FOLDED_SPACES_KEY = 'weave-folded-spaces';
 function renderNav() {
   const nav = $('#nav');
   nav.replaceChildren();
-  const folded = new Set(JSON.parse(localStorage.getItem('weave-folded-spaces') ?? '[]'));
+  const folded = new Set(WeavePrefs.list(FOLDED_SPACES_KEY));
   const toggleFold = (spaceId) => {
     if (folded.has(spaceId)) folded.delete(spaceId);
     else folded.add(spaceId);
-    localStorage.setItem('weave-folded-spaces', JSON.stringify([...folded]));
+    WeavePrefs.write(FOLDED_SPACES_KEY, JSON.stringify([...folded]));
     renderNav();
   };
   for (const space of state.schema) {
@@ -1468,7 +1518,7 @@ function renderNav() {
             toggleFold(space.spaceId);
           }
         },
-      }, iconEl(space.icon, 'wv-icon nav-icon'), space.space),
+      }, navIconEl(space.icon, 'space'), space.space),
       disclosure('nav-caret', !isFolded, {
         title: isFolded ? `Expand ${space.space}` : `Collapse ${space.space}`,
         onclick: () => toggleFold(space.spaceId),
@@ -1499,7 +1549,7 @@ function renderNav() {
         href: `#/table/${db.id}`,
         dataset: { db: db.id },
         draggable: 'false',
-      }, iconEl(db.icon, 'wv-icon nav-icon'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
+      }, navIconEl(db.icon, 'table'), el('span', { class: 'nav-db-name', title: db.name }, db.name));
       if (!db.system) {
         row.append(navTableMenu(db));
         kindContext(row, 'table', db);
@@ -1523,6 +1573,7 @@ function renderNav() {
   const wfHref = wf ? `#/table/${wf.id}` : '/';
   const people = registryTable('users');
   const links = registryTable('integrations');
+  const runs = registryTable('runs');
   const sysRow = (href, icon, label, on) => el('a', { class: 'nav-db' + (on ? ' active' : ''), href }, lucideEl(icon, 'wv-icon nav-icon'), label);
   const system = el('div', { class: 'nav-system', role: 'group', 'aria-label': 'System' },
     el('div', { class: 'nav-space-row nav-system-head' },
@@ -1537,6 +1588,7 @@ function renderNav() {
       })),
     ...(systemFolded ? [] : [
       sysRow(wfHref, 'workflow', 'Workflows', !!wf && state.route?.dbId === wf.id),
+      ...(runs ? [sysRow(`#/table/${runs.id}`, 'activity', 'Runs', state.route?.dbId === runs.id)] : []),
       ...(people ? [sysRow(`#/table/${people.id}`, 'users', 'Users', state.route?.dbId === people.id)] : []),
       ...(links ? [sysRow(`#/table/${links.id}`, 'link', 'Integrations', state.route?.dbId === links.id)] : []),
       sysRow('#/activity', 'activity', 'Activity', state.route?.page === 'activity'),
@@ -1545,7 +1597,7 @@ function renderNav() {
   if (!state.healthChip) {
     const status = state.healthChip = el('div', { class: 'nav-health', title: 'This weave instance' });
     status.hidden = true;
-    (state.healthP ??= api('GET', '/health')).then((h) => {
+    healthNow().then((h) => {
       state.health = h;
       const warn = (cls, text, title) => {
         status.classList.add(cls);
@@ -1573,7 +1625,8 @@ function renderNav() {
   if (!state.trialChip) {
     const chip = state.trialChip = el('a', { class: 'nav-trial', href: `${WS_PREFIX}/billing` });
     chip.hidden = true;
-    api('GET', '/billing').then((b) => {
+    healthNow().then((h) => (h?.billing ? api('GET', '/billing') : null)).then((b) => {
+      if (!b) return;
       const left = b.trial?.daysLeft;
       if (!left || left > TRIAL_NOTICE_DAYS) return;
       chip.textContent = left === 1 ? 'Free trial ends today' : `Free trial ends in ${left} days`;
@@ -1604,11 +1657,25 @@ function accountWorkspaceName() {
   return state.wsCurrent || $('#ws-name')?.textContent || 'this workspace';
 }
 
+function healthNow() {
+  return state.healthP ??= api('GET', '/health');
+}
+
+function accountNow() {
+  return state.meP ??= healthNow().catch(() => null).then((h) => {
+    if (h && h.account === false) return null;
+    return api('GET', '/auth/me').catch((err) => {
+      if (err.status === 401) return null;
+      throw err;
+    });
+  });
+}
+
 async function refreshAccountChip() {
   const slot = accountSlot();
   let me = null;
-  try { me = await api('GET', '/auth/me'); } catch (err) {
-    if (err.status !== 401) return;
+  try { me = await accountNow(); } catch {
+    return;
   }
   closeAccountMenu();
   if (me?.analytics) globalThis.WeaveConsent?.identify(me.analytics.user);
@@ -1667,7 +1734,7 @@ function personalMenuButton() {
 }
 
 async function personalMenu(btn) {
-  const h = state.health ?? await (state.healthP ??= api('GET', '/health')).catch(() => null);
+  const h = state.health ?? await healthNow().catch(() => null);
   const version = h?.version ? `v${h.version}` : null;
   const signedIn = accountSlot().dataset.state === 'signed-in';
   const ws = accountWorkspaceName();
@@ -1705,7 +1772,10 @@ async function signOutEverywhere(prefixes) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.accountSlot) refreshAccountChip();
+  if (document.visibilityState !== 'visible' || !state.accountSlot) return;
+  state.healthP = null;
+  state.meP = null;
+  refreshAccountChip();
 });
 
 function fieldValueCell(value) {
@@ -1762,7 +1832,7 @@ let mermaidLoading = null;
 
 function expandDocument(grid, url, title) {
   grid.parentElement?.querySelector('.doc-expand')?.remove();
-  const frame = el('iframe', { class: 'doc-expand-frame', src: url, allowfullscreen: '', allow: 'fullscreen', title });
+  const frame = el('iframe', { class: 'doc-expand-frame', src: url, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title });
   const collapse = () => { wrap.remove(); grid.classList.remove('hidden'); };
   const wrap = el('div', { class: 'doc-expand' },
     el('div', { class: 'doc-expand-bar' },
@@ -1782,7 +1852,7 @@ function expandDocument(grid, url, title) {
   return wrap;
 }
 
-function fullscreenViewer(title, { url = null, mount = null, sandbox = null, prev = null, next = null, fileId = null } = {}) {
+function fullscreenViewer(title, { url = null, mount = null, sandbox = '', prev = null, next = null, fileId = null } = {}) {
   document.querySelector('#fsv-back')?.remove();
   const frame = url ? el('iframe', { class: 'fsv-frame', src: url, allowfullscreen: '', allow: 'fullscreen', sandbox: sandbox ?? undefined, dataset: fileId ? { fileId } : {} }) : null;
   const close = () => back.remove();
@@ -1856,12 +1926,13 @@ function whileConnected(node, type, handler, capture = false) {
 function ghostBtn({ class: cls = '', ...attrs } = {}, ...kids) {
   return el('button', { class: cls ? `btn btn-sm btn-ghost-secondary tiny ${cls}` : 'btn btn-sm btn-ghost-secondary tiny', ...attrs }, ...kids);
 }
-function dismissOutside({ inside, close, open = () => true, swallow = () => false }) {
+function dismissOutside({ inside, close, open = () => true, swallow = () => false, sheet = false }) {
   const away = (e) => {
     if (!open()) return off();
     if (inside(e.target)) return;
     off();
-    if (swallow(e.target)) swallowClick();
+    if (sheet) e.preventDefault();
+    if (sheet || swallow(e.target)) swallowClick();
     close(e);
   };
   const off = () => removeEventListener('pointerdown', away, true);
@@ -1936,6 +2007,10 @@ function holdToConfirm(label, onConfirm, {
     hint ? el('span', { class: 'hold-hint' }, hint) : null);
   let armed = false;
   let press = 0;
+  const sweepMs = () => {
+    const [spec] = getComputedStyle(fill).transitionDuration.split(',');
+    return parseFloat(spec) * (spec.endsWith('ms') ? 1 : 1000) || 900;
+  };
   const start = (e) => {
     if (armed || btn.disabled) return;
     armed = true;
@@ -1943,11 +2018,22 @@ function holdToConfirm(label, onConfirm, {
     if (e?.pointerId != null) { try { btn.setPointerCapture(e.pointerId); } catch {} }
     btn.classList.add('holding');
     text.textContent = holdingLabel;
+    const thisPress = press;
+    const sweep = fill.getAnimations()[0];
+    if (sweep) sweep.finished.then(() => finish(thisPress), () => {});
+    else setTimeout(() => finish(thisPress), sweepMs());
   };
   const stop = () => {
     armed = false;
     btn.classList.remove('holding');
     text.textContent = label;
+  };
+  const finish = (thisPress) => {
+    setTimeout(async () => {
+      if (!armed || press !== thisPress) return;
+      stop();
+      await onConfirm();
+    }, 80);
   };
   btn.addEventListener('pointerdown', start);
   for (const ev of ['pointerup', 'pointerleave', 'blur', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, stop);
@@ -1955,12 +2041,7 @@ function holdToConfirm(label, onConfirm, {
   btn.addEventListener('keyup', stop);
   fill.addEventListener('transitionend', (e) => {
     if (!armed || e.propertyName !== 'transform') return;
-    const thisPress = press;
-    setTimeout(async () => {
-      if (!armed || press !== thisPress) return;
-      stop();
-      await onConfirm();
-    }, 80);
+    finish(press);
   });
   return btn;
 }
@@ -1982,7 +2063,7 @@ function rememberGridFocus() {
   try {
     if (at.selectionStart != null) caret = [at.selectionStart, at.selectionEnd];
   } catch {}
-  state.refocus = { eid: cell.parentElement.dataset.eid, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
+  state.refocus = { eid: cell.parentElement.dataset.eid, field: cell.dataset.field ?? null, col: [...cell.parentElement.children].indexOf(cell), caret, open: at !== cell };
 }
 
 function restoreGridFocus({ now = false } = {}) {
@@ -1990,7 +2071,8 @@ function restoreGridFocus({ now = false } = {}) {
   state.refocus = null;
   if (!want) return;
   (now ? (fn) => fn() : requestAnimationFrame)(() => {
-    const td = $(`tr[data-eid="${want.eid}"]`)?.children[want.col];
+    const tr = $(`tr[data-eid="${want.eid}"]`);
+    const td = (want.field ? tr?.querySelector(`:scope > td[data-field="${CSS.escape(want.field)}"]`) : null) ?? tr?.children[want.col];
     if (!td) return;
     if (want.open === false) return td.focus();
     const box = td.querySelector('button,input,select,textarea,[tabindex]');
@@ -2183,7 +2265,7 @@ function searchPicker({ anchor = null, title = '', placeholder: given = null, op
   pop.cellFrom = anchor?.closest?.('tr[data-eid] > td') ?? null;
   dismissOutside({
     open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!anchor?.contains?.(t),
-    close: () => (multi ? commit() : pop.remove()),
+    close: () => (multi ? commit() : pop.remove()), sheet,
   });
   if (!quiet) input.focus();
   drawChips();
@@ -2851,11 +2933,20 @@ function registryTable(kind) {
   return null;
 }
 
+let introControlsHidden = null;
 function showIntroControls(controls) {
-  controls.hidden = true;
-  api('GET', '/auth/me').catch(() => null)
-    .then(async (me) => { controls.hidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; })
-    .catch(() => {});
+  controls.hidden = introControlsHidden ?? true;
+  if (introControlsHidden !== null) return;
+  controls.classList.add('intro-deciding');
+  accountNow().catch(() => null)
+    .then(async (me) => { introControlsHidden = me ? !['architect', 'admin', 'editor', 'writer'].includes(me.role) : (await api('GET', '/accounts')).length !== 0; controls.hidden = introControlsHidden; })
+    .catch(() => {})
+    .finally(() => controls.classList.remove('intro-deciding'));
+}
+
+async function renderMarkdownInto(body, md) {
+  const { html } = await api('POST', '/markdown', { md });
+  body.innerHTML = html;
 }
 
 async function appendRegistryPresentation(header, kind, subjectId, name) {
@@ -2864,7 +2955,7 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
   const db = registryTable(kind);
   const hidden = new Set(db?.hiddenFields ?? []);
   const order = new Map((db?.bodyBlocks ?? []).map((name, i) => [name, i]));
-  const intros = (db?.fields ?? []).filter((f) => f.type === 'attachments' && f.preview === 'intro' && !hidden.has(f.name))
+  const intros = (db?.fields ?? []).filter((f) => ((f.type === 'attachments' && (f.displayInline || f.preview === 'intro')) || (f.type === 'document' && f.displayInline)) && !hidden.has(f.name))
     .sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
   const cover = boardCore.coverField(db);
   if (!db || (!cover && !intros.length)) return;
@@ -2874,20 +2965,41 @@ async function appendRegistryPresentation(header, kind, subjectId, name) {
     if (!row || !header.isConnected || header.presentationRequest !== request) return;
     const file = boardCore.coverOf(db, row);
     if (file) {
-      const banner = entityCoverEl(file, { size: cover.size, fit: cover.fit });
-      banner.classList.add('registry-cover');
-      header.before(banner);
+      const lead = entityCoverEl(file, { size: cover.size, fit: cover.fit });
+      lead.classList.add('registry-cover');
+      placeCoverIn(header, lead);
     }
     const sections = [];
+    const detail = intros.some(f => f.type === 'document') ? await api('GET', `/entities/${row.id}`) : row;
+    if (!header.isConnected || header.presentationRequest !== request) return;
     for (const field of intros) {
+      if (field.type === 'document') {
+        const text = detail.docs?.[field.name] ?? '';
+        if (!text.trim()) continue;
+        const mode = globalThis.WeaveEditorLib.docViewMode(field.kind, text);
+        const content = mode === 'app'
+          ? el('iframe', { class: 'doc-app fits-content', src: `${WS_PREFIX}/e/${row.id}/doc/${encodeURIComponent(field.name)}.html?inline=1`, sandbox: HTML_FRAME_SANDBOX, title: field.name, dataset: { inlineDoc: field.id } })
+          : el('div', { class: 'wv-prose' });
+        if (mode !== 'app') {
+          if (mode === 'code') content.append(el('pre', {}, el('code', {}, text)));
+          else await renderMarkdownInto(content, text);
+        }
+        sections.push(el('section', { class: 'registry-intro document-inline', 'aria-label': field.name }, content,
+          el('details', { class: 'intro-controls' }, el('summary', {}, 'Field options'),
+            el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
+        continue;
+      }
       const ids = row.raw?.[field.name] ?? [];
-      const page = row.files?.find((f) => ids.includes(f.id) && !f.missing && fileKind(f) === 'html');
-      if (!page) continue;
+      if (field.preview === 'cover') continue;
+      const files = (row.files ?? []).filter(f => ids.includes(f.id));
+      const pages = field.displayInline ? files : files.filter(f => !f.missing && fileKind(f) === 'html').slice(0, 1);
+      if (!pages.length) continue;
       sections.push(el('section', { class: 'registry-intro attachment-intro', 'aria-label': field.name },
-        fileViewerEl(page, { chrome: false }),
-        el('details', { class: 'intro-controls' }, el('summary', {}, 'Introduction options'),
+        ...pages.map(file => (file.missing ? null : fileViewerEl(file, { chrome: false })) ?? attachItemEl(file, { group: files })),
+        el('details', { class: 'intro-controls' }, el('summary', {}, field.displayInline ? 'Field options' : 'Introduction options'),
           el('a', { href: `#/entity/${row.id}` }, 'Open record settings'))));
     }
+    if (!header.isConnected || header.presentationRequest !== request) return;
     header.after(...sections);
     for (const section of sections) showIntroControls(section.querySelector('.intro-controls'));
   } catch (err) { toast(err.message, true); }
@@ -2975,6 +3087,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
   };
   const drop = () => close();
   const done = () => { close({ focus: pop.contains(document.activeElement) }); onRun?.(); };
+  if (sheet) pop.append(sheetGrip(pop, () => close()));
   if (head) {
     pop.append(el('div', { class: 'wv-menu-head' },
       el('span', { class: 'wv-menu-title', title: head.title }, head.title),
@@ -3012,7 +3125,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
     pop.style.top = `${Math.round(top)}px`;
   }
   trigger?.setAttribute?.('aria-expanded', 'true');
-  off = dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!trigger?.contains?.(t), close: () => close() });
+  off = dismissOutside({ open: () => pop.isConnected, inside: (t) => pop.contains(t), swallow: (t) => !!trigger?.contains?.(t), close: () => close(), sheet });
   addEventListener('hashchange', drop);
 
   const rows = () => [...pop.querySelectorAll('.wv-menu-row')].filter((r) => r.getClientRects().length);
@@ -3214,7 +3327,11 @@ const MENU_ROWS = {
       undone: (open, stayed) => reopenAfterUndo(`#/table/${db.id}`, open, stayed),
     }),
   }),
-  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null } = {}) => ({
+  record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null } = {}) => ({
+    report: bugRecorder && anchor ? {
+      label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
+      run: () => openBugPanel(anchor),
+    } : null,
     duplicate: db && !db.system ? {
       label: 'Duplicate',
       run: async () => {
@@ -3634,6 +3751,7 @@ function toggleSwitch(f, val, patch) {
 }
 
 const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const FILE_FRAME_SANDBOX = { html: HTML_FRAME_SANDBOX, pdf: null, text: '', image: '' };
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
 async function streamUpload(path, { entity, field = null, file }, onProgress) {
@@ -3719,16 +3837,30 @@ function fileBodyEl(file, frameClass) {
   const kind = fileKind(file);
   const url = fileUrl(file);
   return kind === 'image' ? el('img', { src: url, alt: file.name })
-    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name })
+    : kind === 'pdf' || kind === 'text' ? el('iframe', { class: frameClass, src: url, title: file.name, sandbox: FILE_FRAME_SANDBOX[kind] })
       : kind === 'html' ? el('iframe', { class: frameClass, src: `${url}?view`, title: file.name, sandbox: HTML_FRAME_SANDBOX, dataset: { fileId: file.id } })
         : null;
 }
-const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id]')].find((f) => f.contentWindow === source) ?? null : null);
+const fileFrameOf = (source) => (source ? [...document.querySelectorAll('iframe[data-file-id], iframe[data-inline-doc]')].find((f) => f.contentWindow === source) ?? null : null);
+const fittedHeights = new Map();
+const FIT_PENDING_MS = 600;
+function fitFrame(frame, h) {
+  const px = Math.min(h, 200000);
+  frame.style.height = `${px}px`;
+  frame.classList.remove('fit-pending');
+  if (frame.dataset.fileId) fittedHeights.set(frame.dataset.fileId, px);
+}
+function reserveFit(frame) {
+  const known = fittedHeights.get(frame.dataset.fileId);
+  if (known) { frame.style.height = `${known}px`; return; }
+  frame.classList.add('fit-pending');
+  frame.addEventListener('load', () => setTimeout(() => frame.classList.remove('fit-pending'), FIT_PENDING_MS), { once: true });
+}
 addEventListener('message', (e) => {
   if (e.data?.weave !== 'frame-height') return;
   const frame = fileFrameOf(e.source);
   const h = Math.round(Number(e.data.height));
-  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) frame.style.height = `${Math.min(h, 200000)}px`;
+  if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) fitFrame(frame, h);
 });
 const PAGE_STORAGE_SAVE_MS = 400;
 (() => {
@@ -3762,6 +3894,7 @@ function fileViewerEl(file, { size = 'medium', chrome = true } = {}) {
   const kind = fileKind(file);
   const body = fileBodyEl(file, 'file-viewer-frame' + (kind === 'html' ? ' fits-content' : ''));
   if (!body) return null;
+  if (kind === 'html') reserveFit(body);
   return el('div', { class: `file-viewer size-${size} kind-${kind}` + (kind === 'html' ? ' fit-content' : '') },
     chrome ? el('div', { class: 'file-viewer-bar' },
       iconEl(fileIconName(file), 'wv-icon'),
@@ -3770,6 +3903,12 @@ function fileViewerEl(file, { size = 'medium', chrome = true } = {}) {
       el('a', { class: 'btn btn-sm btn-ghost-secondary tiny', href: fileViewUrl(file), target: '_blank', title: 'Open in a browser tab' }, iconEl('lucide:arrow-up-right', 'wv-icon wv-icon-xs'))) : null,
     body);
 }
+function placeCoverIn(header, cover) {
+  const title = header.querySelector(':scope > .entity-head, :scope > .view-title-row');
+  if (title) title.before(cover); else header.append(cover);
+  return cover;
+}
+
 function entityCoverEl(file, { size = 'medium', fit = 'trim' } = {}) {
   const full = fileUrl(file) + (String(file.mime ?? '').split(';')[0].trim().toLowerCase() === 'image/svg+xml' ? '?view' : '');
   const img = el('img', { loading: 'lazy', decoding: 'async', src: previewUrl(file), alt: file.name });
@@ -3784,7 +3923,7 @@ function fileLightbox(files, index) {
   if (kind === 'other') { window.open(fileUrl(file), '_blank'); return; }
   fullscreenViewer(`${file.name} · ${index + 1} / ${files.length}`, {
     url: fileUrl(file) + (kind === 'html' ? '?view' : ''),
-    sandbox: kind === 'html' ? HTML_FRAME_SANDBOX : null,
+    sandbox: FILE_FRAME_SANDBOX[kind],
     fileId: kind === 'html' ? file.id : null,
     prev: index > 0 ? () => fileLightbox(files, index - 1) : null,
     next: index < files.length - 1 ? () => fileLightbox(files, index + 1) : null,
@@ -3841,8 +3980,8 @@ const filePanel = (() => {
   return { open, close, mounted, get isOpen() { return isOpen(); } };
 })();
 
-function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label } = {}) {
-  const node = editorFor(f, item, db, onSaved, { compact, fit });
+function labeledEditorFor(f, item, db, onSaved, { compact = false, fit = false, label, locked = false } = {}) {
+  const node = editorFor(f, item, db, onSaved, { compact, fit, locked });
   if (node instanceof Element) {
     const name = label ?? `${f.name}, ${item.name || `#${item.publicId}`}`;
     for (const n of [node, node.wvEditor, ...node.querySelectorAll('*')].filter(Boolean)) {
@@ -3913,9 +4052,25 @@ function optionChipEl(f, name) {
   }
 }
 
-function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) {
+const READ_ONLY_KEEPS = new Set(['view', 'document', 'attachments', 'avatar']);
+function readOnlyValue(f, val) {
+  const all = val == null ? [] : Array.isArray(val) ? val : [val];
+  const title = `${f.name}, read-only`;
+  if (f.type === 'relation') return el('span', { class: 'ms-box', title }, ...all.flatMap((s) => [relationChipEl(f, s), ' ']));
+  if (['select', 'multiselect', 'workflow'].includes(f.type) && all.length) {
+    return el('span', { class: 'ms-box', title }, ...all.flatMap((name) => {
+      const chip = optionChipEl(f, name);
+      return [el('span', { class: chip.className.replace(' chip-trigger', '') }, ...chip.childNodes), ' '];
+    }));
+  }
+  const text = fieldValueCell(val);
+  return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, el('span', { class: 'k-label' }, text || '—'));
+}
+function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
+  if (db?.system === 'runs') return readOnlyValue(f, val);
+  if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
   const saved = async () => {
     const fresh = await api('GET', `/entities/${id}`);
     onSaved(fresh);
@@ -4159,26 +4314,32 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false } = {}) 
       onclick: (e) => { e.preventDefault(); e.stopPropagation(); patch(ids.filter((x) => x !== file.id)); },
     }, iconEl('lucide:x', 'wv-icon wv-icon-xs'));
     const chipFor = (file) => attachItemEl(file, { remove, group: files });
-    const mode = f.preview === 'intro' && files.length && !files.some((file) => fileKind(file) === 'html')
+    const clean = !!f.displayInline && f.preview !== 'cover';
+    const mode = clean ? 'inline' : f.preview === 'intro' && files.length && !files.some((file) => fileKind(file) === 'html')
       ? 'inline' : f.preview || (f.multiple === false ? 'inline' : 'auto');
-    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim', chrome: mode !== 'intro' };
+    const look = { size: f.size ?? 'medium', fit: f.fit ?? 'trim', chrome: !clean && mode !== 'intro' };
     const present = files.filter((x) => !x.missing);
     const pages = ['inline', 'auto', 'intro'].includes(mode) ? present.filter((x) => fileKind(x) === 'html') : [];
     const sheet = mode === 'inline' && f.multiple !== false ? present.filter((x) => !pages.includes(x))
       : mode === 'auto' ? present.filter(isPictureFile) : [];
     const box = el('span', { class: 'attach-box' + (mode === 'link' || mode === 'cover' ? '' : ' attach-box-wide') });
     const single = mode === 'inline' && f.multiple === false && present[0] && !pages.includes(present[0]) ? present[0] : null;
-    for (const file of single ? [single] : pages) { const viewer = fileViewerEl(file, look); if (viewer) box.append(viewer); }
+    for (const file of single ? [single] : pages) {
+      const viewer = fileViewerEl(file, look);
+      if (viewer) box.append(viewer);
+      else if (clean) box.append(attachItemEl(file, { group: files }));
+    }
+    if (clean) for (const file of files.filter(f => f.missing)) box.append(attachItemEl(file));
     if (sheet.length) box.append(attachSheetEl(sheet, look, { remove }));
     const chips = el('span', { class: 'attach-chips' });
     for (const file of files) if (!sheet.includes(file)) chips.append(chipFor(file));
-    if (mode === 'intro') {
+    if (clean || mode === 'intro') {
       box.classList.add('intro-content');
       const controls = el('details', { class: 'intro-controls' },
-        el('summary', {}, 'Introduction options'),
+        el('summary', {}, clean ? 'Field options' : 'Introduction options'),
         el('button', { type: 'button', class: 'btn btn-sm', onclick: () => editFieldDialog(db, f) }, 'Field settings'),
         ...files.map((file) => el('a', { href: fileUrl(file), download: file.name }, 'Download source')), chips);
-      showIntroControls(controls);
+      if (locked) controls.hidden = true; else showIntroControls(controls);
       box.append(controls);
     } else box.append(chips);
     const input = el('input', { type: 'file', multiple: f.multiple === false ? null : '', style: 'display:none' });
@@ -4714,6 +4875,7 @@ function tableSearchBox(db) {
 }
 
 async function showDatabase(dbId, view) {
+  const gen = (navDraw += 1);
   const table = allTables().find((d) => d.id === dbId) ?? registryWorkflows(dbId);
   if (!table) return showHome();
   if (view === undefined && state.route?.page === 'db' && state.route.dbId === dbId) view = state.route.view;
@@ -4732,7 +4894,7 @@ async function showDatabase(dbId, view) {
   state.route = { page: 'db', dbId, view: db.view.id };
   if (!again) { renderNav(); paintTableChrome(db); }
   const release = again ? gridHold() : () => {};
-  try { await readAndDrawTable(db, dbId, search, !again); } finally { release(); }
+  try { await readAndDrawTable(db, dbId, search, !again, gen); } finally { release(); }
 }
 const FIRST_PAGES_KEPT = 24;
 const firstPages = new Map();
@@ -4749,9 +4911,9 @@ function tableGroup(db) {
 function serverSums(result) {
   return { sums: new Map((result.groups ?? []).map((g) => [g.path.map((p) => p.value).join(listCore.SEP), g])), grand: result.groupTotal ?? null };
 }
-async function readAndDrawTable(db, dbId, search, cold = false) {
-  if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search);
-  if (db.system === 'workflows') await lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true));
+async function readAndDrawTable(db, dbId, search, cold = false, gen = navDraw) {
+  if (isBoardLayout(db)) return readAndDrawBoard(db, dbId, search, gen);
+  await workflowCells(db);
   const where = filterWhere(db);
   const showDeleted = showsDeleted(db);
   const group = tableGroup(db);
@@ -4767,6 +4929,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
     relations: 'chip',
   };
   const paint = (result, domains) => {
+    if (!navOwns(gen)) return;
     tableSearch.only = search && result.total === 1 ? result.items[0]?.id ?? null : null;
     const items = result.items;
     setFilterTotal(db, showDeleted ? (result.liveTotal ?? result.total) : result.total, result.all);
@@ -4788,7 +4951,7 @@ async function readAndDrawTable(db, dbId, search, cold = false) {
   ]);
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   if (!whole) rememberFirstPage(pageKey, result);
-  if (cached && JSON.stringify(cached) === JSON.stringify(result)) return;
+  if (cached && globalThis.WeaveGridWindow.samePage(cached, result, query.fields)) return;
   paint(result, domains);
 }
 
@@ -5173,8 +5336,8 @@ function phoneRowPopover(anchor, db) {
 const VP = globalThis.weaveViewPane;
 const PANE_KEY = 'weave-view-pane';
 const PANE_SECTION_KEY = 'weave-view-pane-section';
-const readPref = (k, d) => localStorage.getItem(k) ?? d;
-const writePref = (k, v) => localStorage.setItem(k, v);
+const readPref = (k, d) => WeavePrefs.read(k) ?? d;
+const writePref = (k, v) => WeavePrefs.write(k, v);
 const viewPane = { open: readPref(PANE_KEY, '') === 'open', section: readPref(PANE_SECTION_KEY, 'filters'), note: null, views: false, db: null, strip: null, fields: null };
 const PANE_SECTIONS = {
   filters: { label: 'Filters', icon: 'list-filter' },
@@ -5719,13 +5882,18 @@ function paintTableChrome(db) {
   if (!main) return;
   const chrome = tableChrome(db, 0);
   main.wvTable = chrome;
+  teardownGrid(main);
   main.replaceChildren(chrome.header);
   syncPhoneBar();
   scheduleSkeleton(isBoardLayout(db) ? 'list' : 'db', db, chrome.header);
 }
 
+function teardownGrid(host) {
+  for (const wrap of host?.querySelectorAll('.table-wrap') ?? []) wrap.wvDestroy?.();
+}
 function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
   const main = $('#main');
+  teardownGrid(main);
   let chrome = tableChromeOn(db.id);
   if (chrome && chrome.sig === tableChromeSig(db)) {
     chrome.set(db, trashCount);
@@ -5795,7 +5963,7 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     await pager.refresh();
     await keepScroll(() => drawDatabase(db, items, trashCount, pager));
   };
-  state.inlineAdd = async () => {
+  state.inlineAdd = db.system === 'runs' ? null : async () => {
     if (searching) {
       await setTableSearch(db, '', { open: false });
       return state.inlineAdd();
@@ -5818,7 +5986,11 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
     } catch (err) { toast(err.message, true); }
   };
 
-  renderTable(main, db, items, onSaved, state.inlineAdd, pager);
+  renderTable(main, db, items, (written = null, field = null) => (queuedWrites.has(written) ? null : onSaved(written, field)), state.inlineAdd, pager);
+  const wrap = main.querySelector(':scope > .table-wrap');
+  if (wrap) wrap.wvSaved = async (written, field) => {
+    if ((pager ? pager.rows : items).some((r) => r?.id === written.id)) await onSaved(written, field);
+  };
   main.wvDraw = { db, items, trashCount, pager };
   syncPhoneBar();
   paintGridWait();
@@ -5867,7 +6039,7 @@ async function listTargetRows(f) {
   const at = new Map(first.order.map((p, i) => [p, i]));
   return rows.map((r, i) => ({ r, i })).sort((a, b) => (at.get(a.r.publicId) ?? Infinity) - (at.get(b.r.publicId) ?? Infinity) || a.i - b.i).map((x) => x.r);
 }
-async function readAndDrawBoard(db, dbId, search) {
+async function readAndDrawBoard(db, dbId, search, gen = navDraw) {
   const s = listSetup(db);
   const where = filterWhere(db);
   const sort = gridSort(db);
@@ -5885,6 +6057,7 @@ async function readAndDrawBoard(db, dbId, search) {
     filtered && !sort ? api('POST', `/tables/${db.id}/query`, base).then((r) => graftChips(db, r).items) : null,
     Promise.all(s.levels.map((l) => (l.f.type === 'relation' && l.f.targetDbId ? listTargetRows(l.f).catch(() => []) : null))),
   ]);
+  if (!navOwns(gen)) return;
   if (tableSearch.dbId === dbId && tableSearch.text.trim() !== search) return;
   const items = result.items;
   const live = items.filter((e) => !e.deleted);
@@ -6268,11 +6441,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     wrap.classList.toggle('wv-fit', fit);
     wrap.classList.toggle('wv-overflow-x', !fit);
     wrap.classList.toggle('wv-grid-scroll', !fit && state.route?.page === 'db');
+    wrap.classList.toggle('wv-at-end-x', atSideEnd(wrap));
     fitGridScroller(wrap);
     settle();
     rewindow();
   };
   const fitWatch = new ResizeObserver(() => { fitFrame ||= requestAnimationFrame(refit); });
+  const stop = new AbortController();
 
   const SEL = () => globalThis.WeaveSelection;
   let repaintRange = () => {};
@@ -6366,17 +6541,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const last = Math.max(...ids.map((id) => drawn.indexOf(id)));
     const keep = (id) => !ids.includes(id);
     const next = drawn.slice(last + 1).find(keep) ?? drawn.slice(0, last).reverse().find(keep) ?? null;
-    const gesture = { kind: 'delete', ids };
-    lastGesture = gesture;
+    const gesture = newGesture('delete');
     clearChosen();
     if (dock && ids.includes(weaveEntitySurface.selectionId(dock.state))) { dockClose(); dockSyncUrl(); }
     dropRows(ids);
     const undo = toast(`${TRASHED} ${SEL().countLabel(ids.length, db.term)}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
     focusGridRow(next, main);
     gesture.settled = (async () => {
-      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`)));
-      gesture.ids = ids.filter((id, i) => results[i].status === 'fulfilled');
-      const failed = ids.length - gesture.ids.length;
+      const results = await Promise.allSettled(ids.map((id) => api('DELETE', `/entities/${id}`, undefined, { gesture })));
+      const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed) {
         if (!gesture.ids.length) dropToastNode(undo);
         toast(`${TRASHED}: ${failed} of ${ids.length} failed`, true);
@@ -7037,7 +7210,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const end = (drop, p) => {
       if (!drag) return;
       th.dataset.gesture = '1';
-      document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true });
+      document.addEventListener('pointerdown', () => { delete th.dataset.gesture; }, { capture: true, once: true, signal: stop.signal });
       const d = drag;
       drag = null;
       d.finish(drop, p);
@@ -7187,7 +7360,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!wrap.isConnected) return document.removeEventListener('scroll', onScroll, true);
     if (e.target === document || e.target === wrap || e.target === paneOf(wrap)) schedule();
   };
-  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true, signal: stop.signal });
   const scrollToRow = (i) => {
     if (!tbody?.isConnected) return;
     rewindow();
@@ -7556,16 +7729,13 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const relationOf = await relationRows(fields.slice(target.c0, target.c1 + 1));
     const plan = RG().plan({ block, rect: target, fields, rowIds, typeOf, optionsOf, relationOf });
     const results = [];
+    const gesture = newGesture('update');
     for (const g of RG().group(plan.writes)) {
-      try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values })); }
+      try { results.push(await api('POST', '/bulk', { ids: g.ids, op: 'set', values: g.values }, { gesture })); }
       catch (err) { results.push({ done: [], failed: g.ids.map((id) => ({ id, error: err.message })) }); }
     }
-    const steps = results.reduce((n, r) => n + (r.changed?.length ?? 0), 0);
     const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, unmatched: plan.unmatched, results });
-    toast(t.msg, t.err, steps ? {
-      label: 'Undo',
-      run: async () => { await api('POST', '/undo', { steps }); await onSaved?.(); },
-    } : null);
+    toast(t.msg, t.err, gesture.ids.length ? { label: 'Undo', run: () => undoGesture(gesture) } : null);
     await onSaved?.();
   };
 
@@ -7588,7 +7758,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (!wrap.isConnected) return document.removeEventListener(kind, fn);
     if (!e.clipboardData || !cellOfEvent(e) || clipboardTarget() === 'text') return;
     handle(e);
-  });
+  }, { signal: stop.signal });
   onGrid('copy', (e) => {
     const rect = rangeOrCursor();
     if (!rect) return;
@@ -7723,6 +7893,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   document.fonts?.ready?.then(() => { if (wrap.isConnected) settle(); });
   requestAnimationFrame(() => { if (wrap.isConnected) settle(); });
   rewindow();
+  const destroy = () => { stop.abort(); fitWatch.disconnect(); };
+  wrap.wvDestroy = destroy;
+  return destroy;
 }
 
 
@@ -7746,10 +7919,9 @@ async function editPhoneField(anchor, db, eid, name) {
     const was = e.fields?.[f.name] ?? null;
     const raw = e.raw?.[f.name] ?? was;
     const write = async (value, shown) => {
-      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value });
-      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } });
-      const gesture = { kind: 'update', ids: [eid] };
-      lastGesture = gesture;
+      const gesture = newGesture('update');
+      if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value }, { gesture });
+      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } }, { gesture });
       toast(`${f.name}: ${shown ?? (value == null || value === '' ? '—' : String(value))}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
       await refreshView();
     };
@@ -7775,10 +7947,9 @@ async function editPhoneField(anchor, db, eid, name) {
         return linkSearch(f, {
           linked: raw == null ? [] : Array.isArray(raw) ? raw : [raw],
           commit: async (add, drop) => {
-            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add });
-            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop });
-            const gesture = { kind: 'update', ids: [eid] };
-            lastGesture = gesture;
+            const gesture = newGesture('update');
+            if (add.length) await api('POST', `/entities/${eid}/link`, { field: f.name, targets: add }, { gesture });
+            if (drop.length) await api('POST', `/entities/${eid}/unlink`, { field: f.name, targets: drop }, { gesture });
             toast(`${f.name} changed`, false, { label: 'Undo', run: () => undoGesture(gesture) });
             await refreshView();
           },
@@ -8267,6 +8438,10 @@ function segCtl(options, value, onPick) {
 }
 
 const lazyScripts = new Map();
+const workflowCells = (db) => (db?.system === 'workflows'
+  ? lazyScript('/workflows-cells.js').catch(() => toast('The Workflows panel did not load. Check the connection and try again.', true))
+  : null);
+
 function lazyScript(src) {
   if (!lazyScripts.has(src)) lazyScripts.set(src, new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -8329,9 +8504,10 @@ function rolledBackText(out, verb) {
   return `${out.field.name} ${verb}${parts.length ? `: ${parts.join(', ')}` : ''}`;
 }
 
+const SCROLL_PANES = '#nav, #main, #dock, #side, #share-pane, #view-pane, #view-pane .vp-scroll, .share-scroll, .table-field-list, .filter-scroll, .table-wrap';
 async function keepScroll(redraw) {
   const x = window.scrollX, y = window.scrollY;
-  const boxes = [...document.querySelectorAll('*')]
+  const boxes = [...document.querySelectorAll(SCROLL_PANES)]
     .filter((e) => e.scrollTop || e.scrollLeft)
     .map((e) => ({ el: e, top: e.scrollTop, left: e.scrollLeft }));
   const left = document.querySelector('.wv-grid')?.parentElement?.scrollLeft ?? 0;
@@ -8553,6 +8729,7 @@ async function showSpace(spaceId) {
   state.route = { page: 'space', spaceId };
   renderNav();
   const main = $('#main');
+  teardownGrid(main);
   main.replaceChildren(
     viewHeader({
       crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
@@ -8843,11 +9020,8 @@ const DOC_DECOR = [docBubbles, refChipLayers, docCodeAuto, docCodeRaw, docRails,
 
 function docFoldState(entityId, field, next) {
   const key = `weave-doc-folds:${entityId}:${field}`;
-  if (next === undefined) {
-    try { return new Set(JSON.parse(localStorage.getItem(key)) ?? []); }
-    catch { return new Set(); }
-  }
-  localStorage.setItem(key, JSON.stringify([...next]));
+  if (next === undefined) return new Set(WeavePrefs.list(key));
+  WeavePrefs.write(key, JSON.stringify([...next]));
   return next;
 }
 
@@ -8919,15 +9093,74 @@ function retheme() {
   }
 }
 
+const docBases = new Map();
+function docSha256(text) {
+  const bytes = new TextEncoder().encode(text);
+  const primes = [];
+  for (let n = 2; primes.length < 64; n++) if (primes.every((p) => n % p)) primes.push(n);
+  const frac = (x) => (x - Math.floor(x)) * 4294967296 | 0;
+  const k = primes.map((p) => frac(Math.cbrt(p)));
+  let state = primes.slice(0, 8).map((p) => frac(Math.sqrt(p)));
+  const len = bytes.length;
+  const words = new Int32Array((((len + 8) >> 6) + 1) * 16);
+  for (let i = 0; i < len; i++) words[i >> 2] |= bytes[i] << (24 - (i & 3) * 8);
+  words[len >> 2] |= 0x80 << (24 - (len & 3) * 8);
+  words[words.length - 2] = Math.floor(len / 536870912);
+  words[words.length - 1] = len * 8;
+  const rot = (x, r) => (x >>> r) | (x << (32 - r));
+  const w = new Int32Array(64);
+  for (let j = 0; j < words.length; j += 16) {
+    let [a, b, c, d, e, f, g, h] = state;
+    for (let i = 0; i < 64; i++) {
+      if (i < 16) w[i] = words[j + i];
+      else w[i] = (rot(w[i - 15], 7) ^ rot(w[i - 15], 18) ^ (w[i - 15] >>> 3)) + w[i - 7] + (rot(w[i - 2], 17) ^ rot(w[i - 2], 19) ^ (w[i - 2] >>> 10)) + w[i - 16];
+      const t1 = h + (rot(e, 6) ^ rot(e, 11) ^ rot(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i] | 0;
+      const t2 = (rot(a, 2) ^ rot(a, 13) ^ rot(a, 22)) + ((a & b) ^ (a & c) ^ (b & c)) | 0;
+      h = g; g = f; f = e; e = d + t1 | 0; d = c; c = b; b = a; a = t1 + t2 | 0;
+    }
+    state = [a, b, c, d, e, f, g, h].map((v, i) => v + state[i] | 0);
+  }
+  return state.map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
+}
+const docBaseOf = (text) => (globalThis.crypto?.subtle
+  ? crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then((b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''), () => docSha256(text))
+  : Promise.resolve(docSha256(text)));
+function noteDocBase(entityId, field, text) {
+  const key = `${entityId}::${field}`;
+  if (pendingDocSaves.has(key)) return;
+  const at = { text };
+  docBases.set(key, at);
+  docBaseOf(text).then((hash) => { if (docBases.get(key) === at) at.hash = hash; });
+}
+function sendDoc(key, entityId, field, value) {
+  const put = (base) => api('PUT', `/entities/${entityId}/doc`, { field, doc: value, ...(base ? { base } : {}) }).then((res) => {
+    if (res?.base) docBases.set(key, { hash: res.base });
+    return res;
+  });
+  const at = docBases.get(key);
+  if (!at || at.hash !== undefined) return put(at?.hash);
+  return docBaseOf(at.text).then(put);
+}
+function docConflict(key, entityId, field, err) {
+  if (err.code !== 'stale' || !err.base) return toast(`${err.message}. Your draft is kept: try again from the save mark.`, true);
+  toast(`${err.entity?.modifiedBy ?? 'Someone'} changed ${field} since you opened it, so your draft was not saved`, true,
+    { label: 'Use mine', run: () => { docBases.set(key, { hash: err.base }); saves.flush(); } }, { key: `stale-doc:${key}` });
+}
+
 function scheduleDocSave(entityId, field, value, onSaved = null) {
   const key = `${entityId}::${field}`;
   const kept = (err) => `${err.message}. Your draft is kept and saves on your next edit or when you leave.`;
   pendingDocSaves.set(key, { value, write: () => saves.flush() });
+  WeaveDocDraft.keep(localStorage, entityId, field, value, new Date().toISOString());
   saves.push({
-    key: `doc:${key}`, entityId, field, value, failText: kept,
-    send: () => api('PUT', `/entities/${entityId}/doc`, { field, doc: value }),
+    key: `doc:${key}`, entityId, field, value, failText: kept, keep: true,
+    onFail: (err) => (err.status ? docConflict(key, entityId, field, err) : toast(kept(err), true)),
+    send: () => sendDoc(key, entityId, field, value),
   }).then(() => {
-    if (pendingDocSaves.get(key)?.value === value) pendingDocSaves.delete(key);
+    if (pendingDocSaves.get(key)?.value === value) {
+      pendingDocSaves.delete(key);
+      WeaveDocDraft.drop(localStorage, entityId, field);
+    }
     onSaved?.();
   }, (err) => toast(kept(err), true));
 }
@@ -8966,8 +9199,8 @@ function dropDecor(st) { clearTimeout(st.timer); st.stop?.(); (st.layer ?? st.ra
 
 function docSectionCollapse(entityId, field, next) {
   const key = `weave-doc-collapsed:${entityId}:${field}`;
-  if (next === undefined) return localStorage.getItem(key) === '1';
-  localStorage.setItem(key, next ? '1' : '');
+  if (next === undefined) return WeavePrefs.read(key) === '1';
+  WeavePrefs.write(key, next ? '1' : '');
   return next;
 }
 
@@ -8991,13 +9224,16 @@ function appearsAsPanel(db, entity, refresh) {
 }
 
 async function showEntity(id) {
+  const gen = (navDraw += 1);
   let entity, refs;
   try {
     [entity, refs] = await Promise.all([api('GET', `/entities/${id}`), entityRefs(id)]);
   } catch (err) {
+    if (!navOwns(gen)) return;
     toast(`Couldn't open that record: ${err.message}`, true);
     return showHome();
   }
+  if (!navOwns(gen)) return;
   noteEntityRecent(entity);
   const hop = entityHop(entity);
   const B = weaveBreadcrumbs;
@@ -9024,8 +9260,7 @@ function nextStateFor(entity, f, named, refresh) {
   const next = states[states.findIndex((st) => st.name === was) + 1];
   if (!next) return null;
   const move = async (to) => {
-    await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to });
-    await refresh?.();
+    await refresh?.(await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to }));
     $('#main > .table-wrap')?.wvRefresh?.();
   };
   const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
@@ -9060,33 +9295,38 @@ const entityRefs = (id) => Promise.all(['references-from', 'references'].map((pa
 async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPeek = false, onClose = null, editors = null, crumbs = null, dockControls = null, later = null }) {
   const id = entity.id;
   const db = allTables().find((d) => d.id === entity.dbId);
+  await workflowCells(db);
   let [refsOut, refsIn] = refs;
   const fills = [];
+  const repaints = [];
+  const repaint = (fill) => { repaints.push(fill); if (later) fills.push(fill); };
   const holds = (name) => !later || (!!entity.fields && name in entity.fields);
   const holdsDoc = (name) => !later || (!!entity.docs && name in entity.docs);
   const asNode = (x) => (x?.nodeType ? x : document.createTextNode(x ?? ''));
   const streamed = (f, draw) => {
     let node = asNode(holds(f.name) ? draw() : el('span', { class: 'fieldrow-pending' }));
-    if (later) {
-      const was = holds(f.name) ? JSON.stringify(entity.fields[f.name] ?? null) : undefined;
-      fills.push(() => {
-        if (was === JSON.stringify(entity.fields?.[f.name] ?? null) || node.contains(document.activeElement)) return;
-        const next = asNode(draw());
-        node.replaceWith(next);
-        node = next;
-      });
-    }
+    let was = holds(f.name) ? JSON.stringify(entity.fields[f.name] ?? null) : undefined;
+    repaint((reread) => {
+      const now = JSON.stringify(entity.fields?.[f.name] ?? null);
+      if (was === now || (!reread && node.contains(document.activeElement))) return;
+      const next = asNode(draw());
+      node.replaceWith(next);
+      node = next;
+      was = now;
+    });
     return node;
   };
 
   const nameF = nameFieldOf(db);
   const computed = nameF?.type === 'formula';
+  const locked = !!entity.readOnly;
   const nameInput = titleEdit('textarea', 'name-edit' + (computed ? ' computed' : ''), entity.name, {
     rows: '1', 'aria-label': 'Name',
     readonly: computed ? '' : undefined,
     title: computed ? `computed name — ƒ ${nameF.expression ?? ''}` : null,
     onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } },
   });
+  if (locked) nameInput.readOnly = true;
   if (!CSS.supports('field-sizing', 'content')) {
     const fit = () => { nameInput.style.height = 'auto'; nameInput.style.height = `${nameInput.scrollHeight}px`; };
     nameInput.addEventListener('input', fit);
@@ -9094,10 +9334,18 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (later) fills.push(() => { if (nameInput.value !== (entity.name ?? '') && document.activeElement !== nameInput) nameInput.value = entity.name ?? ''; });
-  if (!computed) nameInput.addEventListener('change', async () => {
-    try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); toast('Renamed'); }
+  if (!computed && !locked) nameInput.addEventListener('change', async () => {
+    try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); entity.name = nameInput.value; toast('Renamed'); }
     catch (err) { toast(err.message, true); }
   });
+  const frame = (e) => JSON.stringify([e.name ?? '', e.avatar ?? null, boardCore.coverOf(db, e)?.id ?? null, (e.files ?? []).map((x) => x.id)]);
+  const saved = async (fresh, field = null) => {
+    if (later) await later.catch(() => {});
+    if (!nameInput.isConnected) return;
+    if (fresh?.id !== id || frame(fresh) !== frame(entity)) return refresh();
+    Object.assign(entity, fresh);
+    for (const fill of repaints) fill(!field);
+  };
 
   const recordCtx = () => ({ db, inPeek, onClose });
   const dlBtn = kindDots('record', entity, recordCtx, { title: `${WeaveTerm.cap(termOfTable(entity.dbId).singular)} actions` });
@@ -9136,14 +9384,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   );
   let nextFab = null;
   const drawFab = () => {
-    const fab = nextStateButton(entity, db, refresh);
+    const fab = locked ? null : nextStateButton(entity, db, saved);
     if (nextFab && fab && nextFab.outerHTML === fab.outerHTML) return;
     nextFab?.remove();
     nextFab = fab;
     if (fab) mount.append(fab);
   };
   if ((db?.fields ?? []).filter((x) => x.type === 'workflow').every((x) => holds(x.name))) drawFab();
-  if (later) fills.push(drawFab);
+  repaint(drawFab);
   if (!inPeek && db) {
     mount.querySelector(`.crumb-path a[href="#/table/${entity.dbId}"]`)?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -9168,6 +9416,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const body = el('div', { class: 'doc-section-body' }, host);
     const nameEl = el('span', { class: 'doc-section-name' }, f.name);
     let sourceBox = null;
+    let docOpen = !!f.displayInline || !docSectionCollapse(id, f.name);
     const caret = disclosure('doc-caret', true, {
       title: 'Collapse section',
       onclick: () => {
@@ -9175,11 +9424,13 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         caret.classList.toggle('closed', open);
         setDisclosure(caret, !open);
         docSectionCollapse(id, f.name, open);
+        docOpen = !open;
+        fillOpenDoc();
       },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
       kindContext(el('div', { class: 'doc-section-head' },
-        el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+        locked ? restingGrip() : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
         caret,
         nameEl,
         el('button', {
@@ -9189,27 +9440,76 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         dl), 'doc', f, () => ({ entity })),
       body);
 
-    if (docSectionCollapse(id, f.name)) {
+    if (!docOpen) {
       body.classList.add('hidden');
       caret.classList.add('closed');
       setDisclosure(caret, false);
     }
+    if (f.displayInline) {
+      section.classList.add('document-inline');
+      section.setAttribute('aria-label', f.name);
+      const head = section.querySelector('.doc-section-head');
+      caret.remove();
+      const options = el('details', { class: 'intro-controls document-inline-options' },
+        el('summary', {}, 'Field options'), head,
+        el('button', { type: 'button', class: 'btn btn-sm', onclick: () => editFieldDialog(db, f) }, 'Field settings'));
+      section.append(options);
+      if (!(entity.docs?.[f.name] ?? '').trim()) {
+        section.classList.add('document-inline-empty');
+        if (locked) section.hidden = true;
+        options.addEventListener('toggle', () => section.classList.toggle('inline-editing', options.open));
+      }
+      if (locked) options.hidden = true; else showIntroControls(options);
+    }
     const rail = attachDashRail(section, host);
     const folds = attachHeadingFolds(host, id, f.name, () => nameInput.value);
+    noteDocBase(id, f.name, entity.docs?.[f.name] ?? '');
+    let docEd = null;
+    const offerHeldDraft = () => {
+      if (locked || pendingDocSaves.has(`${id}::${f.name}`)) return;
+      const draft = WeaveDocDraft.settle(localStorage, id, f.name, entity.docs?.[f.name] ?? '');
+      if (!draft) return;
+      const bar = el('div', { class: 'alert alert-warning doc-draft-bar', role: 'status' },
+        el('span', {}, 'Draft from ', draft.at ? whenEl(draft.at) : 'an earlier visit', ' never reached the server.'));
+      bar.append(
+        el('button', {
+          type: 'button',
+          class: 'btn btn-sm btn-primary',
+          onclick: () => {
+            if (docEd) docEd.setValue(draft.value); else if (sourceBox) sourceBox.value = draft.value;
+            scheduleDocSave(id, f.name, draft.value);
+            bar.remove();
+          },
+        }, 'Restore draft'),
+        el('button', {
+          type: 'button',
+          class: 'btn btn-sm',
+          onclick: () => {
+            WeaveDocDraft.drop(localStorage, id, f.name);
+            bar.remove();
+          },
+        }, 'Discard draft'),
+      );
+      section.insertBefore(bar, body);
+    };
+    offerHeldDraft();
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
         const ed = mountDocEditor(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
-          placeholder: `Write ${f.name}… press / for blocks`,
+          readOnly: !!entity.readOnly,
+          placeholder: entity.readOnly ? '' : `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
+            if (f.displayInline) section.classList.toggle('document-inline-empty', !value.trim());
             scheduleDocSave(id, f.name, value);
             rail.schedule();
             folds.schedule();
           },
         });
         editors?.push(ed);
+        docEd = ed;
       };
       loadVditor().then(mount, (err) => {
         if (!host.isConnected) return;
@@ -9218,7 +9518,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       });
     };
     const mountSourceEditor = () => {
-      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source` });
+      const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source`, readonly: locked ? '' : undefined });
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
       ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
       sourceBox = ta;
@@ -9228,7 +9528,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       const mode = globalThis.WeaveEditorLib.docViewMode(f.kind, entity.docs?.[f.name] ?? '');
       const isApp = mode === 'app';
       const isDiagram = mode === 'diagram';
-      const appFrame = isApp ? el('iframe', { class: 'doc-app', src: `${fmtBase}.html`, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
+      const appFrame = isApp ? el('iframe', { class: 'doc-app' + (f.displayInline ? ' fits-content' : ''), src: `${fmtBase}.html${f.displayInline ? '?inline=1' : ''}`, dataset: f.displayInline ? { inlineDoc: f.id } : {}, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: f.name })
         : isDiagram ? el('div', { class: 'doc-diagram' }) : null;
       const drawDiagram = () => {
         appFrame.replaceChildren(el('pre', { class: 'mermaid' }, sourceBox?.value ?? entity.docs?.[f.name] ?? ''));
@@ -9237,15 +9537,20 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       let showingSource = false;
       let mounted = false;
       if (appFrame) {
-        const sourceToggle = el('span', {
-          class: 'doc-anchor', title: 'Edit source',
+        const sourceToggle = el('button', {
+          type: 'button', class: 'doc-anchor', title: 'Edit source', 'aria-label': `Edit ${f.name} source`, 'aria-pressed': 'false',
           onclick: () => {
             showingSource = !showingSource;
             host.classList.toggle('hidden', !showingSource);
             appFrame.classList.toggle('hidden', showingSource);
             sourceToggle.classList.toggle('active', showingSource);
+            sourceToggle.setAttribute('aria-pressed', String(showingSource));
+            const verb = showingSource ? 'Hide' : 'Edit';
+            sourceToggle.title = `${verb} source`;
+            sourceToggle.setAttribute('aria-label', `${verb} ${f.name} source`);
             if (showingSource && !mounted) { mounted = true; mountSourceEditor(); }
             if (!showingSource) { if (isApp) appFrame.src = appFrame.src; else drawDiagram(); }
+            if (showingSource) sourceBox?.focus(); else sourceToggle.focus();
           },
         }, iconEl('lucide:code-xml', 'wv-icon'));
         nameEl.after(sourceToggle);
@@ -9256,7 +9561,13 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (mode === 'code') mountSourceEditor();
       if (mode === 'markdown') mountEditor();
     };
-    if (holdsDoc(f.name)) fillDoc(); else fills.push(fillDoc);
+    let docFilled = false;
+    const fillOpenDoc = () => {
+      if (docFilled || !docOpen || !holdsDoc(f.name)) return;
+      docFilled = true;
+      fillDoc();
+    };
+    if (holdsDoc(f.name)) fillOpenDoc(); else fills.push(fillOpenDoc);
     return section;
   };
 
@@ -9275,20 +9586,17 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const coverF = boardCore.coverField(db);
   const coverFile = boardCore.coverOf(db, entity);
   const coverEl = (file) => entityCoverEl(file, { size: coverF.size ?? 'medium', fit: coverF.fit ?? 'trim' });
-  const introHeader = shown.some((f) => f.type === 'attachments' && f.preview === 'intro');
-  const placeCover = (file) => {
-    const cover = coverEl(file);
-    if (introHeader) mount.querySelector(':scope > .view-header').before(cover);
-    else left.prepend(cover);
-  };
+  const placeCover = (file) => placeCoverIn(mount.querySelector(':scope > .view-header'), coverEl(file));
   if (coverFile) placeCover(coverFile);
   const blocks = new Map();
 
   const anchor = (what) => el('span', { class: 'opt-grip', title: `Drag to move ${what}` }, iconEl('lucide:grip-vertical', 'wv-icon'));
+  const restingGrip = () => el('span', { class: 'opt-grip', 'aria-hidden': 'true' });
+  const handle = (what) => (locked ? restingGrip() : anchor(what));
   const HANDS_OFF = 'button, a, input, select, textarea, [contenteditable], .picker-wrap, .permalink-copy, .attach-box';
   const wireBlock = (key, node, handles) => {
     node.dataset.block = key;
-    for (const h of handles.filter(Boolean)) {
+    for (const h of locked ? [] : handles.filter(Boolean)) {
       RO().guard(h);
       h.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
@@ -9305,6 +9613,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   };
   const dragRow = (node, f) => {
     node.dataset.field = f.name;
+    if (locked) return node;
     RO().guard(node);
     node.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || (e.target.closest(HANDS_OFF) && !e.target.closest('.opt-grip'))) return;
@@ -9330,16 +9639,17 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     }
     const note = fieldDescription(f) ? el('div', { class: 'fieldrow-note' }, el('div', { class: 'desc-clamp clamped' }, fieldDescription(f))) : null;
     const sheetKind = SHEET_FIELD_TYPES.has(f.type);
+    const labelKids = [fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null];
     const node = el('div', { class: 'fieldrow' },
-      f.type === 'attachments' ? anchor(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
-      el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) },
-        fieldNameLabel(f, f.name, db), note ? descToggle(f.name, note, `wv.desc.${db.id}.${f.id}`) : null),
-      streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { label: f.name })),
+      f.type === 'attachments' || locked ? handle(f.name) : el('span', { class: 'opt-grip', title: 'Drag to reorder' }, iconEl('lucide:grip-vertical', 'wv-icon')),
+      locked ? el('label', { class: 'fieldrow-label' }, ...labelKids)
+        : el('label', { class: 'fieldrow-label', title: 'Edit field', onclick: () => editFieldDialog(db, f) }, ...labelKids),
+      streamed(f, () => labeledEditorFor(f, entity, db, saved, { label: f.name, locked })),
       sheetKind ? el('span', { class: 'fieldrow-chev', 'aria-hidden': 'true' }, chevron()) : null, note);
     node.dataset.ftype = f.type;
     if (f.type === 'attachments') {
       node.classList.add('attach-block');
-      if (f.preview === 'intro') {
+      if (f.displayInline || f.preview === 'intro') {
         node.classList.add('attachment-intro');
         const controls = node.querySelector('.intro-controls');
         if (controls) controls.append(node.querySelector('.opt-grip'), node.querySelector('.fieldrow-label'));
@@ -9351,7 +9661,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       if (f.type === 'relation') {
         const wide = () => node.classList.toggle('fieldrow-wide', relationCount(entity.fields?.[f.name]) > 0);
         wide();
-        if (later) fills.push(wide);
+        repaint(wide);
       }
       node.addEventListener('click', (e) => {
         if (!dockCoversScreen.matches || e.target.closest(SHEET_HANDS_OFF)) return;
@@ -9362,21 +9672,29 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
   for (const n of (db.systemFields ?? [])) {
     if (!SYSTEM_COLS[n]) continue;
+    const value = el('span', { class: 'fieldrow-value' }, SYSTEM_COLS[n](entity));
+    repaint(() => value.replaceChildren(SYSTEM_COLS[n](entity)));
     values.append(el('div', { class: 'fieldrow fieldrow-system', dataset: { field: n } },
       el('span', { class: 'opt-grip', 'aria-hidden': 'true' }),
       el('label', { class: 'fieldrow-label' }, n),
-      el('span', { class: 'fieldrow-value' }, SYSTEM_COLS[n](entity))));
+      value));
   }
 
   if (values.childElementCount) {
+    const sumValue = (row) => {
+      const read = () => row.querySelector('.fieldrow-value').textContent;
+      const node = el('span', { class: 'wv-sum-value' }, read());
+      repaint(() => { node.textContent = read(); });
+      return node;
+    };
     const summary = el('div', { class: 'entity-values-summary hidden' },
       ...[...values.children].map((row) => {
         const f = shown.find((x) => x.name === row.dataset.field);
         const system = row.classList.contains('fieldrow-system');
         const label = row.querySelector('.fieldrow-label');
         return el('span', { class: 'wv-sum' + (system ? ' wv-sum-system' : ''), dataset: { field: row.dataset.field }, title: fieldDescription(f) || null },
-          el('span', { class: 'wv-sum-label', onclick: f ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
-          system ? el('span', { class: 'wv-sum-value' }, row.querySelector('.fieldrow-value').textContent) : streamed(f, () => labeledEditorFor(f, entity, db, () => refresh(), { compact: true, label: f.name })));
+          el('span', { class: 'wv-sum-label', onclick: f && !locked ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
+          system ? sumValue(row) : streamed(f, () => labeledEditorFor(f, entity, db, saved, { compact: true, label: f.name, locked })));
       }));
     const setFolded = (closed) => {
       values.classList.toggle('hidden', closed);
@@ -9394,14 +9712,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       },
     });
     const valuesHead = el('div', { class: 'block-head' },
-      anchor('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
+      handle('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
     if (docSectionCollapse(id, VALUES_BLOCK)) setFolded(true);
     fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
 
   for (const f of shown.filter((x) => x.type === 'relation' && x.many && !x.targetDbIds)) {
-    const grip = anchor(f.name);
+    const grip = handle(f.name);
     const slot = wireBlock(f.name, el('div', { class: 'related-block' }), [grip]);
     const drawRelated = () => relatedGrid(entity, f, refresh)
       .then((grid) => {
@@ -9474,7 +9792,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const loose = (entity.files ?? []).filter((f) => !inFields.has(f.id));
     if (!loose.length) return;
     const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
-    const introTable = db.fields.some((f) => f.type === 'attachments' && f.preview === 'intro');
+    const introTable = db.fields.some((f) => f.type === 'attachments' && (f.displayInline || f.preview === 'intro'));
     const pages = (introTable ? [] : loose.filter((file) => !file.missing && fileKind(file) === 'html')).map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
     const foldFiles = (closed) => {
       for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
@@ -9501,8 +9819,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       } catch (err) { toast(err.message, true); }
     };
     const filesHead = el('div', { class: 'block-head' },
-      anchor('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
-      el('button', {
+      handle('the files'), filesCaret, el('span', { class: 'block-name' }, `Files · ${loose.length}`),
+      locked ? null : el('button', {
         type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
         title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
       }, 'Make a field'));
@@ -9523,19 +9841,15 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   placed = true;
   let appears = appearsAsPanel(db, entity, refresh);
   if (appears) left.prepend(appears);
-  if (later) {
-    fills.push(() => {
-      const next = appearsAsPanel(db, entity, refresh);
-      if (!appears || !next) return;
-      if (appears.outerHTML !== next.outerHTML) { appears.replaceWith(next); appears = next; }
-    });
-    if (coverF && !coverFile) fills.push(() => {
-      const file = boardCore.coverOf(db, entity);
-      if (!file) return;
-      if (introHeader) placeCover(file);
-      else if (appears?.isConnected) appears.after(coverEl(file)); else left.prepend(coverEl(file));
-    });
-  }
+  repaint(() => {
+    const next = appearsAsPanel(db, entity, refresh);
+    if (!appears || !next) return;
+    if (appears.outerHTML !== next.outerHTML) { appears.replaceWith(next); appears = next; }
+  });
+  if (later && coverF && !coverFile) fills.push(() => {
+    const file = boardCore.coverOf(db, entity);
+    if (file) placeCover(file);
+  });
 
   const refCard = (title, extraClass, refs) => {
     if (!refs.length) return;
@@ -9920,14 +10234,16 @@ async function relatedGrid(entity, f, onSaved) {
       el('td', { colspan: String(colCount) },
         el('button', {
           class: 'add-entity-btn', type: 'button',
-          onclick: async () => {
-            try {
-              const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: `New ${target.name}` } });
-              await link([made.id]);
-              if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
-              else focusNewRow(made.id, { scope: '.related-block', select: true });
-            } catch (err) { toast(err.message, true); }
-          },
+          onclick: () => tray(`New ${target.term.singular}`, [
+            el('input', { name: 'name', placeholder: 'Name', class: 'form-control', required: '' }),
+          ], async (fd) => {
+            const name = fd.get('name').trim();
+            if (!name) throw new Error(`Name the ${target.term.singular} first`);
+            const made = await api('POST', `/tables/${target.id}/entities`, { values: { Name: name } });
+            await link([made.id]);
+            if (view.layout === 'board') { await dockEntity(target, made.id, { step: true }); $('#dock .name-edit')?.focus(); }
+            else focusNewRow(made.id, { scope: '.related-block', select: true });
+          }, 'Create & link'),
         }, `+ New ${target.term.singular}`),
         el('button', {
           class: 'add-entity-btn', type: 'button',
@@ -10112,6 +10428,7 @@ async function showHome() {
   const wsRow = listRead.value?.find?.((w) => w.name === ws.name) ?? null;
   const here = { id: ws.id, name: ws.name, default: !WS_PREFIX, ...(wsRow ?? {}), title: ws.title ?? ws.name, invite: invRead.status === 'fulfilled' };
   const wsCtx = () => ({ after: () => showHome() });
+  teardownGrid(main);
   main.replaceChildren(
     viewHeader({
       crumbs: [],
@@ -10246,37 +10563,147 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-let lastGesture = null;
+const gestures = [];
+const GESTURE_CAP = 100;
+const UNDO_WINDOW = 200;
+const CLAIM_CAP = 2000;
+const UNDO_REFUSED = 'Changed since, so nothing was undone';
+const keptLine = (kept) => kept.map((k) => (k.by ? `${k.field}, changed since by ${k.by}` : `${k.field}, changed since`)).join('; ');
+function undoToast(undone) {
+  const kept = undone.flatMap((u) => u.kept ?? []);
+  if (undone.every((u) => u.skipped === 'changed since')) return toast(`Kept: ${keptLine(kept)}`, true);
+  const first = undone[0].name || undone[0].entity;
+  const more = undone.length > 1 ? ` and ${undone.length - 1} more` : '';
+  return toast(`Undone: ${first}${more}${kept.length ? `. Kept: ${keptLine(kept)}` : ''}`);
+}
+const undoKey = (u) => `${u.kind}|${u.entityId}|${u.ts}`;
+const pendingClaims = [];
+const looseIds = new Set();
 
-async function gestureTop(g) {
-  await g.settled;
-  if (!g.ids.length) return [];
-  const top = await api('GET', `/undo?limit=${g.ids.length}`);
-  const ours = [];
-  for (const u of top) {
-    if (u.kind !== g.kind || !g.ids.includes(u.entityId) || ours.includes(u.entityId)) break;
-    ours.push(u.entityId);
+const ENTITY_UNDO = [
+  [/^PATCH \/entities\/([^/?]+)$/, 'update'],
+  [/^POST \/entities\/([^/?]+)\/(?:state|link|unlink|doc|doc\/revisions\/[^/?]+\/restore)$/, 'update'],
+  [/^PUT \/entities\/([^/?]+)\/doc$/, 'update'],
+  [/^DELETE \/entities\/([^/?]+)$/, 'delete'],
+  [/^POST \/entities\/([^/?]+)\/restore$/, 'restore'],
+  [/^POST \/entities\/([^/?]+)\/comments$/, 'comment-add'],
+  [/^DELETE \/entities\/([^/?]+)\/comments\/[^/?]+$/, 'comment-delete'],
+  [/^POST \/entities\/([^/?]+)\/(?:fields\/[^/?]+\/)?files$/, 'file-attach'],
+];
+const BULK_UNDO = {
+  set: (d) => (d.changed ?? []).map((id) => ['update', id]),
+  link: (d) => (d.done ?? []).map((id) => ['update', id]),
+  move: (d) => (d.moved ?? []).flatMap((m) => [['create', m.to], ['delete', m.from]]),
+  rollup: (d) => [['create', d.parent?.id], ...(d.done ?? []).map((id) => ['update', id])].filter(([, id]) => id),
+};
+
+function undoEntriesOf(method, path, data) {
+  const call = `${method} ${path}`;
+  for (const [route, kind] of ENTITY_UNDO) {
+    const id = call.match(route)?.[1];
+    if (id) return [[kind, id]];
   }
-  return ours;
+  if (/^POST \/tables\/[^/?]+\/entities$/.test(call)) return data?.id ? [['create', data.id]] : [];
+  return call === 'POST /bulk' ? BULK_UNDO[data?.op]?.(data) ?? [] : [];
+}
+
+function newGesture(kind = null) {
+  const g = { kind, ids: [], keys: new Set() };
+  gestures.push(g);
+  if (gestures.length > GESTURE_CAP) gestures.shift();
+  return g;
+}
+
+function noteWrite(g, method, path, data, { seen, took, date }) {
+  if (seen && data?.revision === seen) return;
+  const entries = undoEntriesOf(method, path.split('?')[0], data);
+  if (!entries.length) return;
+  g ??= newGesture();
+  const one = entries.length === 1 ? entries[0][0] : null;
+  const stamp = Date.parse(one === 'create' ? data?.createdAt : ['update', 'delete', 'restore'].includes(one) ? data?.updatedAt : null);
+  const oldest = !Number.isFinite(stamp) && Number.isFinite(date);
+  const [lo, hi] = Number.isFinite(stamp) ? [stamp, stamp + took + 5]
+    : oldest ? [date - took - 2000, date + 3000] : [-Infinity, Infinity];
+  for (const [kind, id] of entries) {
+    g.ids.push(id);
+    pendingClaims.push({ g, kind, id, lo, hi, oldest, took });
+    if (oldest) looseIds.add(id);
+  }
+  if (pendingClaims.length > CLAIM_CAP) pendingClaims.splice(0, pendingClaims.length - CLAIM_CAP);
+}
+
+function pinClaims(row) {
+  const stamp = looseIds.has(row.id) ? Date.parse(row.updatedAt) : NaN;
+  if (!Number.isFinite(stamp)) return;
+  for (const w of pendingClaims) {
+    if (w.oldest && w.kind === 'update' && w.id === row.id) Object.assign(w, { lo: stamp, hi: stamp + w.took + 5, oldest: false });
+  }
+}
+
+function claimOwn(top) {
+  const held = new Set(gestures.flatMap((g) => [...g.keys]));
+  const want = pendingClaims.splice(0);
+  looseIds.clear();
+  for (const w of [...want.filter((x) => !x.oldest).reverse(), ...want.filter((x) => x.oldest)]) {
+    const fits = top.filter((x) => x.kind === w.kind && x.entityId === w.id && !held.has(undoKey(x))
+      && Date.parse(x.ts) >= w.lo && Date.parse(x.ts) <= w.hi);
+    const u = w.oldest ? fits.at(-1) : fits[0];
+    if (!u) continue;
+    held.add(undoKey(u));
+    w.g.keys.add(undoKey(u));
+  }
+}
+
+let undoQueue = Promise.resolve();
+function undoOwn(only = null) {
+  const run = undoQueue.then(() => stepBackOwn(only));
+  undoQueue = run.catch(() => {});
+  return run;
+}
+
+async function stepBackOwn(only, recount = true) {
+  const pool = only ? [only] : gestures;
+  await Promise.allSettled(pool.map((g) => g.settled));
+  if (!pendingClaims.length && !pool.some((g) => g.keys.size)) return null;
+  const top = await api('GET', `/undo?limit=${UNDO_WINDOW}`);
+  claimOwn(top);
+  const live = new Set(top.map(undoKey));
+  for (const g of pool) for (const k of g.keys) if (!live.has(k)) g.keys.delete(k);
+  const owner = top.length ? pool.find((g) => g.keys.has(undoKey(top[0]))) : null;
+  let steps = 0;
+  while (owner && steps < top.length && owner.keys.has(undoKey(top[steps]))) steps++;
+  if (!steps) return { blocked: pool.some((g) => g.keys.size) };
+  const run = top.slice(0, steps);
+  let undone;
+  try {
+    ({ undone } = await api('POST', '/undo', { steps, expect: run.map(undoKey) }));
+  } catch (err) {
+    if (err?.status !== 409 || !recount) throw err;
+    return stepBackOwn(only, false);
+  }
+  for (const u of run) owner.keys.delete(undoKey(u));
+  return { undone, popped: run };
 }
 
 async function unlinkWithUndo(entityId, f, target, after = () => {}) {
-  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] });
-  const gesture = { kind: 'update', ids: [entityId] };
-  lastGesture = gesture;
+  const gesture = newGesture('update');
+  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] }, { gesture });
   toast(`Unlinked ${target.name ?? 'the row'} from ${f.name}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
   await after();
 }
 
 async function undoGesture(g) {
   g.undoing = true;
-  if (lastGesture === g) lastGesture = null;
   try {
     await saves.flush();
-    const ours = await gestureTop(g);
+    await g.settled;
     if (!g.ids.length) return;
-    if (ours.length) await api('POST', '/undo', { steps: ours.length });
-    for (const id of g.ids) if (!ours.includes(id)) await api('POST', `/entities/${id}/restore`);
+    const r = await undoOwn(g);
+    const back = new Set((r?.popped ?? []).map((u) => u.entityId));
+    if (g.kind === 'delete') {
+      for (const id of new Set(g.ids)) if (!back.has(id)) await api('POST', `/entities/${id}/restore`, undefined, { gesture: false });
+    } else if (!r?.undone) return toast(UNDO_REFUSED, true);
+    g.keys.clear();
     await refreshView();
     focusGridRow(g.ids[0]);
     toast('Restored');
@@ -10302,16 +10729,12 @@ document.addEventListener('keydown', async (e) => {
   if (e.target?.isContentEditable || e.target?.closest?.('input:not([type="checkbox"]), textarea, select, [contenteditable]')) return;
   if (document.querySelector(DOCK_ESC_OWNERS)) return;
   e.preventDefault();
-  const g = lastGesture;
-  lastGesture = null;
   try {
     await saves.flush();
-    const ours = g ? await gestureTop(g) : [];
-    const { undone } = await api('POST', '/undo', { steps: ours.length || 1 });
-    if (!undone.length) return toast('Nothing to undo');
+    const r = await undoOwn();
+    if (!r?.undone?.length) return r?.blocked ? toast(UNDO_REFUSED, true) : toast('Nothing to undo');
     await refreshView();
-    const first = undone[0].name || undone[0].entity;
-    toast(`Undone: ${first}${undone.length > 1 ? ` and ${undone.length - 1} more` : ''}`);
+    undoToast(r.undone);
   } catch (err) { toast(err.message, true); }
 });
 
@@ -10321,7 +10744,7 @@ const KEY_SHEET_ANYWHERE = [
   { keys: '?', does: 'this sheet, from anywhere outside a text field' },
   { keys: '⌘⇧E', does: 'expand the docked record to the page, or dock it again' },
   { keys: 'Esc', does: 'close the dock, a dialog or a menu' },
-  { keys: '⌘Z', does: 'undo the last change; a trash from the selection bar comes back whole' },
+  { keys: '⌘Z', does: 'undo the last change this tab made; a trash from the selection bar comes back whole' },
   { keys: '⌘Return', does: 'send a problem report from its note' },
 ];
 const KEY_SHEET_TABLE = [
@@ -10525,20 +10948,23 @@ function gridHold() {
   paintGridWait();
   return () => { if (gridWait.holds.delete(token)) paintGridWait(); };
 }
+function markGridWait(state) {
+  const wrap = $('#main')?.querySelector(':scope > .table-wrap');
+  if (!wrap || wrap.getAttribute('aria-busy') === state) return;
+  if (state === null) wrap.removeAttribute('aria-busy'); else wrap.setAttribute('aria-busy', state);
+}
 function paintGridWait() {
   const busy = gridWait.holds.size > 0;
-  const wrap = $('#main')?.querySelector(':scope > .table-wrap');
-  if (wrap && busy !== (wrap.getAttribute('aria-busy') === 'true')) {
-    if (busy) wrap.setAttribute('aria-busy', 'true'); else wrap.removeAttribute('aria-busy');
-  }
   if (busy) {
     clearTimeout(gridWait.hideTimer); gridWait.hideTimer = 0;
     if (gridWait.exit) keepLoader(gridLoaderNode(), gridWait);
+    markGridWait(gridWait.shownAt ? 'true' : 'false');
     if (!gridWait.shownAt && !gridWait.showTimer) {
-      gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; showGridLoader(); }, LOADER_SHOW_AFTER_MS);
+      gridWait.showTimer = setTimeout(() => { gridWait.showTimer = 0; markGridWait('true'); showGridLoader(); }, LOADER_SHOW_AFTER_MS);
     } else if (gridWait.shownAt) placeGridLoader();
     return;
   }
+  markGridWait(null);
   if (gridWait.showTimer) { clearTimeout(gridWait.showTimer); gridWait.showTimer = 0; return; }
   if (!gridWait.shownAt || gridWait.hideTimer || gridWait.exit) return;
   settleLoader(gridLoaderNode(), gridWait, hideGridLoader);
@@ -10581,6 +11007,7 @@ function hideGridLoader() {
 }
 function resetGridWait() {
   gridWait.holds.clear();
+  markGridWait(null);
   clearTimeout(gridWait.showTimer); gridWait.showTimer = 0;
   clearTimeout(gridWait.hideTimer);
   hideGridLoader();
@@ -10641,7 +11068,13 @@ function syncDocTitle(pageName) {
 }
 
 function renderRoute() {
-  return Promise.resolve().then(dispatchRoute).finally(cancelSkeleton);
+  return Promise.resolve().then(() => {
+    const body = dispatchRoute();
+    const gen = navDraw;
+    return Promise.resolve(body)
+      .catch((err) => { if (navOwns(gen)) throw err; })
+      .finally(() => { if (navOwns(gen)) cancelSkeleton(); });
+  });
 }
 
 function rememberRoute() {
@@ -10649,7 +11082,11 @@ function rememberRoute() {
   if (landed !== location.hash) history.replaceState(history.state, '', landed);
 }
 
+let navDraw = 0;
+const navOwns = (gen) => navDraw === gen;
+
 function dispatchRoute() {
+  navDraw += 1;
   closeSharePanel?.();
   teardownDocEditors();
   dockClose();
@@ -10706,17 +11143,12 @@ function paintRouteError(err) {
           }),
         }, iconEl('lucide:mail', 'wv-icon bug-mail-icon'), 'Report by email')))));
 }
-let renderChain = Promise.resolve();
-const renderRouteSafely = () => {
-  renderChain = renderChain
-    .catch(() => {})
-    .then(() => schemaFetch)
-    .then(renderRoute)
-    .catch(paintRouteError)
-    .then(ensureNavMenu)
-    .then(syncPhoneBar);
-  return renderChain;
-};
+const renderRouteSafely = () => Promise.resolve()
+  .then(() => schemaFetch)
+  .then(renderRoute)
+  .catch(paintRouteError)
+  .then(ensureNavMenu)
+  .then(syncPhoneBar);
 function installPhoneBar() {
   const label = el('span', { class: 'phone-search-label' }, 'Search');
   const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openPalette() }, lucideEl('search'), label);
@@ -10888,7 +11320,7 @@ function syncPhoneBar() {
   const text = `Search ${db?.name ?? (currentWsName() || 'weave')}`;
   parts.label.textContent = text;
   parts.search.setAttribute('aria-label', text);
-  parts.add.hidden = !db;
+  parts.add.hidden = !db || db.system === 'runs';
   const noun = rowNoun(db);
   parts.add.title = `New ${noun}`;
   parts.add.setAttribute('aria-label', `New ${noun}`);
@@ -11099,7 +11531,7 @@ function setNavCollapsed(collapsed) {
   const app = $('#app');
   app.classList.toggle('nav-collapsed', collapsed);
   closeNavPeek();
-  localStorage.setItem('weave-nav-collapsed', collapsed ? '1' : '');
+  WeavePrefs.write('weave-nav-collapsed', collapsed ? '1' : '');
 }
 function wireNavCollapse() {
   const app = $('#app');
@@ -11144,7 +11576,7 @@ function wireNavCollapse() {
     });
   }
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNavPeek(); });
-  apply(localStorage.getItem('weave-nav-collapsed') === '1');
+  apply(WeavePrefs.read('weave-nav-collapsed') === '1');
   const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
@@ -11171,8 +11603,8 @@ function wireNavResize() {
     app.style.setProperty('--wv-nav-width', `${width}px`);
     grip.setAttribute('aria-valuenow', String(width));
   };
-  const keep = () => localStorage.setItem('weave-nav-width', String(width));
-  const stored = Number(localStorage.getItem('weave-nav-width'));
+  const keep = () => WeavePrefs.write('weave-nav-width', String(width));
+  const stored = Number(WeavePrefs.read('weave-nav-width'));
   show(stored > 0 ? stored : NAV_WIDTH.base);
   grip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -11193,7 +11625,7 @@ function wireNavResize() {
     grip.addEventListener('pointercancel', up);
   });
   grip.addEventListener('dblclick', () => {
-    localStorage.removeItem('weave-nav-width');
+    WeavePrefs.drop('weave-nav-width');
     show(NAV_WIDTH.base);
   });
   grip.addEventListener('keydown', (e) => {
@@ -11205,14 +11637,13 @@ function wireNavResize() {
   });
 }
 
-const railFolds = matchMedia('(max-width: 600px)');
 const NAV_KEY_OWNERS = '#modal-back, #tray-back, #cmdk-back, #fsv-back, .chip-pop, .picker-pop, .cell-pop, .date-pop, [role="menu"]';
 function wireNavHold() {
   const app = $('#app');
   const rail = $('#ws-rail');
   const sidebar = $('#sidebar');
   if (!app || !rail || !sidebar) return;
-  const drawer = () => (railFolds.matches ? [sidebar, rail] : [sidebar]);
+  const drawer = () => (narrowShell.matches ? [sidebar, rail] : [sidebar]);
   const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
     .filter(reachableStop);
   const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
@@ -11240,7 +11671,7 @@ function wireNavHold() {
     for (const n of nodes) n.inert = false;
     expanded(false);
     if (!inside) return;
-    const back = opener?.isConnected && reachableStop(opener) ? opener : [...document.querySelectorAll('.nav-menu')].find(reachableStop);
+    const back = opener?.isConnected && opener.closest?.('#main') ? opener : $('#main .nav-menu');
     back?.focus();
   };
   let holdFrame = null;
@@ -11296,7 +11727,8 @@ function navMenuButton() {
     onclick: () => (narrowShell.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
   });
   labelNavMenu(btn);
-  btn.innerHTML = '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
+  btn.innerHTML = '<svg class="nav-menu-burger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'
+    + '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
   return btn;
 }
 
@@ -11315,7 +11747,7 @@ const THEME_LABELS = { auto: 'Auto', dark: 'Dark', light: 'Light' };
 const THEME_MEDIA = matchMedia('(prefers-color-scheme: dark)');
 
 function themePref() {
-  const pref = localStorage.getItem('weave-theme');
+  const pref = WeavePrefs.read('weave-theme');
   return THEME_ICONS[pref] ? pref : 'auto';
 }
 
@@ -11327,7 +11759,7 @@ function applyTheme() {
 
 function cycleTheme() {
   const pref = themePref();
-  localStorage.setItem('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
+  WeavePrefs.write('weave-theme', pref === 'auto' ? 'dark' : pref === 'dark' ? 'light' : 'auto');
   applyTheme();
 }
 
@@ -11558,7 +11990,7 @@ installPhoneBar();
 toastLayer();
 wireTheme();
 wireSkipLink();
-(state.healthP ??= api('GET', '/health')).catch(() => {});
+healthNow().catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
 wireSearchButton();

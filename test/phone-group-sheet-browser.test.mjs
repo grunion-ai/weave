@@ -18,8 +18,7 @@ const s = await launch('phone group sheet', (weave) => {
 if (s) {
   const { base, browser, list, id } = s;
   const engines = [];
-  const webkit = await engineOf('webkit');
-  if (webkit && IPHONE) engines.push([`webkit ${PHONE}`, webkit, IPHONE]);
+  engines.push([`webkit ${PHONE}`, await engineOf('webkit'), IPHONE]);
   engines.push(['chromium 390x844 touch', browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]);
 
   const open = async (b, profile, theme) => {

@@ -38,11 +38,10 @@ test('every response carries nosniff and Referrer-Policy; HTML adds frame-ancest
     for (const path of ['/', '/auth', '/does-not-exist']) {
       const res = await call(port, path);
       assert.match(res.headers['content-type'], /^text\/html/, path);
-      assert.equal(res.headers['content-security-policy'], "frame-ancestors 'self'", path);
+      assert.ok(res.headers['content-security-policy'].split('; ').includes("frame-ancestors 'self'"), path);
       const ro = res.headers['content-security-policy-report-only'];
       assert.match(ro, /default-src 'self'/, path);
       assert.match(ro, /object-src 'none'/, path);
-      assert.match(ro, /frame-ancestors 'self'/, path);
     }
     const json = await call(port, '/api/workspace');
     assert.equal(json.headers['content-security-policy'], undefined, 'CSP rides HTML only');
@@ -68,7 +67,7 @@ test('WEAVE_FRAME_ANCESTORS extends frame-ancestors', async () => {
   const { server, port } = await startServer(new Weave(), { port: 0, frameAncestors: ['https://demo.example.com'] });
   try {
     const res = await call(port, '/');
-    assert.equal(res.headers['content-security-policy'], "frame-ancestors 'self' https://demo.example.com");
+    assert.ok(res.headers['content-security-policy'].split('; ').includes("frame-ancestors 'self' https://demo.example.com"));
   } finally { server.close(); }
 });
 

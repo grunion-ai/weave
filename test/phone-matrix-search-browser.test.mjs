@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { launch, phoneMatrix, eachPhone, atRest, eventually } from './lib/browser.mjs';
 import { seedDemo, openTable, openRecord, recordCoversScreen, topBar, stubKeyboard, WIDE } from './lib/phone-matrix.mjs';
 
-const s = await launch('phone matrix search and bars', (weave) => seedDemo(weave));
+const s = await launch('phone matrix search and bars', (weave) => seedDemo(weave, { unlinkRows: 12 }));
 
 const NO_BAR = 'the table has no phone search bar at this width';
 const KEYBOARD_ON_17_PRO = 336;
@@ -20,7 +20,7 @@ if (s) {
     await atRest(page.locator('#cmdk'));
   };
 
-  test('the phone search sheet covers the top bar so more results fit (Issue #1379)', { todo: 'Issue #1379' }, async (t) => {
+  test('the phone search sheet covers the top bar so more results fit (Issue #1379)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openTable(page, base, tasks);
       if (!(await phoneBar(page))) return NO_BAR;
@@ -31,16 +31,47 @@ if (s) {
     });
   });
 
-  test('the phone search sheet shows no keyboard key hints on a touch screen (Issue #1380)', { todo: 'Issue #1380' }, async (t) => {
+  test('with the keyboard up the phone search sheet fills the room the keyboard leaves (Issue #1379)', async (t) => {
+    await eachPhone(t, matrix, async (page, run) => {
+      await page.addInitScript(stubKeyboard);
+      await openTable(page, base, tasks);
+      if (!(await phoneBar(page))) return NO_BAR;
+      await openSearch(page);
+      const screen = run.phone.page.screen?.height ?? run.phone.page.viewport.height;
+      const keyboard = Math.round((KEYBOARD_ON_17_PRO * screen) / SCREEN_17_PRO);
+      await page.evaluate((h) => window.wvTestKeyboard(h), keyboard);
+      await page.fill('#cmdk-input', 'Unlink check');
+      await page.waitForFunction(() => document.querySelectorAll('#cmdk-results .result').length >= 10);
+      await atRest(page.locator('#cmdk'));
+      const v = await page.evaluate(() => {
+        const room = window.visualViewport.height;
+        const box = (q) => document.querySelector(q).getBoundingClientRect();
+        const list = box('#cmdk-results');
+        const usable = [...document.querySelectorAll('#cmdk-results .result')]
+          .filter((r) => { const b = r.getBoundingClientRect(); return b.top >= list.top - 0.5 && b.bottom <= Math.min(list.bottom, room) + 0.5; }).length;
+        return { room: Math.round(room), sheet: Math.round(box('#cmdk').bottom), usable };
+      });
+      assert.ok(v.sheet <= v.room + 1, `the search sheet ends at ${v.sheet} px, under a keyboard that leaves ${v.room} px of page`);
+      assert.ok(v.sheet >= v.room - 2, `the search sheet ends at ${v.sheet} px and leaves ${v.room - v.sheet} px of the page above the keyboard unused`);
+      assert.ok(v.usable >= 5, `only ${v.usable} results fit above the keyboard in ${v.room} px of page`);
+    });
+  });
+
+  test('the phone search sheet shows no keyboard key hints on a touch screen (Issue #1380)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openTable(page, base, tasks);
       await openSearch(page);
-      const v = await page.evaluate(() => ({
-        touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
-        keys: [...document.querySelectorAll('#cmdk kbd')].filter((k) => { const r = k.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).map((k) => k.textContent.trim()),
-      }));
+      const v = await page.evaluate(() => {
+        const box = (q) => document.querySelector(q).getBoundingClientRect();
+        return {
+          touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
+          keys: [...document.querySelectorAll('#cmdk kbd')].filter((k) => { const r = k.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).map((k) => k.textContent.trim()),
+          gap: Math.round(box('#cmdk').bottom - box('#cmdk-results').bottom),
+        };
+      });
       assert.ok(v.touch, 'the phone answers (hover: none) and (pointer: coarse)');
       assert.deepEqual(v.keys, [], `the search sheet draws key hints ${v.keys.join(' ')}`);
+      assert.ok(v.gap <= 2, `${v.gap} px of the sheet sits below the results list instead of holding results`);
     });
   });
 

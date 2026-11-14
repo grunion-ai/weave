@@ -54,6 +54,10 @@ export const FIELD_DOCS = [
 ];
 
 export const GUIDES = [
+  { name: 'Quickstart', audience: 'Human', order: 1, doc: page('guides/quickstart.md') },
+  { name: 'A project and its linked work', audience: 'Both', order: 1.5, doc: page('guides/project-walkthrough.md') },
+  { name: 'Connect an agent', audience: 'Human', order: 3.5, doc: page('guides/connect-an-agent.md') },
+  { name: 'Reading a release', audience: 'Both', order: 12.5, doc: page('guides/reading-a-release.md') },
   {
     name: 'Agent access (MCP)',
     audience: 'Agent',

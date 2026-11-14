@@ -236,7 +236,7 @@ test('/api/health carries the release verdict beside sha and behind, which keep 
 
 test('weave serve arms the check from WEAVE_UPDATE_CHECK, after the server is listening', () => {
   const bin = readFileSync(new URL('../bin/weave.js', import.meta.url), 'utf8');
-  const serve = bin.slice(bin.indexOf("const { port: actual } = await startServer(w"));
+  const serve = bin.slice(bin.indexOf('await startServer(w'));
   assert.match(bin, /updateCheckFromEnv\(\)/, 'the switch is the environment, like every other serve setting');
   assert.match(serve, /createReleaseCheck\(/, 'the check is created after startServer, so it never delays the listen');
   assert.match(serve, /armReleaseCheck\(/);

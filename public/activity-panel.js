@@ -1,6 +1,7 @@
 'use strict';
 
 const activityPanelCore = (() => {
+  const UNDO_SCAN = 20;
   const H = () => window.weaveHistoryCore;
   let st = null;
   let panel = null;
@@ -38,7 +39,7 @@ const activityPanelCore = (() => {
     return st.texts.get(r.seq);
   };
 
-  const undoTop = async () => (await api('GET', '/undo?limit=1'))[0] ?? null;
+  const undoMine = async () => (await api('GET', `/undo?limit=${UNDO_SCAN}`)).find((u) => u.entityId === st.id) ?? null;
   async function afterWrite(msg, top) {
     st.done = { id: st.sel, top };
     await refreshView();
@@ -51,7 +52,7 @@ const activityPanelCore = (() => {
       await flushDocSave(st.id, r.field);
       const out = await api('POST', `/entities/${st.id}/doc/revisions/${r.seq}/restore`, { field: r.field });
       if (out.changed === false) return toast(`${r.field} already reads as the version from ${stamp(r.at)}`);
-      const mine = await undoTop();
+      const mine = await undoMine();
       await load();
       const top = revsOf(r.field)[0];
       st.sel = top.id; st.from = null;
@@ -61,18 +62,16 @@ const activityPanelCore = (() => {
   async function revert(a) {
     try {
       await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
-      const mine = await undoTop();
+      const mine = await undoMine();
       st.sel = a.id;
       await afterWrite(`${a.field} reverted`, mine);
     } catch (err) { toast(err.message, true); }
   }
   async function undo() {
     const done = st?.done; if (!done) return;
+    if (!done.top) return toast('Changed since, so nothing was undone', true);
     try {
-      const top = await undoTop();
-      const same = top && done.top && top.ts === done.top.ts && top.kind === done.top.kind && top.entityId === done.top.entityId;
-      if (!same) return toast('Changed since, so nothing was undone', true);
-      await api('POST', '/undo', { steps: 1 });
+      await api('POST', '/undo', { steps: 1, expect: [undoKey(done.top)] });
       st.done = null;
       await refreshView();
       await load();
@@ -182,6 +181,7 @@ const activityPanelCore = (() => {
     const keep = panel?.querySelector('.wv-act-list')?.scrollTop ?? 0;
     const next = el('aside', { class: 'wv-activity', 'aria-label': 'Activity' },
       el('div', { class: 'wv-act-head' }, el('h3', {}, ...subjectCrumb(), el('span', { class: 'wv-act-section' }, 'Activity')),
+        bugTrigger('wv-act-icon'),
         el('button', { class: 'wv-act-icon wv-act-close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: close }, iconEl('lucide:x', 'wv-icon'))),
       filters, list);
     const side = $('#side');
@@ -286,7 +286,7 @@ const activityPanelCore = (() => {
     sideSyncUrl();
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back')) return;
+    if (e.key !== 'Escape' || !panel?.isConnected || e.defaultPrevented || e.target.closest?.('.picker-pop, .chip-pop, .modal') || document.querySelector('.picker-pop, #tray-back, #modal-back, #bug-panel')) return;
     e.stopPropagation();
     close();
   }, true);

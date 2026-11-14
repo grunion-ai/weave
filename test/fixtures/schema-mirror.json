@@ -2061,9 +2061,17 @@
     "name": "Tags",
     "type": "multiselect",
     "options": [
+     "A",
      "B"
     ],
     "optionsFull": [
+     {
+      "id": "a",
+      "name": "A",
+      "hue": "slate",
+      "icon": "",
+      "color": ""
+     },
      {
       "id": "b",
       "name": "B",
@@ -2224,18 +2232,8 @@
     "id": "<field Deal.Token>",
     "name": "Token",
     "type": "key",
-    "kind": "pair",
-    "keystore": "1password",
-    "parts": [
-     {
-      "name": "user",
-      "secret": false
-     },
-     {
-      "name": "pass",
-      "secret": true
-     }
-    ]
+    "kind": "token",
+    "keystore": "1password"
    }
   },
   {

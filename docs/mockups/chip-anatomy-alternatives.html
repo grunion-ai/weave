@@ -152,7 +152,7 @@
 .av-control { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .av-pick { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
 .av-pick:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
-@media (pointer: coarse) { .av-pick:has(.head-av) { align-items: center; justify-content: center; min-width: 44px; min-height: 44px; } }
+@media (pointer: coarse) { .av-pick:has(.head-av) { align-items: center; justify-content: center; } }
 .av-control.is-file-drop .wv-av { box-shadow: 0 0 0 2px var(--tblr-primary); }
 .mention-caret svg { width: 12px; height: 12px; display: block; }
 .wv-card { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--tblr-border-color); border-radius: 6px; background: var(--tblr-bg-surface); color: var(--tblr-body-color); font-size: var(--fs-grid); line-height: 1.35; white-space: normal; }
@@ -172,7 +172,7 @@
 .wv-card-fields dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mention-caret { position: relative; }
 .mention-caret::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
-@media (max-width: 600px), (pointer: coarse) { .mention-caret::after { width: max(100%, 44px); height: max(100%, 44px); } }
+@media (pointer: coarse) { .mention-caret::after { width: max(100%, var(--wv-hit)); height: max(100%, var(--wv-hit)); } }
 
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {

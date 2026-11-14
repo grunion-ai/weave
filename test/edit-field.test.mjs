@@ -159,12 +159,13 @@ test('the title info button is a superscript glyph whose hit area leaves the row
   const all = rules();
   const info = all.find((r) => r.selector === '.view-title-row > .desc-info');
   assert.ok(info);
-  assert.equal(decl(info.body, '--wv-hit'), '24px');
+  assert.equal(decl(info.body, '--wv-hit'), undefined, 'the box reads the one --wv-hit token, 24px on a fine pointer, instead of a copy of its own (Issue #1712)');
   assert.equal(decl(info.body, 'width'), 'var(--wv-hit)');
   assert.equal(decl(info.body, 'height'), 'var(--wv-hit)');
   assert.match(decl(info.body, 'margin') ?? '', /calc\(/, 'a negative margin cancels the hit area');
   const glyph = all.find((r) => r.selector.startsWith('.view-title-row > .desc-info .wv-icon'));
   const px = Number(decl(glyph.body, 'width').replace('px', ''));
   assert.ok(px >= 13 && px <= 15, `glyph ${px}px`);
-  assert.match(CSS, /@media \(max-width: 600px\), \(pointer: coarse\) \{[^@]*\.view-title-row > \.desc-info \{ --wv-hit: 44px;[^}]*\}/);
+  assert.match(CSS, /:root \{[^}]*--wv-hit: 24px;/, 'the fine-pointer hit is 24px');
+  assert.match(CSS, /@media \(pointer: coarse\) \{\s*:root \{ --wv-hit: 44px; \}/, 'a coarse pointer lifts it to 44px, keyed to the pointer and not the width (Issue #1712)');
 });

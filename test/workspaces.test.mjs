@@ -40,14 +40,11 @@ test('markdown: mermaid fences and raw HTML blocks', () => {
   assert.match(renderMarkdown('```mmd\npie\n```'), /class="mermaid"/);
 });
 
-test('weaver seed: docs, wiki, quality mirror, issues + roadmap', () => {
+test('weaver seed: docs, wiki, issues + roadmap, and no mirror of the test suite (Issue #1595)', () => {
   const w = seedWeaver(new Weave());
   assert.equal(w.state.meta.name, 'weave');
   const spaces = w.listSpaces().filter((s) => !s.system).map((s) => s.name).sort();
-  assert.deepEqual(spaces, ['Development', 'Handbook', 'Quality', 'Showcase', 'Wiki']);
-
-  const suites = w.query('Suite', { where: [['Name', '=', 'Engine']] });
-  assert.ok(suites.items[0].fields['Case Count'] >= 17, 'the Engine suite mirror is populated');
+  assert.deepEqual(spaces, ['Development', 'Handbook', 'Showcase', 'Wiki']);
 
   const shipped = w.query('Feature', { where: [['Status', '=', 'Shipped']] });
   assert.ok(shipped.total >= 10);

@@ -88,11 +88,13 @@ test('fly.toml runs one machine with a /data mount, the internal port from PORT,
 test('the environment contract cannot drift: the reference guide, the Dockerfile and compose name the same variables', () => {
   const ref = guide('Environment reference');
   assert.ok(ref, 'there is an Environment reference guide');
-  const documented = varsIn(ref.doc);
-  for (const v of SPEC_VARS) assert.ok(documented.has(v), `the guide documents ${v}`);
+  const contract = ref.doc.split('\n## ').find((s) => s.startsWith('The deploy contract\n'));
+  assert.ok(contract, 'the guide has a section headed The deploy contract');
+  const documented = varsIn(contract);
+  for (const v of SPEC_VARS) assert.ok(documented.has(v), `the deploy contract documents ${v}`);
   const artifacts = new Set([...varsIn(DOCKERFILE), ...varsIn(COMPOSE)]);
   assert.deepEqual([...documented].sort(), [...artifacts].sort(),
-    'every variable the guide documents is in the Dockerfile/compose env block, and nothing undocumented is');
+    'every variable the deploy contract documents is in the Dockerfile/compose env block, and nothing undocumented is');
   for (const [file, text] of [['railway.json', RAILWAY], ['fly.toml', FLY]]) {
     for (const v of varsIn(text)) assert.ok(documented.has(v), `${file} names ${v}, which the guide does not document`);
   }

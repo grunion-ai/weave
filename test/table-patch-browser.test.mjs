@@ -234,11 +234,13 @@ if (s) {
         rope: !!document.querySelector('#main .grid-loader:not([hidden])'),
         pageRope: !document.querySelector('#page-loader')?.hidden,
       }));
-      assert.deepEqual(early, { busy: true, toolbarBusy: false, rope: false, pageRope: false }, 'the grid dims at once, the toolbar does not, and no rope yet');
+      assert.deepEqual(early, { busy: false, toolbarBusy: false, rope: false, pageRope: false }, 'the grid dims at once, and nothing announces a wait the eye cannot see yet (Issue #1062)');
       await page.waitForFunction(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1', null, { timeout: 400 }).catch(() => {});
       assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#main .table-wrap')).opacity !== '1'), true, 'the stale rows are dimmed');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#main .grid-loader:not([hidden])').count(), 1, 'past 500 ms the rope covers the grid');
+      assert.equal(await page.evaluate(() => !!document.querySelector('#main .table-wrap')?.closest('[aria-busy="true"]')), true,
+        'and the wait reaches a screen reader on the same beat (Issue #1062)');
       await page.locator('#view-pane .filter-chip-label:text-is("Doing")').click();
       assert.equal(await page.locator('#main .grid-loader svg').count() > 0, true, 'the rope is the weave loader');
       assert.equal(await page.evaluate(() => document.querySelector('#page-loader').hidden), true, 'the page-wide rope stays down');

@@ -556,13 +556,15 @@ test('applet: a doc write with no recognized key is refused and changes nothing'
       method: 'PUT', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify(body),
     });
 
-    assert.equal((await put({ doc: 'kept prose' })).status, 200);
+    const kept = await put({ doc: 'kept prose' });
+    assert.equal(kept.status, 200);
+    const { base } = await kept.json();
     const res = await put({ content: 'under the wrong key' });
     assert.equal(res.status, 400, 'the phone hears that its body was not understood');
     assert.match((await res.json()).error, /doc.*markdown|markdown.*doc/s);
     assert.equal(s.weave.getDoc(id), 'kept prose', 'and the document is still there');
 
-    assert.equal((await put({ doc: '' })).status, 200, 'clearing it on purpose still works');
+    assert.equal((await put({ doc: '', base })).status, 200, 'clearing it on purpose still works, from the text it clears (Issue #1682)');
     assert.equal(s.weave.getDoc(id), '');
   } finally { s.stop(); }
 });

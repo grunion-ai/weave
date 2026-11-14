@@ -2,7 +2,7 @@ import net from 'node:net';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, lstatSync, chmodSync, unlinkSync, readFileSync, statfsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir, cpus, loadavg, totalmem, freemem } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash, randomUUID } from 'node:crypto';
@@ -17,6 +17,7 @@ export const jobTimeout = ms => Math.max(100, Math.min(Number(ms) || DEFAULT_JOB
 export const queueWait = (env = {}) => Number(env.WEAVE_TEST_QUEUE_WAIT_MS) || 30 * 60_000;
 export const ADMISSION_ENV = ['WEAVE_TEST_MIN_FREE_GB', 'WEAVE_TEST_MIN_MEMORY_PERCENT', 'WEAVE_TEST_MAX_LOAD', 'WEAVE_TEST_QUEUE_WAIT_MS'];
 export const admissionEnv = (env = process.env) => Object.fromEntries(ADMISSION_ENV.filter(k => env[k] !== undefined && env[k] !== '').map(k => [k, env[k]]));
+export const REACHING = /^(?:src|public|bin|test|scripts|agents|tools)\/|^\.github\/workflows\/|^Dockerfile$|^[^/]+\.(?:json|js|mjs|cjs|yaml|yml|lock)$/;
 const send = (socket, data) => { if (!socket.destroyed) socket.write(JSON.stringify(data) + '\n'); };
 function lines(socket, receive) {
   let pending = '';
@@ -74,11 +75,32 @@ export async function request(message, { directory = managerDirectory(), start =
     send(socket, message);
   });
 }
-export function fingerprint(root, files = []) {
+const LOADS = /\b(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"\n]+)['"]/g;
+const NAMES = /['"`]((?:\.{1,2}\/)*(?:src|bin|scripts|tools|agents|test)\/[^'"`\n$]+\.(?:mjs|cjs|js))['"`]/g;
+function mentions(root, files) {
+  const seen = new Set(), text = [];
+  const visit = file => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    let source;
+    try { source = readFileSync(file, 'utf8'); } catch { return; }
+    text.push(source);
+    for (const [, spec] of source.matchAll(LOADS)) visit(resolve(dirname(file), spec));
+    for (const [, path] of source.matchAll(NAMES)) visit(resolve(root, path.replace(/^(?:\.{1,2}\/)+/, '')));
+  };
+  files.forEach(visit);
+  return text.join('\n');
+}
+export function fingerprint(root, files = [], scope = 'tree') {
   const hash = createHash('sha256');
   let tracked;
   try { tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root }).toString().split('\0').filter(Boolean); }
   catch { tracked = []; }
+  if (scope === 'reach') {
+    const text = mentions(root, files.map(f => resolve(root, f)));
+    const named = new Set([...new Set(tracked.map(f => f.split('/')[0]))].filter(entry => text.includes(entry)));
+    tracked = tracked.filter(f => REACHING.test(f) || named.has(f.split('/')[0]));
+  }
   for (const path of [...new Set([...tracked.map(f => resolve(root, f)), ...files.map(f => resolve(root, f))])].sort()) {
     hash.update(path + '\0');
     try { hash.update(readFileSync(path)); } catch (e) { hash.update(e.code || 'unreadable'); }
@@ -109,8 +131,11 @@ export async function serve(directory) {
   let stale; try { stale = lstatSync(socketPath); } catch {}
   try { const live = await connect(directory); live.end(); return; }
   catch (error) { if (error.code === 'ECONNREFUSED') { try { const now = lstatSync(socketPath); if (stale && now.ino === stale.ino && now.birthtimeMs === stale.birthtimeMs) unlinkSync(socketPath); } catch {} } else if (error.code !== 'ENOENT') throw error; }
-  const waiting = []; let active = null; let browser = null; let browserKey = ''; let browserJobs = 0; let browserBorn = 0; let launching; let lastUsed = Date.now(); let stopping = false; let admitting = false;
-  const summary = job => job && ({ id: job.id, root: job.root, files: job.files, type: job.type, fingerprint: job.fingerprint, queuedAt: job.queuedAt, startedAt: job.startedAt, reason: job.reason });
+  const waiting = []; const unit = new Set(); let active = null; let browser = null; let browserKey = ''; let browserJobs = 0; let browserBorn = 0; let launching; let lastUsed = Date.now(); let stopping = false; let admitting = false;
+  const lane = job => job.type === 'run' && job.lane === 'unit' ? 'unit' : 'browser';
+  const running = job => job === active || unit.has(job);
+  const admissible = job => lane(job) === 'unit' || (!active && job === waiting.find(j => lane(j) === 'browser'));
+  const summary = job => job && ({ id: job.id, root: job.root, files: job.files, type: job.type, lane: lane(job), fingerprint: job.fingerprint, queuedAt: job.queuedAt, startedAt: job.startedAt, reason: job.reason });
   async function recycle() { const old = browser; browser = null; browserKey = ''; browserJobs = 0; if (old) await old.close().catch(() => {}); }
   async function endpoint(job) {
     if (launching) await launching;
@@ -142,26 +167,31 @@ export async function serve(directory) {
   async function finish(job, code, error) {
     if (job.finishing) return;
     job.finishing = true; clearTimeout(job.timer);
-    if (launching) await launching.catch(() => {});
+    const slot = job === active;
+    if (slot && launching) await launching.catch(() => {});
     kill(job);
     if (job.child) { await sleep(150); try { process.kill(-job.child.pid, 'SIGKILL'); } catch {} }
-    if (job.type === 'run' && code === 0 && fingerprint(job.root, job.files) !== job.fingerprint) { code = 1; error = 'worktree changed during tests; result invalid, rerun'; }
+    if (job.type === 'run' && code === 0 && fingerprint(job.root, job.files, job.scope) !== job.fingerprint) { code = 1; error = 'worktree changed during tests; result invalid, rerun'; }
     if (job.usedBrowser) browserJobs++;
-    if (code || job.cancelled) await recycle();
+    if (slot && (code || job.cancelled)) await recycle();
     if (job.temp) { try { rmSync(job.temp, { recursive: true, force: true }); } catch (failure) { code = 1; error = `temporary cleanup failed: ${failure.message}`; } }
     send(job.socket, { code, error, id: job.id }); job.socket.end();
-    active = null; lastUsed = Date.now(); pump();
+    if (slot) active = null; else unit.delete(job);
+    lastUsed = Date.now(); pump();
   }
   async function pump() {
-    if (active || admitting || stopping || !waiting.length) return;
+    if (admitting || stopping) return;
+    const job = waiting.find(admissible);
+    if (!job) return;
     admitting = true;
-    const job = waiting[0];
+    let blocked = false;
     try {
       job.reason = pressure(job.root, job.env || {});
-      if (job.reason) { if (browser) await recycle(); if (job.reason !== job.announcedReason) { send(job.socket, { event: `# TEST MANAGER waiting: ${job.reason}` }); job.announcedReason = job.reason; } return; }
-      waiting.shift(); active = job; job.startedAt = Date.now();
-      if (browser && (browserJobs >= 20 || Date.now() - browserBorn > 15 * 60_000)) await recycle();
-      if (job.type === 'run' && fingerprint(job.root, job.files) !== job.fingerprint) return finish(job, 1, 'worktree changed while queued; resubmit the tests');
+      if (job.reason) { blocked = true; if (browser && !active) await recycle(); if (job.reason !== job.announcedReason) { send(job.socket, { event: `# TEST MANAGER waiting: ${job.reason}` }); job.announcedReason = job.reason; } return; }
+      waiting.splice(waiting.indexOf(job), 1); job.startedAt = Date.now();
+      if (lane(job) === 'unit') unit.add(job);
+      else { active = job; if (browser && (browserJobs >= 20 || Date.now() - browserBorn > 15 * 60_000)) await recycle(); }
+      if (job.type === 'run' && fingerprint(job.root, job.files, job.scope) !== job.fingerprint) return finish(job, 1, 'worktree changed while queued; resubmit the tests');
       const ws = job.type === 'lease' ? await endpoint(job) : null;
       if (job.finishing) return;
       if (job.cancelled) return finish(job, 1, 'cancelled');
@@ -169,7 +199,7 @@ export async function serve(directory) {
         if (!ws) return finish(job, 1, 'playwright not installed');
         send(job.socket, { endpoint: ws, id: job.id });
       } else {
-        send(job.socket, { event: `# TEST MANAGER running ${job.id}: ${job.files.length} file(s)` });
+        send(job.socket, { event: `# TEST MANAGER running ${job.id} ${lane(job) === 'unit' ? 'in the unit lane' : 'in the browser slot'}: ${job.files.length} file(s)` });
         job.temp = mkdtempSync(join(directory, 'job-'));
         const env = { ...job.env, WEAVE_TEST_MANAGER_DIR: directory, TMPDIR: job.temp, TMP: job.temp, TEMP: job.temp, NODE_TEST_CONTEXT: '', WEAVE_TEST_JOB: job.id, WEAVE_TEST_BROWSER_ENDPOINT: ws || '' };
         job.child = spawn(job.node || process.execPath, [join(job.root, 'scripts/test-manager.mjs'), '--worker', join(job.root, 'scripts/test.mjs'), ...job.flags, ...job.files], { cwd: job.root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -178,13 +208,15 @@ export async function serve(directory) {
         job.child.once('close', code => finish(job, job.cancelled ? 1 : (code ?? 1), job.cancelled ? 'cancelled' : undefined));
       }
       job.timer = setTimeout(() => { job.cancelled = true; finish(job, 124, `job timeout after ${job.timeout} ms`); }, job.timeout);
-    } catch (error) { if (active === job) finish(job, 1, error.message); else { waiting.shift(); send(job.socket, { code: 1, error: error.message }); job.socket.end(); } }
-    finally { admitting = false; }
+    } catch (error) {
+      if (running(job)) finish(job, 1, error.message);
+      else { const i = waiting.indexOf(job); if (i >= 0) waiting.splice(i, 1); send(job.socket, { code: 1, error: error.message }); job.socket.end(); }
+    } finally { admitting = false; if (!blocked) pump(); }
   }
   async function stop() {
     if (stopping) return; stopping = true;
     for (const job of waiting.splice(0)) { send(job.socket, { code: NOT_ADMITTED, error: 'manager stopped before admitting this job' }); job.socket.end(); }
-    if (active) { active.cancelled = true; await finish(active, 1, 'manager stopped'); }
+    await Promise.all([active, ...unit].filter(Boolean).map(job => { job.cancelled = true; return finish(job, 1, 'manager stopped'); }));
     await recycle(); clearInterval(tick); server.close();
   }
   const server = net.createServer(socket => {
@@ -192,10 +224,11 @@ export async function serve(directory) {
     let submitted = false;
     lines(socket, msg => {
       if (submitted) throw new Error('one request per connection'); submitted = true;
-      if (msg.type === 'status') { send(socket, { type: 'status', pid: process.pid, active: summary(active), queued: waiting.map(summary), browser: browser && { pid: browser.process().pid, jobs: browserJobs, born: browserBorn } }); return; }
+      if (msg.type === 'status') { send(socket, { type: 'status', pid: process.pid, active: summary(active), unit: [...unit].map(summary), queued: waiting.map(summary), browser: browser && { pid: browser.process().pid, jobs: browserJobs, born: browserBorn } }); return; }
       if (msg.type === 'browser') {
-        if (!active || active.id !== msg.job || active.finishing) throw new Error('browser request has no active allocation');
-        const job = active;
+        const job = [active, ...unit].find(j => j?.id === msg.job);
+        if (!job || job.finishing) throw new Error('browser request has no active allocation');
+        if (job !== active) throw new Error('browser request from a job in the unit lane: a suite that launches a browser must import test/lib/browser.mjs or end in -browser.test.mjs');
         endpoint(job).then(endpoint => {
           if (active !== job || job.finishing) send(socket, { code: 1, error: 'allocation ended' });
           else if (!endpoint) send(socket, { code: 1, error: 'playwright not installed' });
@@ -205,8 +238,8 @@ export async function serve(directory) {
       }
       if (msg.type === 'stop') { send(socket, { code: 0 }); stop(); return; }
       if (msg.type === 'cancel') {
-        const job = [active, ...waiting].find(j => j?.id === msg.id);
-        if (job === active && job) { job.cancelled = true; finish(job, 1, 'cancelled by request'); }
+        const job = [active, ...unit, ...waiting].find(j => j?.id === msg.id);
+        if (job && running(job)) { job.cancelled = true; finish(job, 1, 'cancelled by request'); }
         else if (job) { waiting.splice(waiting.indexOf(job), 1); send(job.socket, { code: 1, error: 'cancelled by request' }); job.socket.end(); }
         send(socket, { code: job ? 0 : 1, error: job ? undefined : 'unknown job' }); return;
       }
@@ -215,7 +248,7 @@ export async function serve(directory) {
       waiting.push(job); send(socket, { event: `# TEST MANAGER queued ${job.id}`, id: job.id });
       socket.once('close', () => {
         if (job.finishing) return;
-        if (active === job) { job.cancelled = job.type !== 'lease'; finish(job, job.cancelled ? 1 : 0, job.cancelled ? 'client disconnected' : undefined); }
+        if (running(job)) { job.cancelled = job.type !== 'lease'; finish(job, job.cancelled ? 1 : 0, job.cancelled ? 'client disconnected' : undefined); }
         else { const i = waiting.indexOf(job); if (i >= 0) waiting.splice(i, 1); }
       });
       pump();
@@ -228,7 +261,7 @@ export async function serve(directory) {
       waiting.splice(waiting.indexOf(job), 1);
       send(job.socket, { code: NOT_ADMITTED, error: `queue wait exceeded ${wait} ms; last admission check: ${job.reason || 'none yet'}` }); job.socket.end();
     }
-    pump(); if (!active && !waiting.length && Date.now() - lastUsed > 5 * 60_000) stop();
+    pump(); if (!active && !unit.size && !waiting.length && Date.now() - lastUsed > 5 * 60_000) stop();
   }, 2000);
   server.on('error', error => { clearInterval(tick); if (error.code !== 'EADDRINUSE') throw error; });
   server.listen(socketPath, () => {

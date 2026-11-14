@@ -27,5 +27,9 @@
   "load-home|shift|aside#sidebar > div.nav-pinned": {
     "issue": 944,
     "why": "the account slot in the sidebar's identity row was empty until /api/auth/me answered, so the pinned block grew 4px and moved up when the account chip landed (Issue #946 is the same finding filed twice)"
+  },
+  "html-intro-row|shift|div.entity-body > div.entity-fields": {
+    "issue": 1552,
+    "why": "the dock painted the record fields under a 75vh introduction frame and moved them down by the frame's measured height once the HTML introduction loaded"
   }
 }

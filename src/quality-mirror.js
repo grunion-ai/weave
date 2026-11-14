@@ -113,18 +113,42 @@ export function planQualityMirror(rows, scanned, results = null) {
   return { ops, summary };
 }
 
-export function syncQualityMirror(w, scanned, { dryRun = false, results = null } = {}) {
-  const suiteTable = w.getTable('Quality/Suite');
-  const caseTable = w.getTable('Quality/Case');
+function buildMirrorTables(w) {
+  if (!w.findSpace('Quality')) w.createSpace({ name: 'Quality', icon: 'lucide:shield-check', description: 'The Weave test suite, dogfooded' });
+  const suites = w.createTable({ space: 'Quality', name: 'Suite', icon: 'lucide:shield-check' });
+  const cases = w.createTable({ space: 'Quality', name: 'Case', icon: 'lucide:square-check' });
+  w.addField(cases, {
+    name: 'Status', type: 'workflow', config: {
+      states: [
+        { name: 'Failing', category: 'not-started' },
+        { name: 'Flaky', category: 'in-progress' },
+        { name: 'Passing', category: 'done', default: true },
+      ],
+    },
+  });
+  w.addRelation(cases, { name: 'Suite', targetDb: suites, cardinality: 'many-to-one', inverseName: 'Cases' });
+  w.addField(suites, { name: 'Case Count', type: 'rollup', config: { relationField: 'Cases', aggregate: 'count' } });
+  w.addField(suites, { name: 'File', type: 'text' });
+}
+
+function mirrorRows(w, suiteTable) {
   const fileField = Object.values(suiteTable.fields).find((f) => f.name === 'File');
-  const rows = w.listEntities(suiteTable.id).map((r) => ({
+  return w.listEntities(suiteTable.id).map((r) => ({
     id: r.id,
     publicId: r.publicId,
     name: w.entityName(r),
     file: r.values[fileField.id],
     cases: w.readEntity(r.id).fields.Cases.map((c) => ({ id: c.id, name: c.name, status: w.readEntity(c.id).fields.Status })),
   }));
-  const { ops, summary } = planQualityMirror(rows, scanned, results);
+}
+
+export function syncQualityMirror(w, scanned, { dryRun = false, results = null } = {}) {
+  const unbuilt = w.state.meta.name === 'weave' && !w.findTable('Quality/Suite');
+  if (unbuilt && dryRun) return planQualityMirror([], scanned, results).summary;
+  if (unbuilt) buildMirrorTables(w);
+  const suiteTable = w.getTable('Quality/Suite');
+  const caseTable = w.getTable('Quality/Case');
+  const { ops, summary } = planQualityMirror(mirrorRows(w, suiteTable), scanned, results);
   if (dryRun) return summary;
   for (const o of ops) {
     if (o.op === 'createSuite') {

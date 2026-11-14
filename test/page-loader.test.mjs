@@ -8,6 +8,7 @@ import {
   loaderBootHtml, ropePose, ropeStops, strandPose, dashOffset,
 } from '../brand/build-logos.mjs';
 import { APP, HTML, CSS, px, rulesFor, fnBody } from './lib/source.mjs';
+import { touchFloor } from './lib/touch.mjs';
 import { FLASH_MS } from './lib/flicker.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -169,8 +170,8 @@ test('a load shorter than the flash ceiling paints no skeleton (Issue #630)', ()
     'the skeleton still comes before the rope');
   assert.match(APP, /function scheduleSkeleton\(kind, db, under = null\) \{[\s\S]*?setTimeout\([\s\S]*?paintSkeleton\(kind, db, under\)[\s\S]*?SKELETON_SHOW_AFTER_MS\)/,
     'renderRoute schedules the skeleton rather than painting it');
-  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(dispatchRoute\)\.finally\(cancelSkeleton\);/,
-    'every route path cancels the pending skeleton when it paints, so the old page holds');
+  assert.match(APP, /function renderRoute\(\) \{\s*return Promise\.resolve\(\)\.then\(\(\) => \{\s*const body = dispatchRoute\(\);\s*const gen = navDraw;[\s\S]*?\.finally\(\(\) => \{ if \(navOwns\(gen\)\) cancelSkeleton\(\); \}\);/,
+    'the route that still owns the navigation cancels the pending skeleton when it paints, so the old page holds (Issue #1437)');
   assert.match(APP, /function cancelSkeleton\(\) \{\s*clearTimeout\(skeleton\.timer\);/);
 });
 
@@ -182,7 +183,7 @@ test('the table skeleton draws the destination table\'s real columns', () => {
 });
 
 test('a cold table open paints its chrome before the rows and the skeleton beneath it (Issue #1056)', () => {
-  assert.match(APP, /if \(!again\) \{ renderNav\(\); paintTableChrome\(db\); \}\n\s*const release = again \? gridHold\(\) : \(\) => \{\};\n\s*try \{ await readAndDrawTable\(db, dbId, search, !again\); \}/,
+  assert.match(APP, /if \(!again\) \{ renderNav\(\); paintTableChrome\(db\); \}\n\s*const release = again \? gridHold\(\) : \(\) => \{\};\n\s*try \{ await readAndDrawTable\(db, dbId, search, !again, gen\); \}/,
     'showDatabase paints the table chrome from the schema before the rows request');
   const paint = APP.slice(APP.indexOf('function paintTableChrome'), APP.indexOf('function drawDatabase'));
   assert.match(paint, /main\.replaceChildren\(chrome\.header\);/, 'the header replaces the old page in the same frame');
@@ -192,8 +193,8 @@ test('a cold table open paints its chrome before the rows and the skeleton benea
     'a skeleton under a header keeps the header and drops the skeleton toolbar');
   assert.match(APP, /const cached = cold && !whole \? firstPages\.get\(pageKey\) : null;\n\s*if \(cached\) paint\(cached, null\);/,
     'a first page fetched earlier in the session paints at once');
-  assert.match(APP, /if \(cached && JSON\.stringify\(cached\) === JSON\.stringify\(result\)\) return;/,
-    'an unchanged fresh page does not redraw the grid');
+  assert.match(APP, /if \(cached && globalThis\.WeaveGridWindow\.samePage\(cached, result, query\.fields\)\) return;/,
+    'a fresh page the reader cannot tell from the cached one does not redraw the grid (Issue #1702)');
 });
 
 
@@ -427,8 +428,8 @@ test('the caption stacks under the mark and fades in, except under reduced motio
   const wait = CSS.match(/#page-loader \.loader-wait \{([^}]*)\}/)[1];
   assert.match(wait, /animation: loader-in/, 'the caption fades in, it does not appear');
   assert.match(wait, /pointer-events: auto/, 'the host is pointer-events: none, so the retry would not take a click');
-  assert.match(CSS, /@media \(pointer: coarse\) \{ #page-loader \.loader-retry \{ min-height: 44px; \} \}/,
-    'a 28px way out on a phone is the defect Issue #805 just fixed for the list grip');
+  assert.ok(touchFloor(CSS).targets.includes('#page-loader .loader-retry'),
+    'a 28px way out on a phone is the defect Issue #805 just fixed for the list grip; the retry takes the --wv-hit floor on a coarse pointer (Issue #1712)');
   const block = CSS.match(/@media \(prefers-reduced-motion: reduce\) \{\s*#page-loader \{ animation: none; \}[\s\S]*?\n\}/)[0];
   assert.match(block, /#page-loader \.loader-wait \{ animation: none; \}/,
     'reduced motion drops the caption fade too, and only there');

@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from '../lib/temp.mjs';
+import { startServer } from '../../src/server.js';
 
 const ROOT = tempDir('weave-sec-blob-unlink-');
 process.env.WEAVE_KEYSTORE = join(ROOT, 'keystore.json');
@@ -95,7 +96,7 @@ function pair() {
   const f = a.attachFile(e.id, { name: 'a.txt', mime: 'text/plain', bytes: Buffer.from('bytes of a') });
   const b = open('b');
   b.importJSON(a.exportJSON());
-  return { a, b, e, f, blob: (id) => join(dir, 'files', id) };
+  return { a, b, e, f, open, blob: (id) => join(dir, 'files', id) };
 }
 
 test('a delete in one workspace keeps a blob another workspace in the data dir still names (Issue #1359)', () => {
@@ -126,4 +127,39 @@ test('removing a logo keeps the blob a sibling workspace still uses as its logo 
   assert.ok(a.getWorkspaceLogo());
   a.deleteWorkspaceLogo();
   assert.equal(existsSync(blob(logo.id)), false);
+});
+
+test('a file id from a sibling workspace answers 404 on GET and never serves the shared blob (Issue #1434)', async () => {
+  const { a, open, f, blob } = pair();
+  const c = open('c');
+  assert.ok(existsSync(blob(f.id)), 'the blob sits in the shared files/ folder');
+  assert.throws(() => c.readFile(f.id), /not found/);
+  const { server, port } = await startServer(c, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/files/${f.id}`);
+    assert.equal(res.status, 404);
+    assert.doesNotMatch(await res.text(), /bytes of a/);
+    const own = await startServer(a, { port: 0 });
+    try {
+      const ok = await fetch(`http://127.0.0.1:${own.port}/api/files/${f.id}`);
+      assert.equal(ok.status, 200);
+    } finally { own.server.close(); }
+  } finally { server.close(); }
+});
+test('an observer PUT to an HTML file storage answers 403 and leaves the storage untouched (Issue #1434)', async () => {
+  const { a, e } = pair();
+  const html = a.attachFile(e.id, { name: 'page.html', mime: 'text/html', bytes: Buffer.from('<p>hi</p>') });
+  const token = a.createAccount({ name: 'read', role: 'observer' }).token;
+  a.setRequireAuth(true);
+  const before = a.readFileStorage(html.id);
+  const { server, port } = await startServer(a, { port: 0 });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/files/${html.id}/storage`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: { k: 'forbidden' } }),
+    });
+    assert.equal(res.status, 403);
+    assert.deepEqual(a.readFileStorage(html.id), before);
+  } finally { server.close(); }
 });

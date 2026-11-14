@@ -107,6 +107,15 @@ test('the kebab paints in both themes by inheriting the house menu tokens', () =
 
 let db, entity;
 
+test('the open phone drawer scrolls its last System link clear of the sticky account row (Issue #1722, Feature #376)', () => {
+  const foot = rulesFor('#app.nav-peek #sidebar .nav-identity');
+  assert.equal(foot.position, 'sticky', 'the account row stays in reach while the drawer scrolls');
+  const scroller = rulesFor('#app.nav-peek #sidebar');
+  assert.equal(scroller['overflow-y'], 'auto', 'the drawer is the scroller the account row sticks to');
+  const pad = Number(/^(\d+)px$/.exec(scroller['scroll-padding-bottom'] ?? '')?.[1]);
+  assert.ok(pad >= 64, `scrollIntoViewIfNeeded parks the last System link under the 63px account row unless the drawer reserves at least 64px, got ${scroller['scroll-padding-bottom'] ?? 'no scroll-padding-bottom'}`);
+});
+
 const s = await launch('sidebar navigation', (weave) => {
   weave.createSpace({ name: 'Scratch' });
   db = weave.createTable({ space: 'Scratch', name: 'Task' });

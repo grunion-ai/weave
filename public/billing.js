@@ -60,12 +60,14 @@ const mountCheckout = async (state) => {
 
 const render = (state) => {
   const seated = state.members.filter((m) => m.paid && m.seated).length;
+  const rate = state.seatPrice ? `${state.seatPrice} a seat` : 'the price shown at checkout';
+  const seat = state.seatPrice ? `a ${state.seatPrice} seat` : 'a paid seat';
   $('summary').textContent = state.plan === 'comped'
     ? 'This workspace was made before billing began, so it is never charged.'
     : state.plan === 'trial'
     ? `This workspace is on its free trial until ${new Date(state.trial.endsAt).toLocaleDateString()} (${state.trial.daysLeft === 1 ? 'less than a day' : `${state.trial.daysLeft} days`} left). Everyone can create and edit until then; after it, Editors and Architects need a plan to keep editing. Your records stay either way.`
     : state.plan
-    ? `${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered at $4.99 a seat each month.`
+    ? `${seated} of ${state.seats} paid ${state.seats === 1 ? 'seat is' : 'seats are'} covered at ${rate} each month.`
     : state.seats === 0 ? 'Nobody here takes a paid seat yet.' : `No plan covers this workspace, so its ${state.seats === 1 ? 'Editor or Architect works' : `${state.seats} Editors and Architects work`} as Observers until one is bought.`;
   $('seats').replaceChildren(...state.members.map((m) => {
     const li = document.createElement('li');
@@ -96,8 +98,8 @@ const render = (state) => {
   $('setup').hidden = !needsOrg;
   $('setup-open').disabled = !state.architect;
   $('setup-why').textContent = state.architect
-    ? 'Each Editor and Architect is a $4.99 seat. Setting up billing makes a billing organization with every paid person in it; you then buy the seats below.'
-    : 'Each Editor and Architect is a $4.99 seat. An architect sets up billing.';
+    ? `Each Editor and Architect is ${seat}. Setting up billing makes a billing organization with every paid person in it; you then buy the seats below.`
+    : `Each Editor and Architect is ${seat}. An architect sets up billing.`;
   $('back').href = `${prefix}/`;
 };
 

@@ -4,6 +4,12 @@ Files on a record. Bytes live in the workspace's sibling `files/` directory; the
 
 ## Config
 
+**Display inline** (`displayInline` set to `true`) renders the content directly in the record body without its field heading or collapse control. Editors open **Field options** beneath the content to reach settings, source and file controls. The field keeps its identity, permissions and place in the schema. Move it using the existing body order to put it above Fields or elsewhere; enabling inline display does not change its position. Turn it off to restore the standard display. Files without a built-in preview remain visible as file links.
+
+HTML keeps its sandbox and expands to fit its content. Empty inline documents have no reader-facing section. The setting is available in the field editor and through the same config in MCP, REST and CLI.
+
+Image covers remain separate: `preview: "cover"` keeps the native header treatment. The earlier `preview: "intro"` remains supported; use Display inline for new fields.
+
 `multiple` — `true` by default; `false` makes the field hold exactly one file.
 
 `preview` — how the record shows the files: `link` (chips), `inline` (a contact sheet of the files, or the one file in its viewer), `auto` (pictures in the sheet, everything else a chip) or `cover` (the picture above the record; single-file fields only). Unset follows the field: `auto` for many, `inline` for one.

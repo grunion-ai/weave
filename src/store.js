@@ -57,24 +57,46 @@ CREATE TABLE IF NOT EXISTS audit_log (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,
   actor TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS undo_log (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL);
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL, actor TEXT);
 CREATE TABLE IF NOT EXISTS doc_revisions (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, field_id TEXT NOT NULL,
   at TEXT NOT NULL, actor TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, restored_from INTEGER);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions ON doc_revisions(entity_id, field_id, seq);
 CREATE TABLE IF NOT EXISTS file_storage (file_id TEXT PRIMARY KEY, at TEXT NOT NULL, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY, entity_id TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS changes_on_insert AFTER INSERT ON entities BEGIN INSERT INTO changes (entity_id) VALUES (new.id); END;
+CREATE TRIGGER IF NOT EXISTS changes_on_update AFTER UPDATE ON entities BEGIN INSERT INTO changes (entity_id) VALUES (new.id); END;
+CREATE TRIGGER IF NOT EXISTS changes_on_delete AFTER DELETE ON entities BEGIN INSERT INTO changes (entity_id) VALUES (old.id); END;
 `;
 
-const LOAD_ORDER = {
-  automations: " ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
+const LOAD = {
+  spaces: 'SELECT id, json FROM spaces',
+  tables: 'SELECT id, json FROM tables',
+  automations: "SELECT id, json FROM automations ORDER BY json_extract(json, '$.seq') IS NULL, json_extract(json, '$.seq'), rowid",
 };
 
 const UNDO_CAP = 200;
 export const DOC_REVISION_CAP = 200;
+export const JOURNAL_CAP = 1000;
 
 function addRestoredFrom(exec) {
   try { exec('ALTER TABLE doc_revisions ADD COLUMN restored_from INTEGER'); }
   catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+}
+
+function undoByActor(db) {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('undo_log') WHERE name = 'actor'").get()) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec('ALTER TABLE undo_log ADD COLUMN actor TEXT');
+      db.exec("UPDATE undo_log SET actor = json_extract(json, '$.actor')");
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_undo_actor ON undo_log(actor, seq)');
 }
 
 function uniquePublicIds(db) {
@@ -82,7 +104,7 @@ function uniquePublicIds(db) {
   if (/UNIQUE/i.test(index?.sql ?? '')) return;
   db.exec('BEGIN IMMEDIATE');
   try {
-    const dupes = db.prepare(`SELECT e.id, e.db_id FROM entities e
+    const dupes = db.prepare(`SELECT e.id, e.db_id, e.public_id FROM entities e
       WHERE e.public_id IS NOT NULL AND EXISTS (SELECT 1 FROM entities o
         WHERE o.db_id = e.db_id AND o.public_id = e.public_id AND o.rowid < e.rowid)
       ORDER BY e.rowid`).all();
@@ -90,10 +112,14 @@ function uniquePublicIds(db) {
     const move = db.prepare("UPDATE entities SET public_id = ?, json = json_set(json, '$.publicId', ?) WHERE id = ?");
     const counter = db.prepare(`UPDATE tables SET json = json_set(json, '$.publicIdCounter', ?)
       WHERE id = ? AND COALESCE(json_extract(json, '$.publicIdCounter'), 0) < ?`);
-    for (const { id, db_id } of dupes) {
+    const tableName = db.prepare("SELECT json_extract(json, '$.name') AS name FROM tables WHERE id = ?");
+    const audit = db.prepare("INSERT INTO audit_log (at, actor, action, detail) VALUES (?, NULL, 'public-id-renumbered', ?)");
+    const at = new Date().toISOString();
+    for (const { id, db_id, public_id } of dupes) {
       const next = (top.get(db_id).n ?? 0) + 1;
       move.run(next, next, id);
       counter.run(next, db_id, next);
+      audit.run(at, JSON.stringify({ table: tableName.get(db_id)?.name ?? null, tableId: db_id, entity: id, from: public_id, to: next }));
     }
     db.exec('DROP INDEX IF EXISTS idx_entities_pid');
     db.exec('CREATE UNIQUE INDEX idx_entities_pid ON entities(db_id, public_id)');
@@ -132,10 +158,13 @@ function isWorkspaceShape(data) {
   return data && typeof data === 'object' && data.meta && (data.tables != null || data.databases != null);
 }
 
+const sameRow = (a, b) => a?.seq === b?.seq && a?.id === b?.id;
+
 export class Store {
   #db = null;
   #dataVersion = null;
   #cache = null;
+  #seen = null;
   #batch = false;
 
   constructor(path = null) {
@@ -198,6 +227,7 @@ export class Store {
       db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA synchronous = FULL');
+      db.exec('PRAGMA temp_store = MEMORY');
     } catch (err) {
       throw new WeaveError(this.#openFailure(err), 'invalid');
     }
@@ -210,22 +240,65 @@ export class Store {
     }
     db.exec(SCHEMA);
     addRestoredFrom((q) => db.exec(q));
+    undoByActor(db);
     uniquePublicIds(db);
-    try {
-      db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(id UNINDEXED, text)");
-    } catch (err) {
-      db.close();
-      throw new WeaveError(
-        `SQLite FTS5 is unavailable in this Node (${process.version}); weave needs Node >= 22.16 `
-        + `(24 LTS recommended). Underlying error: ${err.message}`, 'invalid');
-    }
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'entities_fts'").get()) db.exec('DROP TABLE entities_fts');
     this.#db = db;
     this.#dataVersion = this.#pragmaDataVersion();
     return this.#loadState();
   }
 
+  #journalTop() {
+    return this.#db.prepare('SELECT seq, entity_id AS id FROM changes ORDER BY seq DESC LIMIT 1').get() ?? null;
+  }
+
+  #snapshot(read) {
+    const db = this.#db;
+    if (db.isTransaction) return read();
+    db.exec('BEGIN');
+    try {
+      return read();
+    } finally {
+      db.exec('COMMIT');
+    }
+  }
+
+  #applyJournal(state) {
+    const db = this.#db;
+    const seen = this.#seen;
+    const top = this.#journalTop();
+    const anchored = seen ? db.prepare('SELECT entity_id AS id FROM changes WHERE seq = ?').get(seen.seq)?.id === seen.id : !top;
+    const metaRow = anchored && db.prepare('SELECT json FROM weave_meta WHERE id = 1').get();
+    if (!metaRow) return null;
+    const { spaces, tables, entities, automations, ...rest } = state;
+    const next = { ...(metaRow.json === this.#cache.meta ? rest : JSON.parse(metaRow.json)) };
+    const cache = { meta: metaRow.json };
+    for (const [key, held = {}] of [['spaces', spaces], ['tables', tables], ['automations', automations]]) {
+      const was = this.#cache[key];
+      const now = new Map(db.prepare(LOAD[key]).all().map((r) => [r.id, r.json]));
+      next[key] = {};
+      for (const [id, json] of now) {
+        if (was.get(id) !== json) next[key][id] = JSON.parse(json);
+        else if (Object.hasOwn(held, id)) next[key][id] = held[id];
+      }
+      for (const id of Object.keys(held)) if (!now.has(id) && !was.has(id)) next[key][id] = held[id];
+      cache[key] = now;
+    }
+    next.entities = { ...entities };
+    const changed = seen ? db.prepare(`SELECT c.id, e.json FROM (SELECT DISTINCT entity_id AS id FROM changes WHERE seq > ?) c
+      LEFT JOIN entities e ON e.id = c.id ORDER BY e.rowid`).all(seen.seq) : [];
+    for (const { id, json } of changed) {
+      if (json == null) delete next.entities[id];
+      else next.entities[id] = JSON.parse(json);
+    }
+    this.#cache = cache;
+    this.#seen = top;
+    return next;
+  }
+
   #loadState() {
     const db = this.#db;
+    this.#seen = this.#journalTop();
     const metaRow = db.prepare('SELECT json FROM weave_meta WHERE id = 1').get();
     if (!metaRow) {
       this.#cache = { meta: null, spaces: new Map(), tables: new Map(), automations: new Map() };
@@ -234,7 +307,7 @@ export class Store {
     const state = { ...JSON.parse(metaRow.json), spaces: {}, tables: {}, entities: {}, automations: {} };
     const cache = { meta: metaRow.json, spaces: new Map(), tables: new Map(), automations: new Map() };
     for (const key of ['spaces', 'tables', 'automations']) {
-      for (const row of db.prepare(`SELECT id, json FROM ${key}${LOAD_ORDER[key] ?? ''}`).all()) {
+      for (const row of db.prepare(LOAD[key]).all()) {
         state[key][row.id] = JSON.parse(row.json);
         cache[key].set(row.id, row.json);
       }
@@ -257,26 +330,32 @@ export class Store {
   #memUndo = [];
 
   pushUndo(entry) {
+    const actor = entry.actor ?? null;
     if (!this.#db) {
       this.#memUndo.push(entry);
-      if (this.#memUndo.length > UNDO_CAP) this.#memUndo = this.#memUndo.slice(-UNDO_CAP);
+      const mine = this.#memUndo.filter((u) => (u.actor ?? null) === actor);
+      if (mine.length > UNDO_CAP) this.#memUndo.splice(this.#memUndo.indexOf(mine[0]), 1);
       return;
     }
-    this.#db.prepare('INSERT INTO undo_log (json) VALUES (?)').run(JSON.stringify(entry));
-    this.#db.prepare('DELETE FROM undo_log WHERE seq <= (SELECT MAX(seq) FROM undo_log) - ?').run(UNDO_CAP);
+    this.#db.prepare('INSERT INTO undo_log (json, actor) VALUES (?, ?)').run(JSON.stringify(entry), actor);
+    this.#db.prepare(`DELETE FROM undo_log WHERE actor IS ? AND seq <=
+      (SELECT seq FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT 1 OFFSET ?)`).run(actor, actor, UNDO_CAP);
   }
 
-  popUndo() {
-    if (!this.#db) return this.#memUndo.pop() ?? null;
-    const row = this.#db.prepare('SELECT seq, json FROM undo_log ORDER BY seq DESC LIMIT 1').get();
+  popUndo(actor = null) {
+    if (!this.#db) {
+      const at = this.#memUndo.findLastIndex((u) => (u.actor ?? null) === actor);
+      return at < 0 ? null : this.#memUndo.splice(at, 1)[0];
+    }
+    const row = this.#db.prepare('SELECT seq, json FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT 1').get(actor);
     if (!row) return null;
     this.#db.prepare('DELETE FROM undo_log WHERE seq = ?').run(row.seq);
     return JSON.parse(row.json);
   }
 
-  listUndo({ limit = 20 } = {}) {
-    if (!this.#db) return this.#memUndo.slice(-limit).reverse();
-    return this.#db.prepare('SELECT json FROM undo_log ORDER BY seq DESC LIMIT ?').all(limit)
+  listUndo({ limit = 20, actor = null } = {}) {
+    if (!this.#db) return this.#memUndo.filter((u) => (u.actor ?? null) === actor).slice(-limit).reverse();
+    return this.#db.prepare('SELECT json FROM undo_log WHERE actor IS ? ORDER BY seq DESC LIMIT ?').all(actor, limit)
       .map((r) => JSON.parse(r.json));
   }
 
@@ -421,6 +500,7 @@ export class Store {
     let moved = 0;
     if (!this.#batch) db.exec('BEGIN IMMEDIATE');
     try {
+      const synced = sameRow(this.#journalTop(), this.#seen);
       const { spaces, tables, entities, automations, ...rest } = state;
       const ids = all
         ? new Set([...Object.keys(entities), ...db.prepare('SELECT id FROM entities').all().map((r) => r.id)])
@@ -446,40 +526,24 @@ export class Store {
           }
         }
       }
-      if (all) db.exec('DELETE FROM entities_fts');
       const dropEntity = db.prepare('DELETE FROM entities WHERE id = ?');
       const putEntity = db.prepare(`INSERT INTO entities (id, db_id, public_id, updated_at, json) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET db_id = excluded.db_id, public_id = excluded.public_id,
         updated_at = excluded.updated_at, json = excluded.json`);
-      const dropIndexed = db.prepare('DELETE FROM entities_fts WHERE id = ?');
-      const putIndexed = db.prepare('INSERT INTO entities_fts (id, text) VALUES (?, ?)');
       for (const id of [...ids].sort((a, b) => (entities[a] === undefined ? 0 : 1) - (entities[b] === undefined ? 0 : 1))) {
         const e = entities[id];
-        if (e === undefined) {
-          dropEntity.run(id);
-          if (!all) dropIndexed.run(id);
-        } else {
-          putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
-          if (!all) dropIndexed.run(id);
-          if (!e.deletedAt) {
-            putIndexed.run(id, this.#ftsText(state, e));
-          }
-        }
+        if (e === undefined) dropEntity.run(id);
+        else putEntity.run(e.id, e.dbId, e.publicId ?? null, e.updatedAt ?? null, JSON.stringify(e));
       }
+      const top = this.#journalTop();
+      if (top) db.prepare('DELETE FROM changes WHERE seq <= ?').run(top.seq - JOURNAL_CAP);
+      if (synced) this.#seen = top;
       if (!this.#batch) db.exec('COMMIT');
     } catch (err) {
       if (!this.#batch) { db.exec('ROLLBACK'); this.#loadState(); }
       throw err;
     }
     return moved;
-  }
-
-  #ftsText(state, e) {
-    const table = state.tables[e.dbId];
-    const name = table ? String(e.values?.[table.nameFieldId] ?? '') : '';
-    const docs = Object.values(e.docs ?? {}).join('\n');
-    const comments = (e.comments ?? []).map((c) => c.text).join('\n');
-    return [name, docs, comments].filter(Boolean).join('\n');
   }
 
   sizeBytes() {
@@ -503,9 +567,16 @@ export class Store {
     return changed;
   }
 
-  reload() {
+  maxPublicId(dbId) {
+    if (!this.#db) return 0;
+    const row = this.#db.prepare(`SELECT MAX(COALESCE((SELECT MAX(public_id) FROM entities WHERE db_id = ?), 0),
+      COALESCE((SELECT json_extract(json, '$.publicIdCounter') FROM tables WHERE id = ?), 0)) AS n`).get(dbId, dbId);
+    return Number(row?.n ?? 0);
+  }
+
+  reload(state = null) {
     if (!this.#db) return null;
-    return this.#loadState();
+    return (state && this.#snapshot(() => this.#applyJournal(state))) || this.#loadState();
   }
 
   close() {

@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testFiles, lanes } from './test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
+export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/query-volume.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
 export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
 
 export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
@@ -45,6 +45,20 @@ export function validate(manifest, results, commit) {
     }
   }
   return { commit, files: summaries.length, tests: summaries.reduce((n, s) => n + s.counts.tests, 0), slowest: summaries.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 10) };
+}
+
+export const retryAnnotations = results => results.flatMap(r => (r.retried ?? []).map(file => ({ file, shard: r.id })))
+  .sort((a, b) => a.file.localeCompare(b.file))
+  .map(({ file, shard }) => `::warning file=${file},title=Passed only on its retry::${file} failed in shard ${shard} and passed when the shard ran it again`);
+
+export function aggregate(manifest, results, commit) {
+  const summary = validate(manifest, newestAttempts(results), commit);
+  return [JSON.stringify(summary, null, 2), ...retryAnnotations(newestAttempts(results))];
+}
+
+export function shardResult(shard, events, run) {
+  const records = (type) => events.filter(e => e.type === type).map(e => e.data);
+  return { ...shard, ...run, summaries: records('summary'), skips: records('skip'), cases: records('case'), retried: records('retried').map(r => r.file) };
 }
 
 export const ONBOARDING = [
@@ -106,7 +120,28 @@ export function touchedBrowser(changed, browser, read, diff = '') {
   return [...picked].sort();
 }
 
+const MONOLITHS = ['public/app.js', 'public/style.css', 'src/commands.js', 'src/engine.js', 'src/routes.js'];
+const RELATIVE_IMPORT = /(?:^|[\s({,;=])(?:from|import)\s*\(?\s*['"](\.\.?\/[^'"\n]+)['"]/gm;
+
+export function browserHelpers(browser, read) {
+  const seen = new Set();
+  const visit = file => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    let source = '';
+    try { source = read(file); } catch {}
+    for (const [, specifier] of source.matchAll(RELATIVE_IMPORT)) {
+      const next = posix.join(posix.dirname(file), specifier);
+      if (next.startsWith('test/')) visit(next);
+    }
+  };
+  for (const file of browser) visit(file);
+  return [...seen].filter(file => file.startsWith('test/lib/')).sort();
+}
+
 export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
+  const helpers = browserHelpers(browser, read);
+  if (changed.some(file => MONOLITHS.includes(file) || helpers.includes(file))) return plan([...unit, ...browser], { unit, browser: touchedBrowser(browser, browser, read) }, weight, 4);
   const touched = touchedBrowser(changed, browser, read, diff);
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
@@ -177,8 +212,7 @@ async function main() {
   if (command === 'plan') { console.log(JSON.stringify({ include: manifest.map(({ id, lane }) => ({ id, lane })) })); return; }
   if (command === 'aggregate') {
     const results = readdirSync(id, { recursive: true }).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(join(id, f), 'utf8')));
-    const summary = validate(manifest, newestAttempts(results), commit);
-    console.log(JSON.stringify(summary, null, 2));
+    for (const line of aggregate(manifest, results, commit)) console.log(line);
     return;
   }
   if (command !== 'run') throw new Error('Expected [pr-]plan, [pr-]run <shard>, or [pr-]aggregate <directory>');
@@ -192,7 +226,7 @@ async function main() {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, WEAVE_CI_REPORT: report },
   });
   const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const result = { ...shard, commit, manifest: digest(manifest), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1), code: child.status ?? 1, timedOut: child.status === 124, durationMs: Date.now() - start, summaries: events.filter(e => e.type === 'summary').map(e => e.data), skips: events.filter(e => e.type === 'skip').map(e => e.data), cases: events.filter(e => e.type === 'case').map(e => e.data) };
+  const result = shardResult(shard, events, { commit, manifest: digest(manifest), attempt: Number(process.env.GITHUB_RUN_ATTEMPT ?? 1), code: child.status ?? 1, timedOut: child.status === 124, durationMs: Date.now() - start });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${id}.json`), JSON.stringify(result, null, 2) + '\n');
   rmSync(dir, { recursive: true, force: true });

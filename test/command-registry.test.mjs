@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { handleMcpMessage, TOOLS } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, FAMILIES, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, FAMILIES, cliHelp, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -23,20 +24,25 @@ test('every registry command is well formed and reachable on each door it names 
     assert.ok(['schema', 'entity', 'keystore', 'none'].includes(c.writes), `${c.name} says what it writes`);
     assert.equal(typeof c.run, 'function', `${c.name} runs`);
     assert.ok(Array.isArray(c.engine) && c.engine.every((m) => typeof Weave.prototype[m] === 'function'), `${c.name} names engine methods that exist`);
-    assert.ok(c.tool && c.cli && c.http, `${c.name} has all three doors`);
-    assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
-    assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
-    if (c.action !== undefined) {
-      const key = c.actionArg ?? 'action';
-      assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
-      if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
-    } else assert.equal(BY_TOOL.get(c.tool.name), c);
-    assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
+    assert.ok(c.http || c.via?.http, `${c.name} has an HTTP door or names where its route lives`);
+    for (const door of ['tool', 'cli']) assert.ok(c[door] || c.via?.[door], `${c.name} has a ${door} door or names the one that carries it`);
+    if (c.via?.tool) assert.ok(TOOLS.some((t) => t.name === c.via.tool), `${c.name}: ${c.via.tool} is in tools/list`);
+    if (c.via?.cli) assert.ok(COMMANDS.some((x) => x.name === c.via.cli && x.cli), `${c.name}: ${c.via.cli} carries the CLI door`);
+    if (c.tool) {
+      assert.ok(c.tool.description.length >= 40, `${c.name} describes its tool`);
+      assert.equal(TOOLS.find((t) => t.name === c.tool.name), c.tool, `${c.tool.name} in tools/list is the registry entry`);
+      if (c.action !== undefined) {
+        const key = c.actionArg ?? 'action';
+        assert.ok(c.tool.inputSchema.properties[key], `${c.name}: its tool takes ${key}`);
+        if (!c.toolRefusal) assert.equal(toolCommand(c.tool.name, { [key]: c.action }), c, `${c.tool.name} {${key}: ${c.action}} is the registry entry`);
+      } else assert.equal(BY_TOOL.get(c.tool.name), c);
+    }
+    if (c.cli && !c.cli.swap) assert.equal(cliCommand(c.cli.command, c.cli.sub), c, `weave ${c.cli.command} ${c.cli.sub} is the registry entry`);
     for (const path of httpPaths(c)) {
       assert.equal(matchRoute(c.http.method, path.replace(/:[a-z]+/gi, 'x'))?.cmd, c, `${c.http.method} ${path} is the registry entry`);
-      for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
+      if (c.tool && !c.http.args) for (const k of path.match(/:([a-z]+)/gi) ?? []) assert.ok(k.slice(1) in c.tool.inputSchema.properties, `${c.name}: the path parameter ${k} is a tool argument`);
     }
-    for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
+    if (c.tool && c.cli) for (const k of c.cli.positional ?? []) assert.ok(k in c.tool.inputSchema.properties, `${c.name}: the CLI argument ${k} is a tool argument`);
   }
 });
 
@@ -206,8 +212,11 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   const { server } = await startServer(w, { port: 0 });
   const base = `http://127.0.0.1:${server.address().port}`;
   const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
-  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen };
+  const filed = w.attachFile(alpha, { name: 'gate.txt', mime: 'text/plain', bytes: Buffer.from('gate').toString('base64') }).id;
+  const sample = { db: 'Task', field: 'Points', space: 'Ops', entity: alpha, seq: 1, comment: said.id, view: seen, file: filed, run: w.startRun({ name: 'Gate run' }).id };
   const bodies = {
+    'run.start': { name: 'Gate start' },
+    'run.update': { status: 'succeeded' },
     'formula.check': { expression: 'Points * 2' },
     'entity.link': { field: 'Owner', targets: ['Pat'] },
     'entity.unlink': { field: 'Owner', targets: ['Pat'] },
@@ -216,19 +225,23 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
     'doc.set': { doc: 'second' },
     'doc.append': { doc: 'third' },
     'comment.add': { text: 'more' },
+    'file.attach': { name: 'more.txt', mime: 'text/plain', contentBase64: Buffer.from('more').toString('base64') },
     'view.create': { name: 'Gate', blocks: [{ table: 'Task' }] },
+    'workspace.logo.set': { name: 'gate.svg', contentBase64: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') },
   };
   try {
     for (const c of COMMANDS) {
-      if (c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare'].includes(c.name) || c.cli.command === 'share') continue;
+      if (!c.http || c.http.method === 'GET' || c.writes === 'keystore' || ['view.share', 'view.unshare', 'template.use', 'workspace.move'].includes(c.name) || c.cli?.command === 'share') continue;
       const params = c.name === 'entity.restore' ? { ...sample, entity: gone } : sample;
       const path = c.http.path.replace(/:([a-z]+)/gi, (_, k) => encodeURIComponent(params[k] ?? 'x'));
       const body = bodies[c.name] ?? {};
       const res = await fetch(base + path, { method: c.http.method, headers: { authorization: `Bearer ${editor}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
-      if (c.writes === 'schema') {
+      if (['automation.replay', 'automation.receive'].includes(c.name)) {
+        assert.deepEqual([res.status, json.code], [404, 'not-found'], `${c.http.method} ${c.http.path} writes no schema and looks the record up`);
+      } else if (c.writes === 'schema') {
         assert.equal(res.status, 403, `${c.http.method} ${c.http.path} is a schema write`);
-        assert.equal(json.error, 'This token cannot change the schema');
+        assert.equal(json.error, `${c.http.method} ${path} needs an architect on this workspace; your role here is editor`, 'the refusal names the role that passes (Issue #1582)');
       } else {
         assert.equal(res.status, c.http.status ?? 200, `${c.http.method} ${c.http.path} writes no schema: ${JSON.stringify(json)}`);
       }
@@ -303,7 +316,7 @@ test('the automation family answers the same on CLI, MCP and HTTP, and a miss na
     assert.equal(again.status, 404, 'deleting a deleted automation over HTTP is a 404');
     assert.deepEqual(await again.json(), { error: `No automation '${made.http.id}'`, code: 'not-found' });
     assert.deepEqual(d.mcp('weave_automations', { action: 'delete', automation: made.mcp.id }), { id: made.mcp.id, deleted: false }, 'MCP answers deleted: false');
-    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete)");
+    assert.equal(d.call('weave_automations', { action: 'run' }).content[0].text, "Error: Unknown automations action 'run' (list, describe, update, delete, replay)");
     const miss = d.run(['automation', 'run']);
     assert.notEqual(miss.status, 0);
     assert.match(miss.stderr, /Unknown automation subcommand 'run'\. Try: create, list, describe, update, delete/);
@@ -552,11 +565,12 @@ test('query, trash, stats and bulk answer the same on CLI, MCP and HTTP, each do
   try {
     const queried = {
       cli: d.cli(['query', 'Task', '--where', JSON.stringify(where), '--relations', 'chip']),
-      mcp: d.mcp('weave_query', { db: 'Task', where }),
+      mcp: d.mcp('weave_query', { db: 'Task', where, shape: 'full' }),
       http: await d.http('POST', '/api/tables/Task/query', { where, relations: 'chip' }),
     };
     assert.equal(queried.http.items.length, 1);
-    assert.deepEqual(row(queried.mcp), row(queried.http), 'weave_query and POST /api/tables/Task/query answer alike');
+    assert.deepEqual(row(queried.mcp), row(queried.http), 'weave_query shape full and POST /api/tables/Task/query answer alike');
+    assert.deepEqual(d.mcp('weave_query', { db: 'Task', where }).items.map((r) => r.name), queried.http.items.map((r) => r.name), 'the lean default reads the same rows (Issue #1558)');
     assert.deepEqual(row(queried.cli), row(queried.http), 'weave query and POST /api/tables/Task/query answer alike');
     assert.equal((await d.raw('POST', '/api/tables/Task/query', { limit: 'many' })).status, 400, 'a bad HTTP limit is still a 400');
     const trashed = { cli: d.cli(['trash', 'Task']), mcp: d.mcp('weave_trash', { table: 'Task' }), http: await d.http('GET', '/api/tables/Task/trash') };
@@ -604,8 +618,8 @@ test('documents, their revisions and comments answer the same on CLI, MCP and HT
   const ids = { mcp: idOf(d.mcpWeave), http: idOf(d.httpWeave) };
   try {
     assert.deepEqual(d.cli(['doc', 'set', 'Task#1', '--content', 'one']), { ok: true });
-    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3 }, 'weave_set_doc still answers the length');
-    assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true });
+    assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'one' }), { ok: true, length: 3, base: createHash('sha256').update('one').digest('hex') }, 'weave_set_doc answers the length and the base the next write starts from (Issue #1682)');
+    assert.deepEqual(await d.http('PUT', `/api/entities/${ids.http}/doc`, { doc: 'one' }), { ok: true, base: createHash('sha256').update('one').digest('hex') }, 'HTTP names the base the next write starts from (Issue #1443)');
     assert.deepEqual(d.cli(['doc', 'append', 'Task#1', '--content', 'two']), { ok: true });
     assert.deepEqual(d.mcp('weave_set_doc', { entity: ids.mcp, markdown: 'two', mode: 'append' }).ok, true);
     assert.deepEqual(await d.http('POST', `/api/entities/${ids.http}/doc`, { markdown: 'two' }), { ok: true });
@@ -674,14 +688,15 @@ test('search and undo answer the same on CLI, MCP and HTTP, each door with its o
     assert.deepEqual(hit(cliFound), hit(engine.search('zebra finch', { limit: 5 })), 'weave search still runs the record search');
     d.cli(['update', 'Task#1', '--values', '{"Points":2}']);
     d.mcp('weave_update_entity', { entity: idOf(d.mcpWeave), values: { Points: 2 } });
-    await d.http('PATCH', `/api/entities/${idOf(d.httpWeave)}`, { values: { Points: 2 } });
-    const history = { cli: d.cli(['undo', '--list']), mcp: d.mcp('weave_undo', { list: true }), http: await d.http('GET', '/api/undo') };
+    const seeder = { 'x-weave-actor': 'local' };
+    await d.http('PATCH', `/api/entities/${idOf(d.httpWeave)}`, { values: { Points: 2 } }, seeder);
+    const history = { cli: d.cli(['undo', '--list']), mcp: d.mcp('weave_undo', { list: true }), http: await d.http('GET', '/api/undo', undefined, seeder) };
     assert.ok(history.http.length >= 1);
     assert.deepEqual(hit(history.mcp.history), hit(history.http), 'weave_undo {list} and GET /api/undo answer alike');
     assert.deepEqual(hit(history.cli), hit(history.http), 'weave undo --list and GET /api/undo answer alike');
     assert.deepEqual(hit(d.cli(['undo', 'list'])), hit(history.http), 'weave undo list lists too');
-    assert.equal((await d.http('GET', '/api/undo?limit=1')).length, 1);
-    const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}) };
+    assert.equal((await d.http('GET', '/api/undo?limit=1', undefined, seeder)).length, 1);
+    const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}, seeder) };
     assert.deepEqual(hit(undone.mcp), hit(undone.http), 'weave_undo and POST /api/undo answer alike');
     assert.deepEqual(hit(undone.cli), hit(undone.http), 'weave undo and POST /api/undo answer alike');
     for (const [method, path, name] of [['GET', '/api/search', 'search'], ['GET', '/api/undo', 'undo.list'], ['POST', '/api/undo', 'undo.run']]) {
@@ -809,4 +824,359 @@ test('the share family answers the same on CLI, MCP and HTTP, and HTTP still add
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
   } finally { d.close(); }
+});
+
+test('file attach, read and delete answer the same on CLI, MCP and HTTP, and each door keeps its own bytes (Feature #179)', async () => {
+  const withFiles = (w) => { seed(w); w.addField('Task', { name: 'Papers', type: 'attachments' }); };
+  const d = await threeDoors('weave-registry-files-', { seeded: withFiles });
+  const dir = tempDir('weave-registry-files-src-');
+  const src = join(dir, 'note.txt');
+  writeFileSync(src, 'hello files');
+  const b64 = Buffer.from('hello files').toString('base64');
+  const file = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (['entity', 'path', 'hash', 'sha256', 'url'].includes(k) ? undefined : x)));
+  try {
+    const alpha = { cli: d.cli(['query', 'Task']).items[0].id, mcp: d.mcpWeave.query('Task').items[0].id, http: d.httpWeave.query('Task').items[0].id };
+    for (const field of [null, 'Papers']) {
+      const made = {
+        cli: d.cli(['file', 'attach', alpha.cli, '--path', src, '--mime', 'text/plain', ...(field ? ['--field', field] : [])]),
+        mcp: d.mcp('weave_attach_file', { entity: alpha.mcp, name: 'note.txt', mime: 'text/plain', contentBase64: b64, ...(field ? { field } : {}) }),
+        http: await d.http('POST', `/api/entities/${alpha.http}${field ? `/fields/${field}` : ''}/files`, { name: 'note.txt', mime: 'text/plain', contentBase64: b64 }),
+      };
+      assert.deepEqual(file(made.mcp), file(made.http), `weave_attach_file and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      assert.deepEqual(file(made.cli), file(made.http), `weave file attach and POST ${field ? 'the field' : 'the record'} files answer alike`);
+      const fromHttp = await d.raw('GET', `/api/files/${made.http.id}`);
+      assert.equal(fromHttp.status, 200);
+      assert.ok(fromHttp.headers.get('etag'), 'GET /api/files/:id still sends its ETag');
+      assert.equal(await fromHttp.text(), 'hello files');
+      assert.equal((await d.raw('GET', `/api/files/${made.http.id}`, undefined, { 'if-none-match': fromHttp.headers.get('etag') })).status, 304, 'GET /api/files/:id still answers 304');
+      const read = d.mcp('weave_files', { action: 'read', file: made.mcp.id });
+      assert.equal(Buffer.from(read.contentBase64, 'base64').toString(), 'hello files', 'weave_files read still answers base64');
+      assert.equal(read.name, 'note.txt');
+      const out = d.run(['file', 'read', made.cli.id]);
+      assert.equal(out.stdout, 'hello files', 'weave file read still writes the bytes, no newline');
+      const saved = join(dir, 'out.txt');
+      const meta = d.cli(['file', 'read', made.cli.id, '--out', saved]);
+      assert.equal(meta.path, saved);
+      assert.equal(meta.name, 'note.txt');
+      const gone = {
+        cli: d.cli(['file', 'delete', alpha.cli, made.cli.id]),
+        mcp: d.mcp('weave_files', { action: 'delete', entity: alpha.mcp, file: made.mcp.id }),
+        http: await d.http('DELETE', `/api/entities/${alpha.http}/files/${made.http.id}`),
+      };
+      assert.deepEqual(file(gone.mcp), file(gone.http), 'weave_files delete and DELETE files answer alike');
+      assert.deepEqual(file(gone.cli), file(gone.http), 'weave file delete and DELETE files answer alike');
+    }
+    const missing = await d.raw('DELETE', `/api/entities/${alpha.http}/files/00000000-0000-4000-8000-000000000000`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: "No file '00000000-0000-4000-8000-000000000000' on this record", code: 'not-found' });
+    assert.equal(d.call('weave_files', { action: 'zap', file: 'x' }).content[0].text, "Error: Unknown files action 'zap' (read, delete)");
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt' }).content[0].text, /Send contentBase64, or prepare:true and size/);
+    assert.match(d.call('weave_attach_file', { entity: alpha.mcp, name: 'x.txt', prepare: true, size: 3 }).content[0].text, /Prepare uploads over the authenticated HTTP MCP endpoint/);
+    const noPath = d.run(['file', 'attach', alpha.cli]);
+    assert.notEqual(noPath.status, 0);
+    assert.match(noPath.stderr, /file attach needs --path/);
+    const miss = d.run(['file', 'zap']);
+    assert.notEqual(miss.status, 0);
+    assert.match(miss.stderr, /Unknown file subcommand 'zap'\. Try: attach, read, delete/);
+    for (const [method, path, name] of [['POST', '/api/entities/x/files', 'file.attach'], ['POST', '/api/entities/x/fields/y/files', 'file.attach'], ['GET', '/api/files/x', 'file.read'], ['DELETE', '/api/entities/x/files/y', 'file.delete']]) {
+      assert.equal(matchRoute(method, path)?.cmd.name, name);
+    }
+  } finally { d.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('space list and members answer the same on CLI and HTTP, and a bare space still lists (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-space-members-', { seeded: (w) => { seed(w); w.createAccount({ name: 'ann', role: 'editor' }); } });
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  try {
+    assert.deepEqual(bare(d.cli(['space', 'list'])), bare(await d.http('GET', '/api/spaces', undefined, auth)), 'space list and GET /api/spaces answer alike');
+    assert.deepEqual(bare(d.cli(['space'])), bare(d.cli(['space', 'list'])), 'a bare weave space lists');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops'])), bare(await d.http('GET', '/api/spaces/Ops/members', undefined, auth)), 'members read alike');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--role', 'observer'])), bare(await d.http('PUT', '/api/spaces/Ops/members/ann', { role: 'observer' }, auth)), 'a member set answers alike');
+    assert.equal(d.cli(['space', 'members', 'Ops']).find((m) => m.name === 'ann').role, 'observer');
+    assert.deepEqual(bare(d.cli(['space', 'members', 'Ops', 'ann', '--remove'])), bare(await d.http('DELETE', '/api/spaces/Ops/members/ann', undefined, auth)), 'a member removal answers alike');
+    assert.deepEqual(d.cli(['space', 'members', 'Ops']), []);
+    const refused = d.run(['space', 'bogus']);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /Unknown space subcommand 'bogus'\. Try: create, list, update, members, delete, restore/);
+  } finally { d.close(); }
+});
+
+test('table list and the view family answer the same on CLI, MCP and HTTP, each door with its own list (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-table-view-');
+  const auth = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'root', role: 'architect' }).token}` };
+  const named = (v) => bare(JSON.parse(JSON.stringify(v, (k, x) => (['createdAt', 'updatedAt'].includes(k) ? undefined : x))));
+  try {
+    const listed = await d.http('GET', '/api/tables', undefined, auth);
+    assert.deepEqual(d.cli(['table', 'list']), listed.map((t) => t.qualified), 'the CLI lists qualified names, HTTP the rows');
+    assert.deepEqual(d.cli(['db']), d.cli(['table', 'list']), 'a bare weave db still lists');
+    assert.deepEqual(Object.keys(listed[0]), ['id', 'name', 'qualified', 'spaceId', 'position']);
+    assert.deepEqual((await d.http('GET', '/api/tables?space=Ops', undefined, auth)).map((t) => t.qualified), ['Ops/Task', 'Ops/Person']);
+    assert.deepEqual(named(d.cli(['table', 'view', 'Task'])), named(await d.http('GET', '/api/tables/Task/views', undefined, auth)), 'view list alike');
+    assert.deepEqual(named(d.mcp('weave_table_view', { view: 'Task' })), named(await d.http('GET', '/api/tables/Task/views', undefined, auth)));
+    assert.deepEqual(named(d.cli(['table', 'view', 'Task/blank'])), named(await d.http('GET', '/api/tables/Task/views/blank', undefined, auth)), 'one view alike');
+    const made = [
+      d.cli(['table', 'view', 'Task/Open', '--search', 'a', '--sort', '[{"field":"Name","dir":"asc"}]']),
+      d.mcp('weave_table_view', { view: 'Task/Open', search: 'a', sort: [{ field: 'Name', dir: 'asc' }] }),
+      await d.http('PATCH', '/api/tables/Task/views/Open', { search: 'a', sort: [{ field: 'Name', dir: 'asc' }] }, auth),
+    ].map(named);
+    assert.deepEqual(made[0], made[2], 'CLI and PATCH write alike');
+    assert.deepEqual(made[1], made[2], 'MCP and PATCH write alike');
+    const gone = [
+      d.cli(['table', 'view', 'Task/Open', '--delete']),
+      d.mcp('weave_table_view', { view: 'Task/Open', delete: true }),
+      await d.http('DELETE', '/api/tables/Task/views/Open', undefined, auth),
+    ].map(named);
+    assert.deepEqual(gone[0], gone[2], 'CLI and DELETE remove alike');
+    assert.deepEqual(gone[1], gone[2], 'MCP and DELETE remove alike');
+    const editor = { authorization: `Bearer ${d.httpWeave.createAccount({ name: 'ed', role: 'editor' }).token}` };
+    assert.equal((await d.raw('PATCH', '/api/tables/Task/views/Open', {}, editor)).status, 403, 'an editor still cannot write a table view');
+    assert.equal((await d.raw('GET', '/api/tables/Task/views', undefined, editor)).status, 200, 'an editor still reads them');
+  } finally { d.close(); }
+});
+
+test('vocabulary answers the same on CLI, MCP and HTTP, and an unknown section is refused on each (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-vocabulary-');
+  try {
+    const whole = await d.http('GET', '/api/vocabulary');
+    assert.deepEqual(d.cli(['vocabulary']), whole, 'the whole vocabulary alike');
+    assert.deepEqual(d.mcp('weave_vocabulary', {}), whole);
+    const icons = await d.http('GET', '/api/vocabulary?section=icons&query=wallet');
+    assert.deepEqual(d.cli(['vocabulary', 'icons', 'wallet']), icons, 'an icon search alike');
+    assert.deepEqual(d.mcp('weave_vocabulary', { sections: ['icons'], query: 'wallet' }), icons);
+    const several = await d.http('GET', '/api/vocabulary?section=icons,optionColors');
+    assert.deepEqual(d.cli(['vocabulary', 'icons,optionColors']), several, 'several sections alike');
+    const res = await d.raw('GET', '/api/vocabulary?section=nope');
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, 'invalid');
+    assert.match(body.error, /Unknown vocabulary section 'nope'/);
+    const cli = d.run(['vocabulary', 'nope']);
+    assert.equal(cli.status, 40);
+    assert.match(cli.stderr, /error \[invalid\]: Unknown vocabulary section 'nope'/);
+    const mcp = d.call('weave_vocabulary', { section: 'nope' });
+    assert.equal(mcp.isError, true);
+    assert.match(mcp.content[0].text, /Unknown vocabulary section 'nope'/);
+  } finally { d.close(); }
+});
+
+test('GET /api/share is a registry route and still answers 404 without a share token (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-share-current-');
+  try {
+    assert.equal(matchRoute('GET', '/api/share').cmd.name, 'share.current');
+    const res = await d.raw('GET', '/api/share');
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: 'No share token on this request: send Authorization: Bearer wvs_…', code: 'not-found' });
+  } finally { d.close(); }
+});
+
+test('template list and use answer on CLI, MCP and HTTP, each door with its own shape and refusals (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-templates-', { seeded: (w) => { seed(w); w.createSpace({ name: 'CRM', template: true }); } });
+  try {
+    const listed = await d.http('GET', '/api/templates');
+    assert.deepEqual(bare(d.cli(['template', 'list'])), bare(listed), 'template list and GET /api/templates answer alike');
+    assert.deepEqual(d.cli(['template']), d.cli(['template', 'list']), 'a bare weave template lists');
+    const viaMcp = d.mcp('weave_template_list', {});
+    assert.deepEqual(bare(viaMcp.templates), bare(listed), 'MCP answers the templates inside its envelope');
+    assert.ok(Array.isArray(viaMcp.starters), 'and the starter catalog beside them');
+    const other = join(tempDir('weave-registry-templates-into-'), 'other.db');
+    const made = d.cli(['template', 'use', 'CRM', '--into', other, '--name', 'Sales']);
+    assert.equal(made.space.name, 'Sales');
+    assert.match(d.run(['template', 'use', 'CRM']).stderr, /template use needs --into/);
+    assert.match(d.run(['template', 'use']).stderr, /Usage: weave template use <space>/);
+    assert.match(d.call('weave_template_use', { space: 'CRM', workspace: 'x' }).content[0].text, /this stdio server holds one workspace/);
+    const res = await d.raw('POST', '/api/spaces/CRM/use', {});
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /Name the workspace to build in/);
+  } finally { d.close(); }
+});
+
+test('schema describe, apply and build answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-schema-');
+  const plain = (v) => JSON.parse(JSON.stringify(bare(v), (k, x) => (k === 'url' ? undefined : x)));
+  try {
+    assert.equal(matchRoute('GET', '/api/schema').cmd.name, 'schema.describe');
+    assert.equal(matchRoute('PUT', '/api/schema').cmd.name, 'schema.apply');
+    assert.equal(matchRoute('POST', '/api/build').cmd.name, 'build');
+    const described = await d.http('GET', '/api/schema');
+    assert.deepEqual(plain(d.cli(['schema'])), plain(described), 'weave schema and GET /api/schema answer alike');
+    assert.deepEqual(plain(d.cli(['schema', 'export'])), plain(described), 'weave schema export prints the same document');
+    assert.deepEqual(plain(d.cli(['schema', 'anything'])), plain(described), 'an unknown subcommand still describes');
+    assert.deepEqual(plain(d.mcp('weave_schema', {})), plain(described), 'weave_schema answers the document');
+    const file = join(tempDir('weave-registry-schema-file-'), 'schema.json');
+    assert.deepEqual(d.cli(['schema', 'export', '--out', file]), { ok: true, out: file });
+
+    const doc = JSON.parse(JSON.stringify(described));
+    doc.push({ space: 'Ledger', tables: [{ name: 'Entry', fields: [] }] });
+    writeFileSync(file, JSON.stringify(doc));
+    const planned = await d.http('PUT', '/api/schema', { schema: doc, dryRun: true });
+    assert.deepEqual(plain(d.cli(['schema', 'apply', '--file', file, '--dry-run'])), plain(planned), 'schema apply and PUT /api/schema plan alike');
+    assert.deepEqual(plain(d.mcp('weave_apply_schema', { document: doc, dryRun: true }).plan), plain(planned), 'weave_apply_schema wraps the plan');
+    assert.equal(d.httpWeave.describeSchema().some((s) => s.space === 'Ledger'), false, 'a dry run writes nothing');
+    await d.http('PUT', '/api/schema', doc);
+    assert.equal(d.httpWeave.describeSchema().some((s) => s.space === 'Ledger'), true, 'a bare document body applies');
+
+    const spec = { spaces: [{ name: 'Budget', tables: [{ name: 'Account', records: [{ Name: 'Amex' }] }] }] };
+    const built = await d.http('POST', '/api/build', spec);
+    assert.equal(built.ok, true);
+    const specFile = join(tempDir('weave-registry-build-file-'), 'spec.json');
+    writeFileSync(specFile, JSON.stringify(spec));
+    assert.deepEqual(d.cli(['build', specFile, '--dry-run']).ok, true, 'weave build prints one JSON line');
+    assert.equal(d.run(['build', specFile]).stdout.trim().startsWith('{'), true);
+    assert.equal(d.mcp('weave_build', { spec, dryRun: true }).ok, true, 'weave_build answers a JSON line');
+    assert.equal(d.mcp('weave_build', spec).ok, true, 'a bare spec builds');
+    const bad = { spaces: [{ tables: [] }] };
+    const refused = await d.raw('POST', '/api/build', bad);
+    assert.equal(refused.status, 400, 'a spec with errors answers 400');
+    assert.equal((await refused.json()).ok, false);
+    writeFileSync(specFile, JSON.stringify(bad));
+    const failed = d.run(['build', specFile]);
+    assert.equal(failed.status, 1, 'the CLI exits 1 on a refused spec');
+    assert.equal(JSON.parse(failed.stdout).ok, false);
+  } finally { d.close(); }
+});
+
+test('the workspace record, logo and order answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-workspace-');
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>');
+  try {
+    assert.equal(matchRoute('PUT', '/api/workspace/logo').cmd.name, 'workspace.logo.set');
+    assert.equal(matchRoute('POST', '/api/workspace/logo').cmd.name, 'workspace.logo.set');
+    assert.equal(matchRoute('GET', '/api/workspaces').cmd.name, 'workspace.order');
+    const record = await d.http('GET', '/api/workspace');
+    assert.match(record.url, /^\/w\//);
+    assert.equal(typeof record.schemaVersion, 'string');
+    const cliGet = d.cli(['workspace', 'get']);
+    assert.deepEqual(Object.keys(cliGet), ['id', 'name', 'title', 'description', 'logo', 'requireAuth', 'linkPreview']);
+    assert.deepEqual(d.cli(['workspace']), cliGet, 'a bare weave workspace reads');
+    assert.deepEqual(d.mcp('weave_workspace', {}), d.mcp('weave_workspace', { action: 'get' }), 'no action reads');
+    assert.deepEqual(Object.keys(d.mcp('weave_workspace', {})), Object.keys(cliGet));
+    const unknown = d.call('weave_workspace', { action: 'nope' });
+    assert.equal(unknown.isError, true);
+    assert.match(unknown.content[0].text, /Unknown workspace action 'nope' \(get, update, logo, clear-logo, order, move\)/);
+
+    const patched = await d.http('PATCH', '/api/workspace', { description: 'Over http' });
+    assert.deepEqual(Object.keys(patched), ['id', 'url', 'name', 'title', 'description', 'linkPreview']);
+    assert.equal(d.cli(['workspace', 'set', '--description', 'Over cli']).description, 'Over cli');
+    assert.equal(d.cli(['workspace', 'update', '--description', 'Alias']).description, 'Alias');
+    assert.equal(d.mcp('weave_workspace', { action: 'update', description: 'Over mcp' }).description, 'Over mcp');
+    assert.deepEqual(await d.http('PATCH', '/api/workspace', { requireAuth: false }), { requireAuth: false }, 'a lone requireAuth answers alone');
+
+    const file = join(tempDir('weave-registry-logo-'), 'logo.svg');
+    writeFileSync(file, svg);
+    assert.equal(d.cli(['workspace', 'logo', '--path', file, '--mime', 'image/svg+xml']).mime, 'image/svg+xml');
+    const out = join(dirname(file), 'got.svg');
+    const read = d.cli(['workspace', 'logo', '--out', out]);
+    assert.equal(read.ok, true);
+    assert.deepEqual(d.cli(['workspace', 'logo', '--clear']), { logo: false });
+    assert.match(d.run(['workspace', 'logo']).stderr, /workspace logo needs --path, --out or --clear/);
+    const put = await d.http('PUT', '/api/workspace/logo', { name: 'a.svg', contentBase64: svg.toString('base64') });
+    assert.equal(put.mime, 'image/svg+xml');
+    const got = await d.raw('GET', '/api/workspace/logo');
+    assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(got.headers.get('content-type'), 'image/svg+xml');
+    assert.deepEqual(await d.http('DELETE', '/api/workspace/logo'), { ok: true });
+    assert.equal((await d.raw('GET', '/api/workspace/logo')).status, 404);
+    assert.equal(d.mcp('weave_workspace', { action: 'logo', contentBase64: svg.toString('base64') }).name, 'logo.png');
+    assert.deepEqual(d.mcp('weave_workspace', { action: 'clear-logo' }), { logo: false });
+
+    const names = (list) => list.map((x) => x.name);
+    assert.deepEqual(names(d.mcp('weave_workspace', { action: 'order' }).workspaces).sort(), names(await d.http('GET', '/api/workspaces')).sort().filter((n) => names(d.mcp('weave_workspace', { action: 'order' }).workspaces).includes(n)));
+    const none = await d.raw('PATCH', `/api/workspaces/${record.name}`, {});
+    assert.equal(none.status, 400);
+    assert.match((await none.json()).error, /position is required/);
+    assert.deepEqual(d.cli(['workspace', 'link-preview']).linkPreview, true, 'the hand-written subcommands still answer');
+  } finally { d.close(); }
+});
+
+test('accounts, identity links and invites answer on CLI, MCP and HTTP, each door with its own shape (Feature #179)', async () => {
+  const d = await threeDoors('weave-registry-accounts-', { env: { WEAVE_OIDC_ISSUER: 'https://idp.example.test' } });
+  process.env.WEAVE_OIDC_ISSUER = 'https://idp.example.test';
+  try {
+    assert.equal(matchRoute('DELETE', '/api/accounts/a/identities').cmd.name, 'account.unlink');
+    assert.equal(matchRoute('DELETE', '/api/accounts/a').cmd.name, 'account.delete');
+    const made = await d.http('POST', '/api/accounts', { name: 'http-bot', role: 'architect' });
+    assert.equal(made.account.name, 'http-bot');
+    const arch = { authorization: `Bearer ${made.token}` };
+    const http = (method, path, payload) => d.http(method, path, payload, arch);
+    assert.equal(d.cli(['account', 'create', 'cli-bot']).account.name, 'cli-bot');
+    assert.equal(d.mcp('weave_accounts', { action: 'create', name: 'mcp-bot' }).account.name, 'mcp-bot');
+    const listed = await http('GET', '/api/accounts');
+    assert.ok(Array.isArray(listed) && listed.some((a) => a.name === 'http-bot'));
+    assert.ok(Array.isArray(d.cli(['account'])), 'a bare weave account lists');
+    assert.ok(Array.isArray(d.mcp('weave_accounts', { action: 'list' }).accounts), 'MCP wraps the list');
+    await http('POST', '/api/accounts', { name: 'peer', role: 'editor' });
+    assert.equal((await http('PATCH', '/api/accounts/peer', { role: 'observer' })).role, 'observer');
+    assert.equal(d.cli(['account', 'set', 'cli-bot', '--role', 'observer']).role, 'observer');
+    const unknown = d.call('weave_accounts', { action: 'nope' });
+    assert.match(unknown.content[0].text, /Unknown accounts action 'nope' \(list, create, set, delete, require-auth, sessions, revoke-session, link-identity, unlink-identity, invite, invites, revoke-invite\)/);
+
+    const link = await http('POST', '/api/accounts/http-bot/identities', { issuer: 'https://idp.example.test' });
+    assert.match(link.url, /\/api\/auth\/oidc\/start\?invite=/);
+    assert.match(d.cli(['account', 'link', 'cli-bot', '--issuer', 'https://idp.example.test']).url, /invite=/);
+    assert.match(d.mcp('weave_accounts', { action: 'link-identity', account: 'mcp-bot' }).url, /invite=/);
+    assert.match(d.run(['account', 'link', 'cli-bot', '--email', 'a@b.c']).stderr, /weave no longer links by email/);
+    assert.match(d.run(['account', 'unlink', 'cli-bot']).stderr, /account unlink needs --subject/);
+
+    const invited = await http('POST', '/api/invites', { email: 'pat@example.test', role: 'editor', issuer: 'https://idp.example.test' });
+    assert.equal(invited.mailed, false);
+    assert.match(invited.url, /invite=/);
+    assert.match(d.cli(['invite', 'sam@example.test', '--issuer', 'https://idp.example.test']).url, /invite=/);
+    assert.match(d.mcp('weave_accounts', { action: 'invite', email: 'lee@example.test' }).url, /invite=/);
+    const pending = await http('GET', '/api/invites');
+    assert.equal(pending.length >= 1, true);
+    assert.deepEqual(d.cli(['invite', 'list']).map((i) => i.email), ['sam@example.test'], 'invite list answers the bare list');
+    assert.ok(Array.isArray(d.mcp('weave_accounts', { action: 'invites' }).invites));
+    assert.ok((await http('DELETE', `/api/invites/${encodeURIComponent(invited.id)}`)).revoked);
+
+    assert.deepEqual(d.mcp('weave_accounts', { action: 'sessions', account: 'mcp-bot' }), { sessions: [] });
+    assert.deepEqual(d.cli(['account', 'sessions', 'cli-bot']), []);
+    assert.match(d.run(['account', 'revoke-session', 'cli-bot']).stderr, /account revoke-session needs --all or --id/);
+    assert.equal(await http('DELETE', '/api/accounts/peer').then((r) => typeof r), 'object');
+    assert.equal(d.cli(['workspace', 'require-auth', '--off']), false, 'require-auth off answers false');
+    assert.equal(d.mcp('weave_accounts', { action: 'require-auth', on: false }), false);
+    assert.equal(d.cli(['workspace', 'link-preview']).linkPreview, true);
+    assert.equal(d.cli(['workspace']).name.length > 0, true, 'a bare weave workspace reads');
+    assert.match(d.run(['workspace', 'nope']).stderr, /Unknown workspace subcommand 'nope'/);
+  } finally { delete process.env.WEAVE_OIDC_ISSUER; d.close(); }
+});
+
+test('the role gate reads writes from the registry and keeps only the routes the registry does not serve (Feature #179)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const gate = readFileSync(join(ROOT, 'src/routes.js'), 'utf8').match(/const hit = matchRoute\(m2, path\);[\s\S]*?const sysM/)[0];
+  const paths = [...gate.matchAll(/path === '([^']+)'/g)].map((m) => m[1]).filter((p) => p.startsWith('/api/') && p !== '/api/auth/');
+  assert.deepEqual(paths.sort(), ['/api/markdown', '/api/mcp', '/api/onboarding']);
+  for (const p of paths) assert.equal(COMMANDS.some((c) => httpPaths(c).includes(p)), false, `${p} is not a registry route`);
+  assert.doesNotMatch(gate, /\/api\\\/(spaces|tables)/);
+});
+
+test('no door keeps its own argument reader: pick and pickFlags are gone, the registry reads arguments (Feature #179)', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const file of ['src/mcp.js', 'bin/weave.js', 'src/routes.js']) {
+    assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /\b(?:function|const) (?:pick|pickFlags)\b/, `${file} reads arguments through the registry`);
+  }
+});
+
+test('the CLI help is built from the registry: every entry shows in weave help and weave <command> --help (Feature #179)', () => {
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  const overall = run('help').stdout;
+  const lines = cliHelp().split('\n').filter((l) => /^ {2}\S/.test(l));
+  assert.ok(lines.length >= COMMANDS.filter((c) => c.cli && !c.cli.swap).length);
+  for (const l of lines) assert.ok(overall.includes(l), `weave help lists ${l.trim()}`);
+  const commands = new Set(COMMANDS.filter((c) => c.cli && !c.cli.swap).map((c) => c.cli.command));
+  for (const command of commands) {
+    const one = run(command, '--help').stdout;
+    assert.match(one, new RegExp(`^weave ${command}\\n`), `weave ${command} --help names the command`);
+    for (const l of cliHelp(command).split('\n').filter((x) => /^ {2}\S/.test(x))) assert.ok(one.includes(l), `${command} --help lists ${l.trim()}`);
+  }
+  assert.match(run('space', '--help').stdout, /space update <space> \[--name\]/);
+  assert.match(run('help').stdout, /^ {2}serve \[--port 4400\]/m);
+});
+
+test('the template use synopsis names --into, the flag the command requires (Issue #1767)', () => {
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  assert.match(cliHelp('template'), /^ {2}template use <space> \[--into\] \[--name\]$/m);
+  assert.doesNotMatch(cliHelp('template'), /--workspace/);
+  assert.match(run('help').stdout, /^ {2}template use <space> \[--into\] \[--name\]$/m);
+  const refused = run('template', 'use', 'Showcase', '--workspace', 'other.db');
+  assert.match(`${refused.stdout}${refused.stderr}`, /template use needs --into <other\.db>/);
 });

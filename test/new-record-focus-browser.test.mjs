@@ -52,6 +52,8 @@ if (s) {
       await waitForNewRow(page, seeded);
       await settle(page);
 
+      assert.equal(await page.locator('#tray-back').count(), 0,
+        'the grid add row keeps creating inline, with no tray (Issue #777 decision C)');
       const at = await focused(page);
       assert.equal(at.tag, 'INPUT', 'the Name editor holds focus');
       assert.equal(at.field, 'Name', 'it is the Name cell');
@@ -136,12 +138,38 @@ if (s) {
     await page.close();
   });
 
-  test('+ New on a relation grid of the entity page creates, links and lands in the new row', async () => {
+  const linkedTo = (eid) => {
+    const rel = Object.values(weave.getTable(projects.id).fields).find((f) => f.name === 'Tasks');
+    const linked = weave.getEntity(alpha.id).values[rel.id] ?? [];
+    return (Array.isArray(linked) ? linked : [linked]).includes(eid);
+  };
+
+  test('+ New on a relation grid opens the create tray and writes nothing before submit (Issue #1474)', async () => {
     const page = await browser.newPage({ viewport: FIT });
+    const posts = [];
+    page.on('request', (r) => { if (r.method() === 'POST' && /\/entities$/.test(r.url())) posts.push(r.url()); });
     await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.related-block .add-entity-btn');
+    const before = weave.listEntities(tasks.id).length;
 
-    await page.click('.related-block .add-entity-btn');
+    await page.locator('.related-block .add-entity-btn', { hasText: '+ New record' }).click();
+    await page.waitForSelector('#tray-back #tray input[name="name"]');
+
+    assert.equal(await page.locator('#modal-back').count(), 0, 'create happens in the tray, never a centered modal');
+    assert.equal((await page.textContent('#tray-title')).trim(), 'New record', 'the tray names the row by the term the button used');
+    assert.equal((await page.textContent('#tray-back button[type="submit"]')).trim(), 'Create & link');
+    assert.equal(await page.inputValue('#tray-back input[name="name"]'), '', 'the Name starts empty');
+    await page.fill('#tray-back input[name="name"]', '   ');
+    await page.click('#tray-back button[type="submit"]');
+    assert.equal(await page.locator('#tray-back #tray').count(), 1, 'a blank name keeps the tray open');
+    assert.equal(weave.listEntities(tasks.id).length, before, 'and writes no nameless record');
+    assert.equal(weave.listEntities(tasks.id).length, before, 'no record is written before submit');
+    assert.equal(posts.length, 0, 'no POST to /entities fires before submit');
+    assert.equal(weave.listEntities(tasks.id).filter((e) => weave.entityName(e) === 'New Tasks').length, 0,
+      'nothing is named after the table');
+
+    await page.fill('#tray-back input[name="name"]', 'typed in the tray');
+    await page.click('#tray-back button[type="submit"]');
     await waitForNewRow(page, seeded);
     await settle(page);
 
@@ -149,10 +177,36 @@ if (s) {
     assert.equal(at.tag, 'INPUT', 'the Name editor holds focus');
     assert.ok(at.eid && !seeded.includes(at.eid), 'it is the new row');
     assert.ok(await page.evaluate(() => !!document.activeElement.closest('.related-block')), 'inside the relation grid');
-    const rel = Object.values(weave.getTable(projects.id).fields).find((f) => f.name === 'Tasks');
-    const linked = weave.getEntity(alpha.id).values[rel.id] ?? [];
-    assert.ok((Array.isArray(linked) ? linked : [linked]).includes(at.eid), 'the new task is linked to Alpha');
+    assert.equal(nameOf(at.eid), 'typed in the tray', 'the typed name lands on the created record');
+    assert.ok(linkedTo(at.eid), 'the new task is linked to Alpha');
     await page.close();
+  });
+
+  test('+ New on a related board docks the record the tray created (Issue #1474)', async () => {
+    weave.tableView(`${tasks.id}/Standard`, { layout: 'board', fields: ['Name', 'Note'] });
+    const page = await browser.newPage({ viewport: FIT });
+    try {
+      await page.goto(`${base}/#/entity/${alpha.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.related-block .board-actions .add-entity-btn');
+      const before = weave.listEntities(tasks.id).length;
+
+      await page.locator('.related-block .add-entity-btn', { hasText: '+ New record' }).click();
+      await page.waitForSelector('#tray-back #tray input[name="name"]');
+      assert.equal(weave.listEntities(tasks.id).length, before, 'no record is written before submit');
+
+      await page.fill('#tray-back input[name="name"]', 'docked from the board');
+      await page.click('#tray-back button[type="submit"]');
+      await page.waitForSelector('#dock .name-edit');
+
+      const made = weave.listEntities(tasks.id).find((e) => weave.entityName(e) === 'docked from the board');
+      assert.ok(made, 'the tray created the row');
+      assert.ok(linkedTo(made.id), 'and linked it to Alpha');
+      assert.equal(await page.inputValue('#dock .name-edit'), 'docked from the board',
+        'the board docks the new record with its typed name');
+    } finally {
+      await page.close();
+      weave.tableView(`${tasks.id}/Standard`, { layout: 'table' });
+    }
   });
   test('Shift+Enter on a board opens the create tray named for the row, never a centered modal, in both themes (Issue #777)', async () => {
     weave.tableView(`${tasks.id}/Board`, { layout: 'board', fields: ['Name', 'Note'] });

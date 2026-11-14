@@ -47,8 +47,8 @@ test('wireNavCollapse wires both directions and persists the state', () => {
   assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekDwell\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekLeave\)/);
-  assert.match(fnBody('setNavCollapsed'), /localStorage\.setItem\('weave-nav-collapsed'/);
-  assert.match(body, /localStorage\.getItem\('weave-nav-collapsed'\)/);
+  assert.match(fnBody('setNavCollapsed'), /WeavePrefs\.write\('weave-nav-collapsed'/);
+  assert.match(body, /WeavePrefs\.read\('weave-nav-collapsed'\)/);
 });
 
 const PICKER_TYPES = ['select', 'multiselect', 'workflow'];
@@ -266,6 +266,23 @@ test('every grid redraw remembers where focus was before it runs (Issue #83)', (
   for (const [, before] of saves) {
     assert.doesNotMatch(before, /drawDatabase|renderTable|pager\.refresh/, 'nothing is drawn before focus is remembered');
   }
+});
+
+test('the restore finds the cell by field name, not by column index (Issue #1698)', () => {
+  const remember = APP.slice(APP.indexOf('function rememberGridFocus'));
+  const rbody = remember.slice(0, remember.indexOf('\n}\n') + 2);
+  assert.match(rbody, /field: cell\.dataset\.field/, 'the field name is what identifies the cell');
+  const restore = APP.slice(APP.indexOf('function restoreGridFocus'));
+  const sbody = restore.slice(0, restore.indexOf('\n}\n') + 2);
+  assert.match(sbody, /td\[data-field="\$\{CSS\.escape\(want\.field\)\}"\]/, 'the restore selects the field, not children[col]');
+});
+
+test('a redraw snapshots the panes it replaces, not every node in the document (Issue #1698)', () => {
+  const fn = APP.slice(APP.indexOf('async function keepScroll'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  assert.doesNotMatch(body, /querySelectorAll\('\*'\)/, 'walking the document reads every node on every redraw');
+  assert.match(body, /SCROLL_PANES/, 'the snapshot reads the named pane scrollers');
+  assert.match(APP, /const SCROLL_PANES = '[^']*#main[^']*\.table-wrap[^']*'/, 'the grid scroller and the main pane are both named');
 });
 
 test('the focused popover row is as visible as the hovered one', () => {
@@ -1248,7 +1265,7 @@ test('spaces and tables wear Lucide icons that move, picked beside their name (F
     'the icon picker speaks the one dialect, titled Icon (Issue #799)');
   assert.match(fnBody('iconButton'), /grid: true/, 'the table gate opens the grid');
   assert.match(fnBody('glyphPopover'), /grid: true/, 'the option and state gate opens the same grid');
-  assert.ok(app.includes("iconEl(space.icon") && app.includes("iconEl(db.icon"), 'nav renders both');
+  assert.ok(app.includes("navIconEl(space.icon, 'space')") && app.includes("navIconEl(db.icon, 'table')"), 'nav renders both, with the breadcrumb default when none is set (Issue #1394)');
   const icons = (await import('../public/vendor/lucide-moving.js'), globalThis.LUCIDE_MOVING);
   assert.ok(Object.keys(icons).length >= 120, 'the inventory rides along');
   await import('../public/field-dialog-core.js');
@@ -1261,7 +1278,7 @@ test('a document that is an HTML app is embedded, not edited as markdown', () =>
   assert.ok(app.includes('docViewMode(f.kind'), 'the declared kind rules the viewer; docKind sniffs only the undeclared');
   const i = app.indexOf("class: 'doc-app'");
   assert.ok(i > 0, 'the embedded frame exists');
-  assert.ok(app.slice(i, i + 160).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
+  assert.ok(app.slice(i, app.indexOf('\n', i)).includes('allowfullscreen'), 'the embedded frame permits fullscreen (Safari)');
   assert.ok(app.includes("title: 'Edit source'"), 'the source editor is one toggle away');
   assert.ok(app.includes("if (mode === 'markdown') mountEditor();"), 'the rendering editor is for markdown only');
   assert.ok(app.includes("class: 'doc-source'") && app.includes('mountSourceEditor'), 'HTML source edits in a code box, mounted on first toggle');
@@ -1653,7 +1670,7 @@ test('dock: the surface core loads before app.js and #dock is a sibling of #main
   const mainEnd = html.indexOf('</main>', main);
   const dock = html.indexOf('<aside id="dock" hidden>');
   assert.ok(main > -1 && dock > mainEnd, '#dock sits after </main>, never inside it — a page render must not wipe a docked entity');
-  assert.ok(dock < html.indexOf('<script'), 'the panel is page shell, declared before the scripts');
+  assert.ok(dock < html.search(/<script\b[^>]*\bdefer\b/), 'the panel is page shell, declared before the boot scripts');
   assert.match(html, /<aside id="dock" hidden>/, 'the dock starts hidden');
 });
 
@@ -1709,6 +1726,13 @@ test('dock: the #id link docks plain rows only; registry rows and modified click
   const opener = fnBody('openEntity');
   assert.match(opener, /if \(state\.route\?\.page !== 'db'\) \{/, 'the page only travels when no table is under the reader');
   assert.doesNotMatch(opener, /state\.route\.dbId === db\.id/, 'the entity\'s own table never decides a navigation');
+});
+
+test('opening a record warms only the reads the record view makes: the entity and its two reference lists (Issue #1691)', () => {
+  const opener = fnBody('openEntity');
+  assert.match(opener, /for \(const tail of \['\/references', '\/references-from'\]\) warmGet\(`\/entities\/\$\{id\}\$\{tail\}`\);/, 'the reference lists entityRefs reads');
+  assert.match(opener, /warmGet\(`\/entities\/\$\{id\}`\)/, 'and the entity itself');
+  assert.doesNotMatch(opener, /revisions/, 'no document history: the activity pane asks for its own page of it');
 });
 
 test('dock: the panel is styled as the table\'s twin, its own scroller, and lights its row in both themes', () => {
@@ -1909,4 +1933,21 @@ test('one meta tag style names a field type, in the sans face, with layout from 
   const plural = rulesFor('.term-plural-row .wv-tag');
   assert.equal(plural.flex, '0 0 44px', 'the plural row keeps its 44px column through its parent rule');
   assert.equal(plural['text-align'], 'right', 'and keeps its right edge through that same rule');
+});
+
+test('undo sends only the steps this tab claimed: one POST /undo, in stepBackOwn, and no count falls back to 1 (Issue #1692)', () => {
+  assert.equal(read('public/app.js').match(/api\('POST', '\/undo'/g)?.length, 1, 'one call site in app.js sends POST /undo');
+  assert.match(fnBody('stepBackOwn'), /api\('POST', '\/undo', \{ steps, expect: run\.map\(undoKey\) \}\)/, 'stepBackOwn sends the steps it counted from this tab\'s own entries on top, and the key of each (Issue #1727)');
+  assert.match(fnBody('stepBackOwn'), /err\?\.status !== 409 \|\| !recount/, 'a refused undo is recounted once against a fresh read of the stack (Issue #1727)');
+  assert.doesNotMatch(APP, /steps: [^}\n]*\|\| ?1\b/, 'no step count falls back to 1');
+  assert.match(fnBody('api'), /noteWrite\(gesture, method, path, data, \{ seen, took/, 'every write through api() is noted for this tab');
+});
+
+test('a record page save applies the entity it returned, and the grid repaints from the save queue\'s saved event (Issue #1681)', () => {
+  const view = fnBody('renderEntityView');
+  assert.doesNotMatch(view, /labeledEditorFor\([^\n]*\(\) => refresh\(\)/, 'no field editor rebuilds the page after its save');
+  assert.match(view, /Object\.assign\(entity, fresh\);\s*\n\s*for \(const fill of repaints\) fill\(!field\);/, 'the view takes the saved entity and repaints the rows whose value changed');
+  assert.match(view, /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
+  assert.match(APP, /saves\.onSaved\(\(written, job\) => \{/, 'the save queue announces each landed write');
+  assert.match(fnBody('drawDatabase'), /queuedWrites\.has\(written\) \? null : onSaved\(written, field\)/, 'a cell leaves its repaint to the announcement, so its row repaints once');
 });
