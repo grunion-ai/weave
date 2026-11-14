@@ -363,6 +363,23 @@ test('the key family answers the same on CLI, MCP and HTTP, and MCP still never 
   } finally { d.close(); }
 });
 
+test('csv import names an unknown header on CLI, MCP and HTTP alike (Issue #1562)', async () => {
+  const d = await threeDoors('weave-registry-csv-ignored-');
+  const csv = 'Name,Stag\nBeta,x\n';
+  const file = join(tempDir('weave-registry-csv-ignored-file-'), 'rows.csv');
+  writeFileSync(file, csv);
+  try {
+    const replies = {
+      cli: d.cli(['csv', 'import', 'Task', '--file', file]),
+      mcp: d.mcp('weave_import_csv', { db: 'Task', csv }),
+      http: await d.http('POST', '/api/tables/Task/import.csv', { csv }),
+    };
+    for (const [door, reply] of Object.entries(replies)) {
+      assert.equal(reply.created, 1, door);
+      assert.deepEqual(reply.ignored, ['Stag'], `${door} names the unknown header`);
+    }
+  } finally { d.close(); }
+});
 test('the CSV pair answers the same on CLI, MCP and HTTP, and export stays raw text (Feature #179)', async () => {
   const d = await threeDoors('weave-registry-csv-');
   const csv = 'Name\nBeta\nGamma\n';

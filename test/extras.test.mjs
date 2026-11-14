@@ -24,6 +24,15 @@ function smallWorkspace() {
   return { w, db };
 }
 
+test('CSV import names each header that matches no field and still imports the known columns (Issue #1562)', () => {
+  const { w, db } = smallWorkspace();
+  const result = w.importCSV(db, 'Name,Pointz,Bogus,Points\nFirst,9,x,5\n');
+  assert.equal(result.created, 1);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.ignored, ['Pointz', 'Bogus']);
+  assert.equal(w.query('Item', {}).items[0].fields.Points, 5);
+  assert.equal('ignored' in w.importCSV(db, 'Name,Points\nSecond,1\n'), false);
+});
 test('CSV import creates entities with typed values', () => {
   const { w, db } = smallWorkspace();
   const result = w.importCSV(db, 'Name,Points,Tags,Ready\nFirst,5,a; b,true\nSecond,3,c,\nBadNum,notanumber,,\n');

@@ -11465,16 +11465,18 @@ export class Weave {
     if (!rows.length) return { created: 0 };
     const header = rows[0];
     const skip = new Set(['Public Id', 'Created At', 'Updated At', 'publicId', 'createdAt', 'updatedAt']);
+    const ignored = [];
     const writable = header.map((name) => {
       if (skip.has(name)) return null;
       const f = this.findField(db, name);
+      if (!f) ignored.push(name);
       if (!f || ['lookup', 'rollup', 'formula'].includes(f.type)) return null;
       return f;
     });
-    return this.#batched(() => this.#importRows(db, rows, writable));
+    return this.#batched(() => this.#importRows(db, rows, writable, ignored));
   }
 
-  #importRows(db, rows, writable) {
+  #importRows(db, rows, writable, ignored = []) {
     let created = 0;
     const errors = [];
     for (const row of rows.slice(1)) {
@@ -11501,7 +11503,7 @@ export class Weave {
       }
     }
     this.#audit('csv-imported', { table: db.name, created });
-    return { created, errors };
+    return ignored.length ? { created, errors, ignored } : { created, errors };
   }
 
   spaceVersions() {
