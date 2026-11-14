@@ -927,7 +927,7 @@ export const COMMANDS = [
     writes: 'entity', minRole: 'editor', annotations: ADD,
     tool: {
       name: 'weave_import_csv',
-      description: 'Import entities from CSV text. The header row maps to field names; multiselect and to-many relation cells use "; " separators. Computed fields and Public Id/Created At/Updated At columns are ignored. A header that matches no field is skipped and named in the reply\'s ignored list; the other columns still import.',
+      description: 'Import entities from CSV text. The header row maps to field names; multiselect and to-many relation cells use "; " separators. Computed fields, Public Id/Created At/Updated At and unknown headers are skipped; the reply\'s ignored names the unknown.',
       inputSchema: { type: 'object', properties: { db: { type: 'string' }, csv: { type: 'string' } }, required: ['db', 'csv'] },
     },
     cli: { command: 'csv', sub: 'import', positional: ['db'], flags: ['file'], args: (a, flags, { stdin, file }) => ({ db: a.db, csv: a.file ? file(a.file) : stdin() }) },
