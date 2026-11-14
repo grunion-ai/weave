@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const FIELDS = [
   ['Severity', 'select', { options: ['Low', 'Medium', 'High'] }],
@@ -30,7 +31,7 @@ if (s) {
     return db;
   };
   const openGrid = async (db) => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 }, deviceScaleFactor: 2 });
     await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     return page;
@@ -147,7 +148,7 @@ if (s) {
     };
   });
   const openNarrow = async (db) => {
-    const page = await browser.newPage({ viewport: { width: 800, height: 700 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 }, deviceScaleFactor: 2 });
     await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await frame(page);
@@ -193,7 +194,7 @@ if (s) {
   };
 
   test('shading the trailing edge moves nothing on the page (Issue #1735)', async () => {
-    assert.deepEqual(await shiftsInGrid(issueTable({ rows: 60 }), { width: 800, height: 700 }), [],
+    assert.deepEqual(await shiftsInGrid(issueTable({ rows: 60 }), { width: WIDTH.narrowestDesktop, height: 700 }), [],
       'a table wider than its pane settles into its shade without a layout shift');
   });
 

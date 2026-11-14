@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const FIELDS = [
   ['Status', 'select', { options: ['Open', 'Done'] }],
@@ -34,7 +35,7 @@ if (s) {
   };
 
   test('opening a grid wider than its card raises no window error', async () => {
-    const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 } });
     const pageErrors = [];
     page.on('pageerror', (e) => pageErrors.push(String(e.message ?? e)));
     await page.addInitScript(COLLECT);

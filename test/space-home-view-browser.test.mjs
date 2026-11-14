@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 const LONG = `Quarterly enterprise renewal forecasting and account health review ${'x'.repeat(120)}`;
 let ids = null;
@@ -63,7 +64,7 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    for (const width of [1280, 820]) {
+    for (const width of [1280, WIDTH.narrowestDesktop]) {
       test(`${theme} ${width}: sections run in the ruled order on one page and long names fit`, async () => {
         const page = await open(theme, width, ids.sales, recentsOf());
         try {

@@ -161,7 +161,7 @@ test('the phone sheet reuses the picker sheet rules and gives rows 44px', () => 
   assert.match(CSS, /\.chip-pop\.picker-pop, \.chip-pop\.wv-menu-sheet, \.chip-pop\.table-group-popover \{ position: fixed;/, 'one sheet rule for pickers, menus and the group levels (Issue #809)');
   assert.ok(touchFloor(CSS).targets.includes('.wv-menu-row'), 'a menu row, sheet or popover, takes the --wv-hit floor on a coarse pointer (Issue #1712)');
   assert.match(fnBody('menu'), /sheet = MENU_SHEET\.matches/, 'the sheet is the default under the phone breakpoint');
-  assert.match(APP, /const MENU_SHEET = matchMedia\('\(max-width: 600px\)'\)/);
+  assert.match(APP, /const MENU_SHEET = matchMedia\('\(max-width: 959px\)'\)/);
 });
 
 test('the retired menu styles are gone from the stylesheet', () => {

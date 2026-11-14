@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phoneBrowser, phonePage, styleOf } from './lib/browser.mjs';
+import { WIDTH, showTray } from './lib/viewports.mjs';
 
 let orders, order;
 const s = await launch('save glyph', (weave) => {
@@ -139,13 +140,14 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a yielded tablet record keeps save feedback in its visible header (Issue #1513)', async () => {
-    const page = await open({ viewport: { width: 729, height: 900 } });
+  test('a record that took the pane on a narrow desktop keeps save feedback in its visible header (Issue #1513, Feature #377)', async () => {
+    const page = await open({ viewport: { width: WIDTH.narrowestDesktop, height: 900 } });
+    await showTray(page);
     try {
       await page.click(`tr[data-eid="${order.id}"] .open-link`);
       await page.waitForFunction(() => document.querySelector('#app').classList.contains('table-yield'));
       await page.evaluate(() => {
-        window.weaveSaves.push({ key: 'test:tablet', value: 'tablet', send: () => new Promise(() => {}) });
+        window.weaveSaves.push({ key: 'test:narrow', value: 'narrow', send: () => new Promise(() => {}) });
       });
       const mark = page.locator('#dock .save-glyph');
       await mark.waitFor({ state: 'visible', timeout: 2000 });
