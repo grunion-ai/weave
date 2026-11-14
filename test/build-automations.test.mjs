@@ -91,6 +91,21 @@ test('a re-run keeps the rule of the same name, and unknown rule keys are listed
   assert.equal(w.listAutomations().length, 1);
 });
 
+test('a rule whose on is not a boolean builds On and lists on under ignored with a reason', () => {
+  for (const on of ['false', 0, 'off', null]) {
+    const w = new Weave();
+    const r = w.build(SPEC({ ...STAMP(), on }));
+    assert.equal(r.ok, true, JSON.stringify(r.errors));
+    assert.equal(r.ignored.length, 1, String(on));
+    assert.equal(r.ignored[0].path, 'spaces[0].tables[0].automations[0]');
+    assert.deepEqual(r.ignored[0].keys, ['on']);
+    assert.match(r.ignored[0].reason, /true or false/);
+    assert.equal(w.describeAutomations('Work/Tasks')[0].enabled, true);
+  }
+  const w = new Weave();
+  const ok = w.build(SPEC({ ...STAMP(), on: true }));
+  assert.deepEqual(ok.ignored ?? [], []);
+});
 test('a rule that is not an object, or names no actions, is an error at its path', () => {
   const w = new Weave();
   const r = w.build(SPEC('stamp it'), { dryRun: true });

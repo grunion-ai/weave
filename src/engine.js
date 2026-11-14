@@ -3801,6 +3801,8 @@ export class Weave {
         const at = `${tb.at}.automations[${k}]`;
         if (!isObj(rule)) return fail(at, new WeaveError('A rule is an object: {name, trigger, actions, on?}', 'invalid'));
         extra(at, rule, ['name', 'trigger', 'actions', 'on']);
+        const onValid = rule.on === undefined || typeof rule.on === 'boolean';
+        if (!onValid) ignored.push({ path: at, keys: ['on'], reason: `on takes true or false, got ${JSON.stringify(rule.on)}; the rule is built On` });
         const name = String(rule.name ?? '').trim();
         if (!name) return fail(at, new WeaveError('A rule needs a name', 'invalid'));
         if (have.has(name.toLowerCase())) { existing.push(`automation ${this.qualifiedName(tb.db)}: ${name}`); return undefined; }
