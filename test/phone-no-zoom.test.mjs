@@ -35,7 +35,7 @@ test('the app pages forbid the focus zoom with maximum-scale=1 (Issue #724)', ()
 });
 
 test('on phones and coarse pointers one floor rule sets every text control to 16px (Issue #724)', () => {
-  const floor = rules().find((r) => /max-width: 600px/.test(r.media) && /pointer: coarse/.test(r.media) && /font-size:\s*var\(--fs-doc\)\s*!important/.test(r.body));
+  const floor = rules().find((r) => /max-width: 959px/.test(r.media) && /pointer: coarse/.test(r.media) && /font-size:\s*var\(--fs-doc\)\s*!important/.test(r.body));
   assert.ok(floor, 'a phone and coarse-pointer rule sets a 16px font with !important');
   for (const part of ['input:not(', 'textarea', 'select', '[contenteditable]']) assert.ok(floor.selector.includes(part), `the floor covers ${part}`);
   const spared = [...floor.selector.matchAll(/\):not\(([^)]*)\)\s*$/g)].flatMap((m) => m[1].split(',').map((c) => c.trim()));
