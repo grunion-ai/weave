@@ -101,26 +101,36 @@ if (s) {
     await page.close();
   });
 
-  test('between 600 and 900px the menu button stands alone and the drawer brings the rail back beside it (Issue #1457)', async () => {
-    const page = await open(views['Task record'], { width: 700 });
-    let seen = await shell(page);
-    assert.ok(seen.scrollWidth <= 700, `document scrollWidth is ${seen.scrollWidth}`);
-    assert.equal(seen.rail.width, 0, 'the rail leaves the flow, so it never stands beside the menu button');
-    assert.equal(seen.sidebar.width, 0, 'and the sidebar is out of the flow too');
-    await openDrawer(page);
-    seen = await shell(page);
-    assert.equal(seen.rail.width, 52, 'the drawer brings the rail back');
-    assert.equal(seen.sidebar.left, 52, 'and opens beside it');
-    await page.mouse.click(680, 500);
-    assert.equal((await shell(page)).open, false, 'a tap outside closes it');
-    assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap: nothing under it opened');
-    await page.close();
+  test('compact widths keep both navigation sections in the drawer (Issues #1457, #1513)', async () => {
+    for (const width of [601, 729, 900]) {
+      const page = await open(views['Task record'], { width });
+      try {
+        let seen = await shell(page);
+        assert.ok(seen.scrollWidth <= width, `document scrollWidth is ${seen.scrollWidth}`);
+        assert.equal(seen.rail.width, 0, `${width}px has no orphan workspace rail`);
+        assert.equal(seen.sidebar.width, 0, 'the sidebar is closed too');
+        assert.ok(seen.menu.width >= 32, 'the drawer button remains available');
+        await openDrawer(page);
+        seen = await shell(page);
+        assert.equal(seen.rail.width, 52, 'the workspace selector opens with the drawer');
+        assert.equal(seen.sidebar.left, 52, 'the sidebar opens beside the workspace selector');
+        assert.equal(seen.sidebar.width, 264);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.activeElement === document.querySelector('#main .nav-menu'));
+        assert.equal((await shell(page)).rail.width, 0, 'closing hides the workspace selector again');
+        await openDrawer(page);
+        await page.mouse.click(width - 20, 500);
+        assert.equal((await shell(page)).open, false, 'a tap outside closes both navigation sections');
+        assert.ok(page.url().endsWith(views['Task record']), 'the scrim swallowed the tap');
+      } finally { await page.close(); }
+    }
   });
 
   test('at desktop width the sidebar is in the flow and the menu button is hidden', async () => {
     const page = await open(views['Task table'], { width: 1280 });
     const seen = await shell(page);
     assert.equal(seen.sidebar.width, 264, 'the sidebar keeps its 264px');
+    assert.equal(seen.rail.width, 52, 'expanded navigation includes the workspace selector');
     assert.equal(seen.menu.width, 0, 'no menu button');
     await page.setViewportSize(phoneProfile().page.viewport);
     await page.click('#main .nav-menu');
@@ -194,7 +204,7 @@ if (s) {
     const page = await openDock({ width: 1280 });
     const seen = await sheet(page);
     assert.equal(seen.position, 'relative');
-    assert.equal(seen.gutter.width, 16, 'with the divider between them');
+    assert.equal(seen.gutter.width, 8, 'with the divider between them');
     assert.ok(seen.main.width >= 320 && seen.dock.left > seen.main.left + seen.main.width, `the table keeps its floor (${seen.main.width}px) and the dock sits to its right`);
     await page.close();
   });
