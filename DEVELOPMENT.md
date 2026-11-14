@@ -67,7 +67,13 @@ without one, and its boot never reads the file (Issue #1595).
   `node scripts/export-development.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN`.
   The file mode (`node scripts/export-development.mjs [path/to/weave.db]`) reads
   a local copy instead, and `--out <path>` writes somewhere other than
-  `docs/development.json`.
+  `docs/development.json`. Authenticated HTTP export requires HTTPS except
+  on `localhost`, `127.0.0.1` and `::1`. The base URL cannot contain credentials,
+  a query or a fragment. Redirects are refused; each request, including its
+  response body, has a thirty-second deadline. Pages must carry an items array,
+  unique record IDs and a stable nonnegative integer total. An incomplete or
+  inconsistent read fails before replacing the output. A server may return fewer rows than the
+  requested page size: the next offset follows the rows actually received.
 
 ### Offline reads
 

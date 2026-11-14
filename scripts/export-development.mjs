@@ -32,11 +32,16 @@ export function readFileTracker(source) {
   }
 }
 
-export async function readHttpTracker(base, token, { fetchImpl = fetch, pageSize = 500 } = {}) {
-  const root = base.replace(/\/+$/, '');
+export async function readHttpTracker(base, token, { fetchImpl = fetch, pageSize = 500, timeoutMs = 30_000 } = {}) {
+  const url = new URL(base);
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash
+      || (token && url.protocol !== 'https:' && !loopback)) throw new Error('Unsafe tracker URL');
+  if (!Number.isSafeInteger(pageSize) || pageSize <= 0) throw new Error('Invalid tracker pagination page size');
+  const root = url.href.replace(/\/+$/, '');
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const call = async (path, init = {}) => {
-    const res = await fetchImpl(`${root}${path}`, { ...init, headers });
+    const res = await fetchImpl(`${root}${path}`, { ...init, headers, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) throw new Error(`${root}${path} answered ${res.status}`);
     return res.json();
   };
@@ -44,10 +49,21 @@ export async function readHttpTracker(base, token, { fetchImpl = fetch, pageSize
   if (ws.name !== 'weave') throw new Error(`${root} is the '${ws.name}' workspace, not the canonical weave docs workspace`);
   const read = async (qualified) => {
     const items = [];
-    for (let offset = 0; ; offset += pageSize) {
+    const ids = new Set();
+    let total;
+    for (;;) {
+      const offset = items.length;
       const page = await call(`/api/tables/${encodeURIComponent(qualified)}/query`, { method: 'POST', body: JSON.stringify({ limit: pageSize, offset }) });
+      if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.total) || page.total < 0
+          || (total !== undefined && page.total !== total) || items.length + page.items.length > page.total
+          || (!page.items.length && items.length < page.total)) throw new Error(`Invalid tracker pagination for ${qualified}`);
+      for (const item of page.items) {
+        if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id)) throw new Error(`Invalid tracker pagination identity for ${qualified}`);
+        ids.add(item.id);
+      }
+      total = page.total;
       items.push(...page.items);
-      if (!page.items.length || items.length >= page.total) return items;
+      if (items.length === total) return items;
     }
   };
   const out = {};
