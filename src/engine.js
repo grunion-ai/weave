@@ -246,6 +246,35 @@ export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fiel
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
+const describeValue = (v) => (v === null ? 'null' : Array.isArray(v) ? 'an array' : typeof v === 'object' ? 'an object' : `${typeof v} ${JSON.stringify(v)}`);
+function checkWhereNode(node, at) {
+  if (Array.isArray(node)) {
+    if (node.length < 2 || node.length > 3) throw new WeaveError(`${at} must be a [path, operator, value] condition of two or three items, not ${node.length}`, 'invalid');
+    if (typeof node[0] !== 'string') throw new WeaveError(`${at}[0] must be a field path string, not ${describeValue(node[0])}`, 'invalid');
+    if (typeof node[1] !== 'string') throw new WeaveError(`${at}[1] must be an operator string, not ${describeValue(node[1])}`, 'invalid');
+    return;
+  }
+  if (node === null || typeof node !== 'object') throw new WeaveError(`${at} must be a [path, operator, value] condition or an {and} or {or} group, not ${describeValue(node)}`, 'invalid');
+  const keys = ['and', 'or'].filter((k) => Object.hasOwn(node, k));
+  if (keys.length !== 1) throw new WeaveError(`${at} must hold exactly one of and or or, not ${keys.length ? 'both' : 'neither'}`, 'invalid');
+  const list = node[keys[0]];
+  if (!Array.isArray(list)) throw new WeaveError(`${at}.${keys[0]} must be a list of conditions, not ${describeValue(list)}`, 'invalid');
+  list.forEach((child, i) => checkWhereNode(child, `${at}.${keys[0]}[${i}]`));
+}
+function checkQueryDocs(where, sort) {
+  if (where != null) {
+    if (Array.isArray(where)) where.forEach((node, i) => checkWhereNode(node, `where[${i}]`));
+    else checkWhereNode(where, 'where');
+  }
+  if (sort == null) return;
+  if (!Array.isArray(sort)) throw new WeaveError(`sort must be a list of field names or {field, dir} objects, not ${describeValue(sort)}`, 'invalid');
+  sort.forEach((item, i) => {
+    if (typeof item === 'string') return;
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) throw new WeaveError(`sort[${i}] must be a field name or a {field, dir} object, not ${describeValue(item)}`, 'invalid');
+    if (typeof item.field !== 'string' || !item.field) throw new WeaveError(`sort[${i}].field must be a field name string, not ${describeValue(item.field)}`, 'invalid');
+    if (item.dir != null && item.dir !== 'asc' && item.dir !== 'desc') throw new WeaveError(`sort[${i}].dir must be 'asc' or 'desc', not ${describeValue(item.dir)}`, 'invalid');
+  });
+}
 
 export function leanRow(row) {
   const raw = {};
@@ -8898,6 +8927,8 @@ export class Weave {
   }
 
   #queryIn(dbRef, { where = [], sort = [], limit = null, offset = 0, select = null, fields = null, relations = 'full', includeDeleted = null, trashCount = false, countAll = false, search = '', view = null, groupBy = null, shape = 'full' } = {}, workspace = null) {
+    checkQueryDocs(where, sort);
+    sort = sort ?? [];
     const db = this.getTable(dbRef);
     let grouped = null;
     if (view != null && view !== '') {
