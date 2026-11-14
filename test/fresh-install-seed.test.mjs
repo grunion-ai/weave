@@ -23,19 +23,21 @@ const freshDir = () => {
   return dir;
 };
 
-const MANIFEST_PROBE = join(scratch, 'manifest-probe.mjs');
-writeFileSync(MANIFEST_PROBE, [
+const BOOT_PROBE = join(scratch, 'boot-probe.mjs');
+writeFileSync(BOOT_PROBE, [
   "import fs from 'node:fs';",
   "import { syncBuiltinESMExports } from 'node:module';",
   'const read = fs.readFileSync;',
-  "fs.readFileSync = function (path, ...rest) { if (String(path).endsWith('development.json')) process.stderr.write('PROBE read the tracker manifest\\n'); return read.call(this, path, ...rest); };",
+  'const list = fs.readdirSync;',
+  "fs.readFileSync = function (path, ...rest) { if (String(path).endsWith('development.json')) process.stderr.write('PROBE read the tracker manifest\\n'); if (String(path).endsWith('.test.mjs')) process.stderr.write(`PROBE read a test file ${path}\\n`); return read.call(this, path, ...rest); };",
+  "fs.readdirSync = function (path, ...rest) { if (/[\\\\/]test$/.test(String(path))) process.stderr.write(`PROBE listed the test tree ${path}\\n`); return list.call(this, path, ...rest); };",
   'syncBuiltinESMExports();',
 ].join('\n'));
 const probed = (log) => /PROBE read the tracker manifest/.test(log);
+const scannedTests = (log) => log.match(/PROBE (read a test file|listed the test tree) .*/g) ?? [];
 
 function serve(dataPath, env = ENV) {
-  const started = performance.now();
-  const child = spawn(process.execPath, ['--import', pathToFileURL(MANIFEST_PROBE).href, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', dataPath], {
+  const child = spawn(process.execPath, ['--import', pathToFileURL(BOOT_PROBE).href, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', dataPath], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let log = '';
@@ -43,7 +45,7 @@ function serve(dataPath, env = ENV) {
   child.stderr.on('data', (d) => { log += d; });
   const exited = new Promise((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));
   const listening = new Promise((resolve, reject) => {
-    child.on('message', (m) => { if (m?.weave === 'listening') resolve({ ...m, ms: performance.now() - started }); });
+    child.on('message', (m) => { if (m?.weave === 'listening') resolve(m); });
     exited.then(({ code, signal }) => reject(new Error(`serve exited (${signal ?? `code ${code}`}) before listening:\n${log}`)));
   });
   const stop = async () => {
@@ -66,7 +68,7 @@ const qualityOf = (w) => ({
   kase: !!w.findTable('Quality/Case'),
 });
 
-test('a first serve on an empty data directory seeds no Quality rows, starts no tracker copy and listens within 2 s (Issue #1595)', { timeout: 120_000 }, async () => {
+test('a first serve on an empty data directory seeds no Quality rows, starts no tracker copy and scans no test file (Issue #1595)', { timeout: 120_000 }, async () => {
   const dir = freshDir();
   const s = serve(join(dir, 'workspace.db'));
   let up;
@@ -89,7 +91,7 @@ test('a first serve on an empty data directory seeds no Quality rows, starts no 
     assert.ok(w.findTable('Development/Issue'), 'the Issue table stays, so a bug report on this instance still files');
     assert.ok(w.findTable('Handbook/Guide'), 'the product handbook still ships');
   } finally { close(); }
-  assert.ok(up.ms < 2000, `the first serve listened after ${Math.round(up.ms)} ms:\n${s.log()}`);
+  assert.deepEqual(scannedTests(s.log()), [], 'a fresh install never walks weave\'s own test tree on boot');
 });
 
 test('weave quality sync still builds the mirror on a docs workspace that has none, and quality check reads it clean (Issue #1595)', { timeout: 120_000 }, () => {

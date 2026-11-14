@@ -1215,8 +1215,17 @@ function publishHeaderOn(holder, box, pane) {
   const v = holds ? `${h}px` : '0px';
   if (holder.style.getPropertyValue('--wv-view-h') !== v) holder.style.setProperty('--wv-view-h', v);
 }
+function sharedResize(run) {
+  const seen = new Set();
+  const watch = new ResizeObserver((entries) => {
+    for (const node of seen) if (!node.isConnected) { watch.unobserve(node); seen.delete(node); }
+    for (const entry of entries) run(entry.target);
+  });
+  return (node) => { seen.add(node); watch.observe(node); };
+}
+const watchViewHeader = sharedResize(() => publishViewHeaderHeight());
 function stickViewHeader(box) {
-  new ResizeObserver(publishViewHeaderHeight).observe(box);
+  watchViewHeader(box);
   return box;
 }
 addEventListener('resize', publishViewHeaderHeight);
@@ -1242,6 +1251,7 @@ function crumbInner(c) {
     el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
 }
+const watchCrumbPath = sharedResize((path) => fitCrumbs(path, path.wvFoldFrom ?? 1));
 function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
   const path = el('span', { class: 'crumb-path' });
   crumbs.forEach((c, i) => {
@@ -1261,7 +1271,8 @@ function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
     slot.crumb = c;
     path.append(slot);
   });
-  new ResizeObserver(() => fitCrumbs(path, foldFrom)).observe(path);
+  path.wvFoldFrom = foldFrom;
+  watchCrumbPath(path);
   return path;
 }
 
