@@ -132,6 +132,8 @@ if (s) {
       await page.waitForSelector('#main .view-title');
       const title = await page.locator('#main .view-title').first().inputValue();
       assert.equal(title.trim(), weave.state.meta.name, 'the workspace page is the workspace, by name');
+      await page.click('#main details.space-home-overview > summary');
+      await page.waitForSelector('#main .system-tables .list-row');
       const listed = await page.locator('#main').textContent();
       assert.match(listed, /Activity/, 'and it is the page that carries the workspace-wide tables');
     } finally { await page.close(); }

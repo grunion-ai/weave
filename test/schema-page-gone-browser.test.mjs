@@ -38,6 +38,7 @@ if (s) {
 
   test('adding a column to the Spaces registry from the workspace home redraws the home, not the schema page', async () => {
     const page = await schemaOpen();
+    await page.addInitScript(() => localStorage.setItem('weave-space-overview-open', '1'));
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await addField(page, 'Region');
