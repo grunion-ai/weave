@@ -49,11 +49,14 @@ if (s) {
     });
   }
 
-  test('a cold home fetches the map files once, and a space overview and #/map reuse them (Issue #1041)', async () => {
+  test('a cold home fetches no map file until Workspace overview opens, and a space overview and #/map reuse them (Issue #1041)', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
       const fetched = watch(page);
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.space-home');
+      assert.deepEqual(fetched, [], 'the map waits for the overview to open');
+      await page.locator('summary', { hasText: 'Workspace overview' }).click();
       await page.locator('.home-map svg.relmap g.table-node', { hasText: 'Person' }).waitFor({ state: 'attached' });
       assert.deepEqual(fetched.toSorted(), FILES.toSorted());
       const srcs = await page.evaluate(() => [...document.querySelectorAll('script[src*="relmap-layout"], script[src*="relation-map"]')].map((n) => n.getAttribute('src')));
@@ -74,6 +77,7 @@ if (s) {
     try {
       await page.route(/\/relation-map\.js(\?|$)/, (r) => r.abort());
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      await page.locator('summary', { hasText: 'Workspace overview' }).click();
       await page.locator('#wv-toasts', { hasText: 'The relation map did not load' }).waitFor();
       assert.equal(await page.locator('.home-map').count(), 0);
       await page.evaluate(() => { location.hash = '#/map'; });

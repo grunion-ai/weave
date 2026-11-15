@@ -18,7 +18,10 @@ if (s) {
 
   const open = async (hash, theme) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
-    await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
+    await page.addInitScript((t) => {
+      localStorage.setItem('weave-theme', t);
+      localStorage.setItem('weave-space-overview-open', '1');
+    }, theme);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);

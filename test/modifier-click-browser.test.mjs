@@ -32,6 +32,7 @@ if (s) {
 
   const open = async (ctx, hash, wait) => {
     const page = await ctx.newPage();
+    await page.addInitScript(() => localStorage.setItem('weave-space-overview-open', '1'));
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
     if (wait) await page.waitForSelector(wait);
     await page.waitForTimeout(250);
@@ -107,6 +108,7 @@ if (s) {
   test('a registry row: ⌘-click opens the table it stands for, not a record page', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
+    await page.addInitScript(() => localStorage.setItem('weave-space-overview-open', '1'));
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     const tables = await page.getAttribute('.system-tables .list-row[data-registry="tables"]', 'data-href');
     await page.goto(`${base}/${tables}`, { waitUntil: 'networkidle' });

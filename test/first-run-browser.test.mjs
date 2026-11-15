@@ -64,7 +64,7 @@ if (empty) {
     await page.waitForFunction(() => location.hash.startsWith('#/table/'));
     assert.ok(empty.weave.findTable('General/Notes'), 'the table exists in a new General space');
     await page.goto(`${empty.base}/#/`);
-    await page.waitForSelector('.home-map');
+    await page.waitForSelector('.space-home');
     assert.equal(await page.locator('.wv-start').count(), 0);
     empty.weave.deleteSpace('General', { hard: true });
     await page.close();
@@ -107,6 +107,7 @@ if (full) {
     const theme = 'light';
     test(`${theme}: a populated workspace shows no empty state and keeps its relation map`, async () => {
       const page = await open(full, '#/', theme);
+      await page.click('details.space-home-overview > summary');
       await page.waitForSelector('.home-map');
       assert.equal(await page.locator('.wv-start').count(), 0);
       assert.equal(await page.locator('details.wv-schema').evaluate((d) => d.open), false);

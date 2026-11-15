@@ -212,9 +212,9 @@ if (s) {
     });
   }
 
-  test('a desktop width keeps the workspace cards and never renders the launcher', async () => {
+  test('a desktop width opens the workspace home page and never renders the launcher', async () => {
     const page = await open(browser, { viewport: { width: 1280, height: 844 } });
-    await painted(page, '#main > .system-tables');
+    await painted(page, '#main > .space-home');
     await page.waitForLoadState('networkidle');
     assert.equal(await page.locator('.launcher').count(), 0);
     await page.close();

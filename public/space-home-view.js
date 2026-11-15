@@ -30,11 +30,11 @@ function spaceHomeEntityLink(entity, ...children) {
   }, ...children);
 }
 
-function spaceHomeTables(tables) {
-  return el('nav', { class: 'space-home-tables', 'aria-label': 'Tables' }, ...tables.map((t) => el('a', { class: 'space-home-table', href: `#/table/${t.id}`, title: t.name },
-    iconEl(t.icon || 'lucide:table', 'wv-icon'),
+function spaceHomeLinks(label, items) {
+  return el('nav', { class: 'space-home-tables', 'aria-label': label }, ...items.map((t) => el('a', { class: 'space-home-table', href: t.href, title: t.name },
+    iconEl(t.icon, 'wv-icon'),
     el('span', { class: 'space-home-table-name' }, t.name),
-    el('span', { class: 'space-home-count' }, t.rowCount.toLocaleString()),
+    el('span', { class: 'space-home-count' }, (t.rowCount ?? 0).toLocaleString()),
     iconEl('lucide:arrow-up-right', 'wv-icon space-home-arrow'))));
 }
 
@@ -97,7 +97,7 @@ function spaceHomeRun(run, spaceName) {
       }, 'Open automation')));
 }
 
-function spaceHomeRuns(runs, spaceName) {
+function spaceHomeRuns(runs, spaceName, note) {
   const list = el('div', { class: 'space-home-list' });
   const both = runs.some((r) => r.outcome === 'attention') && runs.some((r) => r.outcome === 'success');
   let outcome = 'all';
@@ -121,16 +121,16 @@ function spaceHomeRuns(runs, spaceName) {
     filter.classList.add('space-home-filter');
   }
   return el('section', { class: 'space-home-section space-home-runs', dataset: { section: 'runs' } },
-    spaceHomeHead('Automation runs', `Changes in ${spaceName} · includes runs from other spaces`, filter),
+    spaceHomeHead('Automation runs', note, filter),
     list);
 }
 
-function spaceHomeOverview(space, description, { withTables }) {
+function spaceHomeOverview({ title, note, description, details }) {
   const body = el('div', { class: 'space-home-overview-body' });
   let open = false;
   try { open = localStorage.getItem(SPACE_OVERVIEW_OPEN_KEY) === '1'; } catch {}
   const box = el('details', { class: 'space-home-overview', dataset: { section: 'overview' } },
-    el('summary', {}, summaryChevron(), el('span', { class: 'space-home-overview-title' }, 'Space overview'), el('span', { class: 'space-home-note' }, 'Description, summaries and relationships')),
+    el('summary', {}, summaryChevron(), el('span', { class: 'space-home-overview-title' }, title), el('span', { class: 'space-home-note' }, note)),
     body);
   let drawn = null;
   const fill = () => (drawn ??= (async () => {
@@ -139,7 +139,7 @@ function spaceHomeOverview(space, description, { withTables }) {
       body.append(prose);
       try { prose.innerHTML = (await api('POST', '/markdown', { md: description })).html; } catch { prose.textContent = description; }
     }
-    await appendSpaceDetails(body, space, { withTables });
+    await details(body);
   })().catch((err) => toast(err.message, true)));
   box.addEventListener('toggle', () => {
     try { localStorage.setItem(SPACE_OVERVIEW_OPEN_KEY, box.open ? '1' : '0'); } catch {}
@@ -147,6 +147,19 @@ function spaceHomeOverview(space, description, { withTables }) {
   });
   if (open) box.open = true;
   return box;
+}
+
+function spaceHomePage(sections, { lead, space, runsNote, overview }) {
+  const page = el('div', { class: 'space-home' });
+  page.append(lead);
+  if (sections.views) page.append(spaceHomeViews(sections.views));
+  if (sections.rows || sections.runs) {
+    page.append(el('div', { class: `space-home-pair${sections.rows && sections.runs ? '' : ' is-single'}` },
+      sections.rows ? spaceHomeRows(sections.rows) : null,
+      sections.runs ? spaceHomeRuns(sections.runs, space, runsNote) : null));
+  }
+  page.append(spaceHomeOverview({ ...overview, description: sections.overview?.description ?? '' }));
+  return page;
 }
 
 async function mountSpaceHome(main, space, gen = navDraw) {
@@ -163,15 +176,47 @@ async function mountSpaceHome(main, space, gen = navDraw) {
   }
   if (!stillHere()) return;
   const sections = WeaveSpaceHome.homeSections(payload, readRecents());
-  const page = el('div', { class: 'space-home' });
-  if (sections.tables) page.append(spaceHomeTables(sections.tables));
-  else page.append(spaceTablesCard(space));
-  if (sections.views) page.append(spaceHomeViews(sections.views));
-  if (sections.rows || sections.runs) {
-    page.append(el('div', { class: `space-home-pair${sections.rows && sections.runs ? '' : ' is-single'}` },
-      sections.rows ? spaceHomeRows(sections.rows) : null,
-      sections.runs ? spaceHomeRuns(sections.runs, space.space) : null));
+  main.append(spaceHomePage(sections, {
+    lead: sections.tables
+      ? spaceHomeLinks('Tables', sections.tables.map((t) => ({ href: `#/table/${t.id}`, name: t.name, icon: t.icon || 'lucide:table', rowCount: t.rowCount })))
+      : spaceTablesCard(space),
+    space: space.space,
+    runsNote: `Changes in ${space.space} · includes runs from other spaces`,
+    overview: {
+      title: 'Space overview',
+      note: 'Description, summaries and relationships',
+      details: (body) => appendSpaceDetails(body, space, { withTables: !!sections.tables }),
+    },
+  }));
+}
+
+async function mountWorkspaceHome(main, ws, gen = navDraw) {
+  let payload;
+  try {
+    payload = await api('GET', '/workspace/home');
+  } catch {
+    payload = {
+      workspace: { name: ws.name, description: ws.description ?? '' },
+      spaces: state.schema.filter((sp) => !sp.system).map((sp) => ({
+        id: sp.spaceId,
+        name: sp.space,
+        icon: sp.icon ?? null,
+        tables: sp.tables.map((t) => ({ id: t.id, name: t.name, icon: t.icon ?? null, rowCount: t.entityCount ?? 0, views: t.views ?? [] })),
+      })),
+      runs: [],
+    };
   }
-  page.append(spaceHomeOverview(space, sections.overview?.description ?? '', { withTables: !!sections.tables }));
-  main.append(page);
+  if (!navOwns(gen) || state.route?.page !== 'home') return;
+  const sections = WeaveSpaceHome.workspaceSections(payload, readRecents());
+  main.querySelector(':scope > .space-home')?.remove();
+  main.append(spaceHomePage(sections, {
+    lead: spaceHomeLinks('Spaces', (sections.spaces ?? []).map((sp) => ({ href: `#/space/${sp.id}`, name: sp.name, icon: sp.icon || 'lucide:folder', rowCount: sp.rowCount }))),
+    space: null,
+    runsNote: `Changes in ${ws.name}`,
+    overview: {
+      title: 'Workspace overview',
+      note: 'Description, system tables, pages and relationships',
+      details: (body) => appendWorkspaceDetails(body),
+    },
+  }));
 }

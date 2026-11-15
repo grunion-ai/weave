@@ -56,6 +56,7 @@ if (s) {
       await page.locator('svg.relmap g.auto title', { hasText: '⚡ created ⇒ comment' }).waitFor({ state: 'attached' });
       assert.deepEqual(fetched, [FILE]);
       await page.evaluate(() => { location.hash = '#/'; });
+      await page.click('details.space-home-overview > summary');
       await page.locator('.home-map svg.relmap g.auto').first().waitFor({ state: 'attached' });
       assert.deepEqual(fetched, [FILE], 'the home map reuses the loaded file');
     } finally { await page.close(); }

@@ -80,7 +80,7 @@ Architects opening a workspace with no tables of their own see a **New table** b
 
 Editors and observers see guidance to ask a workspace architect for the first table instead of schema-creation controls. Editors can add and edit records once a table exists; observers can read and comment. Invited members, including architects, skip the creator naming wizard.
 
-Then the home page shows the relation map.
+The workspace home on a desktop or tablet is one page built like the space page below, with your spaces where a space page lists its tables. Each space appears as a link with its icon and the live record count across its tables; the system Workspace space has no link. Under the spaces come up to three saved views you opened recently in this browser, then the records you opened recently and the automation runs that changed records, drawn from every space, with each run naming the space it started in. **Workspace overview** at the foot of the page holds the description, the system tables card (Activity and the registries), your share pages, the relation map and, inside the **Schema** disclosure, the Spaces grid. It shares one open-or-shut setting with **Space overview**: open either and both stay open in that browser until you close one.
 
 On a desktop or tablet, opening a space lands on one page, computed from what the workspace already holds. It runs from the space's tables and their counts, through the saved views and records you opened recently in this browser, keyed by table name, to the automation runs that changed something here, wherever the automation started. A section with nothing in it disappears. Open a run to see what it changed; a run that stopped partway names the step that failed, where weave recorded it. A run that started in a space you cannot open stays off your list.
 
@@ -88,7 +88,7 @@ On a desktop or tablet, opening a space lands on one page, computed from what th
 
 On both pages the grid (**Spaces** on home, **Tables** on a space page) sits under a collapsed **Schema** disclosure; opened, it stays open in that browser until you close it. Every column is editable in place, including the **Tables** grid's **Field Order**, **Hidden Fields**, **Filter** and **Sort**.
 
-At 600px and below, a space page opens as a launcher under its title and description: a search box for that space's records, one tile per table with its count, your recent views and records, and automation runs that changed records in the space, including runs that started elsewhere. A partial run shows its failed step, and tapping a run opens its details and the records it changed. **About this space** opens the description, summaries and relation map. A section with nothing to show disappears. Add a table on a phone from the sidebar.
+At 600px and below, a space page opens as a launcher under its title and description: a search box for that space's records, one tile per table with its count, your recent views and records, and automation runs that changed records in the space, including runs that started elsewhere. A partial run shows its failed step, and tapping a run opens its details and the records it changed. **About this space** opens the description, summaries and relation map. A section with nothing to show disappears. On a phone the workspace home opens as a launcher: a search box across your tables and one tile per space with its record count, then the saved views and records you opened recently and the automation activity from every space, with the description, system tables and share pages under **About this workspace**. Add a table on a phone from the sidebar.
 
 ## Icons and nouns
 
@@ -328,7 +328,7 @@ A view's link is a share grant (**Share links** above), so sharing a view takes 
 
 ## The relation map
 
-One map, drawn in three places from one renderer: the `#/map` page, a card on the workspace home, and a card in every space's overview. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
+One map, drawn in three places from one renderer: the `#/map` page, a card inside **Workspace overview** on the workspace home, and a card in every **Space overview**. A column per space, one edge per relation pair carrying both ends' cardinality, automations drawn in as pills. A space's map shows that space plus whatever it actually touches, guests dashed and named by their own space.
 
 ## Automations
 

@@ -121,6 +121,7 @@ if (s) {
 
   test('browser: the root workspace keeps its System registry off the sidebar and lists it on the workspace page (Issue #874)', async () => {
     const page = await browser.newPage();
+    await page.addInitScript(() => localStorage.setItem('weave-space-overview-open', '1'));
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#nav .nav-space');
     const spaces = await page.locator('#nav .nav-space').evaluateAll((as) => as.map((a) => a.textContent.trim()));

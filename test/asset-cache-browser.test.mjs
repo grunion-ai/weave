@@ -17,7 +17,7 @@ if (s) {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.home-map');
+    await page.waitForSelector('.space-home');
     const boot = await page.evaluate(() => ({
       blocking: [...document.querySelectorAll('script[src]')].filter((el) => !el.defer && !el.async && el.type !== 'module').map((el) => el.src),
       globals: ['chipCore', 'WeaveTerm'].filter((g) => !(g in window)),
@@ -42,7 +42,7 @@ if (s) {
     assert.ok(shell.length >= 25 && shell.every((u) => /\?v=[0-9a-f]{12}$/.test(u)), `every shell asset is versioned: ${shell.join(' ')}`);
     hits.length = 0;
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.home-map');
+    await page.waitForSelector('.space-home');
     const warm = hits.filter((u) => shell.includes(u));
     assert.deepEqual(warm, [], 'a warm load revalidates none of the shell');
     assert.ok(hits.includes('/'), 'the document itself still revalidates');
