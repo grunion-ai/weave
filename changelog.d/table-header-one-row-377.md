@@ -1,2 +1,0 @@
-- A table, space or workspace header keeps its breadcrumbs and toolbar on one row at every width, also beside a docked record. The toolbar no longer wraps under the breadcrumbs (Feature #377).
-- When a table header is tight its toolbar keeps View and the three-dot menu. Search and Share move into the three-dot menu; choosing Search opens the field in the row (Feature #377).

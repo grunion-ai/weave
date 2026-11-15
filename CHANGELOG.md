@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.148 (2026-11-14)
+
+- Phone format applies below 960 px, so tablets and half-width desktop windows get the phone layout. The 600 px and 900 px switches are gone (Feature #377).
+- The nav tray hides on its own below 1200 px through the same collapsed state its toggle uses. The toggle still shows it, and a tray hidden or shown in a tight window leaves the saved preference alone (Feature #377).
+- **Request handler semgrep can finish** (Issues #1789, #1794): the request handler in `src/routes.js` is split into sixteen module-level functions, seven setup steps and nine route groups, so the taint analysis reaches every line. `security/semgrep/cut-short.json` is empty, a test keeps it empty, and the taint rules read a `fromRequest` parameter as request data so values handed to a route group stay tracked. Eight results the short analysis never reached are now listed in the baseline.
+- A table, space or workspace header keeps its breadcrumbs and toolbar on one row at every width, also beside a docked record. The toolbar no longer wraps under the breadcrumbs (Feature #377).
+- When a table header is tight its toolbar keeps View and the three-dot menu. Search and Share move into the three-dot menu; choosing Search opens the field in the row (Feature #377).
+
 ## v0.4.147 (2026-11-14)
 
 - **Rule actions read back in full** (Issue #1533): `weave_automations` and `describeAutomations` now carry the value of a set-field action and the text of append-doc and add-comment actions (and the author of a comment), cut at 200 characters with an ellipsis.
