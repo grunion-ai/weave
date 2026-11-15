@@ -101,7 +101,7 @@ export function managerHarness(prefix) {
   const env = { ...process.env, WEAVE_TEST_MANAGER_DIR: scratch, WEAVE_TEST_JOB: '', NODE_TEST_CONTEXT: '', WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   test.after(async () => { await request({ type: 'stop' }, { directory: scratch }).catch(() => {}); rmSync(scratch, { recursive: true, force: true }); });
   const cli = (args, overrides = {}) => {
-    const child = spawn(process.execPath, ['scripts/test.mjs', ...args], { cwd: ROOT, env: { ...env, ...overrides } });
+    const child = spawn(process.execPath, ['scripts/test.mjs', ...args], { cwd: ROOT, env: { ...env, ...overrides }, timeout: 300_000 });
     let out = '';
     child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
     return { child, done: new Promise(resolve => child.on('close', code => resolve({ code, out }))) };

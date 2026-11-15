@@ -99,6 +99,7 @@ async function serving(endpoint) {
   const env = { ...ENV, WEAVE_BACKUP_BUCKET: 'vault', WEAVE_BACKUP_ENDPOINT: endpoint, WEAVE_BACKUP_KEY_ID: 'k', WEAVE_BACKUP_SECRET: 's', WEAVE_BACKUP_REGION: 'auto' };
   const child = spawn(process.execPath, ['--expose-gc', '--import', PROBE, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', db], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });

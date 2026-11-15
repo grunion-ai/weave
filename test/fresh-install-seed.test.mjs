@@ -39,6 +39,7 @@ const scannedTests = (log) => log.match(/PROBE (read a test file|listed the test
 function serve(dataPath, env = ENV) {
   const child = spawn(process.execPath, ['--import', pathToFileURL(BOOT_PROBE).href, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', dataPath], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });
@@ -99,7 +100,7 @@ test('weave quality sync still builds the mirror on a docs workspace that has no
   const seeded = seedWeaver(new Weave({ path }));
   assert.deepEqual(qualityOf(seeded), { space: false, suite: false, kase: false }, 'the seed holds no mirror');
   seeded.store.close?.();
-  const cli = (...args) => spawnSync(process.execPath, [BIN, ...args, '--data', path], { cwd: ROOT, env: ENV, encoding: 'utf8' });
+  const cli = (...args) => spawnSync(process.execPath, [BIN, ...args, '--data', path], { cwd: ROOT, env: ENV, encoding: 'utf8', timeout: 120_000 });
   const scanned = scanSuites(ROOT);
   const everything = { suites: scanned.length, createdSuites: scanned.length, createdCases: scanned.reduce((n, s) => n + s.cases.length, 0) };
 

@@ -28,7 +28,7 @@ function fixture() {
   git('checkout', '-b', 'feature');
   git('commit', '--allow-empty', '-m', 'branch-only');
   const branch = git('rev-parse', 'HEAD');
-  const run = (...args) => spawnSync(process.execPath, [join(root, 'scripts/architecture.mjs'), ...args], { encoding: 'utf8', env: { ...process.env, ARCHIFY: archify } });
+  const run = (...args) => spawnSync(process.execPath, [join(root, 'scripts/architecture.mjs'), ...args], { encoding: 'utf8', env: { ...process.env, ARCHIFY: archify }, timeout: 120_000 });
   const revision = () => JSON.parse(readFileSync(specPath, 'utf8')).meta.repository.revision;
   const regions = () => (existsSync(join(root, 'docs/regions.md')) ? readFileSync(join(root, 'docs/regions.md'), 'utf8') : null);
   return { git, base, branch, run, revision, regions };

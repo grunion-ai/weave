@@ -63,7 +63,7 @@ test('CI reporter records executed files, timings and missing prerequisite skips
     const fixture = join(dir, 'example.test.mjs'), report = join(dir, 'events.jsonl');
     writeFileSync(fixture, "import test from 'node:test'; test('executed', () => {}); test('missing', {skip: 'playwright not installed'}, () => {});");
     const { NODE_TEST_CONTEXT, ...env } = process.env;
-    const child = spawnSync(process.execPath, ['--test', `--test-reporter=${resolve('scripts/ci-test-reporter.mjs')}`, fixture], { env: { ...env, WEAVE_CI_REPORT: report }, encoding: 'utf8' });
+    const child = spawnSync(process.execPath, ['--test', `--test-reporter=${resolve('scripts/ci-test-reporter.mjs')}`, fixture], { env: { ...env, WEAVE_CI_REPORT: report }, encoding: 'utf8', timeout: 120_000 });
     assert.equal(child.status, 0, child.stderr);
     const events = readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line));
     assert.equal(events.filter(e => e.type === 'summary').length, 1);

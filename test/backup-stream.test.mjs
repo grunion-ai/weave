@@ -115,6 +115,7 @@ async function serving(endpoint) {
   for (const k of ['WEAVE_DEFER_MIGRATIONS', 'WEAVE_BACKUP_DEST', 'WEAVE_BACKUP_QUOTA_BYTES', 'WEAVE_BACKUP_PART_BYTES', 'WEAVE_AUTO_UPDATE', 'WEAVE_DATA', 'WEAVE_HOST', 'WEAVE_ORIGIN', 'PORT']) delete env[k];
   const child = spawn(process.execPath, ['--expose-gc', '--import', PROBE, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', db], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });

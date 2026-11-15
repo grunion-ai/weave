@@ -59,7 +59,7 @@ test('one failure answers the same message and code on CLI, MCP and HTTP (Featur
   const dir = tempDir('weave-error-contract-');
   const data = join(dir, 'ws.db');
   const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'contract' };
-  const cli = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+  const cli = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env, timeout: 120_000 });
   assert.equal(cli(['space', 'create', 'Ops']).status, 0);
   assert.equal(cli(['table', 'create', 'Ops', 'Task']).status, 0);
   const w = seed(new Weave());

@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { tempDir } from './temp.mjs';
 import { SECURITY } from '../../src/keystore.js';
 
-export const hasKeychain = process.platform === 'darwin' && existsSync(SECURITY);
+const onPath = (process.env.PATH ?? '').split(delimiter).filter(Boolean).map((dir) => join(dir, 'security')).find(existsSync);
+export const hasKeychain = process.platform === 'darwin' && existsSync(SECURITY) && onPath === SECURITY;
 
 const searchList = () => execFileSync(SECURITY, ['list-keychains', '-d', 'user'], { encoding: 'utf8' });
 

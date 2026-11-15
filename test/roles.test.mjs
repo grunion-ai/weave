@@ -177,7 +177,7 @@ test('cli: account create defaults to editor and takes the old names with a note
   const dir = tempDir('weave-roles-cli-');
   try {
     const data = join(dir, 'w.db');
-    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
+    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' }, timeout: 120_000 });
     assert.equal(JSON.parse(run(['account', 'create', 'bot']).stdout).account.role, 'editor');
     const old = JSON.parse(run(['account', 'create', 'eye', '--role', 'reader']).stdout);
     assert.equal(old.account.role, 'observer');
@@ -239,7 +239,7 @@ test('account set is available through CLI and MCP without rotating tokens', () 
   const dir = tempDir('weave-role-set-');
   try {
     const data = join(dir, 'w.db');
-    const run = args => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
+    const run = args => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' }, timeout: 120_000 });
     const made = JSON.parse(run(['account', 'create', 'bot']).stdout);
     const set = run(['account', 'set', 'bot', '--role', 'observer']);
     assert.equal(set.status, 0, set.stderr);

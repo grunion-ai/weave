@@ -26,7 +26,7 @@ test('describeBuild: at main is never behind', () => {
 
 test('headContains: ancestry against a real checkout', async () => {
   const dir = tempDir('weave-behind-');
-  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' }).stdout.trim();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8', timeout: 120_000 }).stdout.trim();
   try {
     git('init', '-q');
     const commit = (n) => {

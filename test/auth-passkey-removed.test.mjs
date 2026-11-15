@@ -148,7 +148,7 @@ test('cli: account invite and account remove-credential are unknown subcommands,
   const dir = tempDir('weave-nopasskey-');
   try {
     const data = join(dir, 'w.db');
-    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
+    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' }, timeout: 120_000 });
     assert.equal(run(['account', 'create', 'kyle', '--role', 'admin']).status, 0);
     for (const sub of ['invite', 'remove-credential']) {
       const r = run(['account', sub, 'kyle', 'x']);

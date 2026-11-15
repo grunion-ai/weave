@@ -29,7 +29,7 @@ function worktree(files = {}) {
 const held = (release) => `import test from 'node:test';\nimport { existsSync } from 'node:fs';\ntest('held', async () => { while (!existsSync(${JSON.stringify(release)})) await new Promise((r) => setTimeout(r, 20)); });\n`;
 const quick = "import test from 'node:test';\ntest('quick', () => {});\n";
 function cli(root, args) {
-  const child = spawn(process.execPath, [join(root, 'scripts/test.mjs'), '--timeout=60000', ...args], { cwd: root, env });
+  const child = spawn(process.execPath, [join(root, 'scripts/test.mjs'), '--timeout=60000', ...args], { cwd: root, env, timeout: 300_000 });
   let out = '';
   child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
   return { child, done: new Promise((r) => child.on('close', (code) => r({ code, out }))) };

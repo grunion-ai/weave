@@ -58,7 +58,7 @@ test('with an empty PATH every external tool is skipped and only the failing che
 });
 
 test('the semgrep rules fire on their fixtures and stay quiet on the ok lines', { skip: !onPath('semgrep') && 'semgrep not installed' }, () => {
-  const r = spawnSync('semgrep', ['--test', '--metrics=off', 'security/semgrep'], { encoding: 'utf8', cwd: join(import.meta.dirname, '../..') });
+  const r = spawnSync('semgrep', ['--test', '--metrics=off', 'security/semgrep'], { encoding: 'utf8', cwd: join(import.meta.dirname, '../..'), timeout: 300_000 });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
 
@@ -68,8 +68,8 @@ test('gitleaks reads the checked-out history only, never every fetched branch (I
 
 test('a leak on another branch does not fail the scan of a clean checkout (Issue #913)', { skip: !onPath('gitleaks') && 'gitleaks not installed' }, () => {
   const dir = tempDir('scanref-');
-  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
-  const scan = () => spawnSync('gitleaks', gitleaksArgs(join(ROOT, 'security/gitleaks.toml')), { cwd: dir, encoding: 'utf8' });
+  const git = (...args) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8', timeout: 120_000 });
+  const scan = () => spawnSync('gitleaks', gitleaksArgs(join(ROOT, 'security/gitleaks.toml')), { cwd: dir, encoding: 'utf8', timeout: 120_000 });
   try {
     git('init', '-q', '-b', 'main');
     writeFileSync(join(dir, 'clean.js'), 'export const ok = 1;\n');

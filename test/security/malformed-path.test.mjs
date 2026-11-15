@@ -21,7 +21,7 @@ const CHILD = `
 
 async function child() {
   const env = { ...process.env, WEAVE_KEYSTORE: join(tempDir('weave-sec-'), 'keystore.json') };
-  const proc = spawn(process.execPath, ['--input-type=module', '-e', CHILD], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, ['--input-type=module', '-e', CHILD], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000 });
   let exited = null;
   proc.on('exit', (code) => { exited = code ?? 'signal'; });
   const port = await new Promise((resolve, reject) => {

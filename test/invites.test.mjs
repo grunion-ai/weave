@@ -92,7 +92,7 @@ test('cli: invite, invite list and invite revoke', () => {
   const dir = tempDir('weave-invite-cli-');
   try {
     const data = join(dir, 'w.db');
-    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' } });
+    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' }, timeout: 120_000 });
     const made = run(['invite', 'ann@example.com', '--role', 'architect']);
     assert.equal(made.status, 0, made.stderr);
     const inv = JSON.parse(made.stdout);

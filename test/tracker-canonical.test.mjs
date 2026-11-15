@@ -52,6 +52,7 @@ const statusAfterBoot = async (env) => {
   const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, WEAVE_UPDATE_CHECK: 'off', WEAVE_TRACKER_CANONICAL: '', ...env },
+    timeout: 300_000,
   });
   const log = await bootAndStop(child);
   const w = new Weave({ path: docsPath });

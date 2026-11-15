@@ -96,7 +96,7 @@ test('REST query applies the same rule (Issue #1725)', async () => {
 
 test('CLI query applies the same rule (Issue #1725)', () => {
   const data = join(tempDir('wv-page-'), 'w.db');
-  const run = (...args) => spawnSync(process.execPath, ['bin/weave.js', '--data', data, ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, ['bin/weave.js', '--data', data, ...args], { encoding: 'utf8', timeout: 120_000 });
   run('space', 'create', 'S');
   run('table', 'create', 'S', 'T');
   for (let i = 0; i < 8; i++) run('create', 'S/T', `r${i}`);

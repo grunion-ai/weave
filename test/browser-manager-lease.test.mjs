@@ -19,7 +19,7 @@ function script(name, body, overrides = {}, deadline = 60_000) {
   const file = join(directory, `${name}.mjs`);
   writeFileSync(file, `import { chromium } from ${JSON.stringify(helper)};\n${body}\n`);
   const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, NODE_TEST_CONTEXT: '', WEAVE_TEST_JOB: '', WEAVE_TEST_BROWSER_ENDPOINT: '',
-    WEAVE_TEST_MANAGER_DIR: directory, WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999', ...overrides } });
+    WEAVE_TEST_MANAGER_DIR: directory, WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999', ...overrides }, timeout: 300_000 });
   let out = '';
   child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
   const timer = setTimeout(() => { out += '\n<killed at deadline>'; child.kill('SIGKILL'); }, deadline);

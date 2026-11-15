@@ -146,7 +146,7 @@ test('WEAVE_AUTO_UPDATE is opt-in: unset, "0" or "off" leave supervise as plain 
   for (const v of [undefined, '', '0', 'off', 'no', 'false']) assert.equal(autoUpdateFromEnv(v === undefined ? {} : { WEAVE_AUTO_UPDATE: v }), false, `WEAVE_AUTO_UPDATE=${v}`);
   for (const v of ['1', 'true', 'yes', 'on']) assert.equal(autoUpdateFromEnv({ WEAVE_AUTO_UPDATE: v }), true, `WEAVE_AUTO_UPDATE=${v}`);
   const dataPath = dataDir('plain');
-  const child = spawn(process.execPath, [BIN, 'supervise', '--port', '0', '--data', dataPath], { stdio: ['ignore', 'pipe', 'pipe'], env: ENV });
+  const child = spawn(process.execPath, [BIN, 'supervise', '--port', '0', '--data', dataPath], { stdio: ['ignore', 'pipe', 'pipe'], env: ENV, timeout: 300_000 });
   let port = null;
   child.stdout.on('data', (d) => { port ??= /Weave running at http:\/\/[^:]+:(\d+)/.exec(String(d))?.[1] ?? null; });
   const log = await bootAndStop(child, { timeout: 60_000 });

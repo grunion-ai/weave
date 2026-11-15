@@ -131,7 +131,7 @@ test('weave mcp --tools all lists every tool; a bad value is refused', async () 
   try {
     const data = join(dir, 'w.db');
     const count = (extra, env = {}) => new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [BIN, 'mcp', '--data', data, ...extra], { env: { ...process.env, WEAVE_MCP_TOOLS: '', ...env } });
+      const child = spawn(process.execPath, [BIN, 'mcp', '--data', data, ...extra], { env: { ...process.env, WEAVE_MCP_TOOLS: '', ...env }, timeout: 300_000 });
       let buf = '';
       child.stdout.on('data', (d) => {
         buf += d;
