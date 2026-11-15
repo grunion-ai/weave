@@ -861,7 +861,7 @@ test('the Activity table is routed, read-only and reachable from the workspace p
   assert.match(view, /api\('GET', `\/activity/, 'the view reads the feed endpoint');
   assert.doesNotMatch(view, /'POST'|'PATCH'|'DELETE'/, 'nothing in this table can be written from the UI');
   assert.match(view, /system table/i, 'and it says so on the page');
-  assert.match(fnBody('showHome'), /workspaceSystemCard\(\)/, 'the workspace page draws the system tables card');
+  assert.match(fnBody('appendWorkspaceDetails'), /workspaceSystemCard\(\)/, 'the workspace page draws the system tables card');
   assert.match(fnBody('workspaceSystemCard'), /#\/activity/, 'the workspace page links to it');
   assert.match(fnBody('workspaceSystemCard'), /system/, 'marked as weave\'s table rather than the user\'s');
 });
@@ -1630,7 +1630,7 @@ test('the space page renders the Tables registry as a real grid', () => {
 });
 
 test('the workspace page renders the Spaces registry as a real grid', () => {
-  const body = fnBody('showHome');
+  const body = fnBody('appendWorkspaceDetails');
   assert.match(body, /registryTable\('spaces'\)/, 'the workspace page finds the Spaces registry');
   assert.match(body, /renderTable\(/, 'and renders it with the one grid renderer');
 });

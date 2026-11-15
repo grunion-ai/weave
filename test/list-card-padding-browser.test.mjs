@@ -46,6 +46,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      await page.click('details.space-home-overview > summary');
       await page.waitForSelector('.card.list-rows.system-tables .list-row');
       roomy(await page.evaluate(inset, '.card.list-rows.system-tables'), 'system tables');
     } finally { await page.close(); }

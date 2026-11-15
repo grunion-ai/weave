@@ -214,7 +214,7 @@ if (s) {
     const asked = [];
     page.on('request', (r) => { if (r.url().endsWith('/api/onboarding')) asked.push(r.method()); });
     await page.goto(`${s.base}/#/`);
-    await page.waitForSelector('.home-map');
+    await page.waitForSelector('.space-home');
     assert.equal(await page.locator('.wv-onboard').count(), 0);
     assert.deepEqual(asked, [], 'a populated home does not even ask');
     await page.close();

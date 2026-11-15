@@ -62,6 +62,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      await page.click('details.space-home-overview > summary');
       await page.waitForSelector(SITES.schema);
       const schemaClosed = await page.evaluate(read, SITES.schema);
       await page.locator('.wv-schema > summary').click();

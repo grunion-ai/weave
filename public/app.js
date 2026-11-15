@@ -10493,6 +10493,7 @@ async function savedPagesCard() {
 }
 
 async function showHome() {
+  const gen = navDraw;
   state.route = { page: 'home' };
   syncDocTitle(null);
   renderNav();
@@ -10527,14 +10528,22 @@ async function showHome() {
     ...(mine.length ? [] : [emptyWorkspace()]));
   kindContext(main.querySelector('.view-header'), 'workspace', here, wsCtx, { skip: `${OWN_CONTEXT}, .crumb-path a, .ws-logo` });
   if (mine.length && dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return showWorkspaceLauncher(main, here.title);
-  main.append(workspaceSystemCard());
+  if (mine.length && !dockCoversScreen.matches) {
+    const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
+    if (!navOwns(gen)) return;
+    if (loaded) return mountWorkspaceHome(main, { name: here.title, description: ws.description }, gen);
+  }
+  if (!mine.length) maybeOnboard();
+  await appendWorkspaceDetails(main, { withMap: mine.length > 0 });
+}
+
+async function appendWorkspaceDetails(parent, { withMap = true } = {}) {
+  parent.append(workspaceSystemCard());
   const pages = await savedPagesCard();
-  if (pages) main.append(pages);
-  if (mine.length) {
+  if (pages) parent.append(pages);
+  if (withMap) {
     const card = await relationMapCard('Relation map');
-    if (card) main.append(card);
-  } else {
-    maybeOnboard();
+    if (card) parent.append(card);
   }
   const reg = registryTable('spaces');
   if (reg) {
@@ -10552,7 +10561,7 @@ async function showHome() {
         focusNewRow(made.id, { field: 'Name', select: true });
       } catch (err) { toast(err.message, true); }
     };
-    await schemaDisclosure(main, async (body) => {
+    await schemaDisclosure(parent, async (body) => {
       const res = await api('POST', `/tables/${reg.id}/query`, { limit: -1 });
       renderTable(body, reg, mineOnly(res.items), onSaved, onAdd);
     });

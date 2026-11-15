@@ -47,7 +47,7 @@ if (s) {
   test('the same on a hash navigation, not just the first paint', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.system-tables');
+    await page.waitForSelector('.space-home');
     await break500(page);
     await page.evaluate((id) => { location.hash = `#/table/${id}`; }, deals.id);
     await page.waitForSelector('#main .wv-route-error');

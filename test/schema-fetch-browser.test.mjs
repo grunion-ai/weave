@@ -32,6 +32,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const hits = watch(page);
     await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+    await page.click('details.space-home-overview > summary');
     await page.waitForSelector('.home-map');
     await settle(page);
     assert.deepEqual(hits.filter((h) => h.endsWith('/schema')), ['/api/schema'], 'the map reads the schema the tab holds');
