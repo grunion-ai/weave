@@ -1,2 +1,0 @@
-- Phone format applies below 960 px, so tablets and half-width desktop windows get the phone layout. The 600 px and 900 px switches are gone (Feature #377).
-- The nav tray hides on its own below 1200 px through the same collapsed state its toggle uses. The toggle still shows it, and a tray hidden or shown in a tight window leaves the saved preference alone (Feature #377).
