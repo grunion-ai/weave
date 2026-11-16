@@ -3785,11 +3785,12 @@ async function editChipSegment(trigger, eid, seg, fieldName) {
       multi: {
         selected: chosen(Array.isArray(e.fields?.[f.name]) ? e.fields[f.name] : []),
         onCommit: async (names) => {
-          await api('PATCH', `/entities/${eid}`, { values: { [f.name]: names } });
-          repaint({
-            kind: 'field', type: 'multiselect', label: f.name, value: names.join(', '),
-            options: names.map((name) => ({ name, hue: (f.optionsFull ?? []).find((o) => o.name === name)?.hue })),
+          const paintNames = (now) => repaint({
+            kind: 'field', type: 'multiselect', label: f.name, value: now.join(', '),
+            options: now.map((name) => ({ name, hue: (f.optionsFull ?? []).find((o) => o.name === name)?.hue })),
           });
+          const paint = (fresh) => paintNames(Array.isArray(fresh.fields?.[f.name]) ? fresh.fields[f.name] : []);
+          if (await saveValues(eid, { [f.name]: names }, { paint })) paintNames(names);
         },
       },
     });
@@ -4128,6 +4129,28 @@ function readOnlyValue(f, val) {
   const text = fieldValueCell(val);
   return el('span', { class: 'k k-computed' + (text ? '' : ' is-empty'), title }, el('span', { class: 'k-label' }, text || '—'));
 }
+function staleToast(id, theirs, values, retry) {
+  const fields = Object.keys(values);
+  const one = fields.length === 1;
+  const now = one ? ` to ${fieldValueCell(theirs.fields?.[fields[0]]) || 'empty'}` : '';
+  const mine = one ? fieldValueCell(values[fields[0]]) || 'empty' : 'edit';
+  toast(`${theirs.modifiedBy ?? 'Someone'} changed ${fields.join(', ')}${now} first, so your ${mine} was not saved`,
+    true, { label: 'Use mine', run: retry }, { key: `stale:${id}:${fields.join(',')}` });
+}
+async function saveValues(id, values, { paint = null, label = Object.keys(values).join(', '), gesture } = {}) {
+  try {
+    return await api('PATCH', `/entities/${id}`, { values }, { gesture });
+  } catch (err) {
+    if (err.code === 'stale' && err.entity) {
+      await paint?.(err.entity);
+      staleToast(id, err.entity, values, async () => {
+        const fresh = await saveValues(id, values, { paint, label, gesture });
+        if (fresh) await paint?.(fresh);
+      });
+    } else if (!err.shown) toast(err.code === 'offline' ? `${label} was not saved: could not reach the server` : err.message, true);
+    return null;
+  }
+}
 function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked = false } = {}) {
   const id = item.id;
   const val = item.fields[f.name];
@@ -4150,9 +4173,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
       const theirs = err.entity;
       paint?.(theirs.raw?.[f.name] ?? null);
       await onSaved({ ...theirs, affected: [theirs.id] }, f.name);
-      const mine = fieldValueCell(value) || 'empty';
-      toast(`${theirs.modifiedBy ?? 'Someone'} changed ${f.name} to ${fieldValueCell(theirs.fields?.[f.name]) || 'empty'} first, so your ${mine} was not saved`,
-        true, { label: 'Use mine', run: () => patch(value, paint) }, { key: `stale:${id}:${f.name}` });
+      staleToast(id, theirs, { [f.name]: value }, () => patch(value, paint));
     }
   };
 
@@ -4331,7 +4352,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
         let config;
         try { config = JSON.parse(String(fd.get('config') || '{}')); }
         catch { throw new Error('Config is not valid JSON'); }
-        await api('PATCH', `/entities/${id}`, { values: { [f.name]: { type: String(fd.get('type')), config } } });
+        const fresh = await saveValues(id, { [f.name]: { type: String(fd.get('type')), config } }, { paint: saved });
+        if (!fresh) throw Object.assign(new Error(`${f.name} was not saved`), { shown: true });
         await saved();
         toast(`${f.name} saved`, false, { label: 'Undo', run: () => patch(def) });
       }, 'Save');
@@ -7986,7 +8008,7 @@ async function editPhoneField(anchor, db, eid, name) {
     const write = async (value, shown) => {
       const gesture = newGesture('update');
       if (f.type === 'workflow') await api('POST', `/entities/${eid}/state`, { field: f.name, state: value }, { gesture });
-      else await api('PATCH', `/entities/${eid}`, { values: { [f.name]: value } }, { gesture });
+      else if (!(await saveValues(eid, { [f.name]: value }, { gesture, paint: () => refreshView() }))) return;
       toast(`${f.name}: ${shown ?? (value == null || value === '' ? '—' : String(value))}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
       await refreshView();
     };
@@ -9409,8 +9431,9 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (later) fills.push(() => { if (nameInput.value !== (entity.name ?? '') && document.activeElement !== nameInput) nameInput.value = entity.name ?? ''; });
   if (!computed && !locked) nameInput.addEventListener('change', async () => {
-    try { await api('PATCH', `/entities/${id}`, { values: { [nameF?.name ?? 'Name']: nameInput.value } }); entity.name = nameInput.value; toast('Renamed'); }
-    catch (err) { toast(err.message, true); }
+    const paint = (e) => { entity.name = e.name ?? ''; nameInput.value = entity.name; };
+    const typed = nameInput.value;
+    if (await saveValues(id, { [nameF?.name ?? 'Name']: typed }, { paint })) { entity.name = typed; toast('Renamed'); }
   });
   const frame = (e) => JSON.stringify([e.name ?? '', e.avatar ?? null, boardCore.coverOf(db, e)?.id ?? null, (e.files ?? []).map((x) => x.id)]);
   const saved = async (fresh, field = null) => {
@@ -9888,7 +9911,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       try {
         const name = boardCore.freeFieldName(db, 'Files');
         await api('POST', `/tables/${db.id}/fields`, { name, type: 'attachments' });
-        await api('PATCH', `/entities/${id}`, { values: { [name]: loose.map((f) => f.id) } });
+        const repaint = async () => { await loadSchema(); refresh(); };
+        if (!(await saveValues(id, { [name]: loose.map((f) => f.id) }, { paint: repaint }))) return;
         await loadSchema();
         toast(`${loose.length === 1 ? 'The file moved' : 'The files moved'} into a new ${name} field`);
         refresh();

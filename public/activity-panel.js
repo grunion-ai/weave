@@ -61,7 +61,8 @@ const activityPanelCore = (() => {
   }
   async function revert(a) {
     try {
-      await api('PATCH', `/entities/${st.id}`, { values: { [a.field]: a.from } });
+      const repaint = async () => { await refreshView(); await load(); render(); };
+      if (!(await saveValues(st.id, { [a.field]: a.from }, { paint: repaint }))) return;
       const mine = await undoMine();
       st.sel = a.id;
       await afterWrite(`${a.field} reverted`, mine);

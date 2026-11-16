@@ -222,7 +222,7 @@ if (s) {
         ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Move refused' }) }) : route.continue());
       await drag(page, tile(ids.pants), '.board-group[data-key="Bought"] .board-empty');
       await page.locator('.wv-toast', { hasText: 'Move refused' }).waitFor();
-      assert.equal(await page.locator(`.board-group[data-key="Research"] ${tile(ids.pants).replace('.wv-board ', '')}`).count(), 1);
+      await page.locator(`.board-group[data-key="Research"] ${tile(ids.pants).replace('.wv-board ', '')}`).waitFor();
       assert.equal(valueOf(ids.pants, 'State'), 'Research');
     } finally { await page.close(); }
   });

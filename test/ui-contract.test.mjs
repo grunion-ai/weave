@@ -1767,7 +1767,7 @@ test('the Name field is role-keyed in the UI and opens to rename and ƒ', () => 
   assert.match(APP, /disabled: isEdit && !\['text', 'formula'\]\.includes\(existing\.type\) \? '' : undefined/, 'the ƒ toggle opens for text and formula fields on edit');
   assert.match(APP, /existing\.role === 'name'\) choices = choices\.filter/, 'a name\'s type grid offers text only; ƒ is the other shape');
   assert.match(fnBody('renderEntityView'), /readonly: computed \? '' : undefined/, 'a computed name is read-only on the entity page');
-  assert.match(fnBody('renderEntityView'), /\[nameF\?\.name \?\? 'Name'\]: nameInput\.value/, 'a renamed name patches by its label');
+  assert.match(fnBody('renderEntityView'), /saveValues\(id, \{ \[nameF\?\.name \?\? 'Name'\]: typed \}/, 'a renamed name patches by its label');
   assert.match(fnBody('quickCreate'), /if \(computedName\(db\)\)/, 'quick-create skips the name prompt for a computed name');
   assert.match(APP, /\(!isEdit \|\| \['text', 'formula'\]\.includes\(existing\.type\)\) \? fx : ''/, 'the ƒ toggle is drawn on edit for text and formula fields, not only for formulas');
 });
