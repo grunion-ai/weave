@@ -5,3 +5,7 @@ docs/architecture/*.html linguist-generated=true -diff
 /docs/mockups export-ignore
 /docs/screenshots export-ignore
 /test export-ignore
+graphify-out/graph.json linguist-generated=true -diff
+graphify-out/GRAPH_REPORT.md linguist-generated=true -diff
+/graphify-out export-ignore
+graphify-out/cache/** linguist-generated=true -diff
