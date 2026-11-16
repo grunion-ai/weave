@@ -63,7 +63,7 @@ test('two HTTP MCP sessions of one token keep their own reads: one session read 
   const no = await a.replace('SESSION_A_TEXT');
   assert.equal(no.isError, true, 'session A never saw HUMAN_EDIT');
   assert.equal(no.structuredContent.code, 'stale');
-  assert.match(no.content[0].text, /Description changed since you read it/);
+  assert.match(no.content[0].text, /<weave_data>Description<\/weave_data> changed since you read it/);
   assert.equal(weave.getDoc(row), 'HUMAN_EDIT', 'the human edit survives');
   const yes = await b.replace('SESSION_B_TEXT');
   assert.ok(!yes.isError, 'session B read the text it replaces');
@@ -77,7 +77,7 @@ test('a session that never read the document is refused as stale, though another
   await reader.read();
   const no = await blind.replace('BLIND');
   assert.equal(no.isError, true);
-  assert.match(no.content[0].text, /You have not read Description/);
+  assert.match(no.content[0].text, /You have not read <weave_data>Description<\/weave_data>/);
   assert.equal(weave.getDoc(row), 'SEEN_BY_ONE');
 });
 
@@ -87,7 +87,7 @@ test('without a session id a read counts only inside its own request: a later re
   await bare.read();
   const no = await bare.replace('LATER_REQUEST');
   assert.equal(no.isError, true, 'another request carries no read');
-  assert.match(no.content[0].text, /You have not read Description/);
+  assert.match(no.content[0].text, /You have not read <weave_data>Description<\/weave_data>/);
   assert.equal(weave.getDoc(row), 'NO_SESSION');
   const { data } = await post([callMsg('weave_get_doc', { entity: row }), callMsg('weave_set_doc', { entity: row, markdown: 'SAME_REQUEST' })]);
   assert.ok(!data[1].result.isError, data[1].result.content[0].text);
