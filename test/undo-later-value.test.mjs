@@ -140,3 +140,87 @@ test("POST /api/undo keeps the other editor's value, the shape the Issue's probe
     server.close();
   }
 });
+
+const trashed = (w, id) => w.state.entities[id].deletedAt != null;
+
+test('undoing a create leaves the row out of Trash when another actor edited it since, and names the field', () => {
+  const { w, t } = seed();
+  w.actor = 'ann';
+  const draft = w.createEntity(t.id, { Name: 'draft', Estimate: 1 });
+  w.actor = 'bob';
+  w.updateEntity(draft.id, { Estimate: 9 });
+  w.actor = 'ann';
+  const { undone } = w.undo({ steps: 1 });
+  assert.equal(trashed(w, draft.id), false, "bob's edit keeps the row live");
+  assert.equal(value(w, draft.id, 'Estimate'), 9);
+  assert.equal(undone[0].kind, 'create');
+  assert.equal(undone[0].skipped, 'changed since');
+  assert.deepEqual(undone[0].kept, [{ field: 'Estimate', by: 'bob' }]);
+});
+
+test("undoing a create still trashes the row when the only later writes are its own rule run's", () => {
+  const { w, t } = seed();
+  w.addField(t.id, { name: 'Stamp', type: 'text' });
+  w.createAutomation(t.id, { name: 'Stamp it', trigger: { type: 'entity-created' }, actions: [{ type: 'set-field', field: 'Stamp', value: 'stamped' }] });
+  w.actor = 'ann';
+  const draft = w.createEntity(t.id, { Name: 'draft', Estimate: 1 });
+  assert.equal(value(w, draft.id, 'Stamp'), 'stamped', 'the rule stamped the row as the workflow actor');
+  const { undone } = w.undo({ steps: 2 });
+  assert.deepEqual(undone.map((u) => u.kind), ['update', 'create']);
+  assert.equal(undone[1].skipped, undefined);
+  assert.equal(undone[1].kept, undefined);
+  assert.equal(trashed(w, draft.id), true, "ann's create and its rule run are one actor set");
+});
+
+test("undoing a create trashes the row when ann's own later edit is the only one", () => {
+  const { w, t } = seed();
+  w.actor = 'ann';
+  const draft = w.createEntity(t.id, { Name: 'draft', Estimate: 1 });
+  w.updateEntity(draft.id, { Estimate: 2 });
+  const { undone } = w.undo({ steps: 2 });
+  assert.deepEqual(undone.map((u) => u.skipped), [undefined, undefined]);
+  assert.equal(trashed(w, draft.id), true);
+});
+
+test('undoing a restore leaves the row live when another actor edited it since', () => {
+  const { w, row } = seed();
+  w.actor = 'ann';
+  w.deleteEntity(row.id);
+  w.restoreEntity(row.id);
+  w.actor = 'bob';
+  w.updateEntity(row.id, { Estimate: 9 });
+  w.actor = 'ann';
+  const { undone } = w.undo({ steps: 1 });
+  assert.equal(undone[0].kind, 'restore');
+  assert.equal(undone[0].skipped, 'changed since');
+  assert.deepEqual(undone[0].kept, [{ field: 'Estimate', by: 'bob' }]);
+  assert.equal(trashed(w, row.id), false);
+  assert.equal(value(w, row.id, 'Estimate'), 9);
+});
+
+test("undoing a restore still trashes the row when the edits by others came before the restore", () => {
+  const { w, row } = seed();
+  w.actor = 'bob';
+  w.updateEntity(row.id, { Estimate: 9 });
+  w.actor = 'ann';
+  w.deleteEntity(row.id);
+  w.restoreEntity(row.id);
+  const { undone } = w.undo({ steps: 1 });
+  assert.equal(undone[0].kind, 'restore');
+  assert.equal(undone[0].skipped, undefined);
+  assert.equal(trashed(w, row.id), true);
+});
+
+test('a create entry recorded before this change, with no actor set, trashes as it always did', () => {
+  const { w, t } = seed();
+  w.actor = 'ann';
+  const draft = w.createEntity(t.id, { Name: 'draft', Estimate: 1 });
+  w.actor = 'bob';
+  w.updateEntity(draft.id, { Estimate: 9 });
+  const legacy = w.store.listUndo({ limit: 10, actor: 'ann' })[0];
+  assert.equal(legacy.kind, 'create');
+  legacy.data = {};
+  w.actor = 'ann';
+  w.undo({ steps: 1 });
+  assert.equal(trashed(w, draft.id), true);
+});
