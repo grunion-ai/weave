@@ -10,12 +10,44 @@
 
   const isError = (e) => e.kind === 'error' || e.kind === 'console';
 
+  const EVENT_FIELDS = {
+    nav: ['to'],
+    click: ['target'],
+    key: ['key', 'target'],
+    api: ['method', 'path', 'status', 'ms', 'message'],
+    error: ['message', 'source', 'line'],
+    console: ['level', 'message'],
+  };
+  const OTHER_FIELDS = ['target'];
+  const PATH_PARAMS = new Set(['limit', 'tables', 'table', 'field', 'entity', 'shape']);
+  const NO_ORIGIN = 'http://recorder.invalid';
+
+  function requestPath(raw) {
+    const text = String(raw ?? '');
+    let u;
+    try { u = new URL(text, NO_ORIGIN); } catch { return ''; }
+    const kept = new URLSearchParams([...u.searchParams].filter(([k]) => PATH_PARAMS.has(k))).toString();
+    return `${u.origin === NO_ORIGIN ? '' : u.origin}${u.pathname}${kept ? `?${kept}` : ''}`;
+  }
+
+  const primitive = (v) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
+
+  function shapeEvent(ev) {
+    const out = { kind: String(ev.kind) };
+    for (const k of ['t', ...(EVENT_FIELDS[ev.kind] ?? OTHER_FIELDS)]) {
+      const v = ev[k];
+      if (v === undefined || !primitive(v)) continue;
+      out[k] = k === 'path' ? requestPath(v) : v;
+    }
+    return out;
+  }
+
   function createRecorder({ max = MAX_EVENTS } = {}) {
     const buf = [];
     return {
       record(ev) {
         if (!ev || !ev.kind) return;
-        buf.push(ev);
+        buf.push(shapeEvent(ev));
         while (buf.length > max) {
           const i = buf.findIndex((e) => !isError(e));
           buf.splice(i === -1 ? 0 : i, 1);
@@ -162,5 +194,5 @@
     return out;
   }
 
-  root.bugCore = { CATEGORIES, MAX_EVENTS, REPORT_MAIL, MAILTO_MAX, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit, redact, routeShape, browserLabel, mailtoReport };
+  root.bugCore = { CATEGORIES, MAX_EVENTS, REPORT_MAIL, MAILTO_MAX, EVENT_FIELDS, PATH_PARAMS, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit, redact, routeShape, browserLabel, mailtoReport };
 })(typeof window !== 'undefined' ? window : globalThis);
