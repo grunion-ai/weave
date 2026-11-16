@@ -50,7 +50,8 @@ const rulesBetween = (page) => page.evaluate(() => {
   for (let n = tables.nextElementSibling; n && n !== overview; n = n.nextElementSibling) between.push(n);
   const px = (v) => parseFloat(v) || 0;
   const rules = (px(getComputedStyle(tables).borderBottomWidth) > 0) + (px(getComputedStyle(overview).borderTopWidth) > 0);
-  return { between: between.length, rules };
+  const drawn = [[tables, 'borderBottom'], [overview, 'borderTop']].filter(([n, side]) => px(getComputedStyle(n)[`${side}Width`]) > 0);
+  return { between: between.length, rules, colours: drawn.map(([n, side]) => getComputedStyle(n)[`${side}Color`]) };
 });
 if (s) {
   const open = async (theme, width, spaceId, recents = null) => {
@@ -190,7 +191,9 @@ if (s) {
       const page = await open(theme, 1280, ids.quiet);
       try {
         await settled(page.locator('.space-home-overview'));
-        assert.deepEqual(await rulesBetween(page), { between: 0, rules: 1 });
+        const read = await rulesBetween(page);
+        assert.deepEqual([read.between, read.rules], [0, 1]);
+        assert.notEqual(read.colours[0], 'rgba(0, 0, 0, 0)', `the rule is painted in the ${theme} theme`);
       } finally {
         await page.close();
       }
