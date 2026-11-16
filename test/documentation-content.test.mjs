@@ -13,6 +13,7 @@ function fixture() {
     for (const name of names) w.createTable({ space, name });
   }
   w.createEntity('Showcase/Projects', { name: 'Apollo Launch' });
+  w.state.meta.developmentSync = 'test-stamp';
   return w;
 }
 
@@ -66,4 +67,33 @@ test('the connect guide gives every client it names its own connect step (Issue 
     assert.ok(guide.includes(step), `the guide never says ${step}`);
   }
   assert.doesNotMatch(guide, /—/, 'weave prose carries no em dash');
+});
+
+const TRACKER = 'https://weave.grunion.ai/w/weave';
+const trackerPanels = p => [p.spaces.find(x => x.name === 'Handbook'), p.spaces.find(x => x.name === 'Development'), p.tables.find(x => x.name === 'Development/Release'), p.guides.find(x => x.name === 'Reading a release')];
+test('a server without a read copy points the Built in public panel at the canonical tracker (Issue #1783)', () => {
+  const w = fixture();
+  delete w.state.meta.developmentSync;
+  const p = buildPresentation(w);
+  for (const panel of trackerPanels(p)) {
+    assert.ok(panel.html.includes(`href="${TRACKER}"`), 'links the canonical tracker');
+    for (const name of ['Issue', 'Feature', 'Release']) assert.ok(!panel.html.includes(w.getTable(`Development/${name}`).id), `no local Development/${name} link`);
+  }
+});
+test('a server with a read copy keeps the Built in public panel on its local tables (Issue #1783)', () => {
+  const w = fixture();
+  const p = buildPresentation(w);
+  for (const panel of trackerPanels(p)) {
+    assert.ok(!panel.html.includes(TRACKER), 'no canonical tracker link');
+    assert.ok(panel.html.includes(w.getTable('Development/Issue').id), 'links local Issue table');
+  }
+});
+test('the canonical tracker itself keeps local Development links (Issue #1783)', () => {
+  const w = fixture();
+  delete w.state.meta.developmentSync;
+  process.env.WEAVE_TRACKER_CANONICAL = '1';
+  try {
+    const p = buildPresentation(w);
+    assert.ok(p.spaces.find(x => x.name === 'Development').html.includes(w.getTable('Development/Issue').id));
+  } finally { delete process.env.WEAVE_TRACKER_CANONICAL; }
 });
