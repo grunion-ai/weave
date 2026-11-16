@@ -3,9 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT_TOKENS = /--wv-chip-|--fs-|--wv-hit:|--wv-cg-|--wv-pop-|--wv-icon-rest:|--tblr-border-radius:/;
 const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention|\.wv-card|\.wv-prose|\.cg-|\.wv-rat|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
-function selectorList(sels) {
+export function selectorList(sels) {
   const parts = [];
   let depth = 0;
   let quote = '';
@@ -62,7 +63,7 @@ export function chipCss(css = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8
     const keep = parts.filter((p) => CHIP_SELECTORS.test(p));
     if (!keep.length) continue;
     const decls = keep.some((p) => p.startsWith(':root'))
-      ? body.split(';').filter((d) => /--wv-chip-|--fs-/.test(d)).join(';')
+      ? body.split(';').filter((d) => ROOT_TOKENS.test(d)).join(';')
       : body.trim();
     if (!decls.trim()) continue;
     out.push(scoped(at, `${keep.join(', ')} { ${decls.replace(/\s+/g, ' ').trim()}${decls.trim().endsWith(';') ? '' : ';'} }`));
