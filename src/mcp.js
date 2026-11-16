@@ -74,8 +74,16 @@ function ownSpans(text, own) {
   }
   return spans;
 }
+const ENGINE_DETAIL = new Set(['kind']);
+function sealDetail(v, own, key = null) {
+  if (typeof v === 'string') return !v || own.has(v) || TOKEN.test(v) || ENGINE_DETAIL.has(key) ? v : `<weave_data>${seal(v)}</weave_data>`;
+  if (Array.isArray(v)) return v.map((x) => sealDetail(x, own));
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [/^[a-z][a-zA-Z\d]*$/.test(k) ? k : sealDetail(k, own), sealDetail(x, own, k)]));
+}
 function sealRefusal(weave, args, res) {
-  let error = seal(res.structuredContent.error);
+  const { error: raw, code, rpc, ...detail } = res.structuredContent;
+  let error = seal(raw);
   const own = sentNames(args);
   const names = [...storedNames(weave, own)].filter((n) => error.includes(n)).sort((x, y) => y.length - x.length);
   if (names.length) {
@@ -83,7 +91,7 @@ function sealRefusal(weave, args, res) {
     const sent = (at, n) => spans.some(([from, to]) => from <= at && at + n.length <= to);
     error = error.replace(new RegExp(`(?<!${NAME_EDGE})(?:${names.map(escapeRe).join('|')})(?!${NAME_EDGE})`, 'gu'), (n, at) => (sent(at, n) ? n : `<weave_data>${n}</weave_data>`));
   }
-  return { ...res, content: [{ type: 'text', text: `Error: ${error}` }], structuredContent: { ...res.structuredContent, error } };
+  return { ...res, content: [{ type: 'text', text: `Error: ${error}` }], structuredContent: { ...sealDetail(detail, own), error, code, rpc } };
 }
 export const COMPACT_TOOLS = new Set([
   'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity',
