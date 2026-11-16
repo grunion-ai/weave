@@ -56,6 +56,7 @@ const sidecars = (dir) => ['alpha', 'beta', 'weave'].flatMap((n) => ['-wal', '-s
 async function serving(dir) {
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', join(dir, 'alpha.db')], {
     cwd: ROOT, env: ENV, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });

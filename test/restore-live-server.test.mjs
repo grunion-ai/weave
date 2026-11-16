@@ -50,6 +50,7 @@ async function serving(dataPath) {
   if (!existsSync(join(dirname(dataPath), 'weave.db'))) emptyDocsWorkspace(dirname(dataPath));
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', dataPath], {
     cwd: ROOT, env: ENV, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });

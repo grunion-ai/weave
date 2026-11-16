@@ -136,7 +136,7 @@ test('cli: account link mints an invite (issuer from WEAVE_OIDC_ISSUER or --issu
   const dir = tempDir('weave-oidc-');
   try {
     const data = join(dir, 'w.db');
-    const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_ORIGIN: '', WEAVE_UPDATE_CHECK: 'off', ...env } });
+    const run = (args, env = {}) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: '', WEAVE_OIDC_CLIENT_ID: '', WEAVE_ORIGIN: '', WEAVE_UPDATE_CHECK: 'off', ...env }, timeout: 120_000 });
     assert.equal(run(['account', 'create', 'kyle', '--role', 'admin']).status, 0);
     const bare = run(['account', 'link', 'kyle']);
     assert.notEqual(bare.status, 0);

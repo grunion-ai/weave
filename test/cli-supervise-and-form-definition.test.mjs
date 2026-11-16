@@ -26,7 +26,7 @@ test('form create refuses a definition that is JSON but not an object', async ()
 test('supervise with WEAVE_AUTO_UPDATE on starts the supervisor and names the release it serves', async () => {
   const dir = tempDir('weave-cli-supervise-');
   const data = join(dir, 'weave.db');
-  const child = spawn(process.execPath, [BIN, 'supervise', '--port', '0', '--data', data], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...cleanEnv(), WEAVE_AUTO_UPDATE: '1' } });
+  const child = spawn(process.execPath, [BIN, 'supervise', '--port', '0', '--data', data], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...cleanEnv(), WEAVE_AUTO_UPDATE: '1' }, timeout: 300_000 });
   let log = '';
   const seen = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`supervise never reported:\n${log}`)), 60_000);

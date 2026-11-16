@@ -41,6 +41,7 @@ const revisionColumns = (path) => inspect(path, 'PRAGMA table_info(doc_revisions
 function serve(dataPath, env) {
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', dataPath], {
     cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });
@@ -134,7 +135,7 @@ test('serve without deferral runs the boot writes before it listens', { timeout:
 });
 
 function cli(dataPath, ...args) {
-  const r = spawnSync(process.execPath, [BIN, '--data', dataPath, ...args], { cwd: ROOT, env: ENV, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [BIN, '--data', dataPath, ...args], { cwd: ROOT, env: ENV, encoding: 'utf8', timeout: 120_000 });
   return { code: r.status, out: r.stdout, err: r.stderr, json: () => JSON.parse(r.stdout) };
 }
 

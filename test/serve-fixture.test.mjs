@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 
 function child(t, source) {
-  const proc = spawn(process.execPath, ['-e', source], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, ['-e', source], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000 });
   t.after(() => { if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL'); });
   return proc;
 }
@@ -28,6 +28,6 @@ test('early exit reports the server output', async (t) => {
 });
 
 test('spawn errors reject without waiting for the boot timeout', async () => {
-  const proc = spawn('/nonexistent-weave-fixture-executable', [], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn('/nonexistent-weave-fixture-executable', [], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000 });
   await assert.rejects(bootAndStop(proc), /ENOENT/);
 });

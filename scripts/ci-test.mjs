@@ -203,6 +203,12 @@ function currentPrPlan() {
   return prPlan(gating(lanes(testFiles(ROOT), ROOT)), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
 }
 
+export const UNIT_TEST_TIMEOUT = 240_000;
+
+export const shardArgs = (shard) => ['--targeted', '--timeout=1200000', '--test-concurrency=2',
+  ...(shard.lane === 'unit' ? [`--test-timeout=${UNIT_TEST_TIMEOUT}`] : []),
+  `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs'))}`, '--test-reporter-destination=stdout', ...shard.files];
+
 async function main() {
   const [mode, id, out = 'ci-results'] = process.argv.slice(2);
   const pr = mode?.startsWith('pr-');
@@ -222,7 +228,7 @@ async function main() {
   const report = join(dir, 'events.jsonl');
   writeFileSync(report, '');
   const start = Date.now();
-  const child = spawnSync(process.execPath, ['scripts/test.mjs', '--targeted', '--timeout=1200000', '--test-concurrency=2', `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test-reporter.mjs'))}`, '--test-reporter-destination=stdout', ...shard.files], {
+  const child = spawnSync(process.execPath, ['scripts/test.mjs', ...shardArgs(shard)], {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, WEAVE_CI_REPORT: report },
   });
   const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));

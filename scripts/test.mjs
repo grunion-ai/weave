@@ -93,8 +93,18 @@ export function run(files, extraArgs = [], opts = {}) {
 export function sandboxHome(dir) {
   const home = join(dir, 'home', '.weave');
   mkdirSync(home, { recursive: true });
-  return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json') };
+  return { WEAVE_KEYSTORE: join(home, 'keystore.json'), WEAVE_DATA: join(home, 'workspace.json'), WEAVE_KEYCHAIN: join(home, 'sandbox.keychain-db') };
 }
+
+const LANE_PRELOAD_SOURCE = `import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+for (const name of ['spawn', 'spawnSync']) {
+  const original = childProcess[name];
+  childProcess[name] = function (file, ...rest) { return original.call(this, file === '/usr/bin/security' ? 'security' : file, ...rest); };
+}
+syncBuiltinESMExports();`;
+const KEYCHAIN_GUARD = `--import=data:text/javascript,${encodeURIComponent(LANE_PRELOAD_SOURCE)}`;
+const guardedOptions = (options = '') => [options, KEYCHAIN_GUARD].filter(Boolean).join(' ');
 
 function recordRetried(files, out, env, extraArgs) {
   out(`# RETRIED and green: ${files.length} file(s) failed the first run and passed the second: ${files.join(' ')}`);
@@ -104,7 +114,7 @@ function recordRetried(files, out, env, extraArgs) {
 
 function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'weave-test-'));
-  const laneEnv = { ...env, ...sandboxHome(dir) };
+  const laneEnv = { ...env, ...sandboxHome(dir), NODE_OPTIONS: guardedOptions(env.NODE_OPTIONS) };
   try {
     let attempt = files;
     for (let i = 0; ; i++) {

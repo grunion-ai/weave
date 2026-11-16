@@ -18,7 +18,7 @@ test('manager (browser): warm browser reused across jobs with fresh contexts', {
   async function run(name, body) {
     const file = join(directory, `${name}.test.mjs`);
     writeFileSync(file, `import test from 'node:test'; import assert from 'node:assert/strict'; import { chromium } from ${JSON.stringify(helper)}; test('isolated connection', async () => { const connection = await chromium.launch(); try { ${body} } finally { await connection.close(); } });`);
-    const child = spawn(process.execPath, ['scripts/test.mjs', file], { cwd: ROOT, env });
+    const child = spawn(process.execPath, ['scripts/test.mjs', file], { cwd: ROOT, env, timeout: 300_000 });
     let output = ''; child.stdout.on('data', d => { output += d; }); child.stderr.on('data', d => { output += d; });
     const code = await new Promise(r => child.on('close', r)); assert.equal(code, 0, output);
     return request({ type: 'status' }, { directory });

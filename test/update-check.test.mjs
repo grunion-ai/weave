@@ -183,7 +183,7 @@ test('the timeout fires with nothing else holding the event loop open', () => {
     await createReleaseCheck({ version: '0.4.51', fetch: hang, timeoutMs: 50 }).refresh();
     console.log(aborted ? 'aborted' : 'never aborted');
   `;
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 120_000 });
   assert.equal(r.status, 0, `the check alone has to keep the loop alive until it times out; exit ${r.status}: ${r.stderr}`);
   assert.equal(r.stdout.trim(), 'aborted', 'the hung request was cut off');
 });

@@ -52,6 +52,7 @@ test('a server booted from the unpacked tarball answers health with the tarball 
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const child = spawn(process.execPath, [join(RELEASE, 'bin', 'weave.js'), 'serve', '--port', '0', '--host', '127.0.0.1', '--data', join(scratch, 'data', 'workspace.db')], {
     cwd: RELEASE, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    timeout: 300_000,
   });
   let log = '';
   child.stdout.on('data', (d) => { log += d; });

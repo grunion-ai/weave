@@ -248,7 +248,7 @@ test('cli: entity create on Users prints the invite link or the token once', () 
   const dir = tempDir('weave-users-cli-');
   try {
     const data = join(dir, 'w.db');
-    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' } });
+    const run = (args) => spawnSync(process.execPath, [BIN, '--data', data, ...args], { encoding: 'utf8', env: { ...process.env, WEAVE_OIDC_ISSUER: ISS, WEAVE_ORIGIN: 'https://weave.example.com', WEAVE_UPDATE_CHECK: 'off' }, timeout: 120_000 });
     const agent = run(['create', 'Users', 'cli-bot', '--values', '{"Kind":"Agent"}']);
     assert.equal(agent.status, 0, agent.stderr);
     assert.match(JSON.parse(agent.stdout).token, /^wv_/);

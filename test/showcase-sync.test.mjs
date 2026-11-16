@@ -95,7 +95,7 @@ test('serve brings an existing docs workspace\'s Showcase up to the current buil
   docs.state.meta.name = 'weave';
   docs.save();
   docs.store.close?.();
-  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' } });
+  const child = spawn('node', [BIN, 'serve', '--port', '0', '--data', join(sub, 'ws.db')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' }, timeout: 300_000 });
   const log = await bootAndStop(child);
   assert.match(log, /Showcase sync: \d+ fields added/);
   const w = new Weave({ path: docsPath });

@@ -60,7 +60,7 @@ test('one script of field writes answers the same on CLI, MCP and HTTP (Feature 
   const data = join(dir, 'ws.db');
   const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry' };
   const cli = (args) => {
-    const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+    const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env, timeout: 120_000 });
     assert.equal(r.status, 0, `weave ${args.join(' ')}: ${r.stderr}`);
     return JSON.parse(r.stdout);
   };
@@ -114,7 +114,7 @@ test('weave\'s own model is served on every door, and the workspace outline stil
   const seeded = new Weave({ path: data });
   seed(seeded);
   const cli = (...args) => {
-    const r = spawnSync(process.execPath, ['--no-warnings', BIN, 'ontology', ...args, '--data', data], { encoding: 'utf8', env });
+    const r = spawnSync(process.execPath, ['--no-warnings', BIN, 'ontology', ...args, '--data', data], { encoding: 'utf8', env, timeout: 120_000 });
     assert.equal(r.status, 0, r.stderr);
     try { return JSON.parse(r.stdout); } catch { return r.stdout; }
   };
@@ -150,7 +150,7 @@ test('one script of space and table writes answers the same on CLI, MCP and HTTP
   const data = join(dir, 'ws.db');
   const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry' };
   const cli = (args) => {
-    const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+    const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env, timeout: 120_000 });
     assert.equal(r.status, 0, `weave ${args.join(' ')}: ${r.stderr}`);
     return JSON.parse(r.stdout);
   };
@@ -254,7 +254,7 @@ async function threeDoors(prefix, { env: extra = {}, seeded = seed, local = fals
   const data = join(dir, 'ws.db');
   const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'registry', ...extra };
   const keystore = (door) => join(dir, `keystore-${door}.json`);
-  const run = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env });
+  const run = (args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args, '--data', data], { encoding: 'utf8', env, timeout: 120_000 });
   const cli = (args) => {
     const r = run(args);
     assert.equal(r.status, 0, `weave ${args.join(' ')}: ${r.stderr}`);
@@ -1174,7 +1174,7 @@ test('no door keeps its own argument reader: pick and pickFlags are gone, the re
 });
 
 test('the CLI help is built from the registry: every entry shows in weave help and weave <command> --help (Feature #179)', () => {
-  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8', timeout: 120_000 });
   const overall = run('help').stdout;
   const lines = cliHelp().split('\n').filter((l) => /^ {2}\S/.test(l));
   assert.ok(lines.length >= COMMANDS.filter((c) => c.cli && !c.cli.swap).length);
@@ -1190,7 +1190,7 @@ test('the CLI help is built from the registry: every entry shows in weave help a
 });
 
 test('the template use synopsis names --into, the flag the command requires (Issue #1767)', () => {
-  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, ['--no-warnings', BIN, ...args], { encoding: 'utf8', timeout: 120_000 });
   assert.match(cliHelp('template'), /^ {2}template use <space> \[--into\] \[--name\]$/m);
   assert.doesNotMatch(cliHelp('template'), /--workspace/);
   assert.match(run('help').stdout, /^ {2}template use <space> \[--into\] \[--name\]$/m);

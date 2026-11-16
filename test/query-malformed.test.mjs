@@ -72,7 +72,7 @@ test('REST query answers 400 naming the path for each malformed document (Issue 
 
 test('CLI query exits with the invalid code and names the path (Issue #1720)', () => {
   const data = join(tempDir('wv-malformed-'), 'w.db');
-  const run = (...args) => spawnSync(process.execPath, ['bin/weave.js', '--data', data, ...args], { encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, ['bin/weave.js', '--data', data, ...args], { encoding: 'utf8', timeout: 120_000 });
   run('space', 'create', 'S');
   run('table', 'create', 'S', 'Task');
   const bad = run('query', 'S/Task', '--where', '[null]');

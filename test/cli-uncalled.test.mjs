@@ -15,7 +15,7 @@ const data = join(dir, 'ws.db');
 const env = { ...process.env, WEAVE_KEYSTORE: join(dir, 'keystore.json'), WEAVE_ACTOR: 'census' };
 
 function run(args, { db = data } = {}) {
-  const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, ...(db ? ['--data', db] : [])], { encoding: 'utf8', env });
+  const r = spawnSync(process.execPath, ['--no-warnings', BIN, ...args, ...(db ? ['--data', db] : [])], { encoding: 'utf8', env, timeout: 120_000 });
   return { code: r.status, out: r.stdout, err: r.stderr, json: () => JSON.parse(r.stdout) };
 }
 const ok = (args, opts) => {

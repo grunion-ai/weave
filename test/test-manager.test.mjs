@@ -14,7 +14,7 @@ for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFi
 stubBrowserDriver(stubRoot);
 execFileSync('git', ['init', '-q'], { cwd: stubRoot });
 const browserCli = args => {
-  const child = spawn(process.execPath, [join(stubRoot, 'scripts/test.mjs'), ...args], { cwd: stubRoot, env });
+  const child = spawn(process.execPath, [join(stubRoot, 'scripts/test.mjs'), ...args], { cwd: stubRoot, env, timeout: 300_000 });
   let out = '';
   child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
   return { child, done: new Promise(resolve => child.on('close', code => resolve({ code, out }))) };
@@ -137,7 +137,7 @@ test('warm daemon survives deletion of its original worktree source', async () =
   const source = join(scratch, 'disposable-manager.mjs');
   const directory = mkdtempSync('/tmp/weave-disposable-');
   writeFileSync(source, readFileSync(join(ROOT, 'scripts/test-manager.mjs')));
-  const daemon = spawn(process.execPath, [realpathSync(source), '--serve', directory], { stdio: 'ignore' });
+  const daemon = spawn(process.execPath, [realpathSync(source), '--serve', directory], { stdio: 'ignore', timeout: 300_000 });
   try {
     let ready = false;
     for (let i = 0; i < 100; i++) { try { await request({ type: 'status' }, { directory }); ready = true; break; } catch {} await new Promise(r => setTimeout(r, 30)); }

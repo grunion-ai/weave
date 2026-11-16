@@ -103,7 +103,7 @@ function shardFromRun(source, runs = 1) {
     writeFileSync(file, source.replaceAll('STATE', JSON.stringify(state)));
     const { NODE_TEST_CONTEXT, ...env } = process.env;
     for (let i = 0; i < runs; i++) {
-      spawnSync(process.execPath, ['--test', `--test-reporter=${resolve(ROOT, 'scripts/ci-test-reporter.mjs')}`, file], { cwd: dir, env: { ...env, WEAVE_CI_REPORT: report }, encoding: 'utf8' });
+      spawnSync(process.execPath, ['--test', `--test-reporter=${resolve(ROOT, 'scripts/ci-test-reporter.mjs')}`, file], { cwd: dir, env: { ...env, WEAVE_CI_REPORT: report }, encoding: 'utf8', timeout: 120_000 });
     }
     const events = readFileSync(report, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
     return { id: 'unit-1', attempt: 1, files: ['example.test.mjs'], summaries: events.filter((e) => e.type === 'summary').map((e) => e.data), cases: events.filter((e) => e.type === 'case').map((e) => e.data) };
