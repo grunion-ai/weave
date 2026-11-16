@@ -33,3 +33,4 @@ brand/
 **/.DS_Store
 **/*.tmp
 **/update-check.json
+graphify-out
