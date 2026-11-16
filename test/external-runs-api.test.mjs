@@ -66,13 +66,51 @@ test('MCP and CLI expose the same persisted run lifecycle', async () => {
   assert.ok(output.includes(made.id));
 });
 
-test('MCP run mutations require a seated editor while observers can list', () => {
+test('MCP run mutations require a seated editor on a workspace with accounts while observers can list', () => {
   const w = new Weave();
-  for (const caller of [{ role: 'observer' }, { role: null }, { role: 'editor', seat: 'No seat' }]) {
-    assert.throws(() => dispatchTool(w, 'weave_runs', { action: 'start', name: 'Denied' }, { caller }), /editor|account|seat/i);
+  w.createAccount({ name: 'owner', role: 'architect' });
+  for (const caller of [{ role: 'observer' }, { role: 'editor', seat: 'No seat' }]) {
+    assert.throws(() => dispatchTool(w, 'weave_runs', { action: 'start', name: 'Denied' }, { caller }), /editor|seat/i);
   }
   const made = dispatchTool(w, 'weave_runs', { action: 'start', name: 'Allowed' }, { caller: { role: 'editor' } });
   assert.equal(dispatchTool(w, 'weave_runs', { action: 'list' }, { caller: { role: 'observer' } })[0].id, made.id);
+});
+
+test('a workspace with no accounts lets its local owner start and update runs on REST and MCP over HTTP alike (Issue #1773)', async () => {
+  const w = new Weave({ path: join(tempDir('run-owner-'), 'workspace.db') });
+  const { server } = await startServer(w, { port: 0, mail: null });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = async (method, path, body) => {
+    const res = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, data: await res.json() };
+  };
+  const rpc = async (args) => (await call('POST', '/api/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_runs', arguments: args } })).data.result;
+  try {
+    const rest = await call('POST', '/api/runs', { name: 'Over REST' });
+    assert.equal(rest.status, 201);
+    assert.equal((await call('PATCH', `/api/runs/${rest.data.id}`, { status: 'running' })).status, 200);
+    const started = await rpc({ action: 'start', name: 'Over MCP', verbose: true });
+    assert.notEqual(started.isError, true, started.content[0].text);
+    const id = w.listRuns().find((r) => r.name === 'Over MCP').id;
+    const updated = await rpc({ action: 'update', run: id, patch: { status: 'running' } });
+    assert.notEqual(updated.isError, true, updated.content[0].text);
+    assert.equal(w.listRuns().find((r) => r.id === id).status, 'running');
+    const listed = await rpc({ action: 'list' });
+    assert.notEqual(listed.isError, true);
+    const managed = (await call('POST', '/api/mcp', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'weave_keys', arguments: { action: 'list' } } })).data.result;
+    assert.equal(managed.isError, true, 'keys still need an account on this workspace');
+    assert.match(managed.content[0].text, /needs an account/);
+    assert.equal((await call('GET', '/api/keys')).status, 401, 'and over REST');
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('a workspace with accounts refuses MCP run writes to a caller with no token, as REST does (Issue #1773)', async () => {
+  const f = await fixture();
+  try {
+    assert.equal((await f.call('POST', '/api/runs', { name: 'No' }, null)).status, 401);
+    assert.equal((await f.call('POST', '/api/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_runs', arguments: { action: 'start', name: 'No' } } }, null)).status, 401);
+    assert.equal(f.w.listRuns().length, 0);
+  } finally { f.server.closeAllConnections(); await new Promise(resolve => f.server.close(resolve)); }
 });
 
 test('the server sweep sends timeout mail even when schedule processing fails', { timeout: 10000 }, async (t) => {

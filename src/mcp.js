@@ -422,7 +422,7 @@ export function dispatchTool(weave, name, args = {}, { caller = null } = {}) {
     if ((!admits(caller, row) && !own) || (row.minRole === 'architect' && weave.state.meta.requireAuth && !caller.role)) throw needs(name, row, caller);
     if (caller.seat && row.minRole !== 'observer' && !own) throw new Error(caller.seat);
   }
-  if (caller && !caller.role && (name === 'weave_keys' || (name === 'weave_runs' && row.minRole !== 'observer'))) throw new WeaveError(`${label(name, row)} needs an account on this workspace`, 'forbidden');
+  if (caller && !caller.role && row?.account) throw new WeaveError(`${label(name, row)} needs an account on this workspace`, 'forbidden');
   if (caller && name === 'weave_forms' && ((weave.state.meta.requireAuth && !caller.role) || !mayAdminister(weave, caller.role))) throw new Error('Form management needs an architect token on this workspace');
   weave.maybeRefresh?.();
   ROW_ARGS[name]?.(args);
