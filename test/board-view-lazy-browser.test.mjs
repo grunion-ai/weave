@@ -67,7 +67,7 @@ if (s) {
   test('a board whose code fails to load paints the route error with the reason, and the app keeps routing (Issue #1041)', async () => {
     const page = await browser.newPage();
     try {
-      await page.route(`**${FILE}`, (r) => r.abort());
+      await page.route(/\/board-view\.js(\?|$)/, (r) => r.abort());
       await page.goto(`${base}/#/table/${board.id}`, { waitUntil: 'networkidle' });
       await page.locator('#main .wv-route-error-msg', { hasText: 'The board did not load' }).waitFor();
       await page.evaluate((id) => { location.hash = `#/table/${id}`; }, grid.id);
