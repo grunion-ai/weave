@@ -142,7 +142,7 @@ const TOOL_ARGS = {
 
 const params = (c, s) => ({ ...s, ...Object.fromEntries(Object.entries(PARAMS[c.name] ?? {}).map(([k, v]) => [k, s[v] ?? v])) });
 const fill = (path, p) => path.replace(/:([a-z]+)\*?\??/gi, (_, k) => encodeURIComponent(p[k] ?? 'x'));
-const spaceBound = (c) => c.name === 'entity.bulk' || /^\/api\/(?:tables|spaces|entities)\/:/.test(c.http?.path ?? '');
+const spaceBound = (c) => c.bound ?? (c.name === 'entity.bulk' || /^\/api\/(?:tables|spaces|entities)\/:/.test(c.http?.path ?? ''));
 const keyed = (c) => c.name.startsWith('key.');
 const via = (c) => (c.tool ? c.tool.name : COMMANDS.find((x) => x.tool && x.toolUse?.(TOOL_ARGS[c.name] ?? {}) === c.name)?.tool.name);
 
@@ -362,4 +362,29 @@ test('an HTTP refusal names the route and the role that passes it, never the sch
     const res = await call(method, path, { token: tokens[who], body });
     assert.deepEqual([res.status, res.json?.error], [status, error], `${who} ${method} ${path}`);
   }
+});
+
+test('a space architect creates a table in its own space on both doors, and none in a space it does not run (Issue #1774)', async () => {
+  const { w, tokens, call } = world();
+  w.createSpace({ name: 'Sales' });
+  const lead = w.createAccount({ name: 'lead', role: 'editor' });
+  w.setSpaceMember('Ops', 'lead', { role: 'architect' });
+  const opsBot = tokens.token;
+  const rpc = async (token, args) => (await call('POST', '/api/mcp', { token, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_create_table', arguments: args } } })).json.result;
+  for (const [who, token] of [['space architect', lead.token], ['Ops token', opsBot]]) {
+    const overHttp = await call('POST', '/api/tables', { token, body: { space: 'Ops', name: `Http ${who}` } });
+    assert.equal(overHttp.status, 201, `${who} creates a table in Ops over HTTP: ${JSON.stringify(overHttp.json)}`);
+    const overMcp = await rpc(token, { space: 'Ops', name: `Mcp ${who}` });
+    assert.notEqual(overMcp.isError, true, `${who} creates a table in Ops over MCP: ${overMcp.content[0].text}`);
+    const hidden = who === 'Ops token';
+    assert.equal((await call('POST', '/api/tables', { token, body: { space: 'Sales', name: `No ${who}` } })).status, hidden ? 404 : 403, `${who} creates no table in Sales over HTTP`);
+    const refused = await rpc(token, { space: 'Sales', name: `No mcp ${who}` });
+    assert.equal(refused.isError, true, `${who} creates no table in Sales over MCP`);
+    assert.equal(refused.structuredContent?.code, hidden ? 'not-found' : 'forbidden', refused.content[0].text);
+  }
+  const editorRefused = await call('POST', '/api/tables', { token: tokens.editor, body: { space: 'Ops', name: 'Editor' } });
+  assert.equal(editorRefused.status, 403, 'a plain editor creates no table');
+  assert.equal(refusedOverMcp(await rpc(tokens.editor, { space: 'Ops', name: 'Editor' })), true, 'a plain editor creates no table over MCP');
+  assert.deepEqual(w.listTables(w.getSpace('Sales').id).map((t) => t.name), []);
+  assert.deepEqual(w.listTables(w.getSpace('Ops').id).map((t) => t.name).filter((n) => /^(?:Http|Mcp|Editor)/.test(n)).sort(), ['Http Ops token', 'Http space architect', 'Mcp Ops token', 'Mcp space architect']);
 });

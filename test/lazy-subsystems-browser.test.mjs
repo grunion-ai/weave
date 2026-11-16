@@ -211,7 +211,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     try {
       const fetched = watch(page);
-      await page.route('**/date-picker.js', async (route) => { await new Promise((r) => setTimeout(r, 400)); await route.continue(); });
+      await page.route(/\/date-picker\.js(\?|$)/, async (route) => { await new Promise((r) => setTimeout(r, 400)); await route.continue(); });
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
       const text = page.locator(`tr[data-eid="${big.id}"] td[data-field="Due"] input.date-text`);
       await text.focus();

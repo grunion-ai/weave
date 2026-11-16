@@ -198,12 +198,12 @@ if (s) {
       const page = await b.newPage(profile);
       let release;
       const held = new Promise((r) => { release = r; });
-      await page.route('**/space-launcher-view.js', async (route) => { await held; await route.continue(); });
+      await page.route(/\/space-launcher-view\.js(\?|$)/, async (route) => { await held; await route.continue(); });
       await page.goto(`${base}/#/`);
       await painted(page, '#main > .view-header');
       await page.evaluate((id) => { location.hash = `#/table/${id}`; }, ids.deal);
       await page.waitForFunction(() => document.querySelector('#main .table-filter-btn'));
-      const loaded = page.waitForResponse('**/space-launcher-view.js');
+      const loaded = page.waitForResponse(/\/space-launcher-view\.js(\?|$)/);
       release();
       await loaded;
       await page.waitForLoadState('networkidle');

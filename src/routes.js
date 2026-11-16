@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
@@ -426,12 +427,12 @@ async function buildStartHelpers(c, fromRequest) {
   const { cookies, hostOrigin, path, weave, wsPrefix } = fromRequest;
   const startReturn = (back) => sameOriginPath(back, originFor(rx), null) === back && (WORKSPACE_LINK.test(back) || START_LINK.test(back) || inviteLink(back));
   const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
-  const findWorkspaces = (logins) => {
+  const findWorkspaces = (logins, { touch = true } = {}) => {
     const all = hub.entries();
     const live = all.filter(([, w]) => !w.state.meta.deletedAt);
-    const accountFor = (w, me) => w.accountForIdentity(me);
+    const accountFor = (w, me) => w.accountForIdentity(me, { touch });
     const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
-    const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
+    const label = (me) => me.email ?? live.map(([, w]) => accountFor(w, me)?.name).find(Boolean) ?? me.subject;
     const title = (name, w) => w.state.meta.title ?? name;
     const seenOn = (w, account) => w.listSessions(account.id)[0]?.lastSeenAt ?? null;
     const logoOf = (name, w) => (w.state.meta.logo ? `/api/start/logo/${encodeURIComponent(name)}?v=${w.state.meta.logo.id.slice(0, 8)}` : null);
@@ -443,7 +444,7 @@ async function buildStartHelpers(c, fromRequest) {
           return { kind: 'workspace', name, id: w.state.meta.id, title: title(name, w), login: label(me), host: baseDomain ? `${name.toLowerCase()}.${baseDomain}` : null, role: Weave.roleName(account.role), logo: logoOf(name, w), seenAt: seenOn(w, account), open: `/api/start/open/${encodeURIComponent(name)}` };
         })
         .sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '')),
-      ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
+      ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !accountFor(w, me))
         .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
     ];
     const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
@@ -662,10 +663,12 @@ async function buildAccessHelpers(c, fromRequest) {
   const requestActor = role ? actorForRequest : 'anonymous';
   const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
   const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
+  const bodyScoped = !!role && !share && matchRoute(rx.method, path)?.cmd.bound === true;
   const cap = startDoor || targetHidden ? null
     : targetSpace ? spaceRole(weave, viewer, weave.state.spaces[targetSpace])
       : bulkRows ? 'editor'
-        : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+        : bodyScoped ? topRole(weave, viewer)
+          : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
   if (cap && cap !== 'architect') {
     const m2 = rx.method;
     const hit = matchRoute(m2, path);
@@ -1526,7 +1529,10 @@ async function mailKeyAndIntegrationRoutes(c, fromRequest) {
   if (route === 'POST /api/mcp') {
     const msgs = Array.isArray(body) ? body : [body];
     const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-    const caller = { role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+    const opened = msgs.some((msg) => msg?.method === 'initialize');
+    const sent = String(rx.header('mcp-session-id') ?? '');
+    const session = !opened && /^[\x21-\x7e]{1,128}$/.test(sent) ? sent : randomUUID();
+    const caller = { session, role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
     const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
     if (viewers.tokenWrite) {
       for (const msg of msgs) {
@@ -1537,7 +1543,7 @@ async function mailKeyAndIntegrationRoutes(c, fromRequest) {
     }
     if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
     if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
-    return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
+    return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store', ...(opened ? { 'Mcp-Session-Id': session } : {}) });
   }
   if (route === 'POST /api/bulk' && role === 'editor') {
     const { ids, op, ...params } = body ?? {};
@@ -1624,7 +1630,7 @@ async function registeredAndSpaceRoutes(c, fromRequest) {
     actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
     remirror, roleOn, rx, scheme, share, useTemplateInto,
   } = c;
-  const { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix } = fromRequest;
+  const { findWorkspaces, heldStart, member, ownSession, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix } = fromRequest;
   let m;
   if (registered?.cmd.http.serve) {
     const serveFile = (id) => {
@@ -1661,18 +1667,19 @@ async function registeredAndSpaceRoutes(c, fromRequest) {
     return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
   }
   if (registered) {
+    const logins = oidc ? [...(ownSession(weave)?.identities ?? []), ...((await heldStart())?.logins ?? [])] : [];
     const registryCtx = {
       viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, issuer: oidc?.issuer, remirror: () => remirror(weave), mailInvite, start: oidc ? `${startRoot}/start` : undefined,
       workspaces: {
         list: () => {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
-          const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
+          const found = logins.length ? findWorkspaces(logins, { touch: false }) : null;
+          const heldByAccount = (x) => { const w = hub.get(x.name); return !!found && !!w && !w.state.meta.deletedAt && !isDocsWorkspace(w) && !!found.accountIn(w); };
           const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
-          return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+          return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldByAccount(x))
             .sort((a, b) => rank(a) - rank(b) || 0)
             .map((x) => ({
-              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent(`/api/start/open/${encodeURIComponent(x.name)}`)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
             }));
         },
@@ -2238,7 +2245,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const hit = await registeredAndSpaceRoutes({
           actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
           remirror, roleOn, rx, scheme, share, useTemplateInto,
-        }, { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix });
+        }, { findWorkspaces, heldStart, member, ownSession, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix });
           if (hit !== NEXT) return hit;
         }
 

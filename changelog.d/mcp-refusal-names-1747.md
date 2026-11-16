@@ -1,0 +1,1 @@
+- An MCP refusal no longer quotes a stored space, table or field name outside the `<weave_data>` boundary. A name the caller did not send comes inside `<weave_data>` within the refusal, and the caller's own strings and weave's steering text stay bare (Issue #1747).

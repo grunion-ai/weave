@@ -49,6 +49,42 @@ function storedSource(weave, name, args, result) {
   return { table, entity: args.entity ?? null, field: args.doc ?? args.field ?? null };
 }
 
+const NAME_EDGE = '[\\p{L}\\p{N}_]';
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function sentNames(args) {
+  let inner = args.args;
+  try { if (typeof inner === 'string') inner = JSON.parse(inner); } catch {}
+  const own = sentText({ ...args, args: inner }, new Set());
+  for (const s of [...own]) for (const part of s.split('/')) own.add(part);
+  return own;
+}
+function storedNames(weave, own) {
+  const names = new Set();
+  const keep = (x) => { if (!x.system && x.name && !own.has(x.name)) names.add(seal(x.name)); };
+  for (const sp of Object.values(weave.state.spaces)) keep(sp);
+  for (const t of Object.values(weave.state.tables)) { keep(t); for (const f of Object.values(t.fields)) keep(f); }
+  return names;
+}
+function ownSpans(text, own) {
+  const spans = [];
+  for (const s of own) {
+    const sealed = seal(s);
+    if (!sealed) continue;
+    for (let i = text.indexOf(sealed); i !== -1; i = text.indexOf(sealed, i + 1)) spans.push([i, i + sealed.length]);
+  }
+  return spans;
+}
+function sealRefusal(weave, args, res) {
+  let error = seal(res.structuredContent.error);
+  const own = sentNames(args);
+  const names = [...storedNames(weave, own)].filter((n) => error.includes(n)).sort((x, y) => y.length - x.length);
+  if (names.length) {
+    const spans = ownSpans(error, own);
+    const sent = (at, n) => spans.some(([from, to]) => from <= at && at + n.length <= to);
+    error = error.replace(new RegExp(`(?<!${NAME_EDGE})(?:${names.map(escapeRe).join('|')})(?!${NAME_EDGE})`, 'gu'), (n, at) => (sent(at, n) ? n : `<weave_data>${n}</weave_data>`));
+  }
+  return { ...res, content: [{ type: 'text', text: `Error: ${error}` }], structuredContent: { ...res.structuredContent, error } };
+}
 export const COMPACT_TOOLS = new Set([
   'weave_create_entity', 'weave_update_entity', 'weave_delete_entity', 'weave_restore_entity',
   'weave_set_state', 'weave_link', 'weave_unlink',
@@ -442,12 +478,12 @@ export function handleMcpMessage(weave, msg, { version = VERSION, caller = null,
       case 'tools/list':
         return reply({ tools: listTools(tools).filter((t) => visible(caller, t.name)) });
       case 'tools/call': {
+        const args = params.arguments ?? {};
         try {
-          const args = params.arguments ?? {};
           const result = callTool(weave, params.name, args, caller);
           return reply(textResult(result, storedSource(weave, params.name, args, result)));
         } catch (err) {
-          return reply(mcpToolError(err));
+          return reply(sealRefusal(weave, args, mcpToolError(err)));
         }
       }
       default:

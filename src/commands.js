@@ -218,19 +218,19 @@ const docFieldOf = (w, entity, ref) => {
   const f = ref == null ? w.descriptionField(db) ?? w.documentFields(db)[0] : w.findField(db, ref);
   return f?.type === 'document' ? f : null;
 };
-const readKey = (w, entity, f) => `${w.actor}\n${w.getEntity(entity).id}\n${f.id}`;
-function noteAgentRead(w, entity, fields) {
+const readKey = (w, ctx, entity, f) => `${w.actor}\n${ctx?.caller?.session ?? ''}\n${w.getEntity(entity).id}\n${f.id}`;
+function noteAgentRead(w, ctx, entity, fields) {
   if (!agentReads.has(w)) agentReads.set(w, new Map());
   const reads = agentReads.get(w);
   for (const f of fields) {
-    const key = readKey(w, entity, f);
+    const key = readKey(w, ctx, entity, f);
     reads.delete(key);
     reads.set(key, w.docBase(entity, f.id));
     if (reads.size > AGENT_READS_CAP) reads.delete(reads.keys().next().value);
   }
 }
-const agentRead = (w, entity, f) => agentReads.get(w)?.get(readKey(w, entity, f)) ?? null;
-const agentBase = (w, entity, f, text) => (w.getDoc(entity, f.id) === text ? null : agentRead(w, entity, f) ?? EMPTY_DOC_BASE);
+const agentRead = (w, ctx, entity, f) => agentReads.get(w)?.get(readKey(w, ctx, entity, f)) ?? null;
+const agentBase = (w, ctx, entity, f, text) => (w.getDoc(entity, f.id) === text ? null : agentRead(w, ctx, entity, f) ?? EMPTY_DOC_BASE);
 function agentStale(w, entity, f, read) {
   const e = w.getEntity(entity);
   const base = w.docBase(e.id, f.id);
@@ -238,13 +238,13 @@ function agentStale(w, entity, f, read) {
   return Object.assign(new WeaveError(`${why}, so nothing was written. Read it again with weave_get_doc or weave_get_entity and redo your edit, or replace what it holds now with weave_set_doc and base "${base}".`, 'stale'),
     { detail: { base, revision: w.entityRevision(e.id), modifiedBy: w.actorName(e.modifiedBy ?? null) } });
 }
-function checkAgentDocs(w, entity, values) {
+function checkAgentDocs(w, ctx, entity, values) {
   const db = w.state.tables[w.getEntity(entity).dbId];
   for (const [key, text] of Object.entries(values ?? {})) {
     const f = w.findField(db, key);
     if (f?.type !== 'document') continue;
-    const base = agentBase(w, entity, f, text);
-    if (base != null && base !== w.docBase(entity, f.id)) throw agentStale(w, entity, f, agentRead(w, entity, f) != null);
+    const base = agentBase(w, ctx, entity, f, text);
+    if (base != null && base !== w.docBase(entity, f.id)) throw agentStale(w, entity, f, agentRead(w, ctx, entity, f) != null);
   }
 }
 const SET_DOC_TOOL = {
@@ -583,7 +583,7 @@ export const COMMANDS = [
   {
     name: 'table.create',
     engine: ['createTable'],
-    writes: 'schema', minRole: 'architect', annotations: ADD,
+    writes: 'schema', minRole: 'architect', annotations: ADD, bound: true,
     tool: {
       name: 'weave_create_table',
       description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
@@ -1103,7 +1103,7 @@ export const COMMANDS = [
       if (dedupe != null && typeof dedupe !== 'boolean') throw new WeaveError('dedupe takes true or false', 'invalid');
       if (dedupe) refuseDuplicate(w, a.db, input, ctx);
       const made = w.createEntity(a.db, input, zoned(ctx));
-      if (ctx?.door === 'mcp') noteAgentRead(w, made.id, w.documentFields(w.state.tables[made.dbId]));
+      if (ctx?.door === 'mcp') noteAgentRead(w, ctx, made.id, w.documentFields(w.state.tables[made.dbId]));
       return withSecret(w, made.id, ctx);
     },
   },
@@ -1120,7 +1120,7 @@ export const COMMANDS = [
     http: { method: 'GET', path: '/api/entities/:entity' },
     run: (w, a, ctx) => {
       const e = w.readEntity(a.entity, zoned(ctx));
-      if (ctx?.door === 'mcp') noteAgentRead(w, e.id, w.documentFields(w.state.tables[e.dbId]));
+      if (ctx?.door === 'mcp') noteAgentRead(w, ctx, e.id, w.documentFields(w.state.tables[e.dbId]));
       return e;
     },
   },
@@ -1142,7 +1142,7 @@ export const COMMANDS = [
     },
     run: (w, a, ctx) => {
       const expectedRevision = ctx?.expectedRevision ?? null;
-      if (ctx?.door === 'mcp') checkAgentDocs(w, a.entity, a.values);
+      if (ctx?.door === 'mcp') checkAgentDocs(w, ctx, a.entity, a.values);
       const { touched } = w.touching(() => w.updateEntity(a.entity, a.values, { expectedRevision, ...zoned(ctx) }));
       return { ...w.readEntity(a.entity, zoned(ctx)), affected: w.affectedBy(a.entity, touched) };
     },
@@ -1297,7 +1297,7 @@ export const COMMANDS = [
     http: { method: 'GET', path: '/api/entities/:entity/doc', query: ['field'], result: (doc, a) => ({ field: a.field ?? null, doc }) },
     run: (w, a, ctx) => {
       const doc = w.getDoc(a.entity, a.field ?? null);
-      if (ctx?.door === 'mcp') noteAgentRead(w, a.entity, [docFieldOf(w, a.entity, a.field ?? null)]);
+      if (ctx?.door === 'mcp') noteAgentRead(w, ctx, a.entity, [docFieldOf(w, a.entity, a.field ?? null)]);
       return doc;
     },
   },
@@ -1318,9 +1318,9 @@ export const COMMANDS = [
     run: (w, a, ctx) => {
       const f = ctx?.door === 'mcp' && a.markdown != null ? docFieldOf(w, a.entity, a.field ?? null) : null;
       try {
-        w.setDoc(a.entity, a.markdown, a.field ?? null, { base: a.base ?? (f ? agentBase(w, a.entity, f, a.markdown) : null) });
+        w.setDoc(a.entity, a.markdown, a.field ?? null, { base: a.base ?? (f ? agentBase(w, ctx, a.entity, f, a.markdown) : null) });
       } catch (err) {
-        throw f && err?.code === 'stale' ? agentStale(w, a.entity, f, a.base != null || agentRead(w, a.entity, f) != null) : err;
+        throw f && err?.code === 'stale' ? agentStale(w, a.entity, f, a.base != null || agentRead(w, ctx, a.entity, f) != null) : err;
       }
       return { ok: true, length: w.getDoc(a.entity, a.field ?? null).length, ...(f ? { base: w.docBase(a.entity, f.id) } : {}) };
     },

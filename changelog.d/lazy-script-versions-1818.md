@@ -1,0 +1,1 @@
+- Every script the app loads on demand (the date picker, Command-K, settings, the board, the activity log and eight more) now loads by its versioned name, so a browser that has fetched one keeps it cached instead of asking the server again on every load (Issue #1818).

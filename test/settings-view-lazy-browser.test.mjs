@@ -70,7 +70,7 @@ if (s) {
   test('a Settings page that fails to load says so and leaves the app running (Issue #1041)', async () => {
     const page = await browser.newPage();
     try {
-      await page.route(`**${FILE}`, (r) => r.abort());
+      await page.route(/\/settings-view\.js(\?|$)/, (r) => r.abort());
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#ws-new svg');
       await page.evaluate(() => { location.hash = '#/settings'; });
