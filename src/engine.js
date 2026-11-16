@@ -1630,6 +1630,7 @@ export class Weave {
     this.#keyStore = keyStore;
     Object.defineProperty(this, 'keyStore', { get: () => this.#keyStore ?? openKeyStore({ path: this.keystorePath, env: this.keystoreEnv }) });
     this.store = store ?? new Store(path);
+    this.store.onRollback = (err, loaded) => this.#rolledBack(err, loaded);
     const loaded = this.store.load();
     if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
       throw new WeaveError(`'${path}' is not a Weave workspace file`, 'invalid');
@@ -2024,37 +2025,37 @@ export class Weave {
     if (HELD) this.#held = true;
     else {
       const pending = this.#detachedStorage;
-      try {
-        if (pending) for (const [id, bytes] of pending.blobs) {
-          const path = this.#blobPath(id);
-          if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
-          if (existsSync(path)) continue;
-          writeFileDurable(path, bytes);
-        }
-        this.store.batch(() => {
-          if (pending) {
-            for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
-            for (const group of pending.revisions) {
-              const restored = new Map();
-              const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
-              for (const revision of group.rows) {
-                const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
-                const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
-                restored.set(revision.seq, seq);
-              }
+      if (pending) for (const [id, bytes] of pending.blobs) {
+        const path = this.#blobPath(id);
+        if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
+        if (existsSync(path)) continue;
+        writeFileDurable(path, bytes);
+      }
+      this.store.batch(() => {
+        if (pending) {
+          for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
+          for (const group of pending.revisions) {
+            const restored = new Map();
+            const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
+            for (const revision of group.rows) {
+              const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
+              const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
+              restored.set(revision.seq, seq);
             }
           }
-          if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
-        });
-      } catch (err) {
-        if (this.store.batching || pending) throw err;
-        this.#adoptRolledBack();
-        this.#forgetPending();
-        throw notSaved(err);
-      }
+        }
+        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
+      });
       this.#forgetPending();
     }
     this.#schemaVersion = null;
+  }
+
+  #rolledBack(err, loaded) {
+    if (this.#detachedStorage) return err;
+    this.#adoptRolledBack(loaded);
+    this.#forgetPending();
+    return notSaved(err);
   }
 
   #forgetPending() {
@@ -8317,7 +8318,7 @@ export class Weave {
     const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
     if (!list.length) throw new WeaveError('ids is required: the records to act on', 'invalid');
     if (!BULK_OPS.includes(op)) throw new WeaveError(`Unknown bulk op '${op}' (${BULK_OPS.join(', ')})`, 'invalid');
-    return this.#batched(() => this.#bulkRows(list, op, params));
+    return this.store.batch(() => this.#bulkRows(list, op, params));
   }
 
   #bulkRows(list, op, params) {
@@ -8828,53 +8829,29 @@ export class Weave {
     if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? '') || !['append', 'state', 'close'].includes(operation)) throw new WeaveError('A conditional write requires expectedRevision and an append, state or close operation', 'invalid');
     if (operation === 'close' && !stateField) throw new WeaveError('A close requires stateField naming the workflow field it moves', 'invalid');
     if (operation === 'close' && (state == null || state === '')) throw new WeaveError('A close requires the state it moves to; clear a workflow field with the state operation', 'invalid');
-    let attempted = false;
-    try {
-      return this.store.batch(() => {
-        this.maybeRefresh();
-        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Record revision changed; read it again before writing', 'conflict');
-        if (operation === 'state') {
-          attempted = true;
-          this.setState(id, field, state);
-        } else {
-          if (typeof markdown !== 'string' || !markdown.trim()) throw new WeaveError('An append requires nonempty markdown', 'invalid');
-          attempted = true;
-          this.appendDoc(id, markdown, field);
-          if (operation === 'close') this.setState(id, stateField, state);
-        }
-        return this.readEntity(id);
-      });
-    } catch (err) {
-      if (attempted) this.#adoptRolledBack();
-      throw err;
-    }
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('Record revision changed; read it again before writing', 'conflict');
+      if (operation === 'state') {
+        this.setState(id, field, state);
+      } else {
+        if (typeof markdown !== 'string' || !markdown.trim()) throw new WeaveError('An append requires nonempty markdown', 'invalid');
+        this.appendDoc(id, markdown, field);
+        if (operation === 'close') this.setState(id, stateField, state);
+      }
+      return this.readEntity(id);
+    });
   }
 
   #updateAtRevision(id, valuesByName, expectedRevision) {
-    let attempted = false;
-    try {
-      return this.store.batch(() => {
-        this.maybeRefresh();
-        if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This record changed since you read it; nothing was written', 'stale');
-        attempted = true;
-        return this.updateEntity(id, valuesByName);
-      });
-    } catch (err) {
-      if (attempted) this.#adoptRolledBack();
-      throw err;
-    }
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      if (this.entityRevision(id) !== expectedRevision) throw new WeaveError('This record changed since you read it; nothing was written', 'stale');
+      return this.updateEntity(id, valuesByName);
+    });
   }
 
-  #batched(fn) {
-    try {
-      return this.store.batch(fn);
-    } catch (err) {
-      this.#adoptRolledBack();
-      throw err;
-    }
-  }
-
-  #adoptRolledBack(loaded = this.store.reload()) {
+  #adoptRolledBack(loaded) {
     if (!loaded) return;
     this.state = loaded;
     this.#schemaVersion = null;
@@ -9345,18 +9322,11 @@ export class Weave {
   }
 
   #setDocAtBase(entityId, markdown, fieldRef, base) {
-    let attempted = false;
-    try {
-      return this.store.batch(() => {
-        this.maybeRefresh();
-        if (this.docBase(entityId, fieldRef) !== base) throw new WeaveError('This document changed since you opened it; nothing was written', 'stale');
-        attempted = true;
-        return this.setDoc(entityId, markdown, fieldRef);
-      });
-    } catch (err) {
-      if (attempted) this.#adoptRolledBack();
-      throw err;
-    }
+    return this.store.batch(() => {
+      this.maybeRefresh();
+      if (this.docBase(entityId, fieldRef) !== base) throw new WeaveError('This document changed since you opened it; nothing was written', 'stale');
+      return this.setDoc(entityId, markdown, fieldRef);
+    });
   }
 
   appendDoc(entityId, markdown, fieldRef = null) {
@@ -11656,7 +11626,7 @@ export class Weave {
       if (!f || ['lookup', 'rollup', 'formula'].includes(f.type)) return null;
       return f;
     });
-    return this.#batched(() => this.#importRows(db, rows, writable, ignored));
+    return this.store.batch(() => this.#importRows(db, rows, writable, ignored));
   }
 
   #importRows(db, rows, writable, ignored = []) {

@@ -21,7 +21,8 @@ export const ERROR_CONTRACT = Object.freeze({
 
 export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
 
-export const notSaved = (err) => err instanceof WeaveError || storageFull(err)
+const storageFailure = (err) => err?.code === 'ERR_SQLITE_ERROR' || typeof err?.syscall === 'string';
+export const notSaved = (err) => err instanceof WeaveError || storageFull(err) || !storageFailure(err)
   ? err
   : new WeaveError(`Not saved: the database refused the write (${err?.errstr ?? err?.message ?? err}). Nothing changed; try again.`, 'not-saved');
 const codeOf = (err) => {
