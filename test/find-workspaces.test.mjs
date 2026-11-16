@@ -129,39 +129,93 @@ test('open: the start page opens a workspace with whichever held login has the a
   } finally { s.stop(); }
 });
 
-test('rail: a workspace host lists the held workspaces from the rail cookie as chips that open through the start page', async () => {
+const openAs = async (s, sub, slug, held) => {
+  const login = await s.signInAtStart({ sub }, held);
+  const open = await s.apex('GET', `/api/start/open/${slug}`, { cookie: login.cookie });
+  const landed = await s.follow(open.headers.location);
+  return { start: login.cookie, session: cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]) };
+};
+const openAcme = async (s) => (await openAs(s, 'user_kyle', 'acme')).session;
+const signInLink = (slug) => `http://weave.test/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent(`/api/start/open/${slug}`)}`;
+
+test('rail: the grey tiles come from the signed-in account, so a fresh browser shows them from the first sign-in and a stale rail cookie adds nothing (Issue #1821)', async () => {
   const s = await serve();
   try {
-    const eve = await s.signInAtStart({ sub: 'user_eve' });
-    const open = await s.apex('GET', '/api/start/open/acme', { cookie: eve.cookie });
-    const landed = await s.follow(open.headers.location);
-    const session = cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]);
+    const { session } = await openAs(s, 'user_kyle', 'acme');
     const acme = s.at('acme.weave.test');
 
-    const bare = (await acme('GET', '/api/workspaces', { cookie: session })).json();
-    assert.deepEqual(bare.map((w) => w.name).sort(), ['acme', 'weave'], 'without a rail cookie this host knows only its own session');
-
-    const list = (await acme('GET', '/api/workspaces', { cookie: `${session}; wv_rail=other,ghost,acme,weave` })).json();
-    assert.deepEqual(list.map((w) => w.name).sort(), ['acme', 'other', 'weave']);
-    const other = list.find((w) => w.name === 'other');
-    assert.equal(other.held, true, 'a rail entry this host cannot verify is marked held');
-    assert.equal(other.open, 'http://weave.test/api/start/open/other', 'its chip opens through the apex start page');
-    assert.equal(other.host, 'http://other.weave.test/');
-    assert.deepEqual(Object.keys(other).sort(), ['held', 'host', 'id', 'name', 'open'], 'a held entry names the workspace and nothing it holds');
+    const list = (await acme('GET', '/api/workspaces', { cookie: session })).json();
+    assert.deepEqual(list.map((w) => w.name).sort(), ['Net', 'acme', 'weave'], 'the account also opens Net, so Net shows with no rail cookie at all');
+    const net = list.find((w) => w.name === 'Net');
+    assert.equal(net.held, true, 'a workspace the account opens with no live session here is held');
+    assert.equal(net.open, signInLink('Net'), 'its tile opens through the apex sign-in');
+    assert.equal(net.host, 'http://net.weave.test/');
+    assert.deepEqual(Object.keys(net).sort(), ['held', 'host', 'id', 'name', 'open'], 'a held entry names the workspace and nothing it holds');
     assert.equal(list.find((w) => w.name === 'acme').held, undefined, 'a workspace this host verifies is not held');
-    assert.equal(list.find((w) => w.name === 'ghost'), undefined, 'an unknown rail entry is dropped');
+
+    const railed = (await acme('GET', '/api/workspaces', { cookie: `${session}; wv_rail=other,ghost,acme,weave` })).json();
+    assert.deepEqual(railed.map((w) => w.name).sort(), ['Net', 'acme', 'weave'], 'a rail cookie naming a workspace the account cannot open adds no tile');
+
+    const second = await openAs(s, 'user_kyle', 'Net');
+    const fromNet = (await s.at('net.weave.test')('GET', '/api/workspaces', { cookie: second.session })).json();
+    assert.deepEqual(fromNet.map((w) => w.name).sort(), ['Net', 'acme', 'weave'], 'the same person sees the same tiles from another workspace in another fresh browser');
+    assert.equal(fromNet.find((w) => w.name === 'acme').held, true);
 
     const meta = (await acme('GET', '/api/workspace', { cookie: session })).json();
     assert.equal(meta.start, 'http://weave.test/start', 'the workspace page knows where the start page is');
   } finally { s.stop(); }
 });
 
-const openAcme = async (s) => {
-  const eve = await s.signInAtStart({ sub: 'user_eve' });
-  const open = await s.apex('GET', '/api/start/open/acme', { cookie: eve.cookie });
-  const landed = await s.follow(open.headers.location);
-  return cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]);
-};
+test('rail: a second login in the same browser never sees the workspaces the first login opened (Issue #1821)', async () => {
+  const s = await serve();
+  try {
+    const eve = await openAs(s, 'user_eve', 'acme');
+    const dana = await openAs(s, 'user_dana', 'other', eve.start);
+    const other = s.at('other.weave.test');
+    const list = (await other('GET', '/api/workspaces', { cookie: `${dana.session}; wv_rail=acme,other` })).json();
+    assert.deepEqual(list.map((w) => w.name).sort(), ['other', 'weave'], 'acme, opened by eve, does not reach dana');
+    assert.equal(list.some((w) => w.held), false);
+  } finally { s.stop(); }
+});
+
+test('rail: on one host the logins held at the start page add their workspaces too (Issue #1821)', async () => {
+  const s = await serve();
+  try {
+    const eve = await openAs(s, 'user_eve', 'acme');
+    const dana = await s.signInAtStart({ sub: 'user_dana' }, eve.start);
+    const apex = (await s.apex('GET', '/w/acme/api/workspaces', { cookie: `${dana.cookie}; ${eve.session}` })).json();
+    const held = apex.filter((w) => w.held).map((w) => w.name).sort();
+    assert.ok(held.includes('other'), 'dana, held under the start cookie, adds other');
+    assert.equal(held.includes('Net'), false, 'no held login has an account on Net');
+  } finally { s.stop(); }
+});
+
+test('rail: a grey tile opens through the apex sign-in, so a login held at the start page mints no session on its own (Issue #1822)', async () => {
+  const s = await serve();
+  try {
+    const kyle = await openAs(s, 'user_kyle', 'acme');
+    const tile = (await s.at('acme.weave.test')('GET', '/api/workspaces', { cookie: kyle.session })).json().find((w) => w.name === 'Net');
+    const u = new URL(tile.open);
+    assert.equal(u.host, 'weave.test');
+    const click = await s.apex('GET', u.pathname + u.search, { cookie: kyle.start });
+    assert.equal(click.status, 302);
+    assert.equal(new URL(click.headers.location).origin, new URL(s.idp.issuer).origin, 'the click goes to the identity provider');
+    assert.match(new URL(click.headers.location).searchParams.get('prompt') ?? '', /\blogin\b/, 'the provider is asked to sign the person in again');
+    assert.deepEqual(setCookies(click).map((c) => c.split('=')[0]), ['wv_oidc'], 'no workspace session comes back from the click');
+
+    const back = s.idp.approve(click.headers.location, { sub: 'user_kyle' });
+    const done = await s.follow(back.href, { cookie: `${kyle.start}; ${cookieOf(click, 'wv_oidc')}` });
+    assert.equal(done.headers.location, '/api/start/open/Net', 'after the sign-in the open link runs');
+    const open = await s.apex('GET', done.headers.location, { cookie: cookieOf(done, 'wv_start') });
+    const landed = await s.follow(open.headers.location);
+    const session = cookieOf(landed, [landed.headers['set-cookie']].flat()[0].split('=')[0]);
+    assert.equal((await s.at('net.weave.test')('GET', '/api/auth/me', { cookie: session })).json().account.name, 'Kyle Adriany');
+
+    const fromStart = await s.apex('GET', '/api/start/open/Net', { cookie: kyle.start });
+    assert.equal(fromStart.status, 302, 'the start page open link still opens right after a sign-in');
+    assert.equal(new URL(fromStart.headers.location).host, 'net.weave.test');
+  } finally { s.stop(); }
+});
 
 test('recency: a workspace page load moves its name to the front of wv_recent; API and asset requests leave it alone (Feature #349)', async () => {
   const s = await serve();
@@ -199,20 +253,20 @@ test('recency: GET /api/workspaces sorts by wv_recent, held chips included, and 
   try {
     const session = await openAcme(s);
     const acme = s.at('acme.weave.test');
-    const cookie = `${session}; wv_rail=other,acme`;
+    const cookie = session;
     const names = async (extra = '') => (await acme('GET', '/api/workspaces', { cookie: cookie + extra })).json();
     const natural = (await names()).map((w) => w.name);
-    assert.deepEqual([...natural].sort(), ['acme', 'other', 'weave']);
+    assert.deepEqual([...natural].sort(), ['Net', 'acme', 'weave']);
 
-    const byRecent = await names('; wv_recent=weave,other');
-    assert.deepEqual(byRecent.map((w) => w.name), ['weave', 'other', 'acme']);
+    const byRecent = await names('; wv_recent=weave,net');
+    assert.deepEqual(byRecent.map((w) => w.name), ['weave', 'Net', 'acme']);
     assert.equal(byRecent[1].held, true, 'a held chip takes its place by the same rule');
 
     const one = await names('; wv_recent=acme,ghost');
     assert.deepEqual(one.map((w) => w.name), ['acme', ...natural.filter((n) => n !== 'acme')], 'names the cookie does not hold keep their order after the named ones');
 
-    const heldFirst = await names('; wv_recent=other');
-    assert.deepEqual(heldFirst.map((w) => w.name), ['other', ...natural.filter((n) => n !== 'other')]);
+    const heldFirst = await names('; wv_recent=net');
+    assert.deepEqual(heldFirst.map((w) => w.name), ['Net', ...natural.filter((n) => n !== 'Net')]);
   } finally { s.stop(); }
 });
 

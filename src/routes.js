@@ -426,12 +426,12 @@ async function buildStartHelpers(c, fromRequest) {
   const { cookies, hostOrigin, path, weave, wsPrefix } = fromRequest;
   const startReturn = (back) => sameOriginPath(back, originFor(rx), null) === back && (WORKSPACE_LINK.test(back) || START_LINK.test(back) || inviteLink(back));
   const sameLogin = (a, b) => a.issuer === b.issuer && a.subject === b.subject;
-  const findWorkspaces = (logins) => {
+  const findWorkspaces = (logins, { touch = true } = {}) => {
     const all = hub.entries();
     const live = all.filter(([, w]) => !w.state.meta.deletedAt);
-    const accountFor = (w, me) => w.accountForIdentity(me);
+    const accountFor = (w, me) => w.accountForIdentity(me, { touch });
     const opener = (w) => logins.find((me) => accountFor(w, me)) ?? null;
-    const label = (me) => me.email ?? live.map(([, w]) => w.accountForIdentity(me)?.name).find(Boolean) ?? me.subject;
+    const label = (me) => me.email ?? live.map(([, w]) => accountFor(w, me)?.name).find(Boolean) ?? me.subject;
     const title = (name, w) => w.state.meta.title ?? name;
     const seenOn = (w, account) => w.listSessions(account.id)[0]?.lastSeenAt ?? null;
     const logoOf = (name, w) => (w.state.meta.logo ? `/api/start/logo/${encodeURIComponent(name)}?v=${w.state.meta.logo.id.slice(0, 8)}` : null);
@@ -443,7 +443,7 @@ async function buildStartHelpers(c, fromRequest) {
           return { kind: 'workspace', name, id: w.state.meta.id, title: title(name, w), login: label(me), host: baseDomain ? `${name.toLowerCase()}.${baseDomain}` : null, role: Weave.roleName(account.role), logo: logoOf(name, w), seenAt: seenOn(w, account), open: `/api/start/open/${encodeURIComponent(name)}` };
         })
         .sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '')),
-      ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !w.accountForIdentity(me))
+      ...live.flatMap(([name, w]) => logins.filter((me) => me.email && !accountFor(w, me))
         .flatMap((me) => w.invitesForEmail(me.email).map((i) => ({ kind: 'invite', name, title: title(name, w), role: i.role, invitedBy: i.invitedBy ?? null, login: label(me), accept: `/api/start/invites/${encodeURIComponent(name)}/${i.id}` })))),
     ];
     const available = rows.filter((r) => r.kind === 'workspace' && !isDocsWorkspace(hub.get(r.name))).map((r) => r.name.toLowerCase());
@@ -1624,7 +1624,7 @@ async function registeredAndSpaceRoutes(c, fromRequest) {
     actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
     remirror, roleOn, rx, scheme, share, useTemplateInto,
   } = c;
-  const { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix } = fromRequest;
+  const { findWorkspaces, heldStart, member, ownSession, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix } = fromRequest;
   let m;
   if (registered?.cmd.http.serve) {
     const serveFile = (id) => {
@@ -1661,18 +1661,19 @@ async function registeredAndSpaceRoutes(c, fromRequest) {
     return registered.cmd.http.serve(registered.params, { serveFile, serveLogo });
   }
   if (registered) {
+    const logins = oidc ? [...(ownSession(weave)?.identities ?? []), ...((await heldStart())?.logins ?? [])] : [];
     const registryCtx = {
       viewerZone, workspace: member.state.meta.id, cap, share, useTemplate: useTemplateInto, updateWorkspace, issuer: oidc?.issuer, remirror: () => remirror(weave), mailInvite, start: oidc ? `${startRoot}/start` : undefined,
       workspaces: {
         list: () => {
           const includeDeleted = ['1', 'true'].includes(rx.searchParams.get('deleted') ?? '');
-          const rail = oidc ? String(cookies.wv_rail ?? '').split(',').filter(Boolean) : [];
-          const heldOnRail = (x) => rail.includes(x.name.toLowerCase()) && !hub.get(x.name)?.state.meta.deletedAt;
+          const found = logins.length ? findWorkspaces(logins, { touch: false }) : null;
+          const heldByAccount = (x) => { const w = hub.get(x.name); return !!found && !!w && !w.state.meta.deletedAt && !isDocsWorkspace(w) && !!found.accountIn(w); };
           const rank = (x) => { const i = recent.indexOf(x.name.toLowerCase()); return i < 0 ? Infinity : i; };
-          return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldOnRail(x))
+          return hub.list({ includeDeleted, workspace: weave }).filter((x) => canOpen(hub.get(x.name)) || heldByAccount(x))
             .sort((a, b) => rank(a) - rank(b) || 0)
             .map((x) => ({
-              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/start/open/${encodeURIComponent(x.name)}` }),
+              ...(canOpen(hub.get(x.name)) ? { ...x, deletable: x.deletable && mayAdminister(hub.get(x.name), roleOn(hub.get(x.name))) } : { name: x.name, id: x.id, held: true, open: `${startRoot}/api/auth/oidc/start?start=1&fresh=1&next=${encodeURIComponent(`/api/start/open/${encodeURIComponent(x.name)}`)}` }),
               ...(baseDomain ? { host: `${scheme}//${x.name.toLowerCase()}${hostSuffix}/` } : {}),
             }));
         },
@@ -2238,7 +2239,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           const hit = await registeredAndSpaceRoutes({
           actorForRequest, apexOrigin, baseDomain, body, byteRange, canOpen, cap, guarded, hostSuffix, hub, mailInvite, oidc, originFor, out, registered,
           remirror, roleOn, rx, scheme, share, useTemplateInto,
-        }, { cookies, member, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix });
+        }, { findWorkspaces, heldStart, member, ownSession, path, recent, role, startRoot, updateWorkspace, viewerZone, weave, wsPrefix });
           if (hit !== NEXT) return hit;
         }
 

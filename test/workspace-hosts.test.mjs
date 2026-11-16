@@ -315,9 +315,9 @@ test('rail hop: only a target workspace session can produce its host handoff (Is
     const net = s.at('net.weave.test');
     const acme = s.at('acme.weave.test');
     const cookie = await signIn(s, 'net.weave.test');
-    assert.ok(!(await net('GET', '/api/workspaces', { cookie })).json().some(w => w.name === 'acme'));
-    const held = (await net('GET', '/api/workspaces', { cookie: `${cookie}; wv_rail=acme` })).json().find(w => w.name === 'acme');
-    assert.equal(held.held, true);
+    const held = (await net('GET', '/api/workspaces', { cookie })).json().find(w => w.name === 'acme');
+    assert.equal(held.held, true, 'the account opens acme, so acme is held with no rail cookie (Issue #1821)');
+    assert.ok(!(await net('GET', '/api/workspaces', { cookie: `${cookie}; wv_rail=other` })).json().some(w => w.name === 'other'), 'a rail cookie adds no workspace the account cannot open');
     const ownSignIn = await net('GET', '/api/auth/open/acme', { cookie });
     assert.deepEqual([ownSignIn.status, ownSignIn.headers.location], [302, 'http://acme.weave.test/']);
     const targetCookie = await signIn(s, 'acme.weave.test');
