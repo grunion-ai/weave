@@ -132,7 +132,7 @@ test('the segments edit: a state writes through the state route, a multiselect t
   assert.match(body, /\[data-seg="state"\]|seg === 'state'/, 'the state segment is one branch');
   assert.match(body, /\/entities\/\$\{eid\}\/state/, 'and it writes the state through the state route');
   assert.match(body, /multiselect/, 'the multiselect segment is the other');
-  assert.match(body, /api\('PATCH', `\/entities\/\$\{eid\}`/, 'and it writes the chosen options to the row');
+  assert.match(body, /saveValues\(eid, \{ \[f\.name\]: names \}/, 'and it writes the chosen options to the row through saveValues');
   assert.match(body, /chipView\.segHtml\(next\)/, 'both repaint through the one renderer');
   const builder = APP.slice(APP.indexOf('function stateOptions('), APP.indexOf('function statePicker('));
   assert.match(builder, /chipCore\.CATEGORIES/, 'the picker is ordered by the engine’s four categories');
