@@ -663,10 +663,12 @@ async function buildAccessHelpers(c, fromRequest) {
   const requestActor = role ? actorForRequest : 'anonymous';
   const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
   const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
+  const bodyScoped = !!role && !share && matchRoute(rx.method, path)?.cmd.bound === true;
   const cap = startDoor || targetHidden ? null
     : targetSpace ? spaceRole(weave, viewer, weave.state.spaces[targetSpace])
       : bulkRows ? 'editor'
-        : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
+        : bodyScoped ? topRole(weave, viewer)
+          : role ?? (!share && !weave.state.meta.requireAuth && guarded() ? 'observer' : null);
   if (cap && cap !== 'architect') {
     const m2 = rx.method;
     const hit = matchRoute(m2, path);
