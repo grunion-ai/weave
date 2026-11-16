@@ -583,7 +583,7 @@ export const COMMANDS = [
   {
     name: 'table.create',
     engine: ['createTable'],
-    writes: 'schema', minRole: 'architect', annotations: ADD,
+    writes: 'schema', minRole: 'architect', annotations: ADD, bound: true,
     tool: {
       name: 'weave_create_table',
       description: 'Create a table in a space (a Name text field and a Description document are added automatically). icon is `lucide:<name>` from weave_vocabulary.',
