@@ -181,7 +181,7 @@ test('field cells show the engine sentence, and the entity page edits the raw de
   assert.ok(branch.includes('String(val)'), 'the chip prints the engine display sentence');
   assert.ok(branch.includes('if (compact) return chip'));
   assert.ok(branch.includes('f.types'), 'type choices come from the schema payload');
-  assert.ok(branch.includes("await api('PATCH'"));
+  assert.ok(branch.includes('await saveValues(id, '), 'the definition saves through saveValues');
 });
 
 test('a costume is part of the sentence, so a clear can name what it takes', () => {

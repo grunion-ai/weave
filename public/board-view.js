@@ -98,7 +98,8 @@ function renderBoard(main, db, items, ctx) {
   const write = async (item, values, order, undo = null, settled = null) => {
     const release = gridHold();
     try {
-      if (Object.keys(values).length) await api('PATCH', `/entities/${item.id}`, { values });
+      const repaint = async () => { await settled; await reload(); };
+      if (Object.keys(values).length && !(await saveValues(item.id, values, { paint: repaint }))) return void (await repaint());
       if (order) await listViewWrite(db, { order });
       await settled;
       await reload();
