@@ -102,11 +102,7 @@ for (const name of ['spawn', 'spawnSync']) {
   const original = childProcess[name];
   childProcess[name] = function (file, ...rest) { return original.call(this, file === '/usr/bin/security' ? 'security' : file, ...rest); };
 }
-syncBuiltinESMExports();
-if (process.env.NODE_TEST_CONTEXT && /\\.test\\.mjs$/.test(process.argv[1] ?? '')) {
-  const { after } = await import('node:test');
-  after(() => { setTimeout(() => process.exit(), 30_000).unref(); });
-}`;
+syncBuiltinESMExports();`;
 const KEYCHAIN_GUARD = `--import=data:text/javascript,${encodeURIComponent(LANE_PRELOAD_SOURCE)}`;
 const guardedOptions = (options = '') => [options, KEYCHAIN_GUARD].filter(Boolean).join(' ');
 

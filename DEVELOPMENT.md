@@ -217,9 +217,8 @@ Each lane also pins `WEAVE_KEYCHAIN` to a keychain file in that sandbox and
 preloads a guard that sends `spawn` and `spawnSync` calls for
 `/usr/bin/security` to the `security` on `PATH`, so a keychain store opened by
 mistake never names the login keychain, and a stand-in `security` early on
-`PATH` catches every call. The same preload ends a test file 30 seconds after
-its tests finish when an open handle would keep it alive, CI unit
-shards add `--test-timeout=240000`, and `test/spawn-timeout.test.mjs` refuses a
+`PATH` catches every call. CI unit shards add `--test-timeout=240000`, and
+`test/spawn-timeout.test.mjs` refuses a
 `spawn` or `spawnSync` under `test/` without a `timeout`, so a hung test fails
 by name instead of holding its shard to the job cap (Issue #1817).
 

@@ -51,14 +51,3 @@ test('a wrong branch opens the keychain store with an empty env', async () => {
   assert.ok(named.length >= 3, calls);
   for (const line of named) assert.ok(line.includes(keychain), `a security call left the sandbox keychain: ${line}`);
 });
-
-test('a unit file whose tests passed but left a handle open exits instead of holding its lane (Issue #1817)', () => {
-  const dir = tempDir('weave-lane-handle-');
-  const file = join(dir, 'open-handle.test.mjs');
-  writeFileSync(file, "import test from 'node:test';\ntest('passes and leaves a timer running', () => { setTimeout(() => {}, 60_000); });\n");
-  const said = [];
-  const started = Date.now();
-  const code = run([file], [], { out: (l) => said.push(l) });
-  assert.equal(code, 0, said.join('\n'));
-  assert.ok(Date.now() - started < 50_000, `the lane waited ${Date.now() - started} ms on a handle a finished test left open`);
-});
