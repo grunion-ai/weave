@@ -2,16 +2,30 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { chipCss, cssRules, scoped } from './chip-css.mjs';
+import { chipCss, cssRules, scoped, selectorList } from './chip-css.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'card-view-options.html');
 
 const PICKER_SELECTORS = /^(\.picker-|\.chip-pop|\.date-pick-btn|\.date-text)/;
+function closeOf(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '(') depth += 1;
+    else if (text[i] === ')' && !(depth -= 1)) return i;
+  }
+  return -1;
+}
+function pickerPart(part) {
+  const close = part.startsWith(':where(') ? closeOf(part, 6) : -1;
+  if (close < 0) return PICKER_SELECTORS.test(part) ? part : '';
+  const inner = selectorList(part.slice(7, close)).filter((x) => PICKER_SELECTORS.test(x));
+  return inner.length ? `:where(${inner.join(', ')})${part.slice(close + 1)}` : '';
+}
 export function pickerCss(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
   const out = [];
   for (const { at, sels, body } of cssRules(css)) {
-    const keep = sels.split(',').map((x) => x.trim()).filter((x) => PICKER_SELECTORS.test(x));
+    const keep = selectorList(sels).map(pickerPart).filter(Boolean);
     if (!keep.length || !body.trim()) continue;
     out.push(scoped(at, `${keep.join(', ')} { ${body.replace(/\s+/g, ' ').trim()}${body.trim().endsWith(';') ? '' : ';'} }`));
   }
