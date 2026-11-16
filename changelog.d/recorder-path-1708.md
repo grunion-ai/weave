@@ -1,0 +1,1 @@
+- The bug reporter no longer files what you typed into ⌘K search: a recorded request keeps its path and the `limit`, `tables`, `table`, `field`, `entity` and `shape` query names, and the server drops any other query name or event field before it writes the Issue (Issue #1708).
