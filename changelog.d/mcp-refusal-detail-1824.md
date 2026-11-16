@@ -1,0 +1,1 @@
+MCP refusals now wrap stored text in their structured details inside `<weave_data>`, including the last writer's account name on a stale `weave_set_doc` refusal and the top step on a `weave_undo` expect conflict (Issue #1824).
