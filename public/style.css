@@ -2920,6 +2920,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .space-home-open-workflow { align-self: flex-start; margin-top: 8px; font-size: var(--fs-secondary); color: var(--tblr-primary) !important; }
 .space-home-show-all { align-self: flex-start; margin-top: 10px; }
 .space-home-overview { padding-top: 14px; border-top: 1px solid var(--tblr-border-color); }
+.space-home-tables + .space-home-overview { border-top: 0; }
 .space-home-overview > summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; }
 .space-home-overview > summary::-webkit-details-marker { display: none; }
 .space-home-overview-title { font-size: var(--fs-grid); font-weight: 500; }

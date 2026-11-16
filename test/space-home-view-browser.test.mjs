@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 import { WIDTH } from './lib/viewports.mjs';
 
 const LONG = `Quarterly enterprise renewal forecasting and account health review ${'x'.repeat(120)}`;
@@ -43,6 +43,16 @@ const s = await launch('space home view', (weave) => {
   ids = { sales: sales.id, ops: ops.id, quiet: quiet.id, empty: empty.id, deal: deal.id, none: none.id, task: task.id, pipeline: pipeline.id, northstar: northstar.id, stamp: stamp.id, half: half.id, partial: partial.id };
 });
 
+const rulesBetween = (page) => page.evaluate(() => {
+  const tables = document.querySelector('.space-home-tables');
+  const overview = document.querySelector('.space-home-overview');
+  const between = [];
+  for (let n = tables.nextElementSibling; n && n !== overview; n = n.nextElementSibling) between.push(n);
+  const px = (v) => parseFloat(v) || 0;
+  const rules = (px(getComputedStyle(tables).borderBottomWidth) > 0) + (px(getComputedStyle(overview).borderTopWidth) > 0);
+  const drawn = [[tables, 'borderBottom'], [overview, 'borderTop']].filter(([n, side]) => px(getComputedStyle(n)[`${side}Width`]) > 0);
+  return { between: between.length, rules, colours: drawn.map(([n, side]) => getComputedStyle(n)[`${side}Color`]) };
+});
 if (s) {
   const open = async (theme, width, spaceId, recents = null) => {
     const page = await s.browser.newPage({ viewport: { width, height: 900 } });
@@ -176,6 +186,30 @@ if (s) {
     }
   });
 
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: a home with nothing recent draws one rule between the links and the overview`, async () => {
+      const page = await open(theme, 1280, ids.quiet);
+      try {
+        await settled(page.locator('.space-home-overview'));
+        const read = await rulesBetween(page);
+        assert.deepEqual([read.between, read.rules], [0, 1]);
+        assert.notEqual(read.colours[0], 'rgba(0, 0, 0, 0)', `the rule is painted in the ${theme} theme`);
+      } finally {
+        await page.close();
+      }
+    });
+    test(`${theme}: a home with sections keeps a rule on each side of them`, async () => {
+      const page = await open(theme, 1280, ids.sales, recentsOf());
+      try {
+        await settled(page.locator('.space-home-overview'));
+        const read = await rulesBetween(page);
+        assert.ok(read.between > 0);
+        assert.equal(read.rules, 2);
+      } finally {
+        await page.close();
+      }
+    });
+  }
   test('a section with nothing in it disappears', async () => {
     const page = await open('light', 1280, ids.quiet);
     try {
