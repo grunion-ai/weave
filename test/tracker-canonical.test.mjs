@@ -104,8 +104,9 @@ test('a bug report forwards to the canonical tracker with the bearer token and n
     res.writeHead(201, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ id: 'canon-id', publicId: 912, table: 'Development/Issue', workspace: 'weave', url: '/w/weave/#/entity/canon-id' }));
   });
-  const local = await localServer();
+  let local;
   try {
+    local = await localServer();
     await withEnv({ WEAVE_BUG_FORWARD_URL: canon.base, WEAVE_BUG_FORWARD_TOKEN: 'wv_forwardtoken', WEAVE_ORIGIN: 'https://dev.weave.example' }, async () => {
       const before = local.docs.listEntities(local.docs.getTable('Development/Issue').id).length;
       const r = await file(local.base, REPORT);
@@ -122,13 +123,14 @@ test('a bug report forwards to the canonical tracker with the bearer token and n
       assert.equal(hit.body.note, REPORT.note);
       assert.equal(local.docs.listEntities(local.docs.getTable('Development/Issue').id).length, before, 'nothing filed locally');
     });
-  } finally { canon.srv.close(); local.server.close(); }
+  } finally { canon.srv.close(); local?.server.close(); }
 });
 
 test('a failed forward files locally, says so in the response, and notes it in the report', async () => {
   const canon = await fakeCanonical((req, res) => { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end('{"error":"down"}'); });
-  const local = await localServer();
+  let local;
   try {
+    local = await localServer();
     await withEnv({ WEAVE_BUG_FORWARD_URL: canon.base, WEAVE_BUG_FORWARD_TOKEN: 'wv_forwardtoken' }, async () => {
       const r = await file(local.base, REPORT);
       assert.equal(r.status, 201);
@@ -138,28 +140,30 @@ test('a failed forward files locally, says so in the response, and notes it in t
       const row = local.docs.readEntity(r.data.id);
       assert.match(row.docs.Description, new RegExp(`Forward to ${canon.base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} failed: .*503`));
     });
-  } finally { canon.srv.close(); local.server.close(); }
+  } finally { canon.srv.close(); local?.server.close(); }
 });
 
 test('an unreachable canonical tracker falls back to a local filing', async () => {
   const canon = await fakeCanonical(() => {});
   const dead = canon.base;
   await new Promise((r) => { canon.srv.closeAllConnections?.(); canon.srv.close(r); });
-  const local = await localServer();
+  let local;
   try {
+    local = await localServer();
     await withEnv({ WEAVE_BUG_FORWARD_URL: dead, WEAVE_BUG_FORWARD_TOKEN: 'wv_forwardtoken' }, async () => {
       const r = await file(local.base, REPORT);
       assert.equal(r.status, 201);
       assert.equal(r.data.forward, 'failed');
       assert.ok(local.docs.readEntity(r.data.id), 'the report is not lost');
     });
-  } finally { local.server.close(); }
+  } finally { local?.server.close(); }
 });
 
 test('a canonical server never forwards, even with the forward variables set', async () => {
   const canon = await fakeCanonical((req, res) => { res.writeHead(201); res.end('{}'); });
-  const local = await localServer();
+  let local;
   try {
+    local = await localServer();
     await withEnv({ WEAVE_TRACKER_CANONICAL: '1', WEAVE_BUG_FORWARD_URL: canon.base, WEAVE_BUG_FORWARD_TOKEN: 'wv_forwardtoken' }, async () => {
       const r = await file(local.base, REPORT);
       assert.equal(r.status, 201);
@@ -167,12 +171,13 @@ test('a canonical server never forwards, even with the forward variables set', a
       assert.equal(r.data.forward, undefined);
       assert.ok(local.docs.readEntity(r.data.id));
     });
-  } finally { canon.srv.close(); local.server.close(); }
+  } finally { canon.srv.close(); local?.server.close(); }
 });
 
 test('with the forward variables unset a report files locally exactly as before', async () => {
-  const local = await localServer();
+  let local;
   try {
+    local = await localServer();
     await withEnv({}, async () => {
       const r = await file(local.base, REPORT);
       assert.equal(r.status, 201);
@@ -180,7 +185,7 @@ test('with the forward variables unset a report files locally exactly as before'
       assert.equal(r.data.forwardedTo, undefined);
       assert.doesNotMatch(local.docs.readEntity(r.data.id).docs.Description, /Instance|Forward to/);
     });
-  } finally { local.server.close(); }
+  } finally { local?.server.close(); }
 });
 
 test('the canonical tracker records the forwarding instance when an account files the report', async () => {

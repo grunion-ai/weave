@@ -174,22 +174,24 @@ test('engine: a rename keeps the old slug as an alias across a reopen', () => {
 
 async function serveSignIn() {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const ids = {};
-  const before = (dir) => {
-    for (const name of ['acme', 'other']) {
-      const ws = new Weave({ path: join(dir, `${name}.db`), name });
-      ids[name] = ws.state.meta.id;
-      ws.state.meta.name = name;
-      ws.createAccount({ name: 'kyle', role: 'writer' });
-      if (name === 'acme') ws.redeemIdentityInvite(ws.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-      ws.setRequireAuth(true);
-      ws.save();
-      ws.store.close?.();
-    }
-  };
-  const s = await serveHub({ oidc, origin: 'http://weave.test', before });
-  return { ...s, idp, ids, stop: () => { s.stop(); idp.stop(); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const ids = {};
+    const before = (dir) => {
+      for (const name of ['acme', 'other']) {
+        const ws = new Weave({ path: join(dir, `${name}.db`), name });
+        ids[name] = ws.state.meta.id;
+        ws.state.meta.name = name;
+        ws.createAccount({ name: 'kyle', role: 'writer' });
+        if (name === 'acme') ws.redeemIdentityInvite(ws.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+        ws.setRequireAuth(true);
+        ws.save();
+        ws.store.close?.();
+      }
+    };
+    const s = await serveHub({ oidc, origin: 'http://weave.test', before });
+    return { ...s, idp, ids, stop: () => { s.stop(); idp.stop(); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 const follow = async (s, location, opts) => {

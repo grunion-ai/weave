@@ -46,27 +46,29 @@ const bare = open && await launch('in-app usage events, without a key', seed, { 
 
 async function signedHub() {
   const idp = await startIdp();
-  const dir = tempDir('weave-usage-');
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
-  acme.createAccount({ name: 'owner', role: 'architect' });
-  acme.setRequireAuth(true);
-  acme.inviteMember({ email: 'joiner@example.com', role: 'editor', issuer: idp.issuer });
-  let link = null;
-  const s = await launch('in-app usage events, signed in', (main) => {
-    main.state.meta.name = 'Net';
-    main.createAccount({ name: 'operator', role: 'architect' });
-    main.createAccount({ name: 'ada', role: 'editor' });
-    main.setRequireAuth(true);
-    main.save();
-    link = main.linkIdentity('ada', { issuer: idp.issuer }).code;
-  }, {
-    weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
-    server: () => ({ oidc, posthog, workspaces: { acme }, openSignup: { on: true, limit: 3 }, limits: { options: 1000, failed: 1000, slugs: 1000 } }),
-  });
-  const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
-  if (!s) { stop(); return null; }
-  return { idp, link, base: s.base.replace('127.0.0.1', 'localhost'), browser: s.browser, stop };
+  try {
+    const dir = tempDir('weave-usage-');
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
+    acme.createAccount({ name: 'owner', role: 'architect' });
+    acme.setRequireAuth(true);
+    acme.inviteMember({ email: 'joiner@example.com', role: 'editor', issuer: idp.issuer });
+    let link = null;
+    const s = await launch('in-app usage events, signed in', (main) => {
+      main.state.meta.name = 'Net';
+      main.createAccount({ name: 'operator', role: 'architect' });
+      main.createAccount({ name: 'ada', role: 'editor' });
+      main.setRequireAuth(true);
+      main.save();
+      link = main.linkIdentity('ada', { issuer: idp.issuer }).code;
+    }, {
+      weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
+      server: () => ({ oidc, posthog, workspaces: { acme }, openSignup: { on: true, limit: 3 }, limits: { options: 1000, failed: 1000, slugs: 1000 } }),
+    });
+    const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
+    if (!s) { stop(); return null; }
+    return { idp, link, base: s.base.replace('127.0.0.1', 'localhost'), browser: s.browser, stop };
+  } catch (err) { idp.stop(); throw err; }
 }
 const signed = open && await signedHub();
 

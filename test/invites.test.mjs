@@ -106,24 +106,26 @@ test('cli: invite, invite list and invite revoke', () => {
 
 async function serve() {
   const idp = await startIdp();
-  const w = new Weave();
-  w.updateWorkspace({ name: 'home' });
-  const architect = w.createAccount({ name: 'kyle', role: 'architect' }).token;
-  const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
-  w.setRequireAuth(true);
-  const other = new Weave();
-  other.updateWorkspace({ name: 'other' });
-  const otherArchitect = other.createAccount({ name: 'boss', role: 'architect' }).token;
-  other.setRequireAuth(true);
-  const s = await serveOidc(w, idp, { workspaces: { other }, limits: { options: 1000, failed: 1000 } });
-  const follow = async (startPath, claims) => {
-    const start = await s.call('GET', startPath);
-    if (start.status !== 302) return { start, res: start };
-    const back = idp.approve(start.headers.get('location'), claims);
-    const res = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
-    return { start, res, cookie: cookieOf(res) };
-  };
-  return { w, other, idp, architect, editor, otherArchitect, ...s, follow };
+  try {
+    const w = new Weave();
+    w.updateWorkspace({ name: 'home' });
+    const architect = w.createAccount({ name: 'kyle', role: 'architect' }).token;
+    const editor = w.createAccount({ name: 'ed', role: 'editor' }).token;
+    w.setRequireAuth(true);
+    const other = new Weave();
+    other.updateWorkspace({ name: 'other' });
+    const otherArchitect = other.createAccount({ name: 'boss', role: 'architect' }).token;
+    other.setRequireAuth(true);
+    const s = await serveOidc(w, idp, { workspaces: { other }, limits: { options: 1000, failed: 1000 } });
+    const follow = async (startPath, claims) => {
+      const start = await s.call('GET', startPath);
+      if (start.status !== 302) return { start, res: start };
+      const back = idp.approve(start.headers.get('location'), claims);
+      const res = await s.call('GET', back.pathname + back.search, { cookie: cookieOf(start) });
+      return { start, res, cookie: cookieOf(res) };
+    };
+    return { w, other, idp, architect, editor, otherArchitect, ...s, follow };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 const path = (url) => { const u = new URL(url); return u.pathname + u.search; };

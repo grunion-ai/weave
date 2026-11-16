@@ -52,21 +52,23 @@ async function upstream() {
 
 async function serve({ posthog = null } = {}) {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = tempDir('weave-posthog-');
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.createAccount({ name: 'operator', role: 'architect' });
-  main.setRequireAuth(true);
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, oidc, posthog, openSignup: { on: true, limit: 2 }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  const signIn = async (claims) => {
-    const start = await hit(port, 'GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, claims);
-    const res = await hit(port, 'GET', back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
-    return cookieOf(res, 'wv_start');
-  };
-  return { port, signIn, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const dir = tempDir('weave-posthog-');
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    main.createAccount({ name: 'operator', role: 'architect' });
+    main.setRequireAuth(true);
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, oidc, posthog, openSignup: { on: true, limit: 2 }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+    const signIn = async (claims) => {
+      const start = await hit(port, 'GET', '/api/auth/oidc/start?start=1');
+      const back = idp.approve(start.headers.location, claims);
+      const res = await hit(port, 'GET', back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
+      return cookieOf(res, 'wv_start');
+    };
+    return { port, signIn, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('posthogFromEnv reads POSTHOG_KEY and POSTHOG_HOST at runtime and refuses anything but a phc_ key', () => {
@@ -205,15 +207,17 @@ test('the privacy policy names PostHog, links its cookies section and carries no
 
 async function appServer(posthog) {
   const idp = await startIdp();
-  const dir = tempDir('weave-posthog-app-');
-  const w = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  w.createAccount({ name: 'operator', role: 'architect' });
-  w.createAccount({ name: 'ada', role: 'editor' });
-  w.setRequireAuth(true);
-  w.save();
-  const s = await serveOidc(w, idp, { posthog });
-  const invite = () => w.linkIdentity('ada', { issuer: idp.issuer }).code;
-  return { ...s, invite, stop: () => { s.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const dir = tempDir('weave-posthog-app-');
+    const w = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    w.createAccount({ name: 'operator', role: 'architect' });
+    w.createAccount({ name: 'ada', role: 'editor' });
+    w.setRequireAuth(true);
+    w.save();
+    const s = await serveOidc(w, idp, { posthog });
+    const invite = () => w.linkIdentity('ada', { issuer: idp.issuer }).code;
+    return { ...s, invite, stop: () => { s.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('the app shell loads no consent script and /api/auth/me carries no analytics without a key', async () => {

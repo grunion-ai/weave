@@ -32,43 +32,45 @@ const cookieLine = (res, name) => setCookies(res).find((c) => c.startsWith(`${na
 
 async function serve({ withOidc = true } = {}) {
   const idp = await startIdp();
-  const oidc = withOidc ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
-  const dir = tempDir('weave-find-');
-  const pin = (w, name, role, subject) => {
-    w.createAccount({ name, role });
-    w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });
-  };
-  let inviteCode;
-  for (const name of ['acme', 'other', 'weave']) {
-    const w = new Weave({ path: join(dir, `${name}.db`), name });
-    w.state.meta.name = name;
-    if (name === 'acme') { pin(w, 'eve', 'editor', 'user_eve'); pin(w, 'kyle', 'architect', 'user_kyle'); }
-    if (name === 'other') {
-      pin(w, 'dana', 'editor', 'user_dana');
-      w.createAccount({ name: 'someone', role: 'architect' });
-      inviteCode = w.linkIdentity('someone', { issuer: idp.issuer }).code;
+  try {
+    const oidc = withOidc ? createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' }) : null;
+    const dir = tempDir('weave-find-');
+    const pin = (w, name, role, subject) => {
+      w.createAccount({ name, role });
+      w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });
+    };
+    let inviteCode;
+    for (const name of ['acme', 'other', 'weave']) {
+      const w = new Weave({ path: join(dir, `${name}.db`), name });
+      w.state.meta.name = name;
+      if (name === 'acme') { pin(w, 'eve', 'editor', 'user_eve'); pin(w, 'kyle', 'architect', 'user_kyle'); }
+      if (name === 'other') {
+        pin(w, 'dana', 'editor', 'user_dana');
+        w.createAccount({ name: 'someone', role: 'architect' });
+        inviteCode = w.linkIdentity('someone', { issuer: idp.issuer }).code;
+      }
+      if (name !== 'weave') w.setRequireAuth(true);
+      w.save();
+      w.store.close?.();
     }
-    if (name !== 'weave') w.setRequireAuth(true);
-    w.save();
-    w.store.close?.();
-  }
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.createAccount({ name: 'Kyle Adriany', role: 'architect' });
-  main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  main.setRequireAuth(true);
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
-  const apex = at('weave.test');
-  const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
-  const signInAtStart = async (claims, cookie) => {
-    const start = await apex('GET', '/api/auth/oidc/start?start=1&fresh=1', { cookie });
-    const back = idp.approve(start.headers.location, claims);
-    const res = await follow(back.href, { cookie: [cookie, cookieOf(start, 'wv_oidc')].filter(Boolean).join('; ') });
-    return { res, cookie: cookieOf(res, 'wv_start') ?? cookie };
-  };
-  return { dir, port, at, apex, follow, signInAtStart, idp, inviteCode, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    main.createAccount({ name: 'Kyle Adriany', role: 'architect' });
+    main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    main.setRequireAuth(true);
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+    const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
+    const apex = at('weave.test');
+    const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
+    const signInAtStart = async (claims, cookie) => {
+      const start = await apex('GET', '/api/auth/oidc/start?start=1&fresh=1', { cookie });
+      const back = idp.approve(start.headers.location, claims);
+      const res = await follow(back.href, { cookie: [cookie, cookieOf(start, 'wv_oidc')].filter(Boolean).join('; ') });
+      return { res, cookie: cookieOf(res, 'wv_start') ?? cookie };
+    };
+    return { dir, port, at, apex, follow, signInAtStart, idp, inviteCode, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('start: each sign-in adds a login to the one start cookie; the rows are the union, each naming the login that opens it', async () => {

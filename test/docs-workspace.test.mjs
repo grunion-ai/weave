@@ -94,10 +94,13 @@ test('routes: delete, rename and leave on the docs workspace answer 403 with the
 
 async function oidcHub() {
   const idp = await startIdp();
-  const docs = docsWorkspace({ auth: true });
-  const alpha = member('alpha', { issuer: idp.issuer });
-  const beta = member('beta');
-  const s = await serveOidc(new Weave(), idp, { workspaces: { weave: docs, alpha: alpha.w, beta: beta.w } });
+  let docs, alpha, beta, s;
+  try {
+    docs = docsWorkspace({ auth: true });
+    alpha = member('alpha', { issuer: idp.issuer });
+    beta = member('beta');
+    s = await serveOidc(new Weave(), idp, { workspaces: { weave: docs, alpha: alpha.w, beta: beta.w } });
+  } catch (err) { idp.stop(); throw err; }
   const jar = new Map();
   const take = (res) => {
     for (const c of res.headers.getSetCookie()) {

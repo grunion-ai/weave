@@ -114,11 +114,13 @@ const KYLE = { sub: 'user_kyle' };
 
 async function walled() {
   const idp = await startIdp();
-  const { w, saves } = library();
-  w.createAccount({ name: 'kyle', role: 'writer' });
-  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  w.setRequireAuth(true);
-  return { w, saves, ...await serveOidc(w, idp) };
+  try {
+    const { w, saves } = library();
+    w.createAccount({ name: 'kyle', role: 'writer' });
+    w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    w.setRequireAuth(true);
+    return { w, saves, ...await serveOidc(w, idp) };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('routes: a signed-out prefill link keeps its whole query through sign-in and lands on the filled form', async () => {

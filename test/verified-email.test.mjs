@@ -30,34 +30,36 @@ const mail = /[\w.+-]+@[\w-]+\.[\w.]+/;
 
 async function serve() {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = tempDir('weave-email-');
-  const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
-  acme.state.meta.name = 'acme';
-  const architect = acme.createAccount({ name: 'boss', role: 'architect' }).token;
-  acme.actor = 'boss';
-  const invite = acme.inviteMember({ email: 'Dylan@Example.com', role: 'observer', issuer: idp.issuer });
-  acme.setRequireAuth(true);
-  acme.save();
-  acme.store.close?.();
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.createAccount({ name: 'kyle', role: 'architect' });
-  main.redeemIdentityInvite(main.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  main.setRequireAuth(true);
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
-  const apex = at('weave.test');
-  const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
-  const signInAtStart = async (claims) => {
-    const start = await apex('GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, claims);
-    const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
-    return cookieOf(res, 'wv_start');
-  };
-  const reopen = (name) => new Weave({ path: join(dir, `${name}.db`) });
-  return { dir, main, at, apex, follow, signInAtStart, reopen, idp, invite, architect, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const dir = tempDir('weave-email-');
+    const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
+    acme.state.meta.name = 'acme';
+    const architect = acme.createAccount({ name: 'boss', role: 'architect' }).token;
+    acme.actor = 'boss';
+    const invite = acme.inviteMember({ email: 'Dylan@Example.com', role: 'observer', issuer: idp.issuer });
+    acme.setRequireAuth(true);
+    acme.save();
+    acme.store.close?.();
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    main.createAccount({ name: 'kyle', role: 'architect' });
+    main.redeemIdentityInvite(main.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    main.setRequireAuth(true);
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+    const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
+    const apex = at('weave.test');
+    const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
+    const signInAtStart = async (claims) => {
+      const start = await apex('GET', '/api/auth/oidc/start?start=1');
+      const back = idp.approve(start.headers.location, claims);
+      const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
+      return cookieOf(res, 'wv_start');
+    };
+    const reopen = (name) => new Weave({ path: join(dir, `${name}.db`) });
+    return { dir, main, at, apex, follow, signInAtStart, reopen, idp, invite, architect, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('oidc: the verified email and the profile name come back normalised; an unverified email or a picture never does (Issue #935)', async () => {

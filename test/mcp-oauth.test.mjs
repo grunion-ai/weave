@@ -12,32 +12,34 @@ const pin = (w, name, issuer, subject) => w.redeemIdentityInvite(w.linkIdentity(
 
 async function serve({ configured = true, origin = null, mcpOrigins } = {}) {
   const idp = await startIdp();
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  const admin = w.createAccount({ name: 'root', role: 'architect' }).token;
-  w.createAccount({ name: 'kyle', role: 'architect' });
-  pin(w, 'kyle', idp.issuer, KYLE.sub);
-  w.setRequireAuth(true);
-  const docs = new Weave();
-  docs.createSpace({ name: 'Docs' });
-  docs.createTable({ space: 'Docs', name: 'Page' });
-  docs.createAccount({ name: 'ann', role: 'architect' });
-  pin(docs, 'ann', idp.issuer, ANN.sub);
-  docs.setRequireAuth(true);
-  const s = await serveOidc(w, idp, { configured, origin, workspaces: { docs }, ...(mcpOrigins ? { mcpOrigins } : {}) });
-  const rpc = async (path, token, method, params) => {
-    const res = await s.call('POST', path, { token, body: { jsonrpc: '2.0', id: 1, method, params } });
-    return { res, data: res.status === 200 ? await res.json() : await res.json().catch(() => null) };
-  };
-  const withHost = (host, path) => new Promise((resolve, reject) => {
-    request({ host: '127.0.0.1', port: s.port, path, headers: { Host: host } }, (res) => {
-      let raw = '';
-      res.on('data', (c) => { raw += c; });
-      res.on('end', () => resolve({ status: res.statusCode, body: raw }));
-    }).on('error', reject).end();
-  });
-  return { w, docs, idp, admin, ...s, rpc, withHost };
+  try {
+    const w = new Weave();
+    w.createSpace({ name: 'Dev' });
+    w.createTable({ space: 'Dev', name: 'Task' });
+    const admin = w.createAccount({ name: 'root', role: 'architect' }).token;
+    w.createAccount({ name: 'kyle', role: 'architect' });
+    pin(w, 'kyle', idp.issuer, KYLE.sub);
+    w.setRequireAuth(true);
+    const docs = new Weave();
+    docs.createSpace({ name: 'Docs' });
+    docs.createTable({ space: 'Docs', name: 'Page' });
+    docs.createAccount({ name: 'ann', role: 'architect' });
+    pin(docs, 'ann', idp.issuer, ANN.sub);
+    docs.setRequireAuth(true);
+    const s = await serveOidc(w, idp, { configured, origin, workspaces: { docs }, ...(mcpOrigins ? { mcpOrigins } : {}) });
+    const rpc = async (path, token, method, params) => {
+      const res = await s.call('POST', path, { token, body: { jsonrpc: '2.0', id: 1, method, params } });
+      return { res, data: res.status === 200 ? await res.json() : await res.json().catch(() => null) };
+    };
+    const withHost = (host, path) => new Promise((resolve, reject) => {
+      request({ host: '127.0.0.1', port: s.port, path, headers: { Host: host } }, (res) => {
+        let raw = '';
+        res.on('data', (c) => { raw += c; });
+        res.on('end', () => resolve({ status: res.statusCode, body: raw }));
+      }).on('error', reject).end();
+    });
+    return { w, docs, idp, admin, ...s, rpc, withHost };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('metadata: RFC 9728 names the provider as the authorization server, for the root, /mcp and a workspace', async () => {

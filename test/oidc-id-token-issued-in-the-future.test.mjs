@@ -7,11 +7,13 @@ const KYLE = { sub: 'user_kyle', email: 'kyle@example.com', email_verified: true
 
 async function serve() {
   const idp = await startIdp();
-  const w = new Weave();
-  w.createAccount({ name: 'kyle', role: 'writer' });
-  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  w.setRequireAuth(true);
-  return { w, idp, ...await serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } }) };
+  try {
+    const w = new Weave();
+    w.createAccount({ name: 'kyle', role: 'writer' });
+    w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    w.setRequireAuth(true);
+    return { w, idp, ...await serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } }) };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('an id token issued an hour from now is refused with its reason and opens no session', async () => {

@@ -14,18 +14,20 @@ async function fixture(options = {}) {
   w.createAccount({ name: 'root', role: 'architect' });
   w.createAccount({ name: 'agent', role: 'editor' });
   const idp = await startIdp();
-  w.redeemIdentityInvite(w.linkIdentity('agent', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'agent' });
-  w.setRequireAuth(true);
-  const other = new Weave();
-  const s = await serveOidc(w, idp, { workspaces: { other }, ...options });
-  const token = idp.mint({ sub: 'agent' });
-  const prepare = async (args = {}, prefix = '') => {
-    const res = await s.call('POST', `${prefix}/mcp`, { token, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_attach_file', arguments: { entity: row.id, field: 'Image', name: 'poster.png', mime: 'image/png', size: 4, prepare: true, ...args } } } });
-    const body = await res.json();
-    assert.equal(res.status, 200, JSON.stringify(body));
-    return body.result.isError ? body.result : JSON.parse(unwrapData(body.result.content[0].text));
-  };
-  return { ...s, w, row, prepare, token };
+  try {
+    w.redeemIdentityInvite(w.linkIdentity('agent', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'agent' });
+    w.setRequireAuth(true);
+    const other = new Weave();
+    const s = await serveOidc(w, idp, { workspaces: { other }, ...options });
+    const token = idp.mint({ sub: 'agent' });
+    const prepare = async (args = {}, prefix = '') => {
+      const res = await s.call('POST', `${prefix}/mcp`, { token, body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'weave_attach_file', arguments: { entity: row.id, field: 'Image', name: 'poster.png', mime: 'image/png', size: 4, prepare: true, ...args } } } });
+      const body = await res.json();
+      assert.equal(res.status, 200, JSON.stringify(body));
+      return body.result.isError ? body.result : JSON.parse(unwrapData(body.result.content[0].text));
+    };
+    return { ...s, w, row, prepare, token };
+  } catch (err) { idp.stop(); throw err; }
 }
 const put = (grant, bytes = Buffer.from([0, 1, 2, 255])) => fetch(grant.url, { method: grant.method, headers: grant.headers, body: bytes });
 

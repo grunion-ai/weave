@@ -23,36 +23,38 @@ const HOST = 'net.weave.test';
 
 async function serve({ pane = true, open = { on: true, limit: 2 }, base = APEX } = {}) {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const main = new Weave();
-  main.state.meta.name = 'Net';
-  main.markOnboarded();
-  main.createAccount({ name: 'owner', role: 'architect' });
-  main.createSpace({ name: 'Sales' });
-  const row = main.createEntity(main.createTable({ space: 'Sales', name: 'Deals' }), { name: 'Acme' });
-  main.redeemIdentityInvite(main.linkIdentity('owner', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_owner', email: 'owner@example.com' });
-  main.setRequireAuth(true);
-  const harbor = new Weave();
-  harbor.state.meta.name = 'harbor';
-  harbor.markOnboarded();
-  harbor.createAccount({ name: 'skipper', role: 'architect' });
-  harbor.setRequireAuth(true);
-  const docs = new Weave();
-  docs.state.meta.name = 'weave';
-  const { server, port } = await startServer(main, {
-    port: 0, oidc, openSignup: open, workspaces: { harbor, weave: docs },
-    ...(base ? { baseDomain: base, origin: `http://${base}` } : { origin: null }),
-    ...(pane ? { clerkKey: idp.publishableKey } : {}),
-    limits: { options: 1000, failed: 1000, slugs: 1000 },
-  });
-  const at = (host) => (path, opts) => hit(port, host, path, opts);
-  const held = async (who, next = '/start') => {
-    const start = await at(APEX)(`/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`);
-    const back = idp.approve(start.headers.location, who);
-    const done = await at(APEX)(back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
-    return { done, cookie: cookieOf(done, 'wv_start') };
-  };
-  return { idp, main, harbor, row, at, apex: at(base ? APEX : 'localhost'), host: at(HOST), held, stop: () => { server.close(); idp.stop(); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const main = new Weave();
+    main.state.meta.name = 'Net';
+    main.markOnboarded();
+    main.createAccount({ name: 'owner', role: 'architect' });
+    main.createSpace({ name: 'Sales' });
+    const row = main.createEntity(main.createTable({ space: 'Sales', name: 'Deals' }), { name: 'Acme' });
+    main.redeemIdentityInvite(main.linkIdentity('owner', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_owner', email: 'owner@example.com' });
+    main.setRequireAuth(true);
+    const harbor = new Weave();
+    harbor.state.meta.name = 'harbor';
+    harbor.markOnboarded();
+    harbor.createAccount({ name: 'skipper', role: 'architect' });
+    harbor.setRequireAuth(true);
+    const docs = new Weave();
+    docs.state.meta.name = 'weave';
+    const { server, port } = await startServer(main, {
+      port: 0, oidc, openSignup: open, workspaces: { harbor, weave: docs },
+      ...(base ? { baseDomain: base, origin: `http://${base}` } : { origin: null }),
+      ...(pane ? { clerkKey: idp.publishableKey } : {}),
+      limits: { options: 1000, failed: 1000, slugs: 1000 },
+    });
+    const at = (host) => (path, opts) => hit(port, host, path, opts);
+    const held = async (who, next = '/start') => {
+      const start = await at(APEX)(`/api/auth/oidc/start?start=1&next=${encodeURIComponent(next)}`);
+      const back = idp.approve(start.headers.location, who);
+      const done = await at(APEX)(back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
+      return { done, cookie: cookieOf(done, 'wv_start') };
+    };
+    return { idp, main, harbor, row, at, apex: at(base ? APEX : 'localhost'), host: at(HOST), held, stop: () => { server.close(); idp.stop(); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 const ownerLogin = (idp) => ({ sub: 'user_owner', email: 'owner@example.com', email_verified: true });
 const stranger = { sub: 'user_stranger', email: 'stranger@example.com', email_verified: true };

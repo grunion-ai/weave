@@ -56,16 +56,18 @@ const EYE = { sub: 'user_eye', email: 'eye@example.com', email_verified: true };
 
 async function serve({ requireAuth = true, origin, limits = { options: 1000, failed: 1000 }, trustProxy } = {}) {
   const idp = await startIdp();
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  const db = w.createTable({ space: 'Dev', name: 'Task' });
-  const task = w.createEntity(db.id, { Name: 'One' });
-  const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
-  w.createAccount({ name: 'kyle', role: 'admin' });
-  w.createAccount({ name: 'eye', role: 'reader' });
-  for (const [name, who] of [['kyle', KYLE], ['eye', EYE]]) w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: who.sub });
-  if (requireAuth) w.setRequireAuth(true);
-  return { w, task, admin, ...await serveOidc(w, idp, { origin: origin ?? null, limits, ...(trustProxy ? { trustProxy } : {}) }) };
+  try {
+    const w = new Weave();
+    w.createSpace({ name: 'Dev' });
+    const db = w.createTable({ space: 'Dev', name: 'Task' });
+    const task = w.createEntity(db.id, { Name: 'One' });
+    const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
+    w.createAccount({ name: 'kyle', role: 'admin' });
+    w.createAccount({ name: 'eye', role: 'reader' });
+    for (const [name, who] of [['kyle', KYLE], ['eye', EYE]]) w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: who.sub });
+    if (requireAuth) w.setRequireAuth(true);
+    return { w, task, admin, ...await serveOidc(w, idp, { origin: origin ?? null, limits, ...(trustProxy ? { trustProxy } : {}) }) };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('routes: a provider sign-in sets a session cookie that opens the wall; logout closes it again', async () => {

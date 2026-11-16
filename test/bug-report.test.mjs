@@ -387,11 +387,12 @@ test('a note-only report is accepted and files with no symptom set', async () =>
   assert.equal(issue.fields.Name, 'the rail chip goes blank after a rename');
 });
 
-test('a renamed option cannot swallow a report', async () => {
+test('a renamed option cannot swallow a report', async (t) => {
   const docs = new Weave();
   seedWeaver(docs);
   docs.updateField(docs.getTable('Development/Issue').id, SYMPTOM_FIELD, { config: { options: ['Something else'] } });
   const drifted = await startServer(new Weave(), { port: 0, workspaces: { weave: docs } });
+  t.after(() => drifted.server.close());
   const res = await fetch(`http://127.0.0.1:${drifted.server.address().port}/api/bug-report`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ categories: ['slow'], note: 'drifted options', events: [], client: CLIENT }),
@@ -400,21 +401,20 @@ test('a renamed option cannot swallow a report', async () => {
   const filed = await res.json();
   assert.deepEqual(filed.symptoms, [], 'the field is left alone rather than fed a value it rejects');
   assert.match(docs.readEntity(filed.id).docs.Description, /\*\*Slow\*\*/, 'and the symptom is still on the record');
-  drifted.server.close();
 });
 
-test('a workspace seeded before the field existed keeps the report rather than refusing it', async () => {
+test('a workspace seeded before the field existed keeps the report rather than refusing it', async (t) => {
   const docs = new Weave();
   seedWeaver(docs);
   docs.deleteField(docs.getTable('Development/Issue').id, SYMPTOM_FIELD);
   const old = await startServer(new Weave(), { port: 0, workspaces: { weave: docs } });
+  t.after(() => old.server.close());
   const res = await fetch(`http://127.0.0.1:${old.server.address().port}/api/bug-report`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ categories: ['slow'], note: 'old workspace', events: [], client: CLIENT }),
   });
   assert.equal(res.status, 201, 'the report is worth more than the schema being tidy');
   assert.deepEqual((await res.json()).symptoms, []);
-  old.server.close();
 });
 
 test('a trace too large to be a trace is refused rather than pasted into a document', async () => {
@@ -424,15 +424,15 @@ test('a trace too large to be a trace is refused rather than pasted into a docum
   assert.match(r.data.error, /events/i);
 });
 
-test('with no weave workspace to file into, the door says so instead of 500ing', async () => {
+test('with no weave workspace to file into, the door says so instead of 500ing', async (t) => {
   const lone = await startServer(new Weave(), { port: 0 });
+  t.after(() => lone.server.close());
   const res = await fetch(`http://127.0.0.1:${lone.server.address().port}/api/bug-report`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ categories: ['slow'], events: [], client: CLIENT }),
   });
   assert.equal(res.status, 501);
   assert.match((await res.json()).error, /Issue/i);
-  lone.server.close();
 });
 
 test('the button is always there, and the panel opens beside it', () => {

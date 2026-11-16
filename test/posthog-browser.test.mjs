@@ -37,20 +37,22 @@ async function fakePosthog() {
 
 async function hub(posthog) {
   const idp = await startIdp();
-  const dir = tempDir('weave-posthog-flows-');
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const s = await launch(`posthog funnel, ${posthog ? 'with' : 'without'} a key`, (main) => {
-    main.state.meta.name = 'Net';
-    main.createAccount({ name: 'operator', role: 'architect' });
-    main.setRequireAuth(true);
-    main.save();
-  }, {
-    weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
-    server: () => ({ oidc, posthog, openSignup: { on: true, limit: 3 }, limits: { options: 1000, failed: 1000, slugs: 1000 } }),
-  });
-  const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
-  if (!s) { stop(); return null; }
-  return { idp, base: s.base.replace('127.0.0.1', 'localhost'), browser: s.browser, stop };
+  try {
+    const dir = tempDir('weave-posthog-flows-');
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const s = await launch(`posthog funnel, ${posthog ? 'with' : 'without'} a key`, (main) => {
+      main.state.meta.name = 'Net';
+      main.createAccount({ name: 'operator', role: 'architect' });
+      main.setRequireAuth(true);
+      main.save();
+    }, {
+      weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
+      server: () => ({ oidc, posthog, openSignup: { on: true, limit: 3 }, limits: { options: 1000, failed: 1000, slugs: 1000 } }),
+    });
+    const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
+    if (!s) { stop(); return null; }
+    return { idp, base: s.base.replace('127.0.0.1', 'localhost'), browser: s.browser, stop };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 const ph = await fakePosthog();

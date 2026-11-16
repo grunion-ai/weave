@@ -69,7 +69,7 @@ test('the last live workspace cannot be deleted', async () => {
   });
 });
 
-test('the tombstone survives a restart: a fresh hub still hides the workspace', async () => {
+test('the tombstone survives a restart: a fresh hub still hides the workspace', async (t) => {
   const dir = tempDir('weave-wtrash2-');
   try {
     {
@@ -77,6 +77,7 @@ test('the tombstone survives a restart: a fresh hub still hides the workspace', 
       main.state.meta.name = 'main';
       main.save();
       const { server } = await startServer(main, { port: 0 });
+      t.after(() => server.close());
       const base = `http://127.0.0.1:${server.address().port}`;
       await fetch(`${base}/api/workspaces`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"name":"scratch"}' });
       await fetch(`${base}/api/workspaces/scratch`, { method: 'DELETE' });
@@ -85,12 +86,12 @@ test('the tombstone survives a restart: a fresh hub still hides the workspace', 
     {
       const main = new Weave({ path: join(dir, 'main.db') });
       const { server } = await startServer(main, { port: 0 });
+      t.after(() => server.close());
       const base = `http://127.0.0.1:${server.address().port}`;
       const list = await (await fetch(`${base}/api/workspaces`)).json();
       assert.ok(!list.some((w) => w.name === 'scratch'), 'the tombstone is in the .db, not the process');
       const trash = await (await fetch(`${base}/api/workspaces?deleted=1`)).json();
       assert.ok(trash.some((w) => w.name === 'scratch' && w.deletedAt));
-      server.close();
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
