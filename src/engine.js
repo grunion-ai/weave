@@ -5279,13 +5279,14 @@ export class Weave {
 
   #inUndo = false;
   #undoOwner = null;
+  #undoHeld = null;
 
   #recordUndo(kind, e, data = {}) {
     if (this.#inMetaSync || this.#inUndo) return;
     const db = this.state.tables[e.dbId];
     if (!db || db.system) return;
     if (kind === 'update' && data.before) data = { ...data, after: this.#undoAfter(e, data.before) };
-    this.store.pushUndo({
+    const entry = {
       ts: nowISO(),
       actor: this.#undoOwner ?? this.actor,
       kind,
@@ -5294,7 +5295,39 @@ export class Weave {
       publicId: e.publicId,
       name: this.entityName(e),
       data,
-    });
+    };
+    if (this.#undoHeld) this.#undoHeld.push(entry);
+    else this.store.pushUndo(entry);
+  }
+
+  #holdUndo(fn) {
+    const outer = this.#undoHeld;
+    const held = this.#undoHeld = [];
+    try {
+      return fn();
+    } finally {
+      this.#undoHeld = outer;
+      for (const entry of held) {
+        if (outer) outer.push(entry);
+        else this.store.pushUndo(entry);
+      }
+    }
+  }
+
+  #writersSince(e, seq) {
+    return [...new Set(e.activity.filter((a) => a.seq >= seq).map((a) => a.actor ?? null))];
+  }
+
+  #keptSince(e, own) {
+    if (own?.seq == null || !Array.isArray(own.actors)) return [];
+    const by = new Map();
+    for (const a of e.activity ?? []) {
+      if (a.seq <= own.seq || a.kind === 'automation-ran' || own.actors.includes(a.actor ?? null)) continue;
+      const fields = a.detail?.field ? [a.detail.field]
+        : a.detail?.fields ?? [a.kind === 'comment-added' ? 'Comments' : a.kind === 'file-attached' ? 'Files' : a.kind];
+      for (const field of fields) by.set(field, this.actorName(a.actor ?? null));
+    }
+    return [...by].map(([field, who]) => ({ field, by: who }));
   }
 
   #undoBefore(e, db, fieldRefs) {
@@ -5360,9 +5393,12 @@ export class Weave {
         const db = this.state.tables[e.dbId];
         switch (entry.kind) {
           case 'create':
-          case 'restore':
+          case 'restore': {
+            const kept = this.#keptSince(e, entry.data);
+            if (kept.length) { undone.push({ ...summary, skipped: 'changed since', kept }); continue; }
             this.deleteEntity(e.id);
             break;
+          }
           case 'delete':
             this.restoreEntity(e.id);
             break;
@@ -7807,11 +7843,15 @@ export class Weave {
       db.publicIdCounter--;
       throw err;
     }
-    this.#recordUndo('create', e);
-    for (const [fid, text] of Object.entries(e.docs)) {
-      if (text && db.fields[fid]) this.#recordDocRevision(e, db.fields[fid], '', text, { fresh: true });
-    }
-    this.#runAutomations(db, e, { type: 'entity-created' }, depth);
+    const own = { seq: e.activity[0].seq };
+    this.#holdUndo(() => {
+      this.#recordUndo('create', e, own);
+      for (const [fid, text] of Object.entries(e.docs)) {
+        if (text && db.fields[fid]) this.#recordDocRevision(e, db.fields[fid], '', text, { fresh: true });
+      }
+      this.#runAutomations(db, e, { type: 'entity-created' }, depth);
+      own.actors = this.#writersSince(e, own.seq);
+    });
     this.save();
     return e;
   }
@@ -8372,7 +8412,8 @@ export class Weave {
     e.updatedAt = nowISO();
     e.modifiedBy = this.actor;
     this.#logActivity(e, 'restored', {}, { ts: e.updatedAt });
-    this.#recordUndo('restore', e);
+    const seq = e.activity.at(-1).seq;
+    this.#recordUndo('restore', e, { seq, actors: this.#writersSince(e, seq) });
     this.#mark(e);
     this.save();
     return this.readEntity(id);
