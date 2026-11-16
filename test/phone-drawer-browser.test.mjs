@@ -79,8 +79,8 @@ if (s) {
     const rail = document.querySelector('#ws-rail');
     return { inert: rail.inert, seen: rail.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && rail.getBoundingClientRect().width > 0 };
   });
-  test('a tablet opens the same full-screen menu as a phone, with the workspace rail live, and Esc gives the page back (Feature #377)', async () => {
-    const page = await open([WIDTH.tablet, 844]);
+  test('the widest phone-format window opens the same full-screen menu as a phone, with the workspace rail live, and Esc gives the page back (Features #377, #379)', async () => {
+    const page = await open([WIDTH.widestPhoneFormat, 844]);
     try {
       assert.deepEqual(await railState(page), { inert: false, seen: false }, 'the rail is off screen until the menu button opens the drawer');
       await openMenu(page);

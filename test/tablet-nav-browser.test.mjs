@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { WIDTH } from './lib/viewports.mjs';
 
 let table;
 const s = await launch('tablet nav', (weave) => {
@@ -50,8 +51,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the peek drawer carries the rail at 768px (Issue #1457)', async () => {
-    const page = await open(768);
+  test('the peek drawer carries the rail in the widest phone-format window (Issue #1457, Feature #379)', async () => {
+    const page = await open(WIDTH.widestPhoneFormat);
     try {
       await page.click('#main .nav-menu');
       await page.waitForFunction(() => document.querySelector('#app').classList.contains('nav-peek'));
@@ -61,8 +62,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the held drawer leaves the rail it draws reachable at 768px (Issue #1546)', async () => {
-    const page = await open(768);
+  test('the held drawer leaves the rail it draws reachable in the widest phone-format window (Issue #1546, Feature #379)', async () => {
+    const page = await open(WIDTH.widestPhoneFormat);
     const where = () => page.evaluate(() => {
       const rail = document.querySelector('#ws-rail');
       const at = document.activeElement;

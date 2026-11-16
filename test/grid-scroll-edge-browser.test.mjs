@@ -147,8 +147,8 @@ if (s) {
       drawn: a.content !== 'none' && a.display !== 'none' && Number(a.opacity) > 0,
     };
   });
-  const openNarrow = async (db) => {
-    const page = await browser.newPage({ viewport: { width: WIDTH.narrowestDesktop, height: 700 }, deviceScaleFactor: 2 });
+  const openNarrow = async (db, width = WIDTH.narrowestDesktop) => {
+    const page = await browser.newPage({ viewport: { width, height: 700 }, deviceScaleFactor: 2 });
     await page.goto(`${base}/#/table/${db.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('.wv-grid tbody tr.entity-row');
     await frame(page);
@@ -210,7 +210,7 @@ if (s) {
     const db = weave.createTable({ space: 'Development', name: `Narrow ${++n}` });
     weave.addField(db, { name: 'Note', type: 'text' });
     weave.createEntity(db, { name: 'only row', values: { Note: 'a' } });
-    const page = await openNarrow(db);
+    const page = await openNarrow(db, WIDTH.widestTrayHidden);
     try {
       assert.deepEqual(await fadeState(page), { overflow: false, atEnd: true, drawn: false },
         'a table that ends inside its pane is already at its end, and nothing is drawn');

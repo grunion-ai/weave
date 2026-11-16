@@ -104,24 +104,24 @@ if (s) {
     await page.close();
   });
 
-  test('the handle is absent while collapsed and below 900px (Issue #905)', async () => {
+  test('the handle is absent while collapsed and in phone format (Issue #905, Feature #379)', async () => {
     const page = await open();
     await page.click('#nav-collapse');
     assert.equal(await page.locator('#nav-resize').isVisible(), false, 'no handle while collapsed');
     await page.click('#main .nav-menu');
     assert.equal(await page.locator('#nav-resize').isVisible(), true, 'the handle returns on expand');
-    await page.setViewportSize({ width: 880, height: 900 });
-    assert.equal(await page.locator('#nav-resize').isVisible(), false, 'no handle on a narrow window');
+    await page.setViewportSize({ width: WIDTH.widestPhoneFormat, height: 900 });
+    assert.equal(await page.locator('#nav-resize').isVisible(), false, 'no handle in phone format');
     await page.close();
   });
 
-  test('a stored width leaves the tablet menu at the full window width (Issue #905, Feature #377)', async () => {
-    const page = await open(WIDTH.tablet);
+  test('a stored width leaves the widest phone-format menu at the full window width (Issue #905, Features #377, #379)', async () => {
+    const page = await open(WIDTH.widestPhoneFormat);
     await page.evaluate(() => localStorage.setItem('weave-nav-width', '420'));
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('#sidebar #nav', { state: 'attached' });
     await page.evaluate(() => document.querySelector('#app').classList.add('nav-peek'));
-    assert.equal(await eventually(() => navWidth(page), WIDTH.tablet), WIDTH.tablet, 'the menu spans the window, whatever width the tray was dragged to');
+    assert.equal(await eventually(() => navWidth(page), WIDTH.widestPhoneFormat), WIDTH.widestPhoneFormat, 'the menu spans the window, whatever width the tray was dragged to');
     await page.close();
   });
 }

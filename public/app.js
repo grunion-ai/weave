@@ -870,7 +870,7 @@ function tableHop(db) {
   return { tableId: db.id, table: db.name, tableIcon: db.icon ?? null, space: db.space ?? '', spaceId: db.spaceId ?? '', spaceIcon: db.spaceIcon ?? null };
 }
 
-const dockCoversScreen = matchMedia('(max-width: 959px)');
+const dockCoversScreen = matchMedia('(max-width: 719px)');
 const saves = WeaveSaveQueue.createSaveQueue({
   delay: globalThis.__weaveSaveDelay ?? WeaveSaveQueue.DEBOUNCE_MS,
   send: (j) => api('PATCH', `/entities/${j.entityId}`, { values: { [j.field]: j.value } }),
@@ -3098,7 +3098,7 @@ function menuBounds(node) {
   return viewport;
 }
 
-const MENU_SHEET = matchMedia('(max-width: 959px)');
+const MENU_SHEET = matchMedia('(max-width: 719px)');
 let openMenu = null;
 
 function menuRow(it, done) {
@@ -11604,7 +11604,7 @@ function wireWsNew() {
   }
 }
 
-const narrowShell = matchMedia('(max-width: 959px)');
+const narrowShell = matchMedia('(max-width: 719px)');
 const tightShell = matchMedia('(max-width: 1199px)');
 let navPeekDwell, navPeekLeave;
 function closeNavPeek() {

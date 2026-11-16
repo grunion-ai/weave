@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
+import { DESKTOP_MIN, PHONE_MAX, WIDTH } from './lib/viewports.mjs';
 
 let tasks, row;
 const s = await launch('shell breakpoints', (weave) => {
@@ -35,20 +36,37 @@ if (s) {
   };
   const resize = async (page, width) => { await page.setViewportSize({ width, height: 900 }); await settle(page); };
 
-  test('phone format applies below 960 px and desktop format from 960 px up (Feature #377)', async () => {
-    const page = await open(959);
+  test('phone format applies below 720 px and desktop format from 720 px up (Feature #379)', async () => {
+    const page = await open(PHONE_MAX);
     try {
       const phone = await shell(page);
       assert.equal(phone.tray, false, 'no nav tray in phone format');
       assert.equal(phone.workspaceCrumb, false, 'phone format drops the workspace crumb');
       assert.equal(phone.crumbHeight, 36, 'crumbs are 36px chips in phone format');
       assert.equal(phone.trayButtonWidth, 44, 'the navigation button is a 44px target');
-      assert.equal(await page.evaluate(() => matchMedia('(max-width: 959px)').matches), true);
-      await resize(page, 960);
+      assert.equal(await page.evaluate(() => matchMedia('(max-width: 719px)').matches), true);
+      await resize(page, DESKTOP_MIN);
       const desk = await shell(page);
       assert.equal(desk.workspaceCrumb, true, 'desktop format shows the workspace crumb');
       assert.ok(desk.crumbHeight < 36, `desktop crumbs are text, not chips: ${desk.crumbHeight}px`);
       assert.ok(desk.trayButtonWidth < 44, `the tray button is desktop sized: ${desk.trayButtonWidth}px`);
+    } finally { await page.close(); }
+  });
+
+  test('each of two side-by-side windows on a 14-inch laptop gets desktop format with the tray hidden (Feature #379)', async () => {
+    const page = await open(WIDTH.halfLaptop);
+    try {
+      const half = await shell(page);
+      assert.equal(half.workspaceCrumb, true, 'a half-screen window shows the desktop crumbs');
+      assert.ok(half.crumbHeight < 36, `desktop crumbs are text, not chips: ${half.crumbHeight}px`);
+      assert.ok(half.trayButtonWidth < 44, `the tray button is desktop sized: ${half.trayButtonWidth}px`);
+      assert.equal(half.tray, false, 'the tray hides on its own');
+      assert.equal(half.collapsed, true, 'through the collapsed state');
+      assert.ok(!half.pref, 'and leaves the saved preference alone');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the page does not scroll sideways');
+      await page.click('#main .view-header .nav-menu');
+      await settle(page);
+      assert.equal((await shell(page)).tray, true, 'the tray button shows the tray beside the page');
     } finally { await page.close(); }
   });
 
