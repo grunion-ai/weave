@@ -489,10 +489,6 @@ export class Store {
       .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
   }
 
-  get batching() {
-    return this.#batch;
-  }
-
   batch(fn) {
     if (!this.path || this.#batch) return fn();
     if (!this.#db) this.#open();
@@ -504,8 +500,7 @@ export class Store {
       return result;
     } catch (err) {
       this.#db.exec('ROLLBACK');
-      this.#loadState();
-      throw err;
+      throw this.onRollback?.(err, this.#loadState()) ?? err;
     } finally { this.#batch = false; }
   }
 
