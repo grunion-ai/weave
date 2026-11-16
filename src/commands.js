@@ -839,7 +839,7 @@ export const COMMANDS = [
   {
     name: 'key.list',
     engine: ['listKeys'],
-    writes: 'none', minRole: 'architect', annotations: READ,
+    writes: 'none', minRole: 'architect', account: true, annotations: READ,
     tool: KEYS_TOOL,
     action: 'list',
     cli: { command: 'key', sub: 'list', default: true, result: (r) => r.keys },
@@ -849,7 +849,7 @@ export const COMMANDS = [
   {
     name: 'key.set',
     engine: ['setKey'],
-    writes: 'keystore', minRole: 'architect', annotations: EDIT,
+    writes: 'keystore', minRole: 'architect', account: true, annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'set',
     cli: { command: 'key', sub: 'set', positional: ['name'], flags: ['value'], args: (a, flags, { stdin }) => ({ name: a.name, value: a.value ?? stdin().trim() }) },
@@ -859,7 +859,7 @@ export const COMMANDS = [
   {
     name: 'key.reveal',
     engine: ['revealKey'],
-    writes: 'keystore', minRole: 'editor', annotations: READ,
+    writes: 'keystore', minRole: 'editor', account: true, annotations: READ,
     tool: KEYS_TOOL,
     action: 'reveal',
     toolRefusal: 'Revealing a secret is not an agent action — use `weave key reveal` or the app.',
@@ -870,7 +870,7 @@ export const COMMANDS = [
   {
     name: 'key.share',
     engine: ['grantKey'],
-    writes: 'keystore', minRole: 'architect', annotations: EDIT,
+    writes: 'keystore', minRole: 'architect', account: true, annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'share',
     cli: { command: 'key', sub: 'share', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
@@ -880,7 +880,7 @@ export const COMMANDS = [
   {
     name: 'key.unshare',
     engine: ['revokeKey'],
-    writes: 'keystore', minRole: 'architect', annotations: REMOVE,
+    writes: 'keystore', minRole: 'architect', account: true, annotations: REMOVE,
     tool: KEYS_TOOL,
     action: 'unshare',
     cli: { command: 'key', sub: 'unshare', positional: ['name'], args: (a, flags) => ({ name: a.name, account: flags.with }) },
@@ -890,7 +890,7 @@ export const COMMANDS = [
   {
     name: 'key.delete',
     engine: ['deleteKey'],
-    writes: 'keystore', minRole: 'architect', annotations: REMOVE,
+    writes: 'keystore', minRole: 'architect', account: true, annotations: REMOVE,
     tool: KEYS_TOOL,
     action: 'delete',
     cli: { command: 'key', sub: 'delete', positional: ['name'] },
@@ -900,7 +900,7 @@ export const COMMANDS = [
   {
     name: 'key.migrate',
     engine: ['migrateKeys'],
-    writes: 'keystore', minRole: 'architect', annotations: EDIT,
+    writes: 'keystore', minRole: 'architect', account: true, annotations: EDIT,
     tool: KEYS_TOOL,
     action: 'migrate',
     toolRefusal: 'Moving the key store is not an agent action: run `weave key migrate --to keychain` or `--to file` on the machine that holds it.',

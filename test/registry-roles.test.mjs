@@ -149,8 +149,8 @@ const via = (c) => (c.tool ? c.tool.name : COMMANDS.find((x) => x.tool && x.tool
 const EXCEPT = {
   'template.use': { why: 'the template lands in the workspace the body names, which needs an architect there', passes: ['owner', 'architect'], status: { anonymous: 403 } },
   'key.reveal': { why: 'any account passes the role gate, then the key\'s own access list decides', passes: ['architect'] },
-  'run.start': { why: 'runs need a workspace account: the engine refuses a space-scoped token, and MCP over HTTP an owner with no account', passes: ['owner', 'architect', 'editor'], mcp: ['architect', 'editor'] },
-  'run.update': { why: 'runs need a workspace account: the engine refuses a space-scoped token, and MCP over HTTP an owner with no account', passes: ['owner', 'architect', 'editor'], mcp: ['architect', 'editor'] },
+  'run.start': { why: 'runs need a workspace account, and the engine refuses a space-scoped token; a workspace with no accounts lets its owner write runs on both doors', passes: ['owner', 'architect', 'editor'] },
+  'run.update': { why: 'runs need a workspace account, and the engine refuses a space-scoped token; a workspace with no accounts lets its owner write runs on both doors', passes: ['owner', 'architect', 'editor'] },
   'run.list': { why: 'runs need a workspace account, and the engine refuses a space-scoped token', passes: ['owner', 'architect', 'editor', 'observer', 'anonymous'] },
 };
 
@@ -387,4 +387,9 @@ test('a space architect creates a table in its own space on both doors, and none
   assert.equal(refusedOverMcp(await rpc(tokens.editor, { space: 'Ops', name: 'Editor' })), true, 'a plain editor creates no table over MCP');
   assert.deepEqual(w.listTables(w.getSpace('Sales').id).map((t) => t.name), []);
   assert.deepEqual(w.listTables(w.getSpace('Ops').id).map((t) => t.name).filter((n) => /^(?:Http|Mcp|Editor)/.test(n)).sort(), ['Http Ops token', 'Http space architect', 'Mcp Ops token', 'Mcp space architect']);
+});
+
+test('only the key rows need an account on this workspace, and both doors read that from the row (Issue #1773)', () => {
+  assert.deepEqual(COMMANDS.filter((c) => c.account).map((c) => c.name).sort(), COMMANDS.filter((c) => c.name.startsWith('key.')).map((c) => c.name).sort());
+  for (const c of COMMANDS.filter((x) => x.name.startsWith('run.'))) assert.equal(c.account, undefined, `${c.name} leaves the account question to the engine`);
 });

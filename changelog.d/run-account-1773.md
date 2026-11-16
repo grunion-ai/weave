@@ -1,0 +1,1 @@
+- On a workspace with no accounts, the local owner starts and updates runs with weave_runs over MCP on HTTP, as REST and stdio MCP already allowed; a workspace with accounts still refuses a caller with no seat (Issue #1773).

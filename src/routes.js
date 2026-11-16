@@ -1510,9 +1510,9 @@ async function mailKeyAndIntegrationRoutes(c, fromRequest) {
     return out(200, await weave.setIntegrationCredential(decodeURIComponent(m[1]), body?.value));
   }
   if (path.startsWith('/api/keys')) {
-    if (!role) return deny(401, 'Managing keys needs an account on this workspace');
-    const localRole = roleOn(weave);
     const keyed = matchRoute(rx.method, path);
+    if (!role && (!keyed || keyed.cmd.account)) return deny(401, 'Managing keys needs an account on this workspace');
+    const localRole = roleOn(weave);
     const need = keyed?.cmd.minRole ?? 'architect';
     const target = keyed?.cmd.name === 'key.set' ? body?.name : keyed?.cmd.name === 'key.delete' ? keyed.params.name : null;
     const owns = !!localRole && target != null && weave.ownsKey(target);
