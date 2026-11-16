@@ -44,7 +44,7 @@ test('weave_set_doc without a base on a document changed since the caller read i
   humanWrites(w, row.id, 'HUMAN_EDIT');
   const no = agent.refused('weave_set_doc', { entity: row.id, markdown: 'AGENT_TEXT' });
   assert.equal(no.code, 'stale');
-  assert.match(no.text, /Description changed since you read it/);
+  assert.match(no.text, /<weave_data>Description<\/weave_data> changed since you read it/);
   assert.equal(no.base, hash('HUMAN_EDIT'), 'the refusal names the base of the stored text');
   assert.equal(no.revision, w.entityRevision(row.id), 'and the record revision as it stands');
   assert.ok(no.text.includes(no.base), 'the text an agent reads carries the base too');
@@ -67,7 +67,7 @@ test('a base-less replace of text the caller never read is refused, and an empty
   const { w, row } = workspace();
   const agent = as(w, 'mcp:agent');
   const no = agent.refused('weave_set_doc', { entity: row.id, markdown: 'BLIND' });
-  assert.match(no.text, /You have not read Description/);
+  assert.match(no.text, /You have not read <weave_data>Description<\/weave_data>/);
   assert.equal(no.base, hash('FIRST_TEXT'));
   assert.equal(w.getDoc(row.id), 'FIRST_TEXT');
   const fresh = agent.ok('weave_create_entity', { db: 'Task', name: 'Empty' });
