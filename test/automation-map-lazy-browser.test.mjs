@@ -65,7 +65,7 @@ if (s) {
   test('a map whose automation file fails to load says so and still draws its tables (Issue #1041)', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
-      await page.route(`**${FILE}`, (r) => r.abort());
+      await page.route(/\/automation-map\.js(\?|$)/, (r) => r.abort());
       await page.goto(`${base}/#/map`, { waitUntil: 'networkidle' });
       await page.locator('#wv-toasts', { hasText: 'Automations did not load' }).waitFor();
       await page.locator('svg.relmap g.table-node', { hasText: 'Ticket' }).waitFor();
