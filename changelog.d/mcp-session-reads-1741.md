@@ -1,0 +1,1 @@
+- Two agents on one token no longer overwrite each other's document edits over HTTP MCP. `initialize` answers an `Mcp-Session-Id` header, and a base-less replace lands only on text read in the same session; a request with no session id counts only the reads made in that request (Issue #1741).

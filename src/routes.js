@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Weave, WeaveError, FILE_MAX_BYTES, PREVIEW_MAX_BYTES, mbText, fileHeaders, isHtmlFile, viewHtml, frameLinkBase, frameStorageScript, FRAME_HEIGHT_SCRIPT, sandboxedHtmlHeaders, HTML_PAGE_POLICY, logoType, inviteUrl, accountActor } from './engine.js';
 import { handleApplet, appletOn } from './applet.js';
 import { storageFull, statusFor, errorBody, nonNegativeInteger } from './errors.js';
@@ -1526,7 +1527,10 @@ async function mailKeyAndIntegrationRoutes(c, fromRequest) {
   if (route === 'POST /api/mcp') {
     const msgs = Array.isArray(body) ? body : [body];
     const seat = unseated ? `${seatRequired()} Billing: ${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/billing` : null;
-    const caller = { role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
+    const opened = msgs.some((msg) => msg?.method === 'initialize');
+    const sent = String(rx.header('mcp-session-id') ?? '');
+    const session = !opened && /^[\x21-\x7e]{1,128}$/.test(sent) ? sent : randomUUID();
+    const caller = { session, role, signedIn: !!requestAccount, tier: unseated ?? (role ? topRole(weave, viewer) : role), workspaceTier: unseated ?? role, workspaceOrder: () => hub.list({ workspace: weave }).filter(x => canOpen(hub.get(x.name))), moveWorkspace: (ref, position) => hub.move(ref, position, { workspace: weave, visible: canOpen }).filter(x => canOpen(hub.get(x.name))), updateWorkspace, useTemplate: useTemplateInto, seat, prepareUpload };
     const replies = msgs.map((msg) => handleMcpMessage(weave, msg, { version, caller })).filter(Boolean);
     if (viewers.tokenWrite) {
       for (const msg of msgs) {
@@ -1537,7 +1541,7 @@ async function mailKeyAndIntegrationRoutes(c, fromRequest) {
     }
     if (oauth) oauth.engine.noteAgent(oauth.account.id, rx.header('user-agent'));
     if (!replies.length) return { status: 202, headers: { 'Content-Type': 'application/json' }, body: '' };
-    return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store' });
+    return out(200, Array.isArray(body) ? replies : replies[0], { 'Cache-Control': 'no-store', ...(opened ? { 'Mcp-Session-Id': session } : {}) });
   }
   if (route === 'POST /api/bulk' && role === 'editor') {
     const { ids, op, ...params } = body ?? {};
