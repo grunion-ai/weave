@@ -195,7 +195,7 @@ test('one script of space and table writes answers the same on CLI, MCP and HTTP
   } finally { server.close(); }
 });
 
-test('the HTTP role gate reads writes from the registry: an editor is refused every schema write and runs the rest (Feature #179)', async () => {
+test('the HTTP role gate reads writes from the registry: an editor is refused every schema write and runs the rest (Feature #179)', async (t) => {
   const w = new Weave();
   seed(w);
   w.addField('Task', { name: 'Points', type: 'number' });
@@ -210,6 +210,7 @@ test('the HTTP role gate reads writes from the registry: an editor is refused ev
   w.setDoc(alpha, 'first');
   const said = w.addComment(alpha, { author: 'ed', text: 'hi' });
   const { server } = await startServer(w, { port: 0 });
+  t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
   const seen = w.createView({ name: 'Seen', blocks: [{ table: 'Task' }] }).id;
   const filed = w.attachFile(alpha, { name: 'gate.txt', mime: 'text/plain', bytes: Buffer.from('gate').toString('base64') }).id;

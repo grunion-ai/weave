@@ -23,12 +23,14 @@ function workspace(name, { issuer, kyle = true }) {
 
 async function serve() {
   const idp = await startIdp();
-  const home = workspace('home', { issuer: idp.issuer });
-  const alpha = workspace('alpha', { issuer: idp.issuer });
-  const beta = workspace('beta', { issuer: idp.issuer });
-  const gamma = workspace('gamma', { issuer: idp.issuer, kyle: false });
-  const s = await serveOidc(home.w, idp, { workspaces: { alpha: alpha.w, beta: beta.w, gamma: gamma.w } });
-  return { ...s, idp, home, alpha, beta, gamma };
+  try {
+    const home = workspace('home', { issuer: idp.issuer });
+    const alpha = workspace('alpha', { issuer: idp.issuer });
+    const beta = workspace('beta', { issuer: idp.issuer });
+    const gamma = workspace('gamma', { issuer: idp.issuer, kyle: false });
+    const s = await serveOidc(home.w, idp, { workspaces: { alpha: alpha.w, beta: beta.w, gamma: gamma.w } });
+    return { ...s, idp, home, alpha, beta, gamma };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 function browser(s) {
@@ -207,9 +209,9 @@ test('routes: signing in requires an account on the requested workspace and crea
 
 test('routes: an architect in one workspace signs in with the role held in another', async () => {
   const s = await serve();
-  s.home.w.setAccountRole('kyle', 'architect');
-  s.alpha.w.setAccountRole('kyle', 'observer');
   try {
+    s.home.w.setAccountRole('kyle', 'architect');
+    s.alpha.w.setAccountRole('kyle', 'observer');
     const b = browser(s);
     await b.signIn('home');
     assert.equal((await b.call('GET', '/w/alpha/api/schema')).status, 401);

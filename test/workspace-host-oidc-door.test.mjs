@@ -25,18 +25,20 @@ const hit = (port, host, path, { cookie } = {}) => new Promise((resolve, reject)
 async function serve() {
   const dir = tempDir('weave-ws-oidc-');
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
-  acme.state.meta.name = 'acme';
-  acme.createAccount({ name: 'kyle', role: 'editor' });
-  acme.setRequireAuth(true);
-  acme.save();
-  acme.store.close?.();
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: BASE, origin: `http://${BASE}`, oidc, limits: { options: 1000, failed: 1000 } });
-  return { port, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const acme = new Weave({ path: join(dir, 'acme.db'), name: 'acme' });
+    acme.state.meta.name = 'acme';
+    acme.createAccount({ name: 'kyle', role: 'editor' });
+    acme.setRequireAuth(true);
+    acme.save();
+    acme.store.close?.();
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, baseDomain: BASE, origin: `http://${BASE}`, oidc, limits: { options: 1000, failed: 1000 } });
+    return { port, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('a workspace host sends only the sign-in start to the apex: its callback is answered there and expired', async () => {

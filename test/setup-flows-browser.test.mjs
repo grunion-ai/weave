@@ -12,27 +12,29 @@ import { tempDir } from './lib/temp.mjs';
 
 async function hub({ open = true, limit = 2, clerk = false } = {}) {
   const idp = await startIdp();
-  const dir = tempDir('weave-setup-flows-');
-  const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
-  taken.state.meta.name = 'harbor';
-  taken.setRequireAuth(true);
-  taken.save();
-  taken.store.close?.();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const s = await launch(`setup flows, ${open ? 'open' : 'invite-only'} sign-up${clerk ? ', Clerk pane' : ''}`, (main) => {
-    main.state.meta.name = 'Net';
-    main.createAccount({ name: 'operator', role: 'architect' });
-    main.setRequireAuth(true);
-    main.save();
-  }, {
-    weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
-    server: () => ({ oidc, openSignup: { on: open, limit }, ...(clerk ? { clerkKey: idp.publishableKey } : {}), limits: { options: 1000, failed: 1000, slugs: 1000 } }),
-  });
-  const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
-  if (!s) { stop(); return null; }
-  const base = s.base.replace('127.0.0.1', 'localhost');
-  const opened = (name) => new Weave({ path: join(dir, `${name}.db`) });
-  return { idp, dir, base, browser: s.browser, opened, stop };
+  try {
+    const dir = tempDir('weave-setup-flows-');
+    const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
+    taken.state.meta.name = 'harbor';
+    taken.setRequireAuth(true);
+    taken.save();
+    taken.store.close?.();
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const s = await launch(`setup flows, ${open ? 'open' : 'invite-only'} sign-up${clerk ? ', Clerk pane' : ''}`, (main) => {
+      main.state.meta.name = 'Net';
+      main.createAccount({ name: 'operator', role: 'architect' });
+      main.setRequireAuth(true);
+      main.save();
+    }, {
+      weave: () => new Weave({ path: join(dir, 'workspace.db'), name: 'Net' }),
+      server: () => ({ oidc, openSignup: { on: open, limit }, ...(clerk ? { clerkKey: idp.publishableKey } : {}), limits: { options: 1000, failed: 1000, slugs: 1000 } }),
+    });
+    const stop = () => { idp.stop(); rmSync(dir, { recursive: true, force: true }); };
+    if (!s) { stop(); return null; }
+    const base = s.base.replace('127.0.0.1', 'localhost');
+    const opened = (name) => new Weave({ path: join(dir, `${name}.db`) });
+    return { idp, dir, base, browser: s.browser, opened, stop };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 const openHub = await hub();

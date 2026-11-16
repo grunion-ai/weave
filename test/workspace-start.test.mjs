@@ -31,39 +31,41 @@ const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c
 
 async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null, openSignup = { on: false }, kyleWorkspaces = [] } = {}) {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = tempDir('weave-start-');
-  const pin = (w, name, role, subject) => {
-    w.createAccount({ name, role });
-    w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });
-  };
-  for (const name of ['acme', 'other', 'weave']) {
-    const w = new Weave({ path: join(dir, `${name}.db`), name });
-    w.state.meta.name = name;
-    if (name === 'acme') pin(w, 'eve', 'editor', 'user_eve');
-    if (name === 'other') w.createAccount({ name: 'someone', role: 'architect' });
-    if (kyleWorkspaces.includes(name)) pin(w, 'Kyle', 'editor', 'user_kyle');
-    if (name !== 'weave') w.setRequireAuth(true);
-    w.save();
-    w.store.close?.();
-  }
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  const rootToken = main.createAccount({ name: 'Kyle Adriany', role: rootArchitect ? 'architect' : 'editor' }).token;
-  main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  main.setRequireAuth(true);
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits, billing, openSignup });
-  const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
-  const apex = at('weave.test');
-  const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
-  const signInAtStart = async (sub, claims = {}) => {
-    const start = await apex('GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, { sub, ...claims });
-    const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
-    return { res, cookie: cookieOf(res, 'wv_start') };
-  };
-  return { dir, main, port, at, apex, follow, signInAtStart, rootToken, idp, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const dir = tempDir('weave-start-');
+    const pin = (w, name, role, subject) => {
+      w.createAccount({ name, role });
+      w.redeemIdentityInvite(w.linkIdentity(name, { issuer: idp.issuer }).code, { issuer: idp.issuer, subject });
+    };
+    for (const name of ['acme', 'other', 'weave']) {
+      const w = new Weave({ path: join(dir, `${name}.db`), name });
+      w.state.meta.name = name;
+      if (name === 'acme') pin(w, 'eve', 'editor', 'user_eve');
+      if (name === 'other') w.createAccount({ name: 'someone', role: 'architect' });
+      if (kyleWorkspaces.includes(name)) pin(w, 'Kyle', 'editor', 'user_kyle');
+      if (name !== 'weave') w.setRequireAuth(true);
+      w.save();
+      w.store.close?.();
+    }
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    const rootToken = main.createAccount({ name: 'Kyle Adriany', role: rootArchitect ? 'architect' : 'editor' }).token;
+    main.redeemIdentityInvite(main.linkIdentity('Kyle Adriany', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    main.setRequireAuth(true);
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, limits, billing, openSignup });
+    const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
+    const apex = at('weave.test');
+    const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
+    const signInAtStart = async (sub, claims = {}) => {
+      const start = await apex('GET', '/api/auth/oidc/start?start=1');
+      const back = idp.approve(start.headers.location, { sub, ...claims });
+      const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
+      return { res, cookie: cookieOf(res, 'wv_start') };
+    };
+    return { dir, main, port, at, apex, follow, signInAtStart, rootToken, idp, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('reserved: weave and grunion join the list, and the docs workspace keeps answering', async () => {

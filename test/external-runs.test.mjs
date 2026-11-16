@@ -197,9 +197,10 @@ test('a dispatch that exhausts retries after restart fails the same tracked run'
   process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
   const endpoint = createServer((req, res) => { res.writeHead(503); res.end('unavailable'); });
   await new Promise((resolve) => endpoint.listen(0, '127.0.0.1', resolve));
-  const path = join(tempDir('weave-run-dispatch-'), 'runs.db');
-  let w = make(path);
+  let w;
   try {
+    const path = join(tempDir('weave-run-dispatch-'), 'runs.db');
+    w = make(path);
     w.createSpace({ name: 'Ops' });
     const t = w.createTable({ space: 'Ops', name: 'Job' });
     w.deliveryAttempts = 2;
@@ -223,7 +224,7 @@ test('a dispatch that exhausts retries after restart fails the same tracked run'
     assert.equal(failed.mailStatus, 'pending');
     assert.match(failed.error, /gave up after 2 attempts/);
   } finally {
-    w.store.close();
+    w?.store.close();
     endpoint.closeAllConnections();
     await new Promise((resolve) => endpoint.close(resolve));
     if (prior === undefined) delete process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE;
@@ -271,9 +272,9 @@ test('an expired external run never dispatches its waiting HTTP retry', async ()
   const prior = process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE;
   process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
   let calls = 0;
+  const w = make();
   const endpoint = createServer((req, res) => { calls++; res.writeHead(503); res.end('unavailable'); });
   await new Promise((resolve) => endpoint.listen(0, '127.0.0.1', resolve));
-  const w = make();
   try {
     w.createSpace({ name: 'Ops' });
     const t = w.createTable({ space: 'Ops', name: 'Job' });

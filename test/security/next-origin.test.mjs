@@ -29,11 +29,13 @@ test('the sign-in page resolves next the same way, against its own origin', () =
 
 async function serve() {
   const idp = await startIdp();
-  const w = new Weave();
-  w.createAccount({ name: 'kyle', role: 'editor' });
-  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  w.setRequireAuth(true);
-  return serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } });
+  try {
+    const w = new Weave();
+    w.createAccount({ name: 'kyle', role: 'editor' });
+    w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    w.setRequireAuth(true);
+    return serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } });
+  } catch (err) { idp.stop(); throw err; }
 }
 const KYLE = { sub: 'user_kyle' };
 

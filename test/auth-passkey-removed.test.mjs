@@ -25,16 +25,18 @@ const OLD_CREDENTIAL = { id: 'cred-old', publicKeyJwk: { kty: 'EC', crv: 'P-256'
 
 async function serve({ requireAuth = true } = {}) {
   const idp = await startIdp();
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
-  const kyle = w.createAccount({ name: 'kyle', role: 'admin' });
-  w.state.meta.accounts[kyle.account.id].credentials = [structuredClone(OLD_CREDENTIAL)];
-  w.save();
-  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  if (requireAuth) w.setRequireAuth(true);
-  return { w, idp, admin, ...await serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } }) };
+  try {
+    const w = new Weave();
+    w.createSpace({ name: 'Dev' });
+    w.createTable({ space: 'Dev', name: 'Task' });
+    const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
+    const kyle = w.createAccount({ name: 'kyle', role: 'admin' });
+    w.state.meta.accounts[kyle.account.id].credentials = [structuredClone(OLD_CREDENTIAL)];
+    w.save();
+    w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    if (requireAuth) w.setRequireAuth(true);
+    return { w, idp, admin, ...await serveOidc(w, idp, { limits: { options: 1000, failed: 1000 } }) };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 test('routes: the passkey ceremonies and the credential delete are unknown routes, with or without a token', async () => {

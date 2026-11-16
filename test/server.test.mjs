@@ -216,12 +216,12 @@ test('ES modules are served with a script MIME type', () => {
     'strict module MIME: anything else and the browser refuses the import');
 });
 
-test('health reports the running commit and whether main has moved on', async () => {
+test('health reports the running commit and whether main has moved on', async (t) => {
   const { buildInfo } = await import('../src/server.js');
   const { server: bServer, port: bPort } = await startServer(new Weave(), { port: 0, build: buildInfo });
+  t.after(() => bServer.close());
   const res = await fetch(`http://127.0.0.1:${bPort}/api/health`);
   const h = await res.json();
-  bServer.close();
   assert.match(h.sha ?? '', /^[0-9a-f]{7}$/, 'the running commit rides the payload');
   if ('behind' in h) {
     assert.equal(typeof h.behind, 'boolean', 'behind is a verdict, not a maybe');

@@ -29,50 +29,53 @@ const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c
 
 async function serve({ openSignup = { on: false }, billing = null } = {}) {
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const dir = tempDir('weave-setup-');
-  const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
-  taken.state.meta.name = 'harbor';
-  taken.setRequireAuth(true);
-  taken.save();
-  taken.store.close?.();
-  const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
-  main.state.meta.name = 'Net';
-  main.createAccount({ name: 'Kyle', role: 'architect' });
-  main.redeemIdentityInvite(main.linkIdentity('Kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
-  main.setRequireAuth(true);
-  main.save();
-  const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, openSignup, billing, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
-  const apex = at('weave.test');
-  const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
-  const signIn = async (claims, { next } = {}) => {
-    const start = await apex('GET', `/api/auth/oidc/start?start=1${next ? `&next=${encodeURIComponent(next)}` : ''}`);
-    const back = idp.approve(start.headers.location, claims);
-    const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
-    return { res, cookie: cookieOf(res, 'wv_start'), start, back };
-  };
-  const open = (name) => new Weave({ path: join(dir, `${name}.db`) });
-  return { dir, at, apex, follow, signIn, idp, open, main, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const dir = tempDir('weave-setup-');
+    const taken = new Weave({ path: join(dir, 'harbor.db'), name: 'harbor' });
+    taken.state.meta.name = 'harbor';
+    taken.setRequireAuth(true);
+    taken.save();
+    taken.store.close?.();
+    const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
+    main.state.meta.name = 'Net';
+    main.createAccount({ name: 'Kyle', role: 'architect' });
+    main.redeemIdentityInvite(main.linkIdentity('Kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: 'user_kyle' });
+    main.setRequireAuth(true);
+    main.save();
+    const { server, port } = await startServer(main, { port: 0, baseDomain: 'weave.test', origin: 'http://weave.test', oidc, openSignup, billing, limits: { options: 1000, failed: 1000, slugs: 1000 } });
+    const at = (host) => (method, path, opts) => hit(port, host, method, path, opts);
+    const apex = at('weave.test');
+    const follow = (location, opts) => { const u = new URL(location, 'http://weave.test'); return at(u.host)('GET', u.pathname + u.search, opts); };
+    const signIn = async (claims, { next } = {}) => {
+      const start = await apex('GET', `/api/auth/oidc/start?start=1${next ? `&next=${encodeURIComponent(next)}` : ''}`);
+      const back = idp.approve(start.headers.location, claims);
+      const res = await follow(back.href, { cookie: cookieOf(start, 'wv_oidc') });
+      return { res, cookie: cookieOf(res, 'wv_start'), start, back };
+    };
+    const open = (name) => new Weave({ path: join(dir, `${name}.db`) });
+    return { dir, at, apex, follow, signIn, idp, open, main, stop: () => { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  } catch (err) { idp.stop(); throw err; }
 }
 
-test('an empty routing workspace permits signup only when explicitly enabled', async () => {
+test('an empty routing workspace permits signup only when explicitly enabled', async (t) => {
   const idp = await startIdp();
+  t.after(() => idp.stop());
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const dir = tempDir('weave-setup-empty-');
   const main = new Weave({ path: join(dir, 'workspace.db'), name: 'Net' });
   main.save();
   const { server, port } = await startServer(main, { port: 0, oidc, openSignup: { on: true, limit: 1 }, limits: { options: 1000, failed: 1000, slugs: 1000 } });
-  try {
-    const apex = (method, path, opts) => hit(port, `localhost:${port}`, method, path, opts);
-    const start = await apex('GET', '/api/auth/oidc/start?start=1');
-    const back = idp.approve(start.headers.location, { sub: 'first', email: 'first@example.com', email_verified: true });
-    const res = await hit(port, `localhost:${port}`, 'GET', back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
-    const cookie = cookieOf(res, 'wv_start');
-    const made = await apex('POST', '/api/start/workspaces', { cookie, body: { quick: true } });
-    assert.equal(made.status, 201, made.text);
-    assert.equal(made.json().name, 'first');
-  } finally { server.close(); idp.stop(); rmSync(dir, { recursive: true, force: true }); }
+  t.after(() => server.close());
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const apex = (method, path, opts) => hit(port, `localhost:${port}`, method, path, opts);
+  const start = await apex('GET', '/api/auth/oidc/start?start=1');
+  const back = idp.approve(start.headers.location, { sub: 'first', email: 'first@example.com', email_verified: true });
+  const res = await hit(port, `localhost:${port}`, 'GET', back.pathname + back.search, { cookie: cookieOf(start, 'wv_oidc') });
+  const cookie = cookieOf(res, 'wv_start');
+  const made = await apex('POST', '/api/start/workspaces', { cookie, body: { quick: true } });
+  assert.equal(made.status, 201, made.text);
+  assert.equal(made.json().name, 'first');
 });
 
 test('Clerk pane: the start API offers the Clerk script only when the key names the sign-in issuer', async () => {
@@ -82,15 +85,15 @@ test('Clerk pane: the start API offers the Clerk script only when the key names 
   const liveKey = `pk_live_${Buffer.from('clerk.weave.grunion.ai$').toString('base64')}`;
   assert.equal(clerkKeyFromEnv({ WEAVE_CLERK_PUBLISHABLE_KEY: ` ${liveKey} ` }), liveKey);
   const idp = await startIdp();
-  const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
-  const main = new Weave();
-  const serveWith = async (clerkKey) => {
-    const { server, port } = await startServer(main, { port: 0, oidc, clerkKey });
-    const res = await hit(port, `localhost:${port}`, 'GET', '/api/start');
-    server.close();
-    return res.json();
-  };
   try {
+    const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
+    const main = new Weave();
+    const serveWith = async (clerkKey) => {
+      const { server, port } = await startServer(main, { port: 0, oidc, clerkKey });
+      try {
+        return (await hit(port, `localhost:${port}`, 'GET', '/api/start')).json();
+      } finally { server.close(); }
+    };
     const matched = await serveWith(idp.publishableKey);
     assert.deepEqual(matched.clerk, { publishableKey: idp.publishableKey, script: `${idp.issuer}/npm/@clerk/clerk-js@6/dist/clerk.browser.js` });
     const other = await serveWith(`pk_test_${Buffer.from('clerk.someone-else.dev$').toString('base64')}`);
@@ -195,17 +198,17 @@ test('a signed-in browser opening a workspace its login cannot open gets a page 
   } finally { s.stop(); }
 });
 
-test('without a base domain a workspace sign-in goes straight to the identity provider, as before (Issue #994)', async () => {
+test('without a base domain a workspace sign-in goes straight to the identity provider, as before (Issue #994)', async (t) => {
   const idp = await startIdp();
+  t.after(() => idp.stop());
   const oidc = createOidc({ issuer: idp.issuer, clientId: idp.clientId, clientSecret: idp.clientSecret, name: 'Clerk' });
   const harbor = new Weave();
   harbor.state.meta.name = 'harbor';
   harbor.setRequireAuth(true);
   const { server, port } = await startServer(new Weave(), { port: 0, oidc, workspaces: { harbor } });
-  try {
-    const res = await hit(port, `localhost:${port}`, 'GET', '/w/harbor/auth?next=%2Fw%2Fharbor%2Fe%2F1');
-    assert.deepEqual([res.status, res.headers.location], [302, '/w/harbor/api/auth/oidc/start?next=%2Fw%2Fharbor%2Fe%2F1']);
-  } finally { server.close(); idp.stop(); }
+  t.after(() => server.close());
+  const res = await hit(port, `localhost:${port}`, 'GET', '/w/harbor/auth?next=%2Fw%2Fharbor%2Fe%2F1');
+  assert.deepEqual([res.status, res.headers.location], [302, '/w/harbor/api/auth/oidc/start?next=%2Fw%2Fharbor%2Fe%2F1']);
 });
 
 test('env: open sign-up is off unless the operator turns it on, with a per-person limit', () => {

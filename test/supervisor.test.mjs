@@ -97,7 +97,7 @@ async function supervise(dataPath, gh, extra = {}) {
   const events = [];
   const sup = await startSupervisor({
     port: 0, host: '127.0.0.1', dataPath, env: ENV, fetch: gh.fetch,
-    interval: 0, healthTimeoutMs: 60_000, watchMs: 0, log: { log() {}, warn() {}, error() {} },
+    interval: 0, healthTimeoutMs: 15_000, watchMs: 0, log: { log() {}, warn() {}, error() {} },
     onEvent: (e) => events.push({ ...e, t: Date.now() }),
     onWorkerDied: () => { throw new Error('a worker died under the supervisor'); },
     ...extra,

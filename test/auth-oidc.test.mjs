@@ -181,15 +181,17 @@ test('page: the sign-in page offers the provider door only when one is configure
 
 async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 }, billing = null } = {}) {
   const idp = await startIdp(idpOptions);
-  const w = new Weave();
-  w.createSpace({ name: 'Dev' });
-  w.createTable({ space: 'Dev', name: 'Task' });
-  const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
-  const reader = w.createAccount({ name: 'eye', role: 'reader' }).token;
-  w.createAccount({ name: 'kyle', role: 'writer' });
-  if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
-  w.setRequireAuth(true);
-  return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits, billing }) };
+  try {
+    const w = new Weave();
+    w.createSpace({ name: 'Dev' });
+    w.createTable({ space: 'Dev', name: 'Task' });
+    const admin = w.createAccount({ name: 'root', role: 'admin' }).token;
+    const reader = w.createAccount({ name: 'eye', role: 'reader' }).token;
+    w.createAccount({ name: 'kyle', role: 'writer' });
+    if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
+    w.setRequireAuth(true);
+    return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits, billing }) };
+  } catch (err) { idp.stop(); throw err; }
 }
 
 const KYLE = { sub: 'user_kyle', email: 'kyle@example.com', email_verified: true };
@@ -289,8 +291,9 @@ test('oidc: the client-credential probe tells a client the provider accepts (inv
   assert.deepEqual([down.ok, down.code], [false, 'unreachable']);
 });
 
-test('routes: /api/health carries the sign-in probe; anonymous reads auth.ok, an architect reads the provider code, and the top-level ok stays true (Issue #1178)', async () => {
+test('routes: /api/health carries the sign-in probe; anonymous reads auth.ok, an architect reads the provider code, and the top-level ok stays true (Issue #1178)', async (t) => {
   const idp = await startIdp();
+  t.after(() => idp.stop());
   const w = new Weave();
   const architect = w.createAccount({ name: 'root', role: 'architect' }).token;
   w.setRequireAuth(true);
@@ -299,6 +302,7 @@ test('routes: /api/health carries the sign-in probe; anonymous reads auth.ok, an
   const was = console.error;
   console.error = (line) => errors.push(String(line));
   const { server, port } = await startServer(w, { port: 0, oidc, authProbeEvery: 40 });
+  t.after(() => server.close());
   const health = async (token) => (await fetch(`http://127.0.0.1:${port}/api/health`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })).json();
   try {
     let body;
@@ -539,9 +543,10 @@ test('routes: no sign-in refusal page links into the automatic redirect', async 
     s.idp.stop();
     pages.push(['provider down', await s.call('GET', back.pathname + back.search, { cookie: cookieOf(trip) })]);
     const cold = await serve();
-    cold.idp.stop();
-    pages.push(['provider down at start', await cold.call('GET', '/api/auth/oidc/start?next=%2Fx')]);
-    cold.stop();
+    try {
+      cold.idp.stop();
+      pages.push(['provider down at start', await cold.call('GET', '/api/auth/oidc/start?next=%2Fx')]);
+    } finally { cold.stop(); }
     for (const [why, res] of pages) {
       assert.ok(res.status >= 400, `${why}: ${res.status}`);
       assert.match(res.headers.get('content-type'), /text\/html/, why);
