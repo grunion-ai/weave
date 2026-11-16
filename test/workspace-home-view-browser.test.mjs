@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, settled } from './lib/browser.mjs';
 import { WIDTH } from './lib/viewports.mjs';
 
 const LONG = `Quarterly renewal forecast reconciliation for the northern territories ${'x'.repeat(120)}`;
@@ -185,6 +185,26 @@ if (s) {
     }
   });
 
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: a workspace home with nothing recent draws one rule between the links and the overview`, async () => {
+      const page = await open({ theme, real: true, seen: [] });
+      try {
+        await settled(page.locator('.space-home-overview'));
+        const read = await page.evaluate(() => {
+          const tables = document.querySelector('.space-home-tables');
+          const overview = document.querySelector('.space-home-overview');
+          const px = (v) => parseFloat(v) || 0;
+          return {
+            adjacent: tables.nextElementSibling === overview,
+            rules: (px(getComputedStyle(tables).borderBottomWidth) > 0) + (px(getComputedStyle(overview).borderTopWidth) > 0),
+          };
+        });
+        assert.deepEqual(read, { adjacent: true, rules: 1 });
+      } finally {
+        await page.close();
+      }
+    });
+  }
   test('a failed home read still draws the space links from the schema', async () => {
     const page = await open({ load: null, seen: [] });
     try {
