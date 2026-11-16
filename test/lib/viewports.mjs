@@ -14,7 +14,7 @@ export const TRAY_SHOWN_MIN = TRAY_HIDDEN_MAX + 1;
 
 export const WIDTH = {
   phone: 390,
-  tablet: 768,
+  halfLaptop: 756,
   widestPhoneFormat: PHONE_MAX,
   narrowestDesktop: DESKTOP_MIN,
   widestTrayHidden: TRAY_HIDDEN_MAX,

@@ -102,8 +102,8 @@ if (s) {
     await page.close();
   });
 
-  test('tablet widths keep both navigation sections in the full-screen menu (Issues #1457, #1513, Feature #377)', async () => {
-    for (const width of [WIDTH.tablet, WIDTH.widestPhoneFormat]) {
+  test('the widest phone-format window keeps both navigation sections in the full-screen menu (Issues #1457, #1513, Features #377, #379)', async () => {
+    for (const width of [WIDTH.widestPhoneFormat]) {
       const page = await open(views['Task record'], { width });
       try {
         let seen = await shell(page);
