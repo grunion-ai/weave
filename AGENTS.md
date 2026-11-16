@@ -239,6 +239,7 @@ CLI prints `weave: error [<code>]: <message>` and exits with the code's number.
 | `unsupported-type` | 415 | -32006 | 49 |
 | `rate-limited` | 429 | -32007 | 50 |
 | `storage-full` | 507 | -32008 | 51 |
+| `not-saved` | 503 | -32009 | 52 |
 | `internal` | 500 | -32603 | 70 |
 | any other | 400 | -32000 | 1 |
 

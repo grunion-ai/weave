@@ -41,8 +41,8 @@
       "br": 1319
     },
     "/bug-core.js": {
-      "gzip": 3184,
-      "br": 2783
+      "gzip": 3638,
+      "br": 3179
     },
     "/cell-graphics.js": {
       "gzip": 2462,
@@ -310,6 +310,7 @@
     }
   },
   "raised": {
+    "/bug-core.js": "Issue #1708: the recorder keeps only its own fields per event kind and rebuilds each request path from the pathname and six allow-listed query names, so a search term never enters the buffer; measured 3465 gzip and 3028 Brotli, budget set as that plus a twentieth",
     "/grid-window.js": "Issue #1702: samePage joins the grid cores so a cold open can tell a page whose row stamps moved from one whose cells moved, which is 273 gzip bytes of comparison; measured 816 gzip and 726 Brotli, budget set as that plus a twentieth",
     "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes.",
     "/app.js": "PR #490 relanded after PR #494 grew app.js past the budget PR #359 measured: gzip 157,089 to 157,228 served, budget set 5% above at 165,090; br unchanged. Issue #1280 (gallery fit modes) grew br from 125,937 budget to 126,142 served; br budget set 5% above at 132,450. Feature #339 (the write-only Integrations Credential cell, its Replace dialog and the read-only kept columns) took served gzip to 165,313 past the 165,090 budget; gzip budget set 5% above at 173,580. Issue #1685 writes every scheduled document draft to local storage and adds the Restore and Discard bar to docSection: served gzip 147,890 past its 147,657 budget; gzip budget set 5% above at 155,285. Issue #1383 gives the phone menu sheet the picker's sheetGrip: served br 118,150 past its 118,113 budget; br budget set 5% above at 124,058",

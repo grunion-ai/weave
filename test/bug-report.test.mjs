@@ -259,7 +259,43 @@ test('the trace is redacted on the way into the Issue, not on the way out', () =
   const leaky = [{ kind: 'api', method: 'GET', path: '/api/views/v9?share=deadbeefcafe', status: 200, ms: 3, t: 1 }];
   const md = renderBugReport({ categories: ['slow'], events: leaky, client: CLIENT, server: SERVER }).markdown;
   assert.ok(!md.includes('deadbeefcafe'), 'the share token is gone from prose and JSON alike');
-  assert.match(md, /share=\*\*\*/);
+  assert.match(md, /`\/api\/views\/v9`/);
+});
+
+test('a search term posted in a recorded path never reaches the Issue (Issue #1708)', () => {
+  const typed = [
+    { kind: 'api', method: 'GET', path: '/w/uno/api/search?q=zebracorn%20alice&tables=Deals&limit=50', status: 0, ms: 4100, t: 1, message: 'Failed to fetch' },
+    { kind: 'api', method: 'GET', path: 'https://weave.example/api/search?q=zebracorn', status: 504, ms: 9000, t: 2 },
+    { kind: 'click', target: 'button.x', value: 'zebracorn', t: 3 },
+    { kind: 'nav', to: '#/table/Deals', typed: { q: 'zebracorn' }, t: 4 },
+  ];
+  const md = renderBugReport({ categories: ['slow'], events: typed, client: CLIENT, server: SERVER }).markdown;
+  assert.ok(!/zebracorn|alice/.test(md), 'the typed query is gone from the replay and the JSON');
+  assert.match(md, /`\/w\/uno\/api\/search\?tables=Deals&limit=50`/, 'the path and the allow-listed names survive');
+  assert.match(md, /`https:\/\/weave\.example\/api\/search`/, 'a request to another origin keeps its origin');
+  const trace = JSON.parse(md.match(/```json\n([\s\S]*?)\n```/)[1]);
+  assert.deepEqual(Object.keys(trace[2]).sort(), ['kind', 't', 'target']);
+  assert.deepEqual(Object.keys(trace[3]).sort(), ['kind', 't', 'to']);
+  assert.equal(trace[0].message, 'Failed to fetch', 'a failed request keeps its reason');
+});
+
+test('the recorder stores a request by its path and allow-listed names, never what was typed (Issue #1708)', () => {
+  const r = bug.createRecorder();
+  r.record({ kind: 'api', method: 'GET', path: '/w/uno/api/search?q=alice%20smith&tables=Deals,People&limit=50', status: 0, ms: 4100, t: 1 });
+  r.record({ kind: 'api', method: 'GET', path: '/api/search?q=alice', status: 200, ms: 900, t: 2 });
+  r.record({ kind: 'click', target: 'input.search', value: 'alice', t: 3 });
+  const [slow, bare, click] = r.events();
+  assert.equal(slow.path, '/w/uno/api/search?tables=Deals%2CPeople&limit=50');
+  assert.equal(bare.path, '/api/search');
+  assert.deepEqual(Object.keys(click).sort(), ['kind', 't', 'target']);
+  assert.ok(!JSON.stringify(r.events()).includes('alice'), 'q never enters the buffer');
+});
+
+test('the browser and the server keep the same recorder fields and query names (Issue #1708)', async () => {
+  const { EVENT_FIELDS, PATH_PARAMS } = await import('../src/bugreport.js');
+  assert.deepEqual(bug.EVENT_FIELDS, EVENT_FIELDS);
+  assert.deepEqual([...bug.PATH_PARAMS].sort(), [...PATH_PARAMS].sort());
+  assert.ok(!PATH_PARAMS.has('q'), 'the search box is never an allow-listed name');
 });
 
 test('a hostile note cannot forge the sections an agent trusts', () => {
