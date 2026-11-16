@@ -23,6 +23,7 @@ import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
+import { notSaved } from './errors.js';
 import { parseCron, dueBetween, nextEvery, diffItems, retryAfterMs, pollPrune, POLL_SLOWEST_DEFAULT, POLL_SLOWEST_MAX } from './schedule.js';
 import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute, HOOK_BODY_MAX, HOOK_LOG_KEEP, hookKeyName, hookRefusal } from './delivery.js';
 import * as Shares from './shares.js';
@@ -2023,32 +2024,43 @@ export class Weave {
     if (HELD) this.#held = true;
     else {
       const pending = this.#detachedStorage;
-      if (pending) for (const [id, bytes] of pending.blobs) {
-        const path = this.#blobPath(id);
-        if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
-        if (existsSync(path)) continue;
-        writeFileDurable(path, bytes);
-      }
-      this.store.batch(() => {
-        if (pending) {
-          for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
-          for (const group of pending.revisions) {
-            const restored = new Map();
-            const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
-            for (const revision of group.rows) {
-              const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
-              const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
-              restored.set(revision.seq, seq);
+      try {
+        if (pending) for (const [id, bytes] of pending.blobs) {
+          const path = this.#blobPath(id);
+          if (!path) { (this.state.fileBlobs ??= {})[id] = bytes.toString('base64'); continue; }
+          if (existsSync(path)) continue;
+          writeFileDurable(path, bytes);
+        }
+        this.store.batch(() => {
+          if (pending) {
+            for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
+            for (const group of pending.revisions) {
+              const restored = new Map();
+              const existing = this.store.listDocRevisions(group.entityId, group.fieldId, { limit: 200 }).map(r => this.store.getDocRevision(group.entityId, group.fieldId, r.seq));
+              for (const revision of group.rows) {
+                const same = existing.find(r => r.at === revision.at && r.actor === revision.actor && r.text === revision.text);
+                const seq = same?.seq ?? this.store.pushDocRevision({ ...revision, entityId: group.entityId, fieldId: group.fieldId, restoredFrom: restored.get(revision.restoredFrom) ?? null }).seq;
+                restored.set(revision.seq, seq);
+              }
             }
           }
-        }
-        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
-      });
-      this.#detachedStorage = null;
-      this.#dirty.clear();
-      this.#dirtyAll = false;
+          if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
+        });
+      } catch (err) {
+        if (this.store.batching || pending) throw err;
+        this.#adoptRolledBack();
+        this.#forgetPending();
+        throw notSaved(err);
+      }
+      this.#forgetPending();
     }
     this.#schemaVersion = null;
+  }
+
+  #forgetPending() {
+    this.#detachedStorage = null;
+    this.#dirty.clear();
+    this.#dirtyAll = false;
   }
 
   #touching = null;

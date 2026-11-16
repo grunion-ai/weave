@@ -15,11 +15,15 @@ export const ERROR_CONTRACT = Object.freeze({
   'rate-limited': { http: 429, mcp: -32007, exit: 50 },
   'weave-error': { http: 400, mcp: -32000, exit: 1 },
   'storage-full': { http: 507, mcp: -32008, exit: 51 },
+  'not-saved': { http: 503, mcp: -32009, exit: 52 },
   internal: { http: 500, mcp: -32603, exit: 70 },
 });
 
 export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
 
+export const notSaved = (err) => err instanceof WeaveError || storageFull(err)
+  ? err
+  : new WeaveError(`Not saved: the database refused the write (${err?.errstr ?? err?.message ?? err}). Nothing changed; try again.`, 'not-saved');
 const codeOf = (err) => {
   if (err instanceof WeaveError) return Object.hasOwn(ERROR_CONTRACT, err.code) ? err.code : 'weave-error';
   return storageFull(err) ? 'storage-full' : 'internal';
