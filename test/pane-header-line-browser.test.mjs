@@ -39,7 +39,8 @@ if (s) {
   });
 
   for (const width of [1920, 1600, 1280]) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`${width}px ${theme}: the list header and the docked record header share one line (Issue #1807)`, async () => {
         const page = await openDocked({ width, theme });
         try {

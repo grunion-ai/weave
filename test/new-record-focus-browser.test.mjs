@@ -41,7 +41,8 @@ if (s) {
   }, known, { timeout: 5000 });
   const settle = (page) => page.waitForTimeout(400);
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: + New record on the table page lands the caret in the new row's Name cell`, async () => {
       const page = await browser.newPage({ viewport: FIT });
       await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
@@ -208,10 +209,11 @@ if (s) {
       weave.tableView(`${tasks.id}/Standard`, { layout: 'table' });
     }
   });
-  test('Shift+Enter on a board opens the create tray named for the row, never a centered modal, in both themes (Issue #777)', async () => {
+  test('Shift+Enter on a board opens the create tray named for the row, never a centered modal (Issue #777)', async () => {
     weave.tableView(`${tasks.id}/Board`, { layout: 'board', fields: ['Name', 'Note'] });
     const board = weave.tableView(tasks).views.find((v) => v.name === 'Board');
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       const page = await browser.newPage({ viewport: FIT, colorScheme: theme });
       try {
         await page.goto(`${base}/#/table/${tasks.id}/view/${board.id}`, { waitUntil: 'networkidle' });

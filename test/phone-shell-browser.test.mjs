@@ -50,7 +50,8 @@ if (s) {
     };
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     for (const [name, hash] of Object.entries(views)) {
       test(`${name} on the ${PHONE} profile does not scroll sideways (${theme})`, async () => {
         const page = await open(hash, { theme });
@@ -66,7 +67,8 @@ if (s) {
     }
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the drawer opens from the crumb bar and every target in it is 32px (${theme})`, async () => {
       const page = await open(views['Task table'], { theme });
       await openDrawer(page);

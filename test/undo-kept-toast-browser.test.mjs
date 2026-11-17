@@ -42,7 +42,8 @@ if (s) {
     return page.evaluate(() => window.__said.at(-1));
   }
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`an agent's later write is named in the undo toast, not silently replaced (${theme})`, async () => {
       weave.actor = 'local';
       weave.updateEntity(row.id, { Note: 'n0' });

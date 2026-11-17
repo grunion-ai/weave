@@ -28,13 +28,6 @@ if (s) {
   }
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: the System space renders no ⋮ menu`, async () => {
-      const page = await openSpace(sys.id, theme);
-      assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'no ⋮ on the system space');
-      assert.equal(await page.locator('.wv-menu').count(), 0, 'no empty menu panel');
-      await page.close();
-    });
-
     test(`${theme}: the System space header says why it carries no space controls (Issue #849)`, async () => {
       const page = await openSpace(sys.id, theme);
       const note = page.locator('.view-header .space-system-note');
@@ -50,6 +43,16 @@ if (s) {
       assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'still no \u22ee');
       const paint = await note.evaluate((n) => ({ fg: getComputedStyle(n).color, bg: getComputedStyle(document.body).backgroundColor }));
       assert.notEqual(paint.fg, paint.bg, `the note is readable in ${theme}: ${JSON.stringify(paint)}`);
+      await page.close();
+    });
+  }
+
+  {
+    const theme = 'light';
+    test(`${theme}: the System space renders no ⋮ menu`, async () => {
+      const page = await openSpace(sys.id, theme);
+      assert.equal(await page.locator('.view-header .dots-btn').count(), 0, 'no ⋮ on the system space');
+      assert.equal(await page.locator('.wv-menu').count(), 0, 'no empty menu panel');
       await page.close();
     });
 

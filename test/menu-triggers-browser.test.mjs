@@ -123,7 +123,8 @@ if (s) {
     },
   ];
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     for (const k of KINDS) {
       test(`${theme}: every trigger for a ${k.label ?? k.kind} opens the same rows (Feature #296, Issue #761)`, async () => {
         const page = await open(k.hash, theme);

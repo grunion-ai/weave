@@ -92,7 +92,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`everything at once (${theme}): 5-level group, 3-level sort, filters and deleted rows; every Σ cell is the API's`, async () => {
       const view = write(EVERYTHING);
       const q = api(view);

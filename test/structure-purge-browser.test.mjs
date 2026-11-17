@@ -57,7 +57,10 @@ if (s) {
         assert.equal(await eventually(() => !!weave.state.tables[db.id], false), false, 'the table is gone for good');
       } finally { await page.close(); }
     });
+  }
 
+  {
+    const theme = 'light';
     test(`${theme}: Settings names a trashed space and purges it with its tables (Feature #160, Feature #295)`, async () => {
       const name = uniq('Attic');
       const sp = weave.createSpace({ name });

@@ -26,7 +26,8 @@ if (s) {
   const inertNow = (page) => page.evaluate(() => [...document.body.children]
     .filter((n) => n.inert).map((n) => n.id || n.className || n.tagName));
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`New workspace opens in the tray as a labelled modal dialog, its input in the tray's own style (${theme})`, async () => {
       const page = await open(theme);
       try {

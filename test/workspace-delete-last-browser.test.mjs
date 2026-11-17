@@ -17,7 +17,8 @@ const s = await launch('workspace delete, last workspace', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: deleting your last workspace lands on the weave workspace (Feature #347)`, async () => {
       solo.state.meta.deletedAt = null;
       const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });

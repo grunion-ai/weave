@@ -37,7 +37,8 @@ if (s) {
     await page.waitForSelector('#tray-back', { state: 'detached' });
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`a select's Default is a picker of its options, No default first (${theme})`, async () => {
       const page = await openTray('select', theme);
       assert.equal(await page.locator('#tray-back input[placeholder="Default value for new records (optional)"]').count(), 0, 'no free-text box');

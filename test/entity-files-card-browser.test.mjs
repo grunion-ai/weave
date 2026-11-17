@@ -79,7 +79,10 @@ if (s) {
       assert.ok(dimmed, 'the missing mark is invisible');
       await page.close();
     });
+  }
 
+  {
+    const theme = 'light';
     test(`the Files card is drawn outside the side column (${theme})`, async () => {
       const page = await open(`/entity/${bare.id}`, theme, '.entity-files-card');
       const outside = await page.$eval('.entity-files-card', (n) => !n.closest('.entity-side'));

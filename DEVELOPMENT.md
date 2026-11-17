@@ -735,8 +735,9 @@ code it shipped. archify is a dev tool, found at `$ARCHIFY` or
 A browser case runs in both themes only when it reads paint: a computed colour, a
 contrast, a screenshot, a border or shadow, an icon or image. A theme cannot change a
 geometry, a count, a class name or a text value, so a case that reads only those runs
-once, in light. `test/theme-loop-guard.test.mjs` fails a `for (const theme of ['light',
-'dark'])` loop whose body reads no paint (Issue #667).
+once, in light. `test/theme-loop-guard.test.mjs` fails each case under a `for (const
+theme of ['light', 'dark'])`, `THEMES` or `themesOn(engine)` loop when neither its body
+nor a helper it calls reads paint (Issue #667).
 
 ## State catalog
 

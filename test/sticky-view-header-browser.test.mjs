@@ -160,7 +160,8 @@ if (s) {
     await page.close();
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`an opened long description is capped, so the held block leaves the rows the viewport (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1470, height: 900 } });
       try {

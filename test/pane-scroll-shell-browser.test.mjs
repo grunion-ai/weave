@@ -129,7 +129,8 @@ if (s) {
     await page.close();
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: + New space holds the sidebar's bottom edge however far the nav scrolls (Issue #452)`, async () => {
       const page = await open(`#/table/${big.id}`, { theme, width: 1470, height: 794 });
       const spare = await page.evaluate(() => { const n = document.querySelector('#nav'); return n.scrollHeight - n.clientHeight; });

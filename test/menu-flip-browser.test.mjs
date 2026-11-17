@@ -25,10 +25,6 @@ if (s) {
     return page;
   }
 
-  const setTheme = (page, want) => page.evaluate((w) => {
-    for (let i = 0; i < 4 && document.documentElement.dataset.bsTheme !== w; i++) cycleTheme();
-  }, want);
-
   const openAndMeasure = (page, i) => page.evaluate(async (idx) => {
     const round = (n) => Math.round(n * 10) / 10;
     const btn = document.querySelectorAll('.dl-wrap')[idx].querySelector('.dots-btn');
@@ -123,20 +119,5 @@ if (s) {
         `anchor at ${top}: panel painted at ${m.top}–${m.bottom}, viewport height ${m.innerHeight}`);
     }
     await page.close();
-  });
-
-  test('both themes place the panel the same way — geometry is not a palette', async () => {
-    for (const theme of ['light', 'dark']) {
-      const page = await entityPage(1280);
-      await setTheme(page, theme);
-      const n = await count(page);
-      for (let i = 0; i < n; i++) {
-        const m = await openAndMeasure(page, i);
-        if (m.hidden) continue;
-        assert.ok(m.right <= m.clientWidth && m.left >= 0,
-          `${theme}: panel ${i} (${m.title}) painted at ${m.left}–${m.right}`);
-      }
-      await page.close();
-    }
   });
 }

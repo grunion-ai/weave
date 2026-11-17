@@ -71,7 +71,10 @@ if (s) {
         assert.deepEqual(stored(row), [{ name: 'brief.txt', bytes: 'the brief' }], 'the server does not hold the dropped file');
       } finally { await page.close(); }
     });
+  }
 
+  {
+    const theme = 'light';
     test(`the entity page's attachments box takes a dropped file (${theme})`, async () => {
       const row = `page-${theme}`;
       const page = await open(`/entity/${rows[row].id}`, theme, '.attach-box');

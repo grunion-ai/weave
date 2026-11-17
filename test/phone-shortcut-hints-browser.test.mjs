@@ -40,7 +40,8 @@ if (s) {
   };
 
   for (const [engine, make] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a touch phone no visible text, title or label offers a keyboard shortcut (${engine}, ${theme}, Issue #736)`, async () => {
         let page = await open(make, table, theme);
         try {
