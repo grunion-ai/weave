@@ -1,1 +1,0 @@
-- A release that crashes after its watch has passed is now recorded and, on a second short life, marked failed, so the next boot serves the kept rollback folder instead of crash-looping the host (Issue #1649).

@@ -1,1 +1,0 @@
-- The record chip on a phone now sets its number in the chip's own face and size, beside the table name (Issue #1391). At 402 points the chip drew "Task" at 14px in the interface face and "#4" at 13px in Monaco, so the number read small, tightly tracked and raised against the name it followed.
