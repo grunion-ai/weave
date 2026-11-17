@@ -489,6 +489,10 @@ export class Store {
       .map((r) => ({ ...r, detail: JSON.parse(r.detail ?? '{}') }));
   }
 
+  get batching() {
+    return this.#batch;
+  }
+
   batch(fn) {
     if (!this.path || this.#batch) return fn();
     if (!this.#db) this.#open();
