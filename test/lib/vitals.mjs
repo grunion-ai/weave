@@ -1,5 +1,7 @@
 export const BUDGET_FILE = 'test/vitals-budget.json';
 
+export const LEDGER = { field: 'vitals', unit: '' };
+
 export const RUNS = 7;
 
 export const METRICS = ['lcp', 'cls', 'inp'];
