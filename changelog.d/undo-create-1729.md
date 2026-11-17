@@ -1,1 +1,0 @@
-- Undoing a create or a restore leaves the row out of Trash when someone else edited it since, and names the field and who changed it, the way undoing an edit already does. The create's own automations count as part of it, so an ordinary create with a rule still undoes (Issue #1729).

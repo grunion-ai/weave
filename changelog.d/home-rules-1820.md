@@ -1,1 +1,0 @@
-- A space or workspace home with nothing recent now draws one rule between the links and the overview, where it drew two with an empty band between them (Issue #1820).

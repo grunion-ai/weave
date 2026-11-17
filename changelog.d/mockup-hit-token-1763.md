@@ -1,1 +1,0 @@
-- The card view and chip anatomy mockups define the touch-target size they read (`--wv-hit`, 24px, 44px on a touch screen), so their picker search, picker rows and hit slop keep the 44px floor on a touch screen. The card view mockup now copies only the picker rules the app scopes to pickers, not fragments of a shared selector list (Issue #1763).

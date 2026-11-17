@@ -1,1 +1,0 @@
-- A space architect creates a table in its own space over REST and MCP; a workspace editor without that space role is still refused, and a space-scoped token reaches only its own space (Issue #1774).
