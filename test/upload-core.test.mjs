@@ -42,6 +42,7 @@ test('every failure maps to its approved reason, message and retry rule', () => 
     [{ status: 504 }, 'timeout', 'Timed out', true, 'deck.pdf took too long to upload and was not saved.'],
     [{ status: 507, code: 'storage-full' }, 'storage-full', 'Storage full', false, 'The weave server is out of storage, so deck.pdf was not saved. Ask whoever runs your weave to add storage; uploads will work again after that.'],
     [{ kind: 'offline' }, 'offline', 'No connection', true, 'Could not reach the server; deck.pdf was not saved. Check your connection.'],
+    [{ status: 409, code: 'offset-mismatch' }, 'offline', 'No connection', true, 'Could not reach the server; deck.pdf was not saved. Check your connection.'],
     [{ kind: 'timeout' }, 'timeout', 'Timed out', true, 'deck.pdf took too long to upload and was not saved.'],
   ];
   for (const [err, reason, tile, retry, message] of cases) {

@@ -77,6 +77,7 @@ test('a chunk sent from the wrong offset is refused with the offset the server h
     await s.put(g, PNG.subarray(0, 8), 0);
     const wrong = await s.put(g, PNG.subarray(4), 4);
     assert.equal(wrong.status, 409);
+    assert.equal((await wrong.json()).code, 'offset-mismatch', 'a browser re-send after a reset reads as a lost connection');
     assert.equal(wrong.headers.get('upload-offset'), '8');
     assert.equal((await s.head(g)).headers.get('upload-offset'), '8', 'a refused chunk changed the held bytes');
   } finally { s.stop(); }

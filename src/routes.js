@@ -1005,7 +1005,7 @@ async function backupAndUploadRoutes(c, fromRequest) {
     if (resuming && rx.method === 'HEAD') return { status: 204, headers: offsetHeaders(), body: '' };
     if (resuming) {
       const offset = Number(rx.header('upload-offset'));
-      if (!Number.isSafeInteger(offset) || offset !== held()) return out(409, { error: `This upload holds ${held()} bytes; send the rest from there`, code: 'conflict' }, offsetHeaders());
+      if (!Number.isSafeInteger(offset) || offset !== held()) return out(409, { error: `This upload holds ${held()} bytes; send the rest from there`, code: 'offset-mismatch' }, offsetHeaders());
       if (Number(rx.header('content-length')) > upload.size - offset) throw new WeaveError(`Body too large: ${upload.size - offset} bytes at most`, 'too-large');
       upload.staged ??= weave.stageBlob().id;
       await weave.appendStagedBlob(upload.staged, rx.bodyStream(), upload.size - offset).catch((err) => {
