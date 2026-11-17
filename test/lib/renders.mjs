@@ -1,5 +1,7 @@
 export const BUDGET_FILE = 'test/render-budget.json';
 
+export const LEDGER = { field: 'renders', unit: 'renders' };
+
 export const RUNS = 3;
 
 export function judgeRenders(key, n, budget) {

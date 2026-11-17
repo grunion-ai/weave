@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 import { BUDGET_FILE, clickKey, judge, unexplainedRaises } from './lib/clicks.mjs';
+import { LEDGER as FEEDBACK } from './lib/feedback.mjs';
+import { LEDGER as RENDER } from './lib/renders.mjs';
+import { LEDGER as VITAL } from './lib/vitals.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const budget = JSON.parse(readFileSync(resolve(ROOT, BUDGET_FILE), 'utf8'));
@@ -37,27 +40,37 @@ test('a journey with no budget is refused and told what to write', () => {
   assert.match(judge('new-thing|phone', 4, {}), /add "new-thing\|phone": 4/);
 });
 
-const BEFORE = { clicks: { 'edit-cell|desktop': 2, 'open-row|desktop': 2 }, raised: {} };
+const RAISES = [
+  { ledger: 'click', key: 'edit-cell|desktop', steps: [1, 2, 3, 4], rose: 'edit-cell|desktop rose from 2 to 3 clicks with no reason: write one under raised["edit-cell|desktop"]' },
+  { ledger: 'feedback', opts: FEEDBACK, key: 'edit-cell|desktop', steps: [40, 60, 90, 120], rose: 'edit-cell|desktop rose from 60 to 90 ms with no reason: write one under raised["edit-cell|desktop"]' },
+  { ledger: 'render', opts: RENDER, key: 'edit-cell|desktop', steps: [4, 6, 9, 12], rose: 'edit-cell|desktop rose from 6 to 9 renders with no reason: write one under raised["edit-cell|desktop"]' },
+  { ledger: 'vitals', opts: VITAL, key: 'load-home|desktop|lcp', steps: [700, 900, 1200, 1500], rose: 'load-home|desktop|lcp rose from 900 to 1200 with no reason: write one under raised["load-home|desktop|lcp"]' },
+];
 
-test('a lower, equal or new budget needs no reason', () => {
-  assert.deepEqual(unexplainedRaises(BEFORE, BEFORE), []);
-  assert.deepEqual(unexplainedRaises(BEFORE, { clicks: { 'edit-cell|desktop': 1, 'open-row|desktop': 2 }, raised: {} }), []);
-  assert.deepEqual(unexplainedRaises(BEFORE, { clicks: { ...BEFORE.clicks, 'add-row|desktop': 3 }, raised: {} }), [], 'a new journey sets its own baseline');
-  assert.deepEqual(unexplainedRaises(null, BEFORE), [], 'no budget file before this change');
-});
+for (const { ledger, opts, key, steps: [lower, was, high, higher], rose } of RAISES) {
+  const field = opts?.field ?? 'clicks';
+  const at = (n, why = {}) => ({ [field]: { [key]: n, 'open-row|desktop': 2 }, raised: why });
+  const raise = (...args) => unexplainedRaises(...args, ...(opts ? [opts] : []));
+  const before = at(was);
 
-test('a raised budget with no reason is refused and names the key and the numbers', () => {
-  const after = { clicks: { ...BEFORE.clicks, 'edit-cell|desktop': 3 }, raised: {} };
-  assert.deepEqual(unexplainedRaises(BEFORE, after), ['edit-cell|desktop rose from 2 to 3 clicks with no reason: write one under raised["edit-cell|desktop"]']);
-  assert.equal(unexplainedRaises(BEFORE, { ...after, raised: { 'edit-cell|desktop': '   ' } }).length, 1, 'a blank reason is no reason');
-});
+  test(`a lower, equal or new ${ledger} budget needs no reason`, () => {
+    assert.deepEqual(raise(before, before), []);
+    assert.deepEqual(raise(before, at(lower)), []);
+    assert.deepEqual(raise(before, { ...before, [field]: { ...before[field], 'add-row|desktop': 3 } }), [], 'a new key sets its own baseline');
+    assert.deepEqual(raise(null, before), [], 'no budget file before this change');
+  });
 
-test('a raise carrying a new reason passes; an old reason does not cover a second raise', () => {
-  const after = { clicks: { ...BEFORE.clicks, 'edit-cell|desktop': 3 }, raised: { 'edit-cell|desktop': 'Issue #950: deleting now asks to confirm' } };
-  assert.deepEqual(unexplainedRaises(BEFORE, after), []);
-  const again = { clicks: { ...after.clicks, 'edit-cell|desktop': 4 }, raised: after.raised };
-  assert.equal(unexplainedRaises(after, again).length, 1);
-});
+  test(`a raised ${ledger} budget with no reason is refused and names the key and the numbers`, () => {
+    assert.deepEqual(raise(before, at(high)), [rose]);
+    assert.equal(raise(before, at(high, { [key]: '   ' })).length, 1, 'a blank reason is no reason');
+  });
+
+  test(`a ${ledger} raise carrying a new reason passes; an old reason does not cover a second raise`, () => {
+    const after = at(high, { [key]: 'Issue #950: deleting now asks to confirm' });
+    assert.deepEqual(raise(before, after), []);
+    assert.equal(raise(after, at(higher, after.raised)).length, 1);
+  });
+}
 
 test('the budget file covers every journey cell, and nothing else', () => {
   const want = JOURNEYS.flatMap((j) => cellsOf(j).map((c) => clickKey(j.name, c))).sort();

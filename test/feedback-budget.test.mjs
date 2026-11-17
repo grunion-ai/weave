@@ -7,12 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 import { clickKey, unexplainedRaises } from './lib/clicks.mjs';
-import { BUDGET_FILE, busyFaults, fastest, feedbackOf, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
+import { BUDGET_FILE, LEDGER, busyFaults, fastest, feedbackOf, judgeMs, median, skeletonDelay } from './lib/feedback.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const budget = JSON.parse(readFileSync(resolve(ROOT, BUDGET_FILE), 'utf8'));
-const MS = { field: 'ms', unit: 'ms' };
 
 test('the median of the runs is the middle one, or the mean of the middle two', () => {
   assert.equal(median([300, 20, 40]), 40);
@@ -72,14 +71,6 @@ test('the skeleton delay is read from the app source wherever it lives', () => {
   assert.throws(() => skeletonDelay(`${dir}/`), /SKELETON_SHOW_AFTER_MS/);
 });
 
-test('a raised feedback budget needs a new reason, as a raised click budget does', () => {
-  const before = { ms: { 'edit-cell|desktop': 60 }, raised: {} };
-  const after = { ms: { 'edit-cell|desktop': 90 }, raised: {} };
-  assert.deepEqual(unexplainedRaises(before, after, MS), ['edit-cell|desktop rose from 60 to 90 ms with no reason: write one under raised["edit-cell|desktop"]']);
-  assert.deepEqual(unexplainedRaises(before, { ...after, raised: { 'edit-cell|desktop': 'Issue #1: the save now waits for a lock' } }, MS), []);
-  assert.deepEqual(unexplainedRaises(before, { ms: { 'edit-cell|desktop': 40 }, raised: {} }, MS), []);
-});
-
 test('the budget file covers every journey cell, and nothing else', () => {
   const want = JOURNEYS.flatMap((j) => cellsOf(j).map((c) => clickKey(j.name, c))).sort();
   assert.deepEqual(Object.keys(budget.ms).sort(), want);
@@ -97,5 +88,5 @@ test('a journey let off the busy check names a journey and the Issue that will f
 const budgetAt = (rev) => { try { return JSON.parse(execFileSync('git', ['show', `${rev}:${BUDGET_FILE}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { return null; } };
 
 test('this change raises no feedback budget without a reason (Issue #1042)', () => {
-  assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, MS), []);
+  assert.deepEqual(unexplainedRaises(budgetAt('HEAD^1'), budget, LEDGER), []);
 });
