@@ -40,23 +40,6 @@ if (s) {
   const transparent = (c) => c === 'transparent' || /rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)/.test(c);
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`an empty date cell rests blank and shows its hint only on focus (${colorScheme})`, async () => {
-      const page = await grid(colorScheme);
-      try {
-        const sel = `tr[data-eid="${row.id}"] td[data-field="As of"] input.date-text`;
-        const rest = await readHint(page, sel);
-        assert.ok(rest.placeholder, 'the date cell has a hint to hide');
-        assert.ok(transparent(rest.color), `at rest the hint is not painted (got ${rest.color})`);
-        await page.$eval(sel, (i) => i.focus());
-        const focused = await readHint(page, sel);
-        assert.equal(focused.focused, true);
-        assert.ok(!transparent(focused.color), `focused, the hint shows (got ${focused.color})`);
-      } finally { await page.close(); }
-    });
-  }
-
-  {
-    const colorScheme = 'light';
     test(`a long text value ends in an ellipsis at rest, and shows all of it while it is edited (${colorScheme})`, async () => {
       const page = await grid(colorScheme);
       try {
@@ -74,6 +57,20 @@ if (s) {
         assert.equal(editing.tag, 'TEXTAREA', 'a click on the clipped resting text opens the spill editor (Issue #1367)');
         assert.equal(editing.value, SOURCE);
         assert.equal(editing.cut, false, 'and the editor shows the whole value, nothing scrolled out of sight');
+      } finally { await page.close(); }
+    });
+
+    test(`an empty date cell rests blank and shows its hint only on focus (${colorScheme})`, async () => {
+      const page = await grid(colorScheme);
+      try {
+        const sel = `tr[data-eid="${row.id}"] td[data-field="As of"] input.date-text`;
+        const rest = await readHint(page, sel);
+        assert.ok(rest.placeholder, 'the date cell has a hint to hide');
+        assert.ok(transparent(rest.color), `at rest the hint is not painted (got ${rest.color})`);
+        await page.$eval(sel, (i) => i.focus());
+        const focused = await readHint(page, sel);
+        assert.equal(focused.focused, true);
+        assert.ok(!transparent(focused.color), `focused, the hint shows (got ${focused.color})`);
       } finally { await page.close(); }
     });
   }

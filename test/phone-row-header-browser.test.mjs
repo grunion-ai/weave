@@ -41,8 +41,7 @@ if (s) {
   };
 
   for (const [engine, make] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`on a phone the row header drops Expand, keeps the eye and the copy link as 44px controls on one line, and offers Activity and Share in the row or from its menu (${engine}, ${theme}, Issue #734, Feature #296, Feature #377)`, async () => {
         const page = await open(make, theme);
         try {

@@ -73,6 +73,20 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    test(`? inside an open cell editor is typed, not the sheet (${theme})`, async () => {
+      const page = await grid(theme);
+      try {
+        await page.focus(cell);
+        await page.keyboard.press('Enter');
+        assert.equal((await focusIs(page)).tag, 'INPUT', 'the cell is open');
+        await page.keyboard.press('End');
+        await page.keyboard.press('?');
+        assert.equal(await page.$eval(`${cell} input`, (i) => i.value), 'a?', 'the ? went into the value');
+        assert.equal(await sheetOpen(page), 0, 'and no sheet opened');
+        await page.keyboard.press('Escape');
+      } finally { await page.close(); }
+    });
+
     test(`Keyboard shortcuts in the identity panel's menu opens the same sheet, and Esc gives its button the focus back (${theme}, Feature #333)`, async () => {
       const page = await grid(theme);
       try {
@@ -90,23 +104,6 @@ if (s) {
         await page.keyboard.press('Escape');
         await page.waitForSelector('#modal-back', { state: 'detached' });
         assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('nav-identity-more')), true, 'focus is back on the menu button');
-      } finally { await page.close(); }
-    });
-  }
-
-  {
-    const theme = 'light';
-    test(`? inside an open cell editor is typed, not the sheet (${theme})`, async () => {
-      const page = await grid(theme);
-      try {
-        await page.focus(cell);
-        await page.keyboard.press('Enter');
-        assert.equal((await focusIs(page)).tag, 'INPUT', 'the cell is open');
-        await page.keyboard.press('End');
-        await page.keyboard.press('?');
-        assert.equal(await page.$eval(`${cell} input`, (i) => i.value), 'a?', 'the ? went into the value');
-        assert.equal(await sheetOpen(page), 0, 'and no sheet opened');
-        await page.keyboard.press('Escape');
       } finally { await page.close(); }
     });
 

@@ -14,8 +14,7 @@ const s = await launch('phone no swipe', (weave) => {
 });
 if (s) {
   const { base } = s;
-  {
-    const colorScheme = 'light';
+  for (const colorScheme of ['light', 'dark']) {
     test(`on an iPhone a sideways drag on a list row reveals, moves and opens nothing, in ${colorScheme} (Feature #275 removed)`, async () => {
       const page = await phonePage(await phoneBrowser(), { colorScheme });
       try {

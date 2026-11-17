@@ -18,8 +18,7 @@ if (s) {
     await page.locator('#modal h2', { hasText: 'New user' }).waitFor();
   };
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`the new-user form shows the workspace the account will belong to (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await openForm(page, theme);

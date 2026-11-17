@@ -45,8 +45,7 @@ const s = await launch('tablet grid clip', (weave) => {
 
 if (s) {
   const { base, browser, table, names } = s;
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     for (const width of WIDTHS) {
       test(`a table wider than the pane scrolls sideways at ${width}px instead of clipping its last columns, and its + sits after the last header (${theme}, Issue #1356)`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 900 } });

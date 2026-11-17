@@ -157,8 +157,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`the picker sheet grabber follows the finger and dismisses past a third (${theme}, Issue #808)`, async () => {
       const page = await open({ theme });
       try {
