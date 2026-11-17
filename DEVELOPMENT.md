@@ -138,9 +138,18 @@ commit subject or a changelog fragment names.
    (`.weave-release-ok`) only when its watch passes, so a restart mid-watch
    boots the last proven release; a boot that fails falls back to the newest
    good `v<version>` or `c<sha>` folder before the image.
+   Past the watch the serving worker's exit belongs to the restart owner
+   (`onWorkerDied`, `process.exit(1)` under Railway's `ON_FAILURE` policy), so
+   the supervisor records it instead of swapping: each death inside
+   `WEAVE_CRASH_WINDOW_MS` (default ten minutes) of that worker's start goes to
+   `deaths` in `releases/state.json`, and the second in a row marks the release
+   failed, so the next boot serves the kept rollback folder rather than starting
+   the crashing release again (Issue #1649). A life longer than the window
+   clears the count.
    Migration rule: a release whose deferred migration wrote to any workspace in
    the data directory (`PRAGMA data_version` moved across the migrate step) is
-   never rolled back automatically. It is written good at once, and a later
+   never rolled back automatically, and never marked failed by a recorded
+   death. It is written good at once, and a later
    trip logs an `ALERT` and sets `watch.alert` for a person to act on; old code
    never runs on a schema a newer release migrated.
 7. Before it downloads a release the supervisor reads the free space on the

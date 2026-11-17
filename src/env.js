@@ -271,6 +271,10 @@ export const ENV = [
     doc: 'The share of 5xx answers, over at least 20 proxied responses during the watch, that marks a release failed and swaps back. `1` trips only when every answer is a 5xx; above `1`, or a value that is not a number, no share trips the watch.',
   },
   {
+    name: 'WEAVE_CRASH_WINDOW_MS', section: 'supervisor', readBy: '`weave supervise`', default: '`600000` (ten minutes)',
+    doc: 'How soon after a worker starts its exit counts as a crash rather than a loss of a proven release. The supervisor records each such death in `releases/state.json`; a release that dies twice in a row inside the window is marked failed, so the next boot serves the kept rollback folder instead of starting it again. A longer life clears the count, and a release whose deferred migration wrote to the workspace is never marked failed this way.',
+  },
+  {
     name: 'WEAVE_RELEASE_FREE_MB', section: 'supervisor', readBy: '`weave supervise`', default: '`128`',
     doc: 'The free space, in MB, the releases volume must have before the supervisor downloads a release. Under it nothing is fetched, `lastSwap.ok` is `false` with the free space in the reason, and the next check tries again; `/api/health` shows `supervisor.disk`.',
   },
