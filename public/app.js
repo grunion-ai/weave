@@ -1330,15 +1330,23 @@ function fitCrumbs(path, foldFrom) {
 }
 const CRUMB_MORE_PX = 40;
 function shedRows(shed, inPeek) {
+  if (!dockCoversScreen.matches) return {};
   const gone = (btn) => !!btn?.isConnected && !btn.getClientRects().length;
   const row = (btn, label, icon) => (gone(btn) ? { label, icon, run: () => btn.click() } : null);
   return {
     activity: row(shed?.activity, 'Activity', 'lucide:history'),
     share: row(shed?.share, 'Share (Beta)', 'lucide:upload'),
-    pose: gone(shed?.pose) && !(inPeek && dockCoversScreen.matches) ? {
-      label: inPeek ? 'Expand to the full page' : 'Collapse beside the table', run: () => shed.pose.click(),
-      nodes: [el('span', { class: 'wv-icon wv-menu-icon' }, poseGlyph(!inPeek)), el('span', { class: 'wv-menu-label' }, inPeek ? 'Expand to the full page' : 'Collapse beside the table')],
+    pose: gone(shed?.pose) && !inPeek ? {
+      label: 'Collapse beside the table', run: () => shed.pose.click(),
+      nodes: [el('span', { class: 'wv-icon wv-menu-icon' }, poseGlyph(true)), el('span', { class: 'wv-menu-label' }, 'Collapse beside the table')],
     } : null,
+  };
+}
+function dockRow(entity) {
+  const hint = keyHint('(⌘⇧E)').replace(/[()]/g, '');
+  return {
+    label: 'Dock beside table', run: () => collapseToSplit(entity),
+    nodes: [el('span', { class: 'wv-icon wv-menu-icon' }, poseGlyph(true)), el('span', { class: 'wv-menu-label' }, 'Dock beside table'), hint ? el('span', { class: 'wv-menu-hint' }, hint) : null],
   };
 }
 
@@ -3383,6 +3391,7 @@ const MENU_ROWS = {
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null, shed = null } = {}) => ({
     ...shedRows(anchor?.closest?.('.crumb-row-tight') ? shed : null, inPeek),
+    ...(db && !inPeek && !dockCoversScreen.matches ? { pose: dockRow(entity) } : {}),
     report: bugRecorder && anchor ? {
       label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
       run: () => openBugPanel(anchor),
@@ -6305,7 +6314,7 @@ function eyeGesture(hold) {
 }
 const REFERENCE_PANELS = ['References', 'Referenced by'];
 const showsRefPanel = (db, name) => (db?.referencePanels ?? []).includes(name);
-function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false, refPanels = false } = {}) {
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false, refPanels = false, activity = null } = {}) {
   let pop;
   const home = mount ? $('#main') : anchor.closest('#main, #dock');
   const raw = () => allTables().find((d) => d.id === db.id) ?? db;
@@ -6446,6 +6455,16 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     const rollups = pop.querySelector('[data-rollups] input');
     if (rollups) rollups.checked = showsRollups(t);
     for (const box of pop.querySelectorAll('[data-ref-panel]')) box.querySelector('input').checked = showsRefPanel(t, box.dataset.refPanel);
+    syncActivity();
+  };
+  const syncActivity = () => {
+    const box = pop?.querySelector('[data-record-activity] input');
+    if (box) box.checked = activity.on();
+  };
+  const flipActivity = async () => {
+    await activity.toggle();
+    syncActivity();
+    pop?.reposition?.();
   };
   const flipRefPanel = (name) => write((t) => {
     const on = new Set(t.referencePanels ?? []);
@@ -6454,6 +6473,9 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
   });
   const shown = shownOf(liveTable());
   const rows = [tableControlHeader('Fields', () => pop?.remove()),
+    ...(activity && !dockCoversScreen.matches ? [el('div', { class: 'table-field-foot' },
+      el('div', { class: 'eye-head' }, 'This record'),
+      el('div', { class: 'table-field-line' }, gap(), checkRow(activity.on(), 'Activity', flipActivity, { recordActivity: '' })))] : []),
     el('div', { class: 'field-visibility-actions' },
       el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(true) }, 'Show all'),
       el('button', { class: 'btn btn-sm btn-ghost-primary', type: 'button', onclick: () => showAll(false) }, 'Hide all')),
@@ -9445,7 +9467,10 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, mount),
   }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
-  eye.addEventListener('click', (e) => { e.stopPropagation(); fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false, refPanels: true }); });
+  eye.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false, refPanels: true, activity: { on: () => activityPanel.openFor === id, toggle: () => activityPanel.toggle(id, mount) } });
+  });
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
       class: 'btn btn-sm pose-btn', type: 'button',

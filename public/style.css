@@ -1823,8 +1823,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #app .view-header .crumb-row.crumb-row-fit { flex-wrap: nowrap; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-path { flex: 1 1 0; min-width: 0; max-width: none; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-actions { flex: none; flex-wrap: nowrap; }
-#app .view-header .crumb-row.crumb-row-tight > .crumb-actions > .activity-btn { display: none; }
-@media (max-width: 719px) { #app .view-header .crumb-row.crumb-row-tight > .crumb-actions > :is(.table-share-btn, .pose-btn) { display: none; } }
+@media (max-width: 719px) { #app .view-header .crumb-row.crumb-row-tight > .crumb-actions > :is(.activity-btn, .table-share-btn, .pose-btn) { display: none; } }
 }
 #app .crumb-row-fit > .crumb-path > .crumb-slot:has(> :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table)) { flex: none; min-width: auto; }
 .crumb-path > .crumb-slot.crumb-lead > .crumb-sep { display: none; }
@@ -1888,14 +1887,16 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
   #app .view-header .crumb-row > .dl-wrap { position: static; order: 100; height: auto; margin: 0 0 0 -8px; }
   #app .view-header .crumb-actions > .dl-wrap { margin-right: 0; }
   #app .view-header .crumb-actions > .dl-wrap:not(:last-child) { margin-right: 8px; }
-  #app .view-header .crumb-row :is(.table-search-btn, .table-view-btn, .table-share-btn, .activity-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn) {
+  #app .view-header .crumb-row :is(.table-search-btn, .table-view-btn, .table-share-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn) {
     --tblr-btn-color: var(--tblr-secondary); --tblr-btn-bg: transparent; --tblr-btn-border-color: transparent; --tblr-btn-box-shadow: none;
     --tblr-btn-hover-color: var(--tblr-body-color); --tblr-btn-hover-bg: var(--wv-hover-wash); --tblr-btn-hover-border-color: transparent;
     --tblr-btn-active-color: var(--tblr-body-color); --tblr-btn-active-bg: var(--wv-hover-wash); --tblr-btn-active-border-color: transparent;
     flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; }
-  #app .view-header .crumb-row :is(.table-search-btn, .table-view-btn, .table-share-btn, .activity-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn) svg { width: 16px; height: 16px; }
-  #app .view-header .crumb-row :is(.table-view-btn, .table-share-btn, .activity-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn):is([aria-expanded="true"], [aria-pressed="true"]) {
+  #app .view-header .crumb-row :is(.table-search-btn, .table-view-btn, .table-share-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn) svg { width: 16px; height: 16px; }
+  #app .view-header .crumb-row :is(.table-view-btn, .table-share-btn, .eye-btn, .pose-btn, .dock-close, .page-close, .dl-wrap > .dots-btn):is([aria-expanded="true"], [aria-pressed="true"]),
+  #app .view-header .crumb-row > .crumb-actions:has(> .activity-btn[aria-pressed="true"]) > .eye-btn {
     background: var(--tblr-primary-lt); border-color: var(--tblr-primary); color: var(--tblr-primary); }
+  #app .view-header .crumb-actions > .activity-btn, #main .view-header .crumb-row > .crumb-actions > .pose-btn { display: none; }
   #app .view-header .crumb-row > .crumb-actions > .table-view-btn { width: auto; min-width: 28px; padding: 0 5px; gap: 6px; }
   #app .view-header .crumb-actions > .table-search { height: 28px; }
   #app .view-header .crumb-actions > .table-search > .table-search-btn { margin: -1px; }

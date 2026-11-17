@@ -70,6 +70,7 @@ const WANT = {
     gaps: [10, 12], edge: 0, scroll: 0,
   },
   recordMenu: ['Activity 44', 'Share (Beta) 44', 'Collapse beside the table 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
+  recordEye: ['table-control-head', 'field-visibility-actions', 'table-field-legend', 'table-field-list', 'hr', 'fields-add', 'Reference panels'],
   dock: {
     row: 44,
     controls: ['crumb-copy 22x22 icon 16', 'eye-btn 44x44 icon 15 border fill', 'dots-btn 44x44 icon 16 border fill', 'dock-close 44x44 icon 16 border fill'],
@@ -109,6 +110,11 @@ if (s) {
     try {
       assert.deepEqual(await header(page, '#main'), WANT.record);
       assert.deepEqual(await menuRows(page, '#main'), WANT.recordMenu);
+      await page.tap('#main .view-header .crumb-actions > .eye-btn');
+      await page.waitForSelector('.table-fields-popover .eye-row');
+      const sections = await page.locator('.table-fields-popover').evaluate((n) => [...n.children].map((c) => c.querySelector('.eye-head')?.textContent
+        ?? [...c.classList].find((k) => /table-control-head|field-visibility-actions|table-field-legend|table-field-list|fields-add/.test(k)) ?? c.tagName.toLowerCase()));
+      assert.deepEqual(sections, WANT.recordEye, 'the phone eye popover keeps its sections and gains no record section');
     } finally { await page.close(); }
   });
 

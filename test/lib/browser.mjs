@@ -246,4 +246,12 @@ export async function headerAction(page, scope, selector, label) {
   await page.click(`${scope} .view-header .crumb-row .dots-btn`);
   await page.locator('.wv-menu >> visible=true').locator('.wv-menu-label', { hasText: label }).click();
 }
+export async function toggleActivity(page, scope = '#main') {
+  const direct = page.locator(`${scope} .view-header .activity-btn >> visible=true`);
+  if (await direct.count()) return direct.first().click();
+  await page.click(`${scope} .view-header .crumb-actions > .eye-btn`);
+  await page.click('.table-fields-popover [data-record-activity]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.table-fields-popover', { state: 'detached' });
+}
 export { openBugReport } from './bug-report.mjs';

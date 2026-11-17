@@ -682,8 +682,8 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
   assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row crumb-row-fit' \}/,
     'the entity crumb + title row live in a .view-header, so crumb spacing matches');
-  assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/,
-    'the same eye popover as the table, redrawing the entity, without the table-only Rows section and with the reference panel switches');
+  assert.match(body, /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true, activity: \{ on: \(\) => activityPanel\.openFor === id, toggle: \(\) => activityPanel\.toggle\(id, mount\) \} \}\)/,
+    'the same eye popover as the table, redrawing the entity, without the table-only Rows section, with the reference panel switches and the record\'s Activity row');
   assert.match(body, /!hidden\.has\(f\.name\)/, 'hidden fields are hidden here too — one hidden set per table');
   const eyeFn = fnBody('fieldVisibilityPopover');
   assert.match(eyeFn, /if \(redraw\) await redraw\(\);/, 'the popover redraws whatever view opened it');
@@ -1324,7 +1324,7 @@ test('the view controls sit on the crumb line; Fields has a bundled eye icon and
 test('one builder draws the Fields menu for the table and the record, in checkbox rows (Issues #910, #915)', () => {
   assert.doesNotMatch(APP, /function tableFieldsPopover\(/, 'the second builder is gone');
   assert.match(fnBody('tableChrome'), /fieldVisibilityPopover\(eye, ref\.db, ref\.trashCount\)/, 'the table opens it');
-  assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/, 'the record opens it, with its reference panel switches (Issue #1479)');
+  assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true, activity: /, 'the record opens it, with its reference panel switches (Issue #1479) and its Activity row');
   const eye = fnBody('fieldVisibilityPopover');
   assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
   assert.match(eye, /startRowDrag\(/, 'rows drag wherever field order is writable');

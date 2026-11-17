@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, toggleActivity } from './lib/browser.mjs';
 import { openPane } from './lib/view-pane.mjs';
 let jobs, row;
 const s = await launch('view pane sits rightmost with gutter-width gaps', (weave) => {
@@ -43,7 +43,7 @@ if (s) {
     const page = await open(`#/table/${jobs.id}?e=${row.id}`, 1800);
     try {
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await page.click('#dock .activity-btn');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
       const [dock, side, pane] = await Promise.all([box(page, '#dock'), box(page, '#side'), box(page, '#view-pane')]);
       assert.equal(side.left - dock.right, 8);

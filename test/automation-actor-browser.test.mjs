@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { launch } from './lib/browser.mjs';
+import { launch, toggleActivity } from './lib/browser.mjs';
 
 const TOKEN = 'VMH4hSRpVOhCwUno';
 const member = new Weave();
@@ -68,7 +68,7 @@ if (s) {
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN), 'the grid prints no token id');
     await page.goto(`${base}/#/entity/${rows[0].id}`, { waitUntil: 'networkidle' });
     await page.locator('.fieldrow-system[data-field="Created By"] .k-actor').waitFor();
-    await page.click('#main .activity-btn');
+    await toggleActivity(page, '#main');
     await page.locator('.wv-activity .wv-act-who .k-actor').first().waitFor();
     assert.ok(await page.locator('.wv-activity .wv-act-who .k-actor').count(), 'the activity panel names the person');
     assert.doesNotMatch(await page.locator('body').innerText(), new RegExp(TOKEN));

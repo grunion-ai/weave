@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage, atRest, headerAction } from './lib/browser.mjs';
+import { launch, eventually, phoneBrowser, phonePage, atRest, headerAction, toggleActivity } from './lib/browser.mjs';
 
 const s = await launch('phone activity sheet', (weave) => {
   weave.revisionWindowMs = 0;
@@ -154,7 +154,7 @@ if (s) {
     try {
       await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await headerAction(page, '#dock', '.activity-btn', 'Activity');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('aside.wv-activity');
       await atRest(page.locator('#side'));
       const p = await sheet(page);

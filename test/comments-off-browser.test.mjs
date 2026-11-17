@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, toggleActivity } from './lib/browser.mjs';
 
 let table, row;
 const s = await launch('comments off in the UI', (weave) => {
@@ -27,7 +27,7 @@ if (s) {
     };
   }, scope);
   const activity = async (p, scope) => {
-    await p.click(`${scope} .activity-btn`);
+    await toggleActivity(p, scope);
     await p.waitForSelector('aside.wv-activity .wv-act-row');
     return {
       chips: await p.locator('.wv-act-filters button[data-filter]').allTextContents(),

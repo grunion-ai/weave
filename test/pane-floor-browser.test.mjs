@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, headerAction } from './lib/browser.mjs';
+import { launch, headerAction, toggleActivity } from './lib/browser.mjs';
 import { WIDTH, showTray } from './lib/viewports.mjs';
 import { closePane, openPane } from './lib/view-pane.mjs';
 let issues, row;
@@ -51,7 +51,7 @@ if (s) {
           await openPane(page, 'filters');
           await holds(page, 'table, entity and View pane');
           await closePane(page);
-          await page.click('#dock .activity-btn');
+          await toggleActivity(page, '#dock');
           await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
           await holds(page, 'with Activity open');
           if (await page.locator('#main .table-view-btn').isVisible()) {
@@ -59,7 +59,7 @@ if (s) {
             await holds(page, 'with Activity and View open');
             await closePane(page);
           }
-          await page.click('#dock .activity-btn');
+          await toggleActivity(page, '#dock');
           await page.waitForSelector('#side', { state: 'hidden' });
           await holds(page, 'Activity closed again');
           await headerAction(page, '#main', '.table-share-btn', 'Share (Beta)');
@@ -82,11 +82,11 @@ if (s) {
       await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       await openPane(page, 'filters');
       await holds(page, 'table, entity and View pane');
-      await page.click('#dock .activity-btn');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
       await holds(page, 'with Activity and View open');
       await closePane(page);
-      await page.click('#dock .activity-btn');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('#side', { state: 'hidden' });
       await holds(page, 'every side pane closed');
       assert.ok(await page.locator('#main .table-view-btn').isVisible(), 'closing the side panes hands the table back');

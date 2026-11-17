@@ -220,6 +220,12 @@ const withSink = (build) => (weave) => ({ ...build(weave), sink: sink(weave) });
 export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touch, prose }).map(([name, build]) => [name, withSink(build)]));
 
 const at = (sel) => () => sel;
+const eyeActivity = async (page) => {
+  await page.click('#main .view-header .crumb-actions > .eye-btn');
+  await page.click('.table-fields-popover [data-record-activity]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.table-fields-popover', { state: 'detached' });
+};
 const tap = (page, sel, cell) => {
   const target = page.locator(`${sel} >> visible=true`).first();
   return cell === 'phone' ? target.tap() : target.click();
@@ -509,12 +515,12 @@ const ACTIVITY_STATE = {
   async setup(page, ctx) {
     const phone = phoneCell(page);
     await page.goto(phone ? `${ctx.base}/#/table/${ctx.notes.id}?e=${ctx.activity}` : `${ctx.base}/#/entity/${ctx.activity}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(`${phone ? '#dock:not([hidden])' : '#main'} .activity-btn`);
+    await page.waitForSelector(phone ? '#dock:not([hidden]) .activity-btn' : '#main .view-header .crumb-actions > .eye-btn');
   },
   async run(page) {
     const phone = phoneCell(page);
-    const btn = page.locator(`${phone ? '#dock' : '#main'} .activity-btn >> visible=true`).first();
-    await (phone ? btn.tap() : btn.click());
+    if (phone) await page.locator('#dock .activity-btn >> visible=true').first().tap();
+    else await eyeActivity(page);
     const link = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
     await link.waitFor();
     await (phone ? link.locator('.wv-act-what').tap() : link.locator('.wv-act-what').click());
@@ -612,7 +618,7 @@ const OVERLAY_STATES = [
   { name: 'new-field', route: 'table', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#main .add-field-btn', cell) },
   { name: 'status-picker', route: 'table', cells: DESKTOP, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${ROW} .chip-trigger[title="Status"]`, cell) },
   { name: 'link-picker', route: 'table', cells: DESKTOP, root: '#cmdk-back', act: (page, ctx, cell) => tap(page, `${ROW} button >> text=+ link`, cell) },
-  { name: 'activity', route: 'entity', cells: DESKTOP, root: 'aside.wv-activity', act: (page, ctx, cell) => tap(page, '#main .activity-btn', cell) },
+  { name: 'activity', route: 'entity', cells: DESKTOP, root: 'aside.wv-activity', act: (page) => eyeActivity(page) },
   { name: 'entity-fields', route: 'entity', cells: DESKTOP, root: '.chip-pop', act: (page, ctx, cell) => tap(page, '#main .eye-btn', cell) },
   { name: 'entity-field-editor', route: 'entity', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#dock .fieldrow[data-field="Status"] .fieldrow-label', cell) },
   { name: 'row-actions', route: 'entity', cells: BOTH, root: '.wv-menu', act: (page, ctx, cell) => tap(page, `${scope(cell)} .dots-btn[title="Record actions"]`, cell) },

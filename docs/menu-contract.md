@@ -35,7 +35,7 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 | Kind | Settings | Organize | Share | Export | Delete |
 | --- | --- | --- | --- | --- | --- |
 | Table | | Move to space…, Duplicate | New share page…, Forms… (architects), Copy create link | CSV | Move to trash |
-| Record (decks too) | | Duplicate | | Markdown, HTML, PDF | Move to trash |
+| Record (decks too) | | Dock beside table (the full page, with its `⌘⇧E` hint), Duplicate | | Markdown, HTML, PDF | Move to trash |
 | Document section | | | | Markdown, Mermaid, HTML, PDF | |
 | Space | | | | | Move to trash |
 | Share page | | | | | Move to trash |
@@ -84,14 +84,14 @@ A menu opened away from its object (a sidebar row, a right-click, a rail chip) s
 
 ## What stays out of menus
 
-- View actions belong to the toolbar: Fields, Sort, Activity, Show or hide fields.
+- View actions belong to the toolbar: Fields, Sort, Show or hide fields. A record's Activity is a row in its eye popover, under **This record**; on a desktop it is never a menu row.
 - Click-to-edit belongs in place: a title, an icon, a workspace logo, a table name (double-click its sidebar row).
 - Copy link belongs to the header permalink button, which shows on a phone and in the dock.
 - A deck's download, composed model and new version controls are buttons on its panel.
 
 ## Phone
 
-Under 720px the same `menu()` draws a bottom sheet with the picker sheet rules: the desktop's rows, in the desktop's order. The sheet opens with the picker sheets' `sheetGrip`, so the handle it draws is a 44px target that closes the sheet on a drag or flick down (Issue #1383). Row height follows the pointer instead of the width, so on a touch screen every menu row takes the 44px `--wv-hit` floor, in a sheet or a popover, and a mouse keeps the dense rows at any width.
+Under 720px the same `menu()` draws a bottom sheet with the picker sheet rules: the desktop's rows, in the desktop's order. A record's sheet adds the rows its condensed header sheds (Activity, Share), and its pose row reads **Collapse beside the table** where the desktop row reads **Dock beside table**. The sheet opens with the picker sheets' `sheetGrip`, so the handle it draws is a 44px target that closes the sheet on a drag or flick down (Issue #1383). Row height follows the pointer instead of the width, so on a touch screen every menu row takes the 44px `--wv-hit` floor, in a sheet or a popover, and a mouse keeps the dense rows at any width.
 
 ## Keys
 

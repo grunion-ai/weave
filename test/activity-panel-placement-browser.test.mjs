@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually } from './lib/browser.mjs';
+import { launch, eventually, toggleActivity, headerAction } from './lib/browser.mjs';
 
 let tableId, rowId;
 const s = await launch('activity panel placement', (weave) => {
@@ -51,7 +51,7 @@ if (s) {
     const p = await page(`#/entity/${rowId}`);
     try {
       await p.waitForSelector('#main textarea.name-edit');
-      await p.click('#main .activity-btn');
+      await toggleActivity(p, '#main');
       await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
       const m = await row(p);
       assertCard(m, 'full page');
@@ -68,7 +68,7 @@ if (s) {
     const p = await page(`#/entity/${rowId}`);
     try {
       await p.waitForSelector('#main .doc-section-head');
-      await p.click('#main .activity-btn');
+      await toggleActivity(p, '#main');
       await p.waitForSelector('aside.wv-activity .wv-act-head');
       const pinned = [];
       for (const y of [0, 200, 400, 800]) {
@@ -102,7 +102,7 @@ if (s) {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await p.click('#dock .activity-btn');
+      await toggleActivity(p, '#dock');
       await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
       const m = await row(p);
       assertCard(m, 'peek');
@@ -127,7 +127,7 @@ if (s) {
     const p = await page(`#/table/${tableId}?e=${rowId}`);
     try {
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
-      await p.click('#dock .activity-btn');
+      await toggleActivity(p, '#dock');
       await p.waitForSelector('#side:not([hidden]) aside.wv-activity');
       await p.locator('#side .wv-act-head h3').click();
       await p.keyboard.press('Escape');
@@ -144,9 +144,9 @@ if (s) {
     const p = await page(`#/entity/${rowId}`);
     try {
       await p.waitForSelector('#main textarea.name-edit');
-      await p.click('#main .activity-btn');
+      await toggleActivity(p, '#main');
       await p.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
-      await p.click('#main button[title="Collapse (⌘⇧E)"]');
+      await headerAction(p, '#main', '.pose-btn', 'Dock beside table');
       await p.waitForSelector('#dock:not([hidden]) textarea.name-edit');
       assert.equal(await eventually(() => p.locator('#dock .activity-btn[aria-pressed="true"]').count(), 1), 1, 'the peek shows Activity pressed');
       const m = await row(p);

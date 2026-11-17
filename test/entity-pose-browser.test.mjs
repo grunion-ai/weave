@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { launch, headerAction } from './lib/browser.mjs';
 
 let deals, a;
 const s = await launch('entity pose', (weave) => {
@@ -25,21 +25,23 @@ if (s) {
     await page.close();
   });
 
-  test('a #/entity deep link is the classic page wearing the collapse controls', async () => {
+  test('a #/entity deep link is the classic page, and its menu carries the collapse arrows on Dock beside table', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${a.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .name-edit');
     assert.equal(await page.inputValue('#main .name-edit'), 'Acme Working Capital');
-    const inward = await page.locator('#main .pose-btn svg path').first().getAttribute('d');
-    assert.equal(inward, 'M18 10h-4v-4', 'the page wears arrows-diagonal-minimize-2 (inward = collapse)');
+    assert.equal(await page.locator('#main .view-header .pose-btn').isVisible(), false, 'the page bar holds no collapse button');
+    await page.click('#main .view-header .crumb-row .dots-btn');
+    const inward = await page.locator('.wv-menu [role="menuitem"]', { hasText: 'Dock beside table' }).locator('svg path').first().getAttribute('d');
+    assert.equal(inward, 'M18 10h-4v-4', 'the menu row wears arrows-diagonal-minimize-2 (inward = collapse)');
     await page.close();
   });
 
-  test('the collapse arrows re-dock the entity beside its table', async () => {
+  test('Dock beside table re-docks the entity beside its table', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${a.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .pose-btn');
-    await page.click('#main .pose-btn');
+    await page.waitForSelector('#main .name-edit');
+    await headerAction(page, '#main', '.pose-btn', 'Dock beside table');
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`, 'the docked row rides the table hash (Issue #226)');
     assert.equal(await page.inputValue('#dock .name-edit'), 'Acme Working Capital');
@@ -61,7 +63,7 @@ if (s) {
   test('⌘⇧E flips the pose both ways', async () => {
     const page = await browser.newPage();
     await page.goto(`${base}/#/entity/${a.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .pose-btn');
+    await page.waitForSelector('#main .name-edit');
     await page.keyboard.press('Meta+Shift+KeyE');
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     await page.keyboard.press('Meta+Shift+KeyE');
@@ -78,8 +80,8 @@ if (s) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await page.waitForSelector('#dock:not([hidden]) .pose-btn');
     await page.click('#dock .pose-btn');
-    await page.waitForSelector('#main .pose-btn');
-    await page.click('#main .pose-btn');
+    await page.waitForSelector('#main .name-edit');
+    await headerAction(page, '#main', '.pose-btn', 'Dock beside table');
     await page.waitForSelector('#dock:not([hidden]) .pose-btn');
     await page.click('#dock .pose-btn');
     await page.waitForSelector('#main button[title="Close"]');

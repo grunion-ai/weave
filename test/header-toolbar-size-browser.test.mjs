@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settled } from './lib/browser.mjs';
+import { bar, menuLabels, paintOf, tokenPaint } from './lib/header-bar.mjs';
 
 const para = (n) => Array.from({ length: n }, (_, i) => `Paragraph ${i + 1} with enough words to read as prose.`).join('\n\n');
 
@@ -17,80 +18,6 @@ const s = await launch('header toolbar size', (weave) => {
   weave.setDoc(acme.id, para(6));
   weave.tableView(`${deals.id}/Standard`, { filters: { Stage: ['Lead', 'Won'] } });
 });
-
-const NAMES = ['table-search', 'table-view-btn', 'activity-btn', 'eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close'];
-
-const bar = (page, scope) => page.evaluate(([scope, names]) => {
-  const half = (v) => Math.round(v * 2) / 2;
-  const row = document.querySelector(`${scope} .view-header .crumb-row`);
-  const header = row.closest('.view-header').getBoundingClientRect();
-  const seen = (n) => !!n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== 'hidden' && n.getBoundingClientRect().width > 1.5;
-  const tools = [...row.querySelectorAll(':scope > .crumb-actions > *, :scope > .dl-wrap')]
-    .map((n) => (n.classList.contains('dl-wrap') ? n.querySelector('button') : n)).filter(seen);
-  const items = tools.map((n) => {
-    const r = n.getBoundingClientRect();
-    const glyph = (n.classList.contains('table-search') ? n.querySelector('.table-search-btn') : n).querySelector('svg')?.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + Math.min(14, r.width / 2), r.top + r.height / 2);
-    return {
-      name: names.find((c) => n.classList.contains(c)) ?? (/^Close/.test(n.getAttribute('aria-label') ?? '') ? 'close' : n.className),
-      w: half(r.width), h: half(r.height), left: half(r.left), right: half(r.right), top: half(r.top),
-      icon: glyph ? [half(glyph.width), half(glyph.height)] : null,
-      inside: r.left >= header.left - 0.5 && r.right <= header.right + 0.5,
-      reachable: !!hit && (hit === n || n.contains(hit)),
-    };
-  }).sort((a, b) => a.left - b.left);
-  const rowBox = row.getBoundingClientRect();
-  const copy = row.querySelector('.crumb-copy');
-  const copyBox = seen(copy) ? copy.getBoundingClientRect() : null;
-  const copyIcon = copyBox ? copy.querySelector('svg').getBoundingClientRect() : null;
-  const title = document.querySelector(`${scope} :is(.view-title, .name-edit)`);
-  return {
-    tight: row.classList.contains('crumb-row-tight'),
-    row: { h: half(rowBox.height), right: half(rowBox.right), padRight: parseFloat(getComputedStyle(row).paddingRight) },
-    order: items.map((i) => i.name),
-    items: Object.fromEntries(items.map((i) => [i.name, i])),
-    gaps: items.slice(1).map((it, i) => half(it.left - items[i].right)),
-    fromRight: Object.fromEntries(items.map((i) => [i.name, half(rowBox.right - i.right)])),
-    copy: copyBox ? { w: half(copyBox.width), h: half(copyBox.height), icon: half(copyIcon.width), inside: copyBox.left >= header.left - 0.5 && copyBox.right <= header.right + 0.5 } : null,
-    folded: !!row.querySelector('.crumb-more'),
-    crumbsShown: [...row.querySelectorAll('.crumb-path > .crumb-slot')].filter(seen).length,
-    titleTop: title ? half(title.getBoundingClientRect().top) : null,
-    scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  };
-}, [scope, NAMES]);
-
-const paintOf = async (locator) => {
-  await settled(locator);
-  return locator.evaluate(readPaint);
-};
-const readPaint = (n) => {
-  const cs = getComputedStyle(n);
-  const clear = (c) => c === 'transparent' || /,\s*0\)$/.test(c) || /\/\s*0\)$/.test(c);
-  return {
-    border: parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' && !clear(cs.borderTopColor) ? cs.borderTopColor : 'none',
-    fill: clear(cs.backgroundColor) ? 'none' : cs.backgroundColor,
-    shadow: cs.boxShadow,
-    color: cs.color,
-  };
-};
-const tokenPaint = (page, declarations) => page.evaluate((declarations) => {
-  const probe = document.createElement('span');
-  probe.style.cssText = declarations;
-  document.querySelector('#main').append(probe);
-  const cs = getComputedStyle(probe);
-  const out = { fill: cs.backgroundColor, border: cs.borderTopColor, color: cs.color };
-  probe.remove();
-  return out;
-}, declarations);
-
-const menuLabels = async (page, scope) => {
-  await page.click(`${scope} .view-header .crumb-row .dots-btn`);
-  await page.waitForSelector('.chip-pop.wv-menu[role="menu"] [role^="menuitem"]');
-  const labels = await page.locator('.chip-pop.wv-menu .wv-menu-label, .chip-pop.wv-menu .hold-label').allTextContents();
-  await page.keyboard.press('Escape');
-  await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });
-  return labels.map((l) => l.trim());
-};
 
 if (s) {
   const { base, browser } = s;
@@ -191,32 +118,6 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the record page bar at 1440 px is 28 px boxes with 4 px gaps and a 12 px break before the window group', async () => {
-    const page = await record(acme.id);
-    try {
-      const m = await bar(page, '#main');
-      assert.deepEqual(m.order, ['activity-btn', 'eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'close']);
-      box28(m, m.order, 'record page');
-      assert.deepEqual(m.gaps, [4, 4, 4, 12, 4]);
-      assert.equal(m.row.h, 28);
-      assert.equal(m.fromRight.close, 0, 'Close ends the row');
-      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
-    } finally { await page.close(); }
-  });
-
-  test('the dock bar is 28 px boxes with 4 px gaps and a 12 px break before Expand and Close', async () => {
-    const page = await split();
-    try {
-      const m = await bar(page, '#dock');
-      assert.equal(m.tight, false, 'a 1440 px split leaves the dock row room');
-      assert.deepEqual(m.order, ['activity-btn', 'eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close']);
-      box28(m, m.order, 'dock');
-      assert.deepEqual(m.gaps, [4, 4, 4, 12, 4]);
-      assert.equal(m.row.h, 28);
-      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
-    } finally { await page.close(); }
-  });
-
   test('a table title and a record title start at the same height', async () => {
     const onTable = await table();
     const onRecord = await record(acme.id);
@@ -233,9 +134,8 @@ if (s) {
     try {
       assert.equal(await page.locator('#dock').evaluate((n) => Math.round(n.getBoundingClientRect().width)), 400);
       const m = await bar(page, '#dock');
-      for (const name of ['eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close']) {
-        assert.ok(m.items[name], `${name} stays in a 400 px dock bar: ${m.order}`);
-      }
+      assert.deepEqual(m.order, ['eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close'], 'the whole bar stays in a 400 px dock');
+      assert.equal(m.items['dock-close'].right - m.items['eye-btn'].left, 164, 'five 28 px buttons with gaps 4, 4, 12, 4');
       box28(m, m.order, '400 px dock');
       for (const it of Object.values(m.items)) {
         assert.ok(it.inside, `${it.name} sits fully inside the dock header: ${JSON.stringify(it)}`);
@@ -246,12 +146,11 @@ if (s) {
       assert.ok(m.crumbsShown >= 1, 'the current crumb still shows');
       assert.equal(m.scroll, 0, 'the page does not scroll sideways');
       const labels = await menuLabels(page, '#dock');
-      assert.equal(labels.includes('Activity'), !m.items['activity-btn'], `the menu offers Activity only when the bar does not: ${labels}`);
-      assert.ok(!labels.some((l) => /^Share \(|^Expand/.test(l)), `the menu repeats no visible button: ${labels}`);
+      assert.ok(!labels.some((l) => /^Activity$|^Share \(|^Expand/.test(l)), `the menu repeats no bar tool and offers no Activity: ${labels}`);
     } finally { await page.close(); }
   });
 
-  test('a tight 400 px dock sheds Activity into the menu and keeps the current crumb, the permalink and every other button whole', async () => {
+  test('a tight 400 px dock keeps the current crumb, the permalink and every button whole', async () => {
     const page = await split({ width: 1100, dock: 400 });
     try {
       await page.click(`#dock a[href="#/entity/${jane.id}"]`);
@@ -270,8 +169,7 @@ if (s) {
       assert.equal(await page.locator('#dock .crumb-row .dock-back').isVisible(), true, 'Back stays in the row');
       assert.equal(m.scroll, 0);
       const labels = await menuLabels(page, '#dock');
-      assert.ok(labels.includes('Activity'), `the menu offers the shed Activity: ${labels}`);
-      assert.ok(!labels.some((l) => /^Share \(|^Expand/.test(l)), `the menu repeats no visible button: ${labels}`);
+      assert.ok(!labels.some((l) => /^Activity$|^Share \(|^Expand/.test(l)), `the menu repeats no bar tool and offers no Activity: ${labels}`);
     } finally { await page.close(); }
   });
 
@@ -313,13 +211,13 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: bar buttons rest with no outline and no fill, wash on hover, and light up while their pane or panel is open`, async () => {
+    test(`${theme}: bar buttons rest with no outline and no fill, wash on hover, and light up while their pane is open`, async () => {
       const page = await record(acme.id, { theme });
       const onTable = await table({ theme });
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
         await page.mouse.move(2, 2);
-        for (const sel of ['.activity-btn', '.eye-btn', '.table-share-btn', '.dots-btn', '.pose-btn', 'button[aria-label^="Close"]']) {
+        for (const sel of ['.eye-btn', '.table-share-btn', '.dots-btn', 'button[aria-label^="Close"]']) {
           const p = await paintOf(page.locator(`#main .view-header .crumb-actions ${sel}`));
           assert.deepEqual([p.border, p.fill, p.shadow], ['none', 'none', 'none'], `${sel} rests as a ghost`);
         }
@@ -337,12 +235,6 @@ if (s) {
         await page.mouse.move(2, 2);
         const share = await paintOf(page.locator('#main .view-header .crumb-actions .table-share-btn'));
         assert.deepEqual([share.fill, share.border, share.color], [lit.fill, lit.border, lit.color], 'Share lights up while its pane is open');
-        await page.click('#main .view-header .crumb-actions .table-share-btn');
-        await page.click('#main .view-header .crumb-actions .activity-btn');
-        await page.waitForSelector('#main .activity-btn[aria-pressed="true"]');
-        await page.mouse.move(2, 2);
-        const activity = await paintOf(page.locator('#main .view-header .crumb-actions .activity-btn'));
-        assert.deepEqual([activity.fill, activity.border, activity.color], [lit.fill, lit.border, lit.color], 'Activity lights up while its panel is open');
         await onTable.click('#main .table-view-btn');
         await onTable.waitForSelector('#view-pane .vp-close');
         await onTable.mouse.move(2, 2);

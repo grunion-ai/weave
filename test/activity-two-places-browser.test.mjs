@@ -33,13 +33,13 @@ if (s) {
   const entryPoints = (p, mountSel) => p.evaluate((sel) => {
     const mount = document.querySelector(sel);
     const named = [...mount.querySelectorAll('button, a, [role="button"], .card-title')].filter((n) => {
-      if (n.closest('aside.wv-activity')) return false;
+      if (n.closest('aside.wv-activity') || !n.getClientRects().length) return false;
       const words = [n.getAttribute('aria-label'), n.getAttribute('title'), n.textContent].join(' ');
       return /\b(activity|history)\b/i.test(words) || (n.getAttribute('href') ?? '').startsWith('#/activity');
     });
     return {
       named: named.map((n) => n.className || n.tagName),
-      toolbar: mount.querySelectorAll('.crumb-actions .activity-btn').length,
+      toolbar: [...mount.querySelectorAll('.crumb-actions .activity-btn')].filter((n) => n.getClientRects().length).length,
       docHistory: mount.querySelectorAll('.doc-history-btn').length,
       sideTitles: [...mount.querySelectorAll('.entity-side .card-title')].map((n) => n.textContent),
     };
@@ -65,22 +65,22 @@ if (s) {
     } finally { await p.close(); }
   });
 
-  test('the record page has one activity entry point, the toolbar button, and keeps its reference cards (Feature #315)', async () => {
+  test('the record page has one activity entry point, the eye popover\'s Activity row, and keeps its reference cards (Feature #315)', async () => {
     const p = await page(`#/entity/${row.id}`);
     try {
       await p.waitForSelector('#main .doc-section[data-doc-field="Spec"]');
       await p.waitForSelector('#main .ref-outbound-card');
       const e = await entryPoints(p, '#main');
-      assert.equal(e.toolbar, 1, 'the toolbar Activity button');
+      assert.equal(e.toolbar, 0, 'no Activity button in the bar');
       assert.equal(e.docHistory, 0, 'no per-document History button');
-      assert.deepEqual(e.named, ['btn btn-sm activity-btn'], `nothing else names activity (${e.named.join(', ')})`);
+      assert.deepEqual(e.named, [], `nothing on the page names activity (${e.named.join(', ')})`);
       assert.equal(e.sideTitles.some((t) => ACTIVITY.test(t)), false, `no Activity card (${e.sideTitles.join(', ')})`);
       assert.ok(e.sideTitles.some((t) => /^References/.test(t)), 'the References card stays without any Activity switch');
       await p.click('#main .eye-btn');
       await p.waitForSelector('.chip-pop .eye-row');
-      assert.equal((await p.locator('.chip-pop .eye-label').allInnerTexts()).some((r) => ACTIVITY.test(r)), false, 'the record\'s show/hide has no Activity row');
-      await closePop(p);
-      await p.click('#main .activity-btn');
+      assert.deepEqual((await p.locator('.chip-pop .eye-label').allInnerTexts()).filter((r) => ACTIVITY.test(r)), ['Activity'], 'the record\'s eye popover has one Activity row');
+      assert.equal((await p.locator('.chip-pop .table-field-row .eye-label').allInnerTexts()).some((r) => ACTIVITY.test(r)), false, 'and no Activity field toggle in its list');
+      await p.click('.chip-pop [data-record-activity]');
       await p.waitForSelector('aside.wv-activity .wv-act-row');
       assert.deepEqual(await p.locator('.wv-act-filters button[data-filter]').allTextContents(), ['All', 'Description', 'Spec', 'Fields'],
         'the panel filters by document, which the History button used to do');
@@ -92,9 +92,12 @@ if (s) {
     try {
       await p.waitForSelector('#dock:not([hidden]) .doc-section[data-doc-field="Spec"]');
       const e = await entryPoints(p, '#dock');
-      assert.equal(e.toolbar, 1);
+      assert.equal(e.toolbar, 0);
       assert.equal(e.docHistory, 0);
-      assert.deepEqual(e.named, ['btn btn-sm activity-btn'], `nothing else names activity (${e.named.join(', ')})`);
+      assert.deepEqual(e.named, [], `nothing in the peek names activity (${e.named.join(', ')})`);
+      await p.click('#dock .view-header .crumb-actions > .eye-btn');
+      await p.waitForSelector('.chip-pop .eye-row');
+      assert.deepEqual((await p.locator('.chip-pop .eye-label').allInnerTexts()).filter((r) => ACTIVITY.test(r)), ['Activity'], 'the peek\'s eye popover has the one Activity row');
     } finally { await p.close(); }
   });
 
