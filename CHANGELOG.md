@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.150 (2026-11-17)
+
+- A menu whose button has scrolled or moved past the top or bottom of the window now opens inside the window (Issue #1488). Clicking + on the workspace rail while the rail was still filling with workspaces could open the New workspace menu below the window's bottom edge, out of reach.
+- `.node-version` names the Node the container image runs, and the `Dev gate` boots on it, so a commit that needs a newer Node fails a required check instead of the hosted instance (Issue #1653).
+- The record chip on a phone now sets its number in the chip's own face and size, beside the table name (Issue #1391). At 402 points the chip drew "Task" at 14px in the interface face and "#4" at 13px in Monaco, so the number read small, tightly tracked and raised against the name it followed.
+- A release that crashes after its watch has passed is now recorded and, on a second short life, marked failed, so the next boot serves the kept rollback folder instead of crash-looping the host (Issue #1649).
+- Undo after a refused write now takes back the last change that was saved (Issue #1830). A record edit the database refused used to leave its undo entry behind, so the next undo did nothing and reported that you had changed the record since. The entry is now written in the same transaction as the edit, so a refused edit leaves none.
+
 ## v0.4.149 (2026-11-16)
 
 - Every write the database refuses now answers `503` with code `not-saved` and leaves the server's memory equal to the saved rows (Issue #1829). Issue #1667 covered a plain record save; a new record, a run start or update, a share change, a form write, a bulk edit or an import that failed to commit used to stay in memory, answer a bare `500`, and reach the database on the next successful save. A bug inside one of those writes still answers `500` with its request id.
