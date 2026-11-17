@@ -10696,8 +10696,6 @@ const ENTITY_UNDO = [
   [/^PUT \/entities\/([^/?]+)\/doc$/, 'update'],
   [/^DELETE \/entities\/([^/?]+)$/, 'delete'],
   [/^POST \/entities\/([^/?]+)\/restore$/, 'restore'],
-  [/^POST \/entities\/([^/?]+)\/comments$/, 'comment-add'],
-  [/^DELETE \/entities\/([^/?]+)\/comments\/[^/?]+$/, 'comment-delete'],
   [/^POST \/entities\/([^/?]+)\/(?:fields\/[^/?]+\/)?files$/, 'file-attach'],
 ];
 const BULK_UNDO = {

@@ -120,7 +120,3 @@ export function edits() {
     return { name, change, ...(r.error ? { error: r.error } : { plan: r.ok }), before: scrub(was), after: scrub(now) };
   });
 }
-
-export function schemaScenarios() {
-  return { roundTrip: roundTrip(), edits: edits() };
-}
