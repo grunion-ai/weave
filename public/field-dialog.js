@@ -4,7 +4,7 @@ function dsection(label, ...kids) {
   return el('div', { class: 'dlg-sec full' }, el('div', { class: 'dlg-lbl' }, label), ...kids);
 }
 
-function viewSection(db, dlg, changed, redraw) {
+function viewSection(db, dlg, redraw) {
   const v = dlg.view ?? (dlg.view = fieldDialogCore.blankView());
   const previewBox = el('div', { class: 'wv-view-preview' }, el('span', { class: 'wv-muted' }, '…'));
   let sampleId = state.route?.page === 'entity' && state.route.dbId === db.id ? state.route.id : null;
@@ -23,7 +23,7 @@ function viewSection(db, dlg, changed, redraw) {
       previewBox.replaceChildren(el('span', { class: 'wv-muted' }, err.message));
     }
   };
-  const bump = () => { changed(); clearTimeout(timer); timer = setTimeout(refreshPreview, 120); };
+  const bump = () => { clearTimeout(timer); timer = setTimeout(refreshPreview, 120); };
   const sw = (key, label, hint) => el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
     el('input', { type: 'checkbox', class: 'form-check-input', checked: v[key] ? '' : undefined, onchange: (e) => { v[key] = e.target.checked; bump(); } }),
     el('span', { class: 'form-check-label' }, label, hint ? el('span', { class: 'fx-hint' }, ` ${hint}`) : ''));
@@ -44,7 +44,7 @@ function viewSection(db, dlg, changed, redraw) {
         el('span', { class: 'form-check-label' }, f.name, el('span', { class: 'wv-tag' }, f.type)));
     }));
   const autoSw = el('label', { class: 'form-check full', style: 'margin:0 0 4px' },
-    el('input', { type: 'checkbox', class: 'form-check-input', checked: auto ? '' : undefined, onchange: (e) => { v.fields = e.target.checked ? null : []; changed(); redraw(); } }),
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: auto ? '' : undefined, onchange: (e) => { v.fields = e.target.checked ? null : []; redraw(); } }),
     el('span', { class: 'form-check-label' }, 'The first few non-empty fields, in column order', el('span', { class: 'fx-hint' }, ' arranging the columns is the curation')));
   refreshPreview();
   return [
@@ -89,7 +89,7 @@ function statePreview(st) {
   return previewChip(`k k-state cat-${cat} hue-${chipCore.stateHue(st, cat)}`, st, 'State');
 }
 
-function termSection(state, onChange) {
+function termSection(state) {
   const T = WeaveTerm;
   const face = el('button', { type: 'button', class: 'picker-face term-face', 'aria-haspopup': 'listbox' });
   const reset = el('button', { type: 'button', class: 'term-reset', title: `Back to ${WeaveTerm.cap(WeaveTerm.DEFAULT.singular)}` }, 'reset');
@@ -108,7 +108,7 @@ function termSection(state, onChange) {
   const set = (singular) => {
     const s = String(singular ?? '').trim().toLowerCase();
     state.term = (!s || s === T.DEFAULT.singular) ? null : { singular: s, plural: T.pluralize(s) };
-    draw(); onChange();
+    draw();
   };
   face.onclick = () => searchPicker({
     anchor: face, title: 'Term',
@@ -142,38 +142,50 @@ function optRowGrip(wrap, list, i, commit) {
   return grip;
 }
 
-function optionListEditor(state, onChange) {
+function choiceListEditor(state, key, onChange, { noun, preview, controls, blank, onRow = () => {}, onAdd = () => {} }) {
   const wrap = el('div', { class: 'opt-list' });
+  const commit = () => { draw(); onChange(); };
   const draw = () => {
     wrap.replaceChildren(
-      ...state.options.map((o, i) => {
-        const hue = o.hue ?? chipCore.hueFromHex(o.color);
-        const preview = optionPreview({ ...o, hue });
-        return el('div', { class: 'opt-row' },
-          optRowGrip(wrap, () => state.options, i, (next) => { state.options = next; draw(); onChange(); }),
-          iconButton(o.icon || null, (id) => { o.icon = id ?? ''; draw(); onChange(); }),
-          el('input', { class: 'opt-name', value: o.name, placeholder: 'Option', oninput: (e) => { o.name = e.target.value; preview.rename(o.name); onChange(); } }),
-          (() => {
-            const b = el('button', {
-              type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`, title: 'Choose a colour',
-              onclick: () => huePopover(b, hue, (h) => { o.hue = h; o.color = chipCore.HUE_HEX[h]; draw(); onChange(); }),
-            });
-            return b;
-          })(),
-          preview,
-          el('button', { type: 'button', class: 'opt-del', title: 'Remove option', onclick: () => { state.options.splice(i, 1); draw(); onChange(); } }, '✕'));
+      ...state[key].map((x, i) => {
+        const chip = preview(x);
+        const row = el('div', { class: 'opt-row' },
+          optRowGrip(wrap, () => state[key], i, (next) => { state[key] = next; commit(); }),
+          iconButton(x.icon || null, (id) => { x.icon = id ?? ''; commit(); }),
+          el('input', { class: 'opt-name', value: x.name, placeholder: noun, oninput: (e) => { x.name = e.target.value; chip.rename(x.name); onChange(); } }),
+          ...controls(x, commit, i),
+          chip,
+          el('button', { type: 'button', class: 'opt-del', title: `Remove ${noun.toLowerCase()}`, onclick: () => { state[key].splice(i, 1); commit(); } }, '✕'));
+        onRow(row);
+        return row;
       }),
       el('button', {
         type: 'button', class: 'opt-add',
-        onclick: () => {
-          const hue = chipCore.hueForIndex(state.options.length);
-          state.options.push({ name: '', hue, icon: '', color: chipCore.HUE_HEX[hue] });
-          draw(); onChange();
-        },
-      }, '+ Add option'));
+        onclick: () => { state[key].push(blank()); commit(); onAdd(wrap); },
+      }, `+ Add ${noun.toLowerCase()}`));
   };
   draw();
   return wrap;
+}
+
+function optionListEditor(state, onChange) {
+  const hueOf = (o) => o.hue ?? chipCore.hueFromHex(o.color);
+  return choiceListEditor(state, 'options', onChange, {
+    noun: 'Option',
+    preview: (o) => optionPreview({ ...o, hue: hueOf(o) }),
+    controls: (o, commit) => {
+      const hue = hueOf(o);
+      const b = el('button', {
+        type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`, title: 'Choose a colour',
+        onclick: () => huePopover(b, hue, (h) => { o.hue = h; o.color = chipCore.HUE_HEX[h]; commit(); }),
+      });
+      return [b];
+    },
+    blank: () => {
+      const hue = chipCore.hueForIndex(state.options.length);
+      return { name: '', hue, icon: '', color: chipCore.HUE_HEX[hue] };
+    },
+  });
 }
 
 function choiceDefaultControl(state, t) {
@@ -218,53 +230,36 @@ function choiceDefaultControl(state, t) {
 
 function stateListEditor(state, onChange) {
   const fdc = fieldDialogCore;
-  const wrap = el('div', { class: 'opt-list' });
-  const draw = () => {
-    wrap.replaceChildren(
-      ...state.states.map((s, i) => {
-        const preview = statePreview(s);
-        const row = el('div', { class: 'opt-row' },
-        optRowGrip(wrap, () => state.states, i, (next) => { state.states = next; draw(); onChange(); }),
-        iconButton(s.icon || null, (id) => { s.icon = id ?? ''; draw(); onChange(); }),
-        el('input', { class: 'opt-name', value: s.name, placeholder: 'State', oninput: (e) => { s.name = e.target.value; preview.rename(s.name); onChange(); } }),
-        (() => {
-          const cat = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: chipCore.categoryOrDefault(s.category ?? 'in-progress') });
-          cat.classList.add('opt-cat');
-          cat.input.addEventListener('change', () => { s.category = cat.input.value; draw(); onChange(); });
-          return cat;
-        })(),
-        (() => {
-          const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
-          const hue = chipCore.stateHue(s, cat);
-          const b = el('button', {
-            type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
-            title: s.hue ? 'Choose a colour' : `Colour comes from the ${cat} category`,
-            'aria-label': `Colour: ${hue}`,
-            onclick: () => huePopover(b, hue, (h) => {
-              if (h) s.hue = h; else delete s.hue;
-              draw(); onChange();
-            }, {
-              reset: s.hue ? 'Reset to category colour' : null,
-              note: `Without one, a state wears the ${cat} category colour.`,
-            }),
-          });
-          return b;
-        })(),
-        preview,
-        el('button', { type: 'button', class: 'opt-del', title: 'Remove state', onclick: () => { state.states.splice(i, 1); draw(); onChange(); } }, '✕'));
-        for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation());
-        return row;
-      }),
-      el('button', {
-        type: 'button', class: 'opt-add',
-        onclick: () => { state.states.push({ name: '', category: 'in-progress' }); draw(); onChange(); wrap.querySelectorAll('.opt-name')[state.states.length - 1]?.focus(); },
-      }, '+ Add state'));
-  };
-  draw();
-  return wrap;
+  return choiceListEditor(state, 'states', onChange, {
+    noun: 'State',
+    preview: statePreview,
+    controls: (s, commit, i) => {
+      const pick = pickerSelect({ name: `wf-cat-${i}`, options: fdc.STATE_CATEGORIES.map((c) => ({ id: c, label: c })), value: chipCore.categoryOrDefault(s.category ?? 'in-progress') });
+      pick.classList.add('opt-cat');
+      pick.input.addEventListener('change', () => { s.category = pick.input.value; commit(); });
+      const cat = chipCore.categoryOrDefault(s.category ?? 'in-progress');
+      const hue = chipCore.stateHue(s, cat);
+      const b = el('button', {
+        type: 'button', class: `opt-color hue-${hue}${hue === 'slate' ? ' neutral' : ''}`,
+        title: s.hue ? 'Choose a colour' : `Colour comes from the ${cat} category`,
+        'aria-label': `Colour: ${hue}`,
+        onclick: () => huePopover(b, hue, (h) => {
+          if (h) s.hue = h; else delete s.hue;
+          commit();
+        }, {
+          reset: s.hue ? 'Reset to category colour' : null,
+          note: `Without one, a state wears the ${cat} category colour.`,
+        }),
+      });
+      return [pick, b];
+    },
+    blank: () => ({ name: '', category: 'in-progress' }),
+    onRow: (row) => { for (const ctl of row.querySelectorAll('input,button,.picker-wrap')) ctl.addEventListener('mousedown', (e) => e.stopPropagation()); },
+    onAdd: (wrap) => wrap.querySelectorAll('.opt-name')[state.states.length - 1]?.focus(),
+  });
 }
 
-function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () => selfName ?? '', onType = null, onTail = null } = {}) {
+function formulaBuilder(db, state, { selfName = null, fieldName = () => selfName ?? '', onType = null, onTail = null } = {}) {
   const ta = el('textarea', {
     class: 'fx-expr', rows: 3, spellcheck: 'false',
     placeholder: 'e.g. if(Estimate > 5, "big", "small")',
@@ -331,7 +326,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     ta.value = r.text;
     ta.setSelectionRange(r.caret, r.caret);
     hideAc();
-    state.expression = ta.value; onChange(); queueCheck(); drawAgent();
+    state.expression = ta.value; queueCheck(); drawAgent();
   };
   const drawAc = () => {
     sugg = fieldDialogCore.formulaSuggest(ta.value, ta.selectionStart ?? ta.value.length, db.fields, selfName);
@@ -363,7 +358,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     agentPre.textContent = fieldDialogCore.agentRecipe({ table: db.name, field: fieldName(), expression: state.expression, edit: !!selfName }).text;
   };
   agent.addEventListener('refresh', drawAgent);
-  ta.addEventListener('input', () => { state.expression = ta.value; onChange(); queueCheck(); drawAgent(); });
+  ta.addEventListener('input', () => { state.expression = ta.value; queueCheck(); drawAgent(); });
   const insert = (text, cursorBack = 0) => {
     const at = ta.selectionStart ?? ta.value.length;
     ta.setRangeText(text, at, ta.selectionEnd ?? at, 'end');
@@ -373,7 +368,6 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     }
     state.expression = ta.value;
     ta.focus();
-    onChange();
     queueCheck();
     drawAgent();
   };
@@ -421,7 +415,7 @@ function formulaBuilder(db, state, onChange, { selfName = null, fieldName = () =
     rowpick);
 }
 
-function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
+function dateCostumeControls(state, redraw, { type = 'date' } = {}) {
   const fdc = fieldDialogCore;
   const dc = weaveDateCore;
   const d = state.date;
@@ -431,7 +425,7 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
   const costume = fdc.dateCostume(d, type);
   const parts = ['year', 'month', 'day'].filter((p) => g[p]);
   const tick = (key, label, on, flip) => el('label', { class: 'form-check' },
-    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => { flip(e.target.checked); redraw(); changed(); } }),
+    el('input', { type: 'checkbox', class: 'form-check-input', checked: on ? '' : undefined, onchange: (e) => { flip(e.target.checked); redraw(); } }),
     el('span', { class: 'form-check-label' }, label));
   const setPart = (key) => (on) => {
     g[key] = on;
@@ -452,22 +446,22 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
   if (legal.length) {
     kids.push(dsection('Format', el('div', { class: 'date-format-list' }, ...legal.map((fmt) => el('button', {
       type: 'button', class: 'date-format-opt' + ((d.format ?? weaveDateGrain.DEFAULT_FORMAT) === fmt ? ' on' : ''),
-      onclick: () => { d.format = fmt; redraw(); changed(); },
+      onclick: () => { d.format = fmt; redraw(); },
     }, el('span', { class: 'date-format-id' }, fmt), el('span', { class: 'date-format-eg' }, dc.formatDate(todayIso, { ...costume, format: fmt, time: false })))))));
     if (['us', 'eu'].includes(d.format)) {
       kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.pad ? '' : undefined, onchange: (e) => { d.pad = e.target.checked; redraw(); changed(); } }),
+        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.pad ? '' : undefined, onchange: (e) => { d.pad = e.target.checked; redraw(); } }),
         el('span', { class: 'form-check-label' }, 'Zero-pad numerals ', el('span', { class: 'date-format-eg' }, dc.formatDate(todayIso, { ...costume, format: d.format, pad: true, time: false })))));
     }
   }
   if (d.time) {
-    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: weaveDateGrain.clockText('14:30', id) })), d.clock ?? weaveDateGrain.DEFAULT_CLOCK, (v) => { d.clock = v; redraw(); changed(); })));
+    kids.push(dsection('Clock', segCtl(fdc.CLOCKS.map((id) => ({ id, label: weaveDateGrain.clockText('14:30', id) })), d.clock ?? weaveDateGrain.DEFAULT_CLOCK, (v) => { d.clock = v; redraw(); })));
     const zoneHint = {
       floating: 'The wall clock as typed, no zone stored — 09:15 is 09:15 everywhere. What every field did before.',
       fixed: 'The zone travels with the field: a store opening at 09:15 PT opens at 09:15 PT for a reader in Berlin.',
       instant: 'Stored as a UTC instant and shown in each reader\'s own zone — a meeting, an audit stamp.',
     };
-    const zoneSec = dsection('Zone', segCtl(fdc.ZONES, d.zone ?? 'floating', (v) => { d.zone = v; if (v === 'fixed' && !d.zoneName) d.zoneName = LOCAL_ZONE; redraw(); changed(); }),
+    const zoneSec = dsection('Zone', segCtl(fdc.ZONES, d.zone ?? 'floating', (v) => { d.zone = v; if (v === 'fixed' && !d.zoneName) d.zoneName = LOCAL_ZONE; redraw(); }),
       el('div', { class: 'hintnote' }, zoneHint[d.zone ?? 'floating']));
     if (d.zone === 'fixed') {
       let zones = [];
@@ -475,50 +469,50 @@ function dateCostumeControls(state, redraw, changed, { type = 'date' } = {}) {
       const list = el('datalist', { id: 'wv-zones' }, ...zones.map((z) => el('option', { value: z })));
       zoneSec.append(el('input', {
         class: 'form-control date-zone-name', list: 'wv-zones', value: d.zoneName ?? '', placeholder: LOCAL_ZONE,
-        onchange: (e) => { d.zoneName = e.target.value.trim(); changed(); },
+        onchange: (e) => { d.zoneName = e.target.value.trim(); },
       }), list);
     }
     kids.push(zoneSec);
     if (type === 'daterange') {
       kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.elapsed ? '' : undefined, onchange: (e) => { d.elapsed = e.target.checked; changed(); } }),
+        el('input', { type: 'checkbox', class: 'form-check-input', checked: d.elapsed ? '' : undefined, onchange: (e) => { d.elapsed = e.target.checked; } }),
         el('span', { class: 'form-check-label' }, 'Show elapsed time ', el('span', { class: 'date-format-eg' }, '09:15 – 17:40 · 8h 25m'))));
     }
   }
   return kids;
 }
 
-function numberCostumeControls(state, redraw, changed, { label = 'Format', column = null } = {}) {
+function numberCostumeControls(state, redraw, { label = 'Format', column = null } = {}) {
   const fdc = fieldDialogCore;
   const n = state.number;
   const kids = [];
-  kids.push(dsection(label, segCtl(fdc.NUMBER_FORMATS, n.format ?? 'number', (v) => { n.format = v; redraw(); changed(); })));
+  kids.push(dsection(label, segCtl(fdc.NUMBER_FORMATS, n.format ?? 'number', (v) => { n.format = v; redraw(); })));
   if ((n.format ?? 'number') === 'number') {
-    kids.push(dsection('Unit', el('input', { class: 'form-control', value: n.unit ?? '', placeholder: 'days, feet, kg …', oninput: (e) => { n.unit = e.target.value; changed(); } })));
+    kids.push(dsection('Unit', el('input', { class: 'form-control', value: n.unit ?? '', placeholder: 'days, feet, kg …', oninput: (e) => { n.unit = e.target.value; } })));
   } else if (n.format === 'currency' || n.format === 'compact') {
     const known = fdc.CURRENCIES.some((c) => c.id === n.currency);
     const options = known ? fdc.CURRENCIES : [{ id: n.currency, label: n.currency }, ...fdc.CURRENCIES];
     const pick = pickerSelect({ name: 'currency', options, value: n.currency ?? 'USD' });
-    pick.input.addEventListener('change', () => { n.currency = pick.input.value; changed(); });
+    pick.input.addEventListener('change', () => { n.currency = pick.input.value; });
     kids.push(dsection('Currency', pick, el('div', { class: 'hintnote' }, n.format === 'compact'
       ? 'Abbreviated by code — $1.2M, €4.8K — or leave the currency off for a plain 1.2M'
       : 'Formatted by code — $149.50, €1,200 — separate from units')));
   }
   kids.push(dsection('Decimals', el('input', {
     type: 'number', min: 0, max: 6, class: 'form-control dlg-narrow', value: n.decimals ?? '', placeholder: n.format === 'currency' ? '2' : n.format === 'compact' ? '1' : '0',
-    oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); changed(); },
+    oninput: (e) => { n.decimals = e.target.value === '' ? null : Number(e.target.value); },
   })));
   if (n.format !== 'currency' && n.format !== 'compact') {
     kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.separator ? '' : undefined, onchange: (e) => { n.separator = e.target.checked; changed(); } }),
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.separator ? '' : undefined, onchange: (e) => { n.separator = e.target.checked; } }),
       el('span', { class: 'form-check-label' }, 'Add 1,000 separator')));
   }
   if (n.format === 'currency') {
     kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.accounting ? '' : undefined, onchange: (e) => { n.accounting = e.target.checked; changed(); } }),
+      el('input', { type: 'checkbox', class: 'form-check-input', checked: n.accounting ? '' : undefined, onchange: (e) => { n.accounting = e.target.checked; } }),
       el('span', { class: 'form-check-label' }, 'Accounting negatives ', el('span', { class: 'date-format-eg' }, '($1,234.57)'))));
   }
-  kids.push(...numberDisplayControls(n, redraw, changed, column));
+  kids.push(...numberDisplayControls(n, redraw, column));
   return kids;
 }
 
@@ -538,10 +532,10 @@ function colorPicker(current, sample, onPick) {
 const SPARK_STYLE_LABELS = { line: 'line', column: 'column', winloss: 'win/loss' };
 const SPARK_SAMPLE = [3, 5, 4, 7, 6, 9, 8, 11, 10, 12];
 const SPARK_SAMPLE_WL = [1, -1, 1, 1, -1, 1, -1, -1, 1, 1];
-function sparklineControls(n, redraw, changed, column = null) {
+function sparklineControls(n, redraw, column = null) {
   const on = n.display === 'sparkline';
   const out = [dsection('Display', segCtl([{ id: 'text', label: 'text' }, { id: 'sparkline', label: 'sparkline' }], on ? 'sparkline' : 'text',
-    (v) => { n.display = v; if (v !== 'sparkline') n.style = 'line'; redraw(); changed(); }))];
+    (v) => { n.display = v; if (v !== 'sparkline') n.style = 'line'; redraw(); }))];
   if (!on) return out;
   const style = n.style ?? 'line';
   const swatches = el('div');
@@ -551,7 +545,7 @@ function sparklineControls(n, redraw, changed, column = null) {
     if (column && !column.seriesAnswered) { sample.replaceChildren(); swatches.replaceChildren(); note.replaceChildren(); return; }
     const own = column?.series ?? null;
     const series = own ?? (style === 'winloss' ? SPARK_SAMPLE_WL : SPARK_SAMPLE);
-    swatches.replaceChildren(colorPicker(n.color, (c) => sparkEl(style, series, c), (c) => { n.color = c; redraw(); changed(); }));
+    swatches.replaceChildren(colorPicker(n.color, (c) => sparkEl(style, series, c), (c) => { n.color = c; redraw(); }));
     sample.replaceChildren(sparkEl(style, series, n.color) ?? '');
     note.replaceChildren(own
       ? el('div', { class: 'hintnote cg-preview-from' }, `${column.seriesRow}: ${own.length} value${own.length === 1 ? '' : 's'}, oldest first`)
@@ -561,20 +555,20 @@ function sparklineControls(n, redraw, changed, column = null) {
   if (column) column.loadSeries().then(draw, () => {});
   out.push(dsection('Color', swatches));
   out.push(dsection('Style', segCtl(fieldDialogCore.SPARKLINE_STYLES.map((id) => ({ id, label: SPARK_STYLE_LABELS[id] })), style,
-    (v) => { n.style = v; redraw(); changed(); })));
+    (v) => { n.style = v; redraw(); })));
   out.push(dsection('Sample', sample, note));
   return out;
 }
 
-function numberDisplayControls(n, redraw, changed, column = null) {
+function numberDisplayControls(n, redraw, column = null) {
   const display = n.display ?? 'text';
-  const out = [dsection('Display', segCtl(fieldDialogCore.NUMBER_DISPLAYS, display, (v) => { n.display = v; redraw(); changed(); }))];
+  const out = [dsection('Display', segCtl(fieldDialogCore.NUMBER_DISPLAYS, display, (v) => { n.display = v; redraw(); }))];
   if (!cellGraphics.isGraphic(display)) return out;
   const fixed = typeof n.scale === 'number';
   const scaleBox = el('input', {
     type: 'number', min: 0, step: 'any', class: 'form-control dlg-narrow', 'aria-label': 'Fixed scale',
     value: fixed ? n.scale : '', placeholder: '100',
-    oninput: (e) => { const v = Number(e.target.value); n.scale = e.target.value !== '' && v > 0 ? v : 'column'; drawPreview(); changed(); },
+    oninput: (e) => { const v = Number(e.target.value); n.scale = e.target.value !== '' && v > 0 ? v : 'column'; drawPreview(); },
   });
   const preview = el('div', { class: 'cg-preview', 'aria-label': 'Sample records' });
   const noteBox = el('div');
@@ -587,7 +581,7 @@ function numberDisplayControls(n, redraw, changed, column = null) {
     const draw = (value, color) => numberGraphic(display, value, scale, String(numberCore.dressNumber(n, value)), n, color);
     preview.replaceChildren(...values.map((value) => el('div', { class: 'cg-preview-row' }, draw(value, n.color))));
     const mid = values[Math.floor(values.length / 2)];
-    swatches.replaceChildren(colorPicker(n.color, (c) => draw(mid, c), (c) => { n.color = c; drawPreview(); changed(); }));
+    swatches.replaceChildren(colorPicker(n.color, (c) => draw(mid, c), (c) => { n.color = c; drawPreview(); }));
     noteBox.replaceChildren(example
       ? el('div', { class: 'hintnote cg-preview-note' }, 'Example figures. This column holds no numbers yet.')
       : '');
@@ -598,7 +592,7 @@ function numberDisplayControls(n, redraw, changed, column = null) {
   out.push(dsection('Scale',
     segCtl([{ id: 'column', label: 'column max' }, { id: 'fixed', label: 'fixed' }], fixed ? 'fixed' : 'column', (v) => {
       n.scale = v === 'fixed' ? (n.format === 'percent' ? 1 : 100) : 'column';
-      redraw(); changed();
+      redraw();
     }),
     fixed ? scaleBox : el('div', { class: 'hintnote' }, "100% is the column's largest value")));
   out.push(dsection('Sample', preview, noteBox));
@@ -692,7 +686,6 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
   const gridWrap = el('div', { class: 'full' });
   const cfgWrap = el('div', { class: 'full' });
   nameInput.addEventListener('input', () => cfgWrap.querySelector('.fx-agent')?.dispatchEvent(new Event('refresh')));
-  const changed = () => {};
 
   let choices = fdc.typeChoices(isEdit ? existing.type : null);
   if (isEdit && existing.role === 'name') choices = choices.filter((t) => t.id === 'text' || t.id === existing.type);
@@ -704,7 +697,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
       state.type = id;
       if (id === 'workflow' && !state.states.length) state.states = fdc.blankState('workflow').states;
     }
-    drawGrid(); drawCfg(); changed();
+    drawGrid(); drawCfg();
   }
   function drawGrid() {
     const tiles = choices.map((t) => el('button', {
@@ -720,7 +713,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         type: 'checkbox', class: 'form-check-input', checked: state.computed ? '' : undefined, disabled: isEdit && !['text', 'formula'].includes(existing.type) ? '' : undefined,
         onchange: (e) => {
           state.computed = e.target.checked ? 'formula' : false;
-          drawGrid(); drawCfg(); changed();
+          drawGrid(); drawCfg();
           if (state.computed) cfgWrap.querySelector('.fx-expr')?.focus();
         },
       }),
@@ -749,26 +742,25 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
     if (state.computed === 'formula') {
       const costumeWrap = el('div', { class: 'full' });
       let resultType = null, fxTail = null;
-      const drawCostume = () => costumeWrap.replaceChildren(...(state.type === 'date' ? dateCostumeControls(state, drawCostume, changed)
+      const drawCostume = () => costumeWrap.replaceChildren(...(state.type === 'date' ? dateCostumeControls(state, drawCostume)
         : resultType === 'list' || state.number.display === 'sparkline'
-        ? sparklineControls(state.number, drawCostume, changed, column)
-        : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, changed, { label: 'Result format', column }) : []));
-      kids.push(dsection('Script', formulaBuilder(db, state, changed, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); }, onTail: (tail) => { fxTail = tail; } })));
+        ? sparklineControls(state.number, drawCostume, column)
+        : resultType === null || resultType === 'number' ? numberCostumeControls(state, drawCostume, { label: 'Result format', column }) : []));
+      kids.push(dsection('Script', formulaBuilder(db, state, { selfName: existing?.name ?? null, fieldName: () => nameInput.value, onType: (t) => { resultType = t; drawCostume(); }, onTail: (tail) => { fxTail = tail; } })));
       drawCostume();
       kids.push(costumeWrap, fxTail);
     } else {
       const t = state.type;
-      if (isEdit && existing.role === 'name') kids.push(termSection(state, changed));
+      if (isEdit && existing.role === 'name') kids.push(termSection(state));
       const choice = ['select', 'multiselect', 'workflow'].includes(t) ? choiceDefaultControl(state, t) : null;
-      const listChanged = () => { choice?.draw(); changed(); };
       if (t === 'select' || t === 'multiselect') {
-        kids.push(dsection('Options', optionListEditor(state, listChanged)));
+        kids.push(dsection('Options', optionListEditor(state, choice.draw)));
       } else if (t === 'workflow') {
-        kids.push(dsection('States', stateListEditor(state, listChanged)));
+        kids.push(dsection('States', stateListEditor(state, choice.draw)));
       } else if (t === 'number') {
-        kids.push(...numberCostumeControls(state, drawCfg, changed, { column }));
+        kids.push(...numberCostumeControls(state, drawCfg, { column }));
       } else if (t === 'date' || t === 'daterange') {
-        kids.push(...dateCostumeControls(state, drawCfg, changed, { type: t }));
+        kids.push(...dateCostumeControls(state, drawCfg, { type: t }));
       } else if (t === 'relation') {
         if (isEdit) {
           kids.push(el('div', { class: 'modal-note full' }, `→ ${existing.targetDb}${existing.many ? ' (many)' : ''} — repoint by deleting and recreating`));
@@ -800,42 +792,41 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           const syncTargets = () => {
             r.targetDb = r.targets[0];
             r.targetDbs = r.targets.length > 1 ? [...r.targets] : undefined;
-            changed();
           };
           syncTargets();
           drawTargets();
           kids.push(dsection(r.targets.length > 1 ? 'Target tables (target set)' : 'Target table', targetsBox));
-          kids.push(dsection('Cardinality', segCtl(fdc.CARDINALITIES.map((c) => ({ id: c, label: c.replace('-to-', ' → ') })), r.cardinality ?? 'many-to-one', (v) => { r.cardinality = v; changed(); })));
+          kids.push(dsection('Cardinality', segCtl(fdc.CARDINALITIES.map((c) => ({ id: c, label: c.replace('-to-', ' → ') })), r.cardinality ?? 'many-to-one', (v) => { r.cardinality = v; })));
           if (r.targets.length > 1) {
             kids.push(el('div', { class: 'modal-note full' }, 'A target set is one-way: no inverse field is created on the member tables.'));
           } else {
             const autoName = WeaveTerm.inverseName(db.name, db.term, ['many-to-one', 'many-to-many'].includes(r.cardinality ?? 'many-to-one'));
-            kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; changed(); } })));
+            kids.push(dsection('Inverse field on the target', el('input', { class: 'form-control', value: r.inverseName ?? '', placeholder: `${autoName} (created automatically — rename here)`, oninput: (e) => { r.inverseName = e.target.value; } })));
           }
         }
       } else if (t === 'view') {
-        kids.push(...viewSection(db, state, changed, drawCfg));
+        kids.push(...viewSection(db, state, drawCfg));
       } else if (t === 'avatar') {
         kids.push(dsection('Shape', segCtl([
           { id: 'round', label: 'round', title: 'People and agents' },
           { id: 'square', label: 'square', title: 'Organisations and logos' },
-        ], state.avatarShape ?? 'round', (v) => { state.avatarShape = v; changed(); })));
+        ], state.avatarShape ?? 'round', (v) => { state.avatarShape = v; })));
         kids.push(el('div', { class: 'modal-note full' }, 'The record\'s face on its chip, card and header. With no photo it shows initials on the name\'s colour. One per table.'));
       } else if (t === 'attachments') {
         kids.push(el('label', { class: 'form-check full' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.displayInline ? '' : undefined,
-            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; changed(); drawCfg(); } }),
+            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Display inline')));
         kids.push(el('div', { class: 'modal-note full' }, 'Render content directly without a field heading. Editing controls remain under Field options. Position is set by the record body order.'));
         const files = state.files ?? (state.files = { preview: '', size: 'medium', fit: 'trim' });
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.multiple !== false ? '' : undefined,
-            onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && ['cover', 'intro'].includes(files.preview)) files.preview = ''; changed(); drawCfg(); } }),
+            onchange: (e) => { state.multiple = e.target.checked; if (state.multiple && ['cover', 'intro'].includes(files.preview)) files.preview = ''; drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Allow multiple files')));
         const previews = segCtl([
           { id: '', label: 'Unset', title: state.multiple !== false ? 'auto: pictures in a sheet, the rest as chips' : 'inline: the file in its viewer' },
           ...fieldDialogCore.ATTACHMENT_PREVIEWS.map((id) => ({ id, label: id })),
-        ], files.preview, (id) => { files.preview = id; changed(); });
+        ], files.preview, (id) => { files.preview = id; });
         if (state.multiple !== false) {
           for (const option of [...previews.children].slice(-2)) {
             option.disabled = true;
@@ -843,34 +834,34 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           }
         }
         kids.push(dsection('Show as', previews),
-          dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; changed(); })),
+          dsection('Size', segCtl(fieldDialogCore.ATTACHMENT_SIZES, files.size, (id) => { files.size = id; })),
           dsection('Fit', segCtl(fieldDialogCore.ATTACHMENT_FITS.map((id) => ({
             id, label: id, title: id === 'fill' ? 'Uniform cells, the file cropped to the cell' : 'The whole file, the cell trimmed to its shape',
-          })), files.fit, (id) => { files.fit = id; changed(); })));
+          })), files.fit, (id) => { files.fit = id; })));
       } else if (t === 'text' && !(isEdit && existing.role === 'name')) {
         kids.push(el('label', { class: 'form-check full', style: 'margin:4px 0 0' },
-          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; changed(); } }),
+          el('input', { type: 'checkbox', class: 'form-check-input', checked: state.literal ? '' : undefined, onchange: (e) => { state.literal = e.target.checked; } }),
           el('span', { class: 'form-check-label' }, 'Literal ', el('span', { class: 'date-format-eg' }, 'show ', el('code', {}, '**marks**'), ' and ', el('code', {}, '`syntax`'), ' as typed, never dressed'))));
       } else if (t === 'document') {
         kids.push(el('label', { class: 'form-check full' },
           el('input', { type: 'checkbox', class: 'form-check-input', checked: state.displayInline ? '' : undefined,
-            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; changed(); drawCfg(); } }),
+            onchange: (e) => { state.displayInline = e.target.checked; if (state.files?.preview === 'intro') state.files.preview = 'inline'; drawCfg(); } }),
           el('span', { class: 'form-check-label' }, 'Display inline')));
         kids.push(el('div', { class: 'modal-note full' }, 'Render content directly without a field heading. Editing controls remain under Field options. Position is set by the record body order.'));
-        kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; changed(); })));
+        kids.push(dsection('Kind', segCtl(fdc.DOCUMENT_KINDS, state.kind ?? 'markdown', (v) => { state.kind = v; })));
       } else if (t === 'key') {
         const cred = (state.credential ??= { kind: 'apikey', keystore: 'local' });
         kids.push(dsection('Holds', segCtl(fdc.CREDENTIAL_KINDS.map((k) => ({ id: k, label: CREDENTIAL_KIND_LABELS[k] ?? k })),
-          cred.kind, (v) => { cred.kind = v; changed(); })));
+          cred.kind, (v) => { cred.kind = v; })));
         kids.push(dsection('Kept in', segCtl(fdc.KEYSTORES.map((k) => ({ id: k, label: k === 'local' ? 'weave' : KEYSTORE_LABELS[k] })),
-          cred.keystore, (v) => { cred.keystore = v; drawCfg(); changed(); })));
+          cred.keystore, (v) => { cred.keystore = v; drawCfg(); })));
         kids.push(el('div', { class: 'modal-note full' }, cred.keystore === 'local'
           ? 'The cell holds the credential’s name. The secret is encrypted outside the workspace, and reading it back is limited to whoever owns it — everyone else sees only the name.'
           : `The cell holds a reference. ${KEYSTORE_LABELS[cred.keystore]} keeps the secret and decides who may see it; weave links out to it.`));
       } else if (t === 'field') {
         kids.push(dsection('Definition depth', el('input', {
           type: 'number', min: 1, max: fdc.MAX_DEPTH, class: 'form-control dlg-narrow', value: state.depth ?? 1,
-          oninput: (e) => { state.depth = Number(e.target.value) || 1; changed(); },
+          oninput: (e) => { state.depth = Number(e.target.value) || 1; },
         })));
       } else if (t === 'lookup' || t === 'rollup') {
         const fixedRow = (name, value) => el('input', { class: 'form-control wv-fixed', name, readonly: '', tabindex: '-1', value: value ?? '' });
@@ -881,17 +872,17 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           state.relationField = state.relationField || (rels[0]?.name ?? '');
           const rel = rels.find((r) => r.name === state.relationField);
           const relSel = pickerSelect({ name: 'relationField', options: rels.map((r) => ({ id: r.name, label: relLabel(r) })), value: state.relationField || null });
-          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+          relSel.input.addEventListener('change', () => { state.relationField = relSel.input.value; state.targetField = ''; drawCfg(); });
           out.push(dsection('Relation', rels.length ? relSel : el('div', { class: 'modal-note' }, 'This table has no relations yet — add one first')));
           const target = rel && allTables().find((d) => d.id === rel.targetDbId);
           const targets = (target?.fields ?? []).filter((x) => x.type !== 'document');
           if ((t === 'lookup' || (state.aggregate ?? 'count') !== 'count') && target) {
             const tSel = pickerSelect({ name: 'targetField', placeholder: `Field of ${target.name}…`, options: targets.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
-            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; if (isEdit) drawCfg(); changed(); });
+            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; if (isEdit) drawCfg(); });
             out.push(dsection('Target field', tSel));
           }
           if (t === 'rollup') {
-            out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+            out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); })));
           }
           return out;
         };
@@ -901,13 +892,13 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           state.via = over.id;
           const out = [];
           const vSel = pickerSelect({ name: 'via', options: overs.map((x) => ({ id: x.id, label: `${x.space} / ${x.name}` })), value: over.id });
-          vSel.input.addEventListener('change', () => { state.via = vSel.input.value; state.targetField = ''; drawCfg(); changed(); });
+          vSel.input.addEventListener('change', () => { state.via = vSel.input.value; state.targetField = ''; drawCfg(); });
           out.push(dsection('Table', vSel));
-          out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); changed(); })));
+          out.push(dsection('Aggregate', segCtl(fdc.AGGREGATES, state.aggregate ?? 'count', (v) => { state.aggregate = v; drawCfg(); })));
           if ((state.aggregate ?? 'count') !== 'count') {
             const cols = over.fields.filter((x) => x.type !== 'document');
             const tSel = pickerSelect({ name: 'targetField', placeholder: `Column of ${over.name}…`, options: cols.map((x) => ({ id: x.name, label: `${x.name} · ${x.type}` })), value: state.targetField || null });
-            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; changed(); });
+            tSel.input.addEventListener('change', () => { state.targetField = tSel.input.value; });
             out.push(dsection('Target field', tSel));
           }
           out.push(el('div', { class: 'modal-note full' },
@@ -940,7 +931,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
               (v) => {
                 state.via = v === 'table' ? (state.via || overs[0].id) : '';
                 state.targetField = '';
-                drawCfg(); changed();
+                drawCfg();
               })));
           } else state.via = '';
           kids.push(...(state.via ? overTable() : throughRelation()));
@@ -959,13 +950,13 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           { id: 'specific', label: 'Specific…' },
         ], kind, (k) => {
           state.default = k === 'none' ? '' : k === 'today' ? dyn : (kind === 'specific' ? state.default : dc.todayIso());
-          drawCfg(); changed();
+          drawCfg();
         });
         body.append(seg);
         if (kind === 'specific') {
           body.append(dateControl({
             value: state.default, title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
-            onChange: (iso) => { state.default = iso ?? ''; changed(); },
+            onChange: (iso) => { state.default = iso ?? ''; },
           }));
         }
         kids.push(dsection('Default', body));
@@ -973,7 +964,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         kids.push(dsection('Default', rangeControl({
           value: fdc.rangeDefault(state.default), title: 'Default', costume: fdc.dateCostume(state.date, t), compact: false,
           placeholder: 'No default — pick a range',
-          onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; changed(); },
+          onChange: (r) => { state.default = r ? JSON.stringify(r) : ''; },
         })));
       } else if (t === 'rating') {
         const r = state.rating ?? (state.rating = { max: 5, icon: 'lucide:star', color: 'ink' });
@@ -997,8 +988,8 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           preview.replaceChildren(box);
           if (had) box.focus();
         };
-        const setDefault = (v) => { state.default = v; drawDefault(); changed(); };
-        const setMax = (n) => { r.max = n; presets.mark?.(String(n)); drawDefault(); changed(); };
+        const setDefault = (v) => { state.default = v; drawDefault(); };
+        const setMax = (n) => { r.max = n; presets.mark?.(String(n)); drawDefault(); };
         const maxBox = el('input', {
           type: 'number', min: 1, max: fdc.RATING_MAX, step: 1, class: 'form-control dlg-narrow', 'aria-label': 'Max', value: r.max,
           oninput: (e) => {
@@ -1012,17 +1003,17 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
         kids.push(dsection('Max', el('div', { class: 'wv-rating-max' }, maxBox, presets)));
         const iconBtn = el('button', {
           type: 'button', class: 'btn btn-sm wv-rating-icon', title: 'Pick the icon', 'aria-label': 'Icon',
-          onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); changed(); }),
+          onclick: (e) => glyphPopover(e.currentTarget, r.icon, (id) => { r.icon = id || 'lucide:star'; drawCfg(); }),
         }, iconEl(r.icon, 'wv-icon'), el('span', {}, String(r.icon).replace(/^lucide:/, '')));
         kids.push(dsection('Icon', iconBtn));
-        kids.push(dsection('Color', colorPicker(r.color, (c) => ratingEl(3, r.icon, 2, { color: c }), (c) => { r.color = c; drawDefault(); changed(); })));
+        kids.push(dsection('Color', colorPicker(r.color, (c) => ratingEl(3, r.icon, 2, { color: c }), (c) => { r.color = c; drawDefault(); })));
         drawDefault();
         kids.push(dsection('Default', preview));
       } else if (t === 'toggle') {
         const tg = state.toggle ?? (state.toggle = { on: 'On', off: 'Off' });
         const labelInput = (key, ph) => el('input', {
           class: 'form-control', value: tg[key] ?? '', placeholder: ph, 'data-toggle-label': key,
-          oninput: (e) => { tg[key] = e.target.value; changed(); },
+          oninput: (e) => { tg[key] = e.target.value; },
           onchange: () => drawCfg(),
         });
         kids.push(dsection('Labels', el('div', { class: 'wv-toggle-labels' },
@@ -1030,16 +1021,16 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
           el('label', { class: 'wv-toggle-label-row' }, el('span', { class: 'wv-tag' }, 'off'), labelInput('off', 'Off')))));
         const cur = ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'on' : 'off';
         kids.push(dsection('Default', segCtl([{ id: 'off', label: tg.off?.trim() || 'Off' }, { id: 'on', label: tg.on?.trim() || 'On' }], cur,
-          (v) => { state.default = v === 'on' ? 'true' : 'false'; changed(); })));
+          (v) => { state.default = v === 'on' ? 'true' : 'false'; })));
       } else if (t === 'checkbox') {
         const cur = state.default === '' ? 'none' : ['true', 'yes', '1'].includes(String(state.default).toLowerCase()) ? 'checked' : 'unchecked';
         kids.push(dsection('Default', segCtl([{ id: 'unchecked', label: 'Unchecked' }, { id: 'checked', label: 'Checked' }], cur === 'none' ? 'unchecked' : cur,
-          (v) => { state.default = v === 'checked' ? 'true' : 'false'; changed(); })));
+          (v) => { state.default = v === 'checked' ? 'true' : 'false'; })));
       } else if (fdc.DEFAULTABLE.includes(t)) {
         kids.push(dsection('Default', el('input', {
           class: 'form-control', value: state.default ?? '',
           placeholder: t === 'checkbox' ? 'true / false' : 'Default value for new records (optional)',
-          oninput: (e) => { state.default = e.target.value; changed(); },
+          oninput: (e) => { state.default = e.target.value; },
         })));
       }
     }
