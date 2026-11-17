@@ -80,6 +80,18 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    test(`a lookup's tray names its relation, field and display, and no aggregate (${colorScheme})`, async () => {
+      const page = await grid(colorScheme);
+      try {
+        await openTray(page, 'Peer skills');
+        assert.match(await faceOf(page, 'Relation'), /^Peers\b/);
+        assert.match(await faceOf(page, 'Target field'), /^Skill\b/);
+        assert.equal(await section(page, 'Aggregate').count(), 0);
+        assert.match(await section(page, 'Shows as').textContent(), /rating on People › Skill: 5 stars/);
+        assert.doesNotMatch(await page.textContent('.tray-form'), /delete and recreate/);
+      } finally { await page.close(); }
+    });
+
     test(`a rollup repoints from its tray and the cell redraws (${colorScheme})`, async () => {
       const page = await grid(colorScheme);
       const field = `Mean age ${colorScheme}`;
@@ -108,21 +120,6 @@ if (s) {
         assert.notEqual(fg, bg, 'the warning reads against the tray');
         if (shots) await page.locator('.tray-form').screenshot({ path: `${shots}/rollup-repoint-${colorScheme}.png` });
         await page.locator('.tray-close').click();
-      } finally { await page.close(); }
-    });
-  }
-
-  {
-    const colorScheme = 'light';
-    test(`a lookup's tray names its relation, field and display, and no aggregate (${colorScheme})`, async () => {
-      const page = await grid(colorScheme);
-      try {
-        await openTray(page, 'Peer skills');
-        assert.match(await faceOf(page, 'Relation'), /^Peers\b/);
-        assert.match(await faceOf(page, 'Target field'), /^Skill\b/);
-        assert.equal(await section(page, 'Aggregate').count(), 0);
-        assert.match(await section(page, 'Shows as').textContent(), /rating on People › Skill: 5 stars/);
-        assert.doesNotMatch(await page.textContent('.tray-form'), /delete and recreate/);
       } finally { await page.close(); }
     });
   }

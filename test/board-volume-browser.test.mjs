@@ -74,10 +74,9 @@ if (s) {
     await page.close();
   });
 
-  test('the Show more control draws with a real hitbox (Issue #1266)', async () => {
+  test('the Show more control draws in both themes (Issue #1266)', async () => {
     layout({ layout: 'board', group: ['State'] });
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       const page = await open(theme);
       const more = page.locator('.board-cards .wv-more').first();
       await more.waitFor();

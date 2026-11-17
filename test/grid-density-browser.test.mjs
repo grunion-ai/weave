@@ -236,8 +236,7 @@ if (s) {
     };
   });
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`every painted row is exactly its density's height, whatever its cells hold (${theme})`, async () => {
       const page = await openAt(viewUrl(every, everyViews[0]), { theme });
       try {

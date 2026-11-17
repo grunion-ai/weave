@@ -56,8 +56,7 @@ if (s) {
     await page.locator('.picker-pop .picker-row', { has: page.getByText(name, { exact: true }) }).first().click();
   };
 
-  const colorScheme = 'light';
-  test(`a write through an MCP client is a person chip: the name, "via MCP", never the client id (${colorScheme})`, async () => {
+  for (const colorScheme of ['light', 'dark']) test(`a write through an MCP client is a person chip: the name, "via MCP", never the client id (${colorScheme})`, async () => {
     const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, colorScheme });
     await page.goto(`${base}/#/table/${table.id}`, { waitUntil: 'networkidle' });
     const cell = page.locator(`tr[data-eid="${rows[0].id}"] td[data-sys="Created By"] .k-actor`);

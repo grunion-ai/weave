@@ -46,8 +46,7 @@ if (s) {
     return Math.round((Math.atan2(b, a) * 180) / Math.PI);
   };
 
-  {
-    const colorScheme = 'light';
+  for (const colorScheme of ['light', 'dark']) {
     test(`the retract caret faces the text: 180° from the expand caret, same box, in ${colorScheme}`, async () => {
       const page = await open(task.id, { colorScheme });
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme, 'the page resolved the theme under test');

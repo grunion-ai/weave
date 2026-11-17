@@ -164,10 +164,7 @@ if (s) {
         assert.ok(legible, 'legible in this theme');
       } finally { await page.close(); }
     });
-  }
 
-  {
-    const colorScheme = 'light';
     test(`a stale roll back refuses and keeps the newer change (${colorScheme})`, async () => {
       const f = weave.addField(t, { name: `Size ${colorScheme}`, type: 'select', config: { options: [{ id: 's', name: 'S' }, { id: 'm', name: 'M' }] } });
       weave.updateField(t.id, f.id, { config: { options: [{ id: 's', name: 'S' }] } });
