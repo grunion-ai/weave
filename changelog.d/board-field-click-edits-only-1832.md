@@ -1,0 +1,1 @@
+- A click on a field value on a board card edits that value and opens no record (Issue #1832). The click used to open the record pane and the editor together, so the pane moved under the pointer while the value was being changed. The rest of the card still opens the record.

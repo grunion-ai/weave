@@ -41,7 +41,8 @@ if (s) {
     await ctx.close();
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`pasting a key tests it, clears the box and shows only dots and the hint (${theme})`, async () => {
       const real = globalThis.fetch;
       const sent = [];

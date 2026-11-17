@@ -4,7 +4,7 @@ import { launch, eventually } from './lib/browser.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABAQMAAADO7O3JAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goFETs3n475pwAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=', 'base64');
 const HTML = Buffer.from('<!doctype html><p id="p">page</p><script>document.getElementById("p").textContent = "ran"; try { parent.document; document.title = "reached"; } catch { document.title = "blocked"; }</script>');
-const SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const SANDBOX = 'allow-scripts allow-popups';
 
 let row, files;
 const s = await launch('attachment previews', (weave) => {

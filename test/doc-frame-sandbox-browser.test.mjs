@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, eventually } from './lib/browser.mjs';
 
-const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups';
 const HOSTILE = [
   'Before the frames.',
   '',
@@ -130,7 +130,7 @@ if (s) {
       assert.equal(await eventually(() => weave.getDoc(id).includes('Edited.'), true), true, 'the edit lands');
       const saved = weave.getDoc(id);
       assert.ok(saved.includes('allow="camera *" sandbox="allow-scripts allow-same-origin"'), `the author's markup is saved as written: ${saved}`);
-      assert.ok(!saved.includes('allow-popups-to-escape-sandbox'), 'the live sandbox never reaches the stored text');
+      assert.ok(!saved.includes(`sandbox="${HTML_FRAME_SANDBOX}"`), 'the live sandbox never reaches the stored text');
       for (const f of await framesOf(tab.page)) {
         assert.equal(f.sandbox, f.cls === 'wv-file' ? null : HTML_FRAME_SANDBOX, `${f.cls} after the edit`);
       }

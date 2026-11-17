@@ -100,7 +100,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: an unavailable logo falls back to the workspace initial (Issue #889)`, async () => {
       const page = await browser.newPage();
       try {

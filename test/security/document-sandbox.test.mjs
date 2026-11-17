@@ -9,7 +9,7 @@ process.env.WEAVE_KEYSTORE = join(tempDir('weave-docbox-'), 'keystore.json');
 const { Weave, HTML_VIEW_POLICY } = await import('../../src/engine.js');
 const { startServer } = await import('../../src/server.js');
 
-const SANDBOX = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox;';
+const SANDBOX = 'sandbox allow-scripts allow-popups;';
 const FRAGMENT = '<script>fetch("/api/tables")</script>\n<img src=x onerror="fetch(\'/api/accounts\')">';
 
 function seed() {

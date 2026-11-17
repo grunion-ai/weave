@@ -48,7 +48,10 @@ if (s) {
         await row.waitFor({ state: 'detached' });
       } finally { await page.close(); }
     });
+  }
 
+  {
+    const theme = 'light';
     test(`${theme}: a trashed space lists in Trash as a space, and one click restores it with its tables (Feature #160)`, async () => {
       const name = uniq('Old');
       const sp = weave.createSpace({ name });

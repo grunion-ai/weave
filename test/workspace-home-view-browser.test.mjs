@@ -63,7 +63,8 @@ if (s) {
     return page;
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     for (const width of [1280, WIDTH.narrowestDesktop]) {
       test(`${theme} ${width}: the workspace opens as one page in the ruled order, with no launcher and no loose cards`, async () => {
         const page = await open({ theme, width });

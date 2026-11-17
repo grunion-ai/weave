@@ -267,7 +267,7 @@ if (s) {
       const board = await page.locator('#main').boundingBox();
       const dock = await page.locator('#dock').boundingBox();
       assert.ok(dock.x >= board.x + board.width - 1, 'the pane sits to the right of the board');
-      await page.click(`${tile(ids.chair)} .tile-body`);
+      await page.click(`${tile(ids.chair)} .tile-body`, { position: { x: 4, y: 4 } });
       await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Chair');
       assert.equal(await page.locator('.wv-board .tile.row-docked').count(), 1);
       assert.equal(await page.locator(`${tile(ids.chair)}.row-docked`).count(), 1, 'the outline moves with the record');
@@ -276,8 +276,8 @@ if (s) {
         await page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value === n, name);
       }
       await page.click(`${tile(ids.chair)} .tile-field[data-field="State"] .chip-trigger`);
-      await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Chair');
-      assert.equal(await page.locator('.picker-pop').count(), 1, 'a field value opens the pane and its own editor');
+      assert.equal(await page.locator('.picker-pop').count(), 1, 'a field value opens its own editor');
+      assert.equal(await page.locator('#dock .name-edit').inputValue(), 'Walking mat', 'and leaves the pane on the record it held (Issue #1832)');
       await page.keyboard.press('Escape');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
       await page.click('#dock .activity-btn');
@@ -311,8 +311,7 @@ if (s) {
       await page.locator('.picker-pop .picker-row', { hasText: 'Ready to Buy' }).first().click();
       assert.equal(await eventually(() => valueOf(ids.shoes, 'State'), 'Ready to Buy'), 'Ready to Buy');
       await page.waitForFunction((id) => !!document.querySelector(`.board-group[data-key="Ready to Buy"] .tile[data-eid="${id}"]`), ids.shoes);
-      await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Dress shoes');
-      assert.ok(await page.locator('#dock').isVisible(), 'a click on a field value opens the record beside its editor');
+      assert.ok(await page.locator('#dock').isHidden(), 'a click on a field value edits it and opens no record (Issue #1832)');
       await page.click(`${tile(ids.desk)} .tile-field[data-field="Best Price"] .num-dressed`);
       const price = page.locator(`${tile(ids.desk)} .tile-field[data-field="Best Price"] input.inline-edit`);
       await price.fill('399');

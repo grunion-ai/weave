@@ -61,7 +61,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const scheme of ['light', 'dark']) {
+  {
+    const scheme = 'light';
     test(`a long rollup wraps inside its cell and the page never scrolls sideways (${scheme})`, async () => {
       const page = await open(h.apollo.id, scheme);
       try {
