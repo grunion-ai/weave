@@ -147,6 +147,7 @@ test('GET /api/files/:id?view opens the page\'s links in a new tab through an in
     assert.ok(shown.startsWith('<!doctype html><base target="_blank"><script>'), 'the base comes first after the doctype, so it wins over any later one');
     assert.equal(shown.match(/<base\b/gi).length, 1, 'one base');
     assert.match(shown, /addEventListener\('click'/, 'with the script that keeps in-page anchors in place');
+    assert.match(shown, /parent\.postMessage\(\{ weave: 'frame-link', href: a\.href \}, '\*'\)/, 'and hands an http or https link to the app, which opens it outside the sandbox (Issue #1433)');
     assert.ok(shown.endsWith(FRAME_HEIGHT_SCRIPT + '<a href="https://elsewhere.test/">away</a>'), 'the page itself is untouched');
     const kept = await (await fetch(`${base}/api/files/${own.id}?view`)).text();
     assert.doesNotMatch(kept, /target="_blank"/, 'a page with its own base keeps its own link behaviour');
