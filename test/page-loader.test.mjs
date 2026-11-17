@@ -366,13 +366,6 @@ test('the rope arrives inside the mark, leaving the status text in place (Issue 
     'the grid loader clones the mark, never the status text');
 });
 
-test('the loader marks #main busy while it is up (Issue #394)', () => {
-  assert.match(fnBody('showPageLoader'), /setAttribute\('aria-busy', 'true'\)/,
-    'a page behind the loader is busy, and the grid wait already says so');
-  assert.match(fnBody('hidePageLoader'), /removeAttribute\('aria-busy'\)/,
-    'a stuck aria-busy tells every later reader the page is still loading');
-});
-
 test('a long wait names itself at four seconds and offers a way out at ten (Issue #393)', () => {
   const caption = Number(APP.match(/const LOADER_CAPTION_AFTER_MS = (\d+);/)[1]);
   const retry = Number(APP.match(/const LOADER_RETRY_AFTER_MS = (\d+);/)[1]);
@@ -380,22 +373,12 @@ test('a long wait names itself at four seconds and offers a way out at ten (Issu
   assert.equal(caption, 4000);
   assert.equal(retry, 10000);
   assert.ok(caption > show, 'a caption armed before the loader shows would caption a wait nobody saw');
-  assert.ok(retry > caption, 'the way out follows the sentence that names the wait');
-  assert.match(APP, /const LOADER_CAPTION_TEXT = 'Still loading this page';/,
-    'the caption copy is the drafted line: Still says the load is running rather than stalled');
-  assert.match(APP, /const LOADER_RETRY_LABEL = 'Try again';/,
-    'paintRouteError already labels its route reload Try again, and the two must read as one button');
   const wrap = fnBody('withPageLoader');
-  for (const timer of ['captionTimer', 'retryTimer']) {
-    assert.match(wrap, new RegExp(`loading\\.${timer} = setTimeout`), `${timer} is armed with the wait`);
-  }
   const armed = wrap.slice(wrap.indexOf('showTimer = setTimeout'), wrap.indexOf('try {'));
   assert.match(armed, /captionTimer/, 'the wait timers arm beside the show timer, once per wait');
 });
 
-test('the retry hands off to the route, the way the error card does (Issue #393)', () => {
-  assert.match(fnBody('paintLoaderRetry'), /onclick: \(\) => route\(\)/,
-    'the loader reuses paintRouteError hand-off rather than reloading the document');
+test('the route error card hands off to the route, the hand-off the loader retry copies (Issue #393)', () => {
   assert.match(fnBody('paintRouteError'), /onclick: \(\) => route\(\)/,
     'the error card hand-off this one copies');
 });

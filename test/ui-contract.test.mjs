@@ -13,10 +13,8 @@ test('#ws-rail carries a positive z-index so #main never paints over it', () => 
   assert.ok(px(rail['z-index']) > 0, `#ws-rail z-index must be > 0, got ${rail['z-index']}`);
 });
 
-test('the show button lives in the page header, not floating over the rail (Issue #927)', () => {
-  assert.ok(!HTML.includes('nav-expand'), 'no floating #nav-expand button');
-  assert.ok(!CSS.includes('#nav-expand'), 'and no rules left for it');
-  assert.match(fnBody('navMenuButton'), /setNavCollapsed\(false\)/, 'the header button shows the nav on desktop');
+test('the floating show button leaves no rules behind (Issue #927)', () => {
+  assert.ok(!CSS.includes('#nav-expand'), 'no rules left for #nav-expand');
 });
 
 test('the first rail chip is centred on the sidebar wordmark', () => {
@@ -47,7 +45,6 @@ test('wireNavCollapse wires both directions and persists the state', () => {
   assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekDwell\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekLeave\)/);
-  assert.match(fnBody('setNavCollapsed'), /WeavePrefs\.write\('weave-nav-collapsed'/);
   assert.match(body, /WeavePrefs\.read\('weave-nav-collapsed'\)/);
 });
 
@@ -163,14 +160,6 @@ test('only one inline create input can be open at a time', () => {
   assert.match(body, /input\.disabled = true/, 'commit must lock the input against double submits');
 });
 
-test('only one modal can be open at a time', () => {
-  const fn = APP.slice(APP.indexOf('function modal('));
-  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /querySelector\('#modal-back'\)\?\.remove\(\)/,
-    'a second modal must replace the first, not stack another backdrop');
-  assert.match(body, /e\.key === 'Escape'/, 'modals must close on Escape');
-});
-
 test('spaces and tables have exactly one create flow', () => {
   assert.doesNotMatch(APP, /function newSpaceModal/);
   assert.doesNotMatch(APP, /function newTableModal/);
@@ -266,15 +255,6 @@ test('every grid redraw remembers where focus was before it runs (Issue #83)', (
   for (const [, before] of saves) {
     assert.doesNotMatch(before, /drawDatabase|renderTable|pager\.refresh/, 'nothing is drawn before focus is remembered');
   }
-});
-
-test('the restore finds the cell by field name, not by column index (Issue #1698)', () => {
-  const remember = APP.slice(APP.indexOf('function rememberGridFocus'));
-  const rbody = remember.slice(0, remember.indexOf('\n}\n') + 2);
-  assert.match(rbody, /field: cell\.dataset\.field/, 'the field name is what identifies the cell');
-  const restore = APP.slice(APP.indexOf('function restoreGridFocus'));
-  const sbody = restore.slice(0, restore.indexOf('\n}\n') + 2);
-  assert.match(sbody, /td\[data-field="\$\{CSS\.escape\(want\.field\)\}"\]/, 'the restore selects the field, not children[col]');
 });
 
 test('a redraw snapshots the panes it replaces, not every node in the document (Issue #1698)', () => {
@@ -386,36 +366,14 @@ test('one dotsMenu implementation serves entity, table and space', () => {
   }
 });
 
-test('the table menu carries CSV export; table and space menus carry delete', () => {
-  assert.ok(APP.includes("exportSection({ name: db.name, serves: ['csv']"), 'the table menu exports CSV from the format registry (Feature #296)');
-  assert.match(APP, /api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
-  assert.match(APP, /api\('DELETE', `\/spaces\/\$\{space\.spaceId\}`\)/);
+test('the table toolbar keeps no CSV link of its own; the menu Export section owns it (Feature #296)', () => {
   assert.doesNotMatch(APP, /class: 'btn btn-sm', href: `\$\{WS_PREFIX\}\/api\/tables\/\$\{db\.id\}\/export\.csv`/);
 });
 
-test('the space menu holds no per-table export', () => {
-  assert.doesNotMatch(APP, /label: `Export \$\{d\.name\}\.csv`/);
-  assert.doesNotMatch(APP, /space\.tables\.map\(\(d\) => \(\{[\s\S]{0,80}export\.csv/);
-});
-
-test('deleting a table or a space is a hold to the trash, with Undo (Feature #296, Feature #346)', () => {
+test('a system table menu offers neither Move to trash nor Open trash (Feature #160, Feature #296, Feature #346)', () => {
   const rows = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
   assert.match(rows, /delete: db\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/tables\/\$\{db\.id\}`\)/);
-  assert.match(rows, /delete: space\.system \? null : trashRow\(\{\s*remove: \(\) => api\('DELETE', `\/spaces\/\$\{space\.spaceId\}`\)/);
-  assert.doesNotMatch(rows, /Delete table|Delete space/, 'both say Move to trash');
-  assert.match(fnBody('trashRow'), /hold: true/, 'and both hold');
-});
-
-test('the table and space menus open Trash, and Trash names a line by what it holds (Feature #160)', () => {
-  const rows = APP.slice(APP.indexOf('const MENU_ROWS = {'), APP.indexOf('\n};\n', APP.indexOf('const MENU_ROWS = {')));
-  assert.match(APP, /const OPEN_TRASH = \{ label: 'Open trash', run: \(\) => \{ location\.hash = '#\/trash'; \} \};/);
   assert.match(rows, /trash: db\.system \? null : OPEN_TRASH,/, 'a user table menu opens Trash');
-  assert.match(rows, /trash: space\.system \? null : OPEN_TRASH,/, 'a user space menu opens Trash; the System space keeps no menu');
-  assert.match(fnBody('showTrash', SETTINGS_VIEW), /trashKind\(item\)/, 'the Trash page names each line through trashKind');
-  const kind = fnBody('trashKind', SETTINGS_VIEW);
-  assert.match(kind, /'Space'/);
-  assert.match(kind, /`Table in \$\{item\.fields\.Space\.name\}`/);
-  assert.match(kind, /`Record in \$\{item\.db\}`/);
 });
 
 test('header menus hang off the right edge and fill their rows', () => {
@@ -429,11 +387,6 @@ test('only one overflow menu is open at a time', () => {
   const body = fnBody('menu');
   assert.match(body, /openMenu\?\.close\(\)/, 'opening one must close the others');
   assert.match(body, /dismissOutside\(\{ open: \(\) => pop\.isConnected, inside: \(t\) => pop\.contains\(t\)/, 'a tap or click away must close it (Issue #726)');
-});
-
-test('references make up the side column; comments are off until their redesign; no Activity card (Feature #315, Feature #323)', () => {
-  assert.doesNotMatch(APP, /commentsPanel|commentInput|Add a comment/, 'no Comments card and no comment input on a record (Feature #323)');
-  assert.doesNotMatch(APP, /actPanel|ACTIVITY_PANE_ROWS|activity-item/, 'the Activity card is gone: the toolbar panel covers it');
 });
 
 test('the space caret is a real hit target, not a 18px sliver', () => {
@@ -514,38 +467,18 @@ test('the field menu edits a field rather than dropping and rebuilding it', () =
   assert.match(dlg, /fdc\.editPatchConfig\(existing, def, state\)/, 'the dialog builds its PATCH through the tested core');
 });
 
-test('deleting a field from the header moves it to the trash and is never offered for Name', () => {
-  const menu = FIELD_ROWS;
-  assert.match(menu, /\.\.\.trashRow\(\{/, 'the field delete is the one trash row, Undo restores it (Issue #768, Feature #296)');
-  assert.doesNotMatch(menu, /Delete field/, 'it says Move to trash');
-  assert.match(fnBody('trashRow'), /hold: true/, 'and holds like every other delete (Feature #346)');
-  assert.match(fnBody('menuRow'), /if \(it\.hold\) \{\n\s+const btn = holdToConfirm\(/, 'the builder keeps the house hold for permanent delete');
-  assert.match(menu, /f\.role !== 'name'/, 'the name-role field must not offer a delete row (by role — it can be renamed, Feature #168)');
+test('the name-role field is never offered a delete row (Feature #168)', () => {
+  assert.match(FIELD_ROWS, /f\.role !== 'name'/, 'by role — it can be renamed');
 });
 
-test('the field menu draws its icons, it never types them into a label', () => {
-  const menu = fnBody('fieldMenuButton') + fnBody('menuRow');
-  assert.match(menu, /iconEl\(/, 'every mark resolves through the one icon path');
-  for (const typed of ['✎ Edit', '+ Insert', '↑ Sort', '↓ Sort']) {
-    assert.ok(!menu.includes(typed), `'${typed}' is a glyph pasted into a label — draw it instead`);
-  }
-  assert.match(APP, /const FIELD_MENU_ICONS = \{/, 'the menu names its icons in one place');
+test('the field menu names its icons in one place', () => {
+  assert.match(APP, /const FIELD_MENU_ICONS = \{/);
 });
 
-test('every row of the field menu is the same row, destructive included', () => {
-  const row = fnBody('menuRow');
-  assert.match(row, /\['chip-pop-row', 'wv-menu-row', it\.danger \|\| it\.hold \? 'wv-menu-danger'/,
-    'the hold row must carry the menu row class so ↑↓ reaches it');
-  assert.match(row, /holdToConfirm\([\s\S]{0,200}rowClass: cls/, 'a hold row is built with that same class');
-  const hold = fnBody('holdToConfirm');
-  assert.match(hold, /rowClass = 'dropdown-item'/, 'and the menu-less call sites keep their old row');
-  const walk = fnBody('menu');
-  assert.match(walk, /querySelectorAll\('\.wv-menu-row'\)/,
-    'the walk is over .wv-menu-row — that is why the delete row has to be one');
+test('a hold outside a menu keeps its old row, and the menu row declares one metric', () => {
+  assert.match(fnBody('holdToConfirm'), /rowClass = 'dropdown-item'/, 'the menu-less call sites keep their old row');
   const rowCss = rulesFor('.chip-pop-row.wv-menu-row');
   assert.ok(rowCss.padding && rowCss.gap, 'one metric declared once, for all of them');
-  assert.equal(rulesFor('.wv-menu-icon').flex, '0 0 var(--wv-icon-md)',
-    'the icon box never collapses, or a row without a glyph loses the left edge');
 });
 
 test('a checked or switched row is the popover check, not a character prefixed to the label', () => {
@@ -559,8 +492,6 @@ test('a checked or switched row is the popover check, not a character prefixed t
 });
 
 test('the menu names the column it belongs to', () => {
-  assert.match(fnBody('fieldMenuButton'), /head: kindHead\('field', f\)/, 'a title line opens the panel');
-  assert.match(fnBody('menu'), /class: 'wv-menu-head'/, 'drawn by the builder');
   assert.match(fnBody('kindHead'), /if \(kind === 'field'\) return \{ title: obj\.name, kind: obj\.system \? 'system' : fieldDialogCore\.typeLabel\(obj\.type\) \}/, 'naming the type as well as the name');
   const head = rulesFor('.wv-menu-head');
   assert.match(head['border-bottom'] ?? '', /var\(--tblr-border-color\)/, 'it is a header, so it is ruled off');
@@ -944,43 +875,32 @@ test('the entity body is blocks, and every block carries a reposition anchor', (
   assert.doesNotMatch(body, /card-title' \}, 'Fields'/, 'and no longer a side card (Feature #82 superseded)');
 
   assert.match(body, /items: \(\) => \[\.\.\.values\.querySelectorAll\(':scope > \.fieldrow:not\(\.fieldrow-system\)'\)\]/, 'a field drag sorts the value rows (Feature #282)');
-  assert.match(body, /items: \(\) => \[\.\.\.left\.children\]\.filter\(\(n\) => n\.matches\('\[data-block\]'\)\)/, 'and a block drag sorts the blocks, tracked apart');
   assert.equal((body.match(/RO\(\)\.sortable\(e, \{/g) ?? []).length, 2, 'both go through the one shared reorder module');
   assert.match(body, /reorderField\(db, f\.name, next\.dataset\.field, \{ after: false, onFail: refresh \}\)/,
     'a field drop is a fieldOrder write through the one reorder function, against the placeholder\'s neighbour');
-  assert.match(body, /reorderBlocks\(db, left, refresh\)/, 'a block drop is a bodyOrder write');
   assert.doesNotMatch(APP, /function slotDrag\(/, 'the native drag-and-drop slot is gone');
   assert.doesNotMatch(body, /draggable/, 'nothing on the page is a native drag source');
   assert.doesNotMatch(body, /compareDocumentPosition\(node\)/, 'no direction arithmetic is left on the page');
   assert.match(body, /const anchor = \(what\) => el\('span', \{ class: 'opt-grip', title: `Drag to move \$\{what\}` \}/,
     'the anchor is the grip a row wears: the thing you grab is the thing that moves');
-  assert.match(body, /wireBlock\(VALUES_BLOCK, fields,/, 'the field block is anchored');
   assert.match(body, /wireBlock\(f\.name, section, \[section\.querySelector\('\.opt-grip'\), section\.querySelector\('\.doc-section-head'\)\]\)/,
     'a document is anchored, and still draggable by its whole head');
-  assert.match(body, /node\.classList\.add\('attach-block'\)/, 'an attachment row is a block too');
 
-  assert.match(body, /const given = db\.bodyBlocks \?\? \[VALUES_BLOCK\];/, 'the page renders the order it is handed');
   assert.match(body, /given\.includes\(FILES_BLOCK\) \? given : given\.flatMap\(\(k\) => \(k === VALUES_BLOCK \? \[k, FILES_BLOCK\] : \[k\]\)\)/,
     'an unplaced Files card sits directly under the fields (Feature #357)');
   assert.match(body, /k === FILES_BLOCK \? \[k, DECK_BLOCK\] : \[k\]/, 'the deck or slide preview follows the Files card (Feature #357)');
   assert.match(body, /blocks\.set\(DECK_BLOCK, section\)/, 'the deck section takes its place in the body order instead of the top of the page');
-  const rb = fnBody('reorderBlocks');
-  assert.match(rb, /\[\.\.\.body\.children\]\.map\(\(n\) => n\.dataset\.block\)/,
-    'the move already happened, so the DOM is the new order');
-  assert.match(rb, /bodyOrder/, 'and it is a table write');
 
   const rf = fnBody('reorderField');
   assert.match(rf, /onFail = \(\) => showDatabase\(db\.id\)/, 'reorderField defaults its failure redraw to the table view');
   assert.match(rf, /onFail\(\)/, 'and calls whatever the caller gave it');
 
-  assert.match(body, /f\.type === 'document'/, 'a document field renders as its section');
-  assert.match(body, /class: 'doc-section-head' \}/, 'and is dragged by its head');
+  assert.match(body, /class: 'doc-section-head' \}/, 'a document is dragged by its head');
   assert.match(body, /const dragRow = \(node, f\)/, 'one drag wiring serves the value rows');
   assert.match(CSS, /\.wv-reorder-slot \{[^}]*outline: 1\.5px dashed var\(--wv-slot-line\)/, 'the cue is a dashed placeholder (Feature #282)');
   assert.match(CSS, /\.wv-reorder-slot \{[^}]*break-inside: avoid/, 'that never splits across a column break');
   assert.doesNotMatch(CSS, /\.drop-slot/, 'the old slot is gone');
   assert.doesNotMatch(CSS, /\.fieldrow\.drop-(before|after)/, 'no line on a neighbour\'s edge remains');
-  assert.doesNotMatch(CSS, /\[data-block\]\.drop-target/, 'for rows or for blocks');
 
   assert.match(body, /class: 'fieldrow-label', title: 'Edit field', onclick: \(\) => editFieldDialog\(db, f\)/,
     'the label opens settings without repeating the description in a tooltip');
@@ -1008,16 +928,11 @@ test('Board is a layout of the table view, never a separate board view (Kyle: Is
 });
 
 test('the collapsed nav slides out from the left edge (Kyle, 2026-08-25, Issue #77)', () => {
-  const wire = fnBody('wireNavCollapse');
-  assert.match(wire, /nav-hot-strip/, 'a hot strip guards the left edge while collapsed');
-  assert.match(wire, /nav-peek/, 'resting on it slides the nav out as an overlay');
-  assert.match(wire, /strip\.addEventListener\('click'/, 'clicking the edge pins the nav open');
+  assert.match(fnBody('wireNavCollapse'), /strip\.addEventListener\('click'/, 'clicking the edge pins the nav open');
   assert.match(CSS, /#app\.nav-peek #sidebar \{[^}]*position: fixed/,
     'the peek overlays the page instead of reflowing it');
   assert.match(CSS, /#app\.nav-collapsed #nav-hot-strip \{[^}]*position: fixed/,
     'the strip only exists while the nav is collapsed');
-  assert.match(CSS, /#sidebar \{ width: var\(--wv-nav-width, 264px\)/,
-    'the nav keeps its comfortable width (264px) until someone drags it (Issue #905)');
 });
 
 test('horizontal overscroll is forbidden (Issue #76)', () => {
@@ -1412,27 +1327,13 @@ test('one builder draws the Fields menu for the table and the record, in checkbo
   assert.match(fnBody('renderEntityView'), /fieldVisibilityPopover\(eye, db, 0, \{ redraw: refresh, rowsSection: false, refPanels: true \}\)/, 'the record opens it, with its reference panel switches (Issue #1479)');
   const eye = fnBody('fieldVisibilityPopover');
   assert.match(eye, /tableControlPopover\(anchor, db, 'table-fields-popover'/, 'one shell for both surfaces');
-  assert.match(eye, /el\('label', \{ class: 'chip-pop-row eye-row', dataset \},\s*el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'every row is a label holding the shared checkbox');
-  assert.doesNotMatch(eye, /role: 'switch'|class: 'switch|showSwitch/, 'and none is a switch');
   assert.match(eye, /startRowDrag\(/, 'rows drag wherever field order is writable');
-  assert.match(eye, /fieldOrder: order\.filter\(isField\)/, 'the record writes the table field order');
 });
 
 test('show/hide lists in popovers use the checkbox; settings keep the switch (Issue #915)', () => {
-  const foot = fnBody('footerPicker');
-  assert.match(foot, /el\('label', \{\s*class: 'chip-pop-row eye-row foot-row'/, 'a Σ picker row is a label');
-  assert.match(foot, /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'holding the shared checkbox');
-  assert.doesNotMatch(foot, /role: 'switch'|class: 'switch|switch-knob/, 'and no switch');
   assert.doesNotMatch(APP, /function showSwitch\(/, 'the switch painter for show/hide rows is gone');
-  assert.match(fnBody('showPopover'), /o\.matches\('label'\) \? o\.querySelector\('input'\)/, 'the arrow keys walk the checkbox inside a label row');
   assert.match(fnBody('menuRow'), /it\.switch != null \? el\('span', \{ class: `switch/, 'a settings row keeps its switch');
   assert.match(fnBody('toggleSwitch'), /role: 'switch'/, 'a boolean field value keeps its switch');
-});
-
-test('the Fields list reserves its scrollbar gutter and insets its rows to match the grip (Issue #909)', () => {
-  const list = rulesFor('.table-field-list');
-  assert.equal(list['scrollbar-gutter'], 'stable', 'rows do not shift when the list starts scrolling');
-  assert.equal(px(list['padding-right']), px(rulesFor('.field-reorder-handle').padding), 'the right inset matches the grip inset on the left');
 });
 
 test('one thin scroll bar spec overrides Tabler in every engine (Issues #956, #1310)', () => {
@@ -1732,7 +1633,6 @@ test('opening a record warms only the reads the record view makes: the entity an
   const opener = fnBody('openEntity');
   assert.match(opener, /for \(const tail of \['\/references', '\/references-from'\]\) warmGet\(`\/entities\/\$\{id\}\$\{tail\}`\);/, 'the reference lists entityRefs reads');
   assert.match(opener, /warmGet\(`\/entities\/\$\{id\}`\)/, 'and the entity itself');
-  assert.doesNotMatch(opener, /revisions/, 'no document history: the activity pane asks for its own page of it');
 });
 
 test('dock: the panel is styled as the table\'s twin, its own scroller, and lights its row in both themes', () => {
@@ -1892,29 +1792,6 @@ test('no searchPicker call types its own placeholder, and the chip pickers title
   assert.ok(calls.length >= 10, `found ${calls.length} searchPicker calls`);
   const typed = calls.filter((c) => /\bplaceholder\s*:/.test(c));
   assert.deepEqual(typed.map((c) => c.split('\n').slice(0, 2).join(' ').trim()), [], 'the hint derives from the title');
-  assert.match(fnBody('chipPicker'), /title: field\?\.name/, 'chipPicker titles the picker with the field name');
-  assert.match(fnBody('chipPickerMulti'), /title: field\?\.name/, 'chipPickerMulti titles the picker with the field name');
-  assert.doesNotMatch(fnBody('searchPicker'), /st\.staged\.length \? '' : placeholder/, 'a set value keeps the hint');
-});
-
-test('the date picker steps sideways: date-pop-arrow never renders ↑ or ↓ (Issue #801)', () => {
-  const body = fnBody('datePopover');
-  const arrows = [];
-  for (let at = body.indexOf("class: 'date-pop-arrow'"); at >= 0; at = body.indexOf("class: 'date-pop-arrow'", at + 1)) {
-    const start = body.lastIndexOf("el('button'", at);
-    let depth = 0, end = start + 2;
-    for (; end < body.length; end++) {
-      if (body[end] === '(') depth++;
-      else if (body[end] === ')' && --depth === 0) break;
-    }
-    arrows.push(body.slice(start, end + 1));
-  }
-  assert.equal(arrows.length, 6, 'month, year and decade steps, back and forward');
-  for (const a of arrows) assert.doesNotMatch(a, /[↑↓]/, a);
-  assert.equal(arrows.filter((a) => a.includes("'‹'")).length, 3, 'three steps back');
-  assert.equal(arrows.filter((a) => a.includes("'›'")).length, 3, 'three steps forward');
-  assert.match(body, /'aria-label': 'Previous month'/);
-  assert.match(body, /'aria-label': 'Next month'/);
 });
 
 test('the view panes style their children without :has(), which stalled a 1,200-chip cell for 11 s (Issue #920)', () => {
@@ -1937,17 +1814,24 @@ test('one meta tag style names a field type, in the sans face, with layout from 
 
 test('undo sends only the steps this tab claimed: one POST /undo, in stepBackOwn, and no count falls back to 1 (Issue #1692)', () => {
   assert.equal(read('public/app.js').match(/api\('POST', '\/undo'/g)?.length, 1, 'one call site in app.js sends POST /undo');
-  assert.match(fnBody('stepBackOwn'), /api\('POST', '\/undo', \{ steps, expect: run\.map\(undoKey\) \}\)/, 'stepBackOwn sends the steps it counted from this tab\'s own entries on top, and the key of each (Issue #1727)');
   assert.match(fnBody('stepBackOwn'), /err\?\.status !== 409 \|\| !recount/, 'a refused undo is recounted once against a fresh read of the stack (Issue #1727)');
-  assert.doesNotMatch(APP, /steps: [^}\n]*\|\| ?1\b/, 'no step count falls back to 1');
   assert.match(fnBody('api'), /noteWrite\(gesture, method, path, data, \{ seen, took/, 'every write through api() is noted for this tab');
 });
 
 test('a record page save applies the entity it returned, and the grid repaints from the save queue\'s saved event (Issue #1681)', () => {
-  const view = fnBody('renderEntityView');
-  assert.doesNotMatch(view, /labeledEditorFor\([^\n]*\(\) => refresh\(\)/, 'no field editor rebuilds the page after its save');
-  assert.match(view, /Object\.assign\(entity, fresh\);\s*\n\s*for \(const fill of repaints\) fill\(!field\);/, 'the view takes the saved entity and repaints the rows whose value changed');
-  assert.match(view, /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
-  assert.match(APP, /saves\.onSaved\(\(written, job\) => \{/, 'the save queue announces each landed write');
-  assert.match(fnBody('drawDatabase'), /queuedWrites\.has\(written\) \? null : onSaved\(written, field\)/, 'a cell leaves its repaint to the announcement, so its row repaints once');
+  assert.match(fnBody('renderEntityView'), /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
+});
+
+const SOURCE_GREP_CEILING = { greps: 551, bodies: 173 };
+
+test('the source greps only come down: a behaviour a browser suite proves loses its regex here', () => {
+  const self = read('test/ui-contract.test.mjs');
+  const seen = {
+    greps: (self.match(/assert\.(?:match|doesNotMatch)\(/g) ?? []).length,
+    bodies: (self.match(/\bfnBody\(/g) ?? []).length,
+  };
+  for (const [k, ceiling] of Object.entries(SOURCE_GREP_CEILING)) {
+    assert.ok(seen[k] <= ceiling, `${k}: ${seen[k]} is over the ceiling of ${ceiling}; pin new behaviour in a browser suite instead`);
+    assert.equal(seen[k], ceiling, `${k}: ${seen[k]} is under the ceiling of ${ceiling}; lower SOURCE_GREP_CEILING.${k} to ${seen[k]}`);
+  }
 });
