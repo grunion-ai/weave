@@ -6,6 +6,7 @@ import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
 import { renderAuthPage } from '../src/auth-page.js';
 import { startIdp } from './lib/idp.mjs';
+import { cookieOf } from './lib/host-request.mjs';
 
 const hit = (port, host, path, { cookie, headers = {} } = {}) => new Promise((resolve, reject) => {
   const req = request({ host: '127.0.0.1', port, method: 'GET', path, headers: { Host: host, Accept: 'text/html', ...(cookie ? { Cookie: cookie } : {}), ...headers } }, (res) => {
@@ -17,7 +18,6 @@ const hit = (port, host, path, { cookie, headers = {} } = {}) => new Promise((re
   req.on('error', reject);
   req.end();
 });
-const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 const APEX = 'weave.test';
 const HOST = 'net.weave.test';
 

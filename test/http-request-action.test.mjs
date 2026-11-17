@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { receiver } from './lib/receiver.mjs';
 import { withServer } from './lib/fixtures.mjs';
 
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
@@ -11,29 +11,7 @@ const { Weave } = await import('../src/engine.js');
 const SECRET = 'pasted-http-request-value-mnop-4242';
 const HOST = 'api.example.com';
 
-async function remote(answer = (req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}'); }) {
-  const seen = [];
-  const server = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    seen.push({ method: req.method, url: req.url, headers: req.headers, body });
-    answer(req, res, body);
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const real = globalThis.fetch;
-  const sent = [];
-  globalThis.fetch = (url, init) => {
-    const u = new URL(String(url));
-    sent.push(u.href);
-    if (u.protocol === 'https:' && u.hostname === HOST) { u.protocol = 'http:'; u.host = `127.0.0.1:${port}`; }
-    return real(u, init);
-  };
-  return {
-    seen, sent, port, base: `http://127.0.0.1:${port}`,
-    close: () => { globalThis.fetch = real; server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); },
-  };
-}
+const remote = (answer) => receiver(answer, { host: HOST });
 
 async function workspace(api, dir = tempDir('weave-http-request-'), path = undefined) {
   const w = new Weave({ actor: 'kyle', path, keystorePath: join(dir, 'keystore.json') });

@@ -1,31 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, openSignupFromEnv } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
-import { createBilling, CLERK_API } from '../src/billing.js';
+import { createBilling } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
 import { tempDir } from './lib/temp.mjs';
-
-const hit = (port, host, method, path, { cookie, body, token, ua, headers = {} } = {}) => new Promise((resolve, reject) => {
-  const payload = body === undefined ? null : JSON.stringify(body);
-  const req = request({
-    host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(ua ? { 'User-Agent': ua } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}), ...headers },
-  }, (res) => {
-    let text = '';
-    res.setEncoding('utf8');
-    res.on('data', (c) => { text += c; });
-    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
-  });
-  req.on('error', reject);
-  req.end(payload ?? undefined);
-});
-const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
+import { hit, cookieOf, clerkAt } from './lib/host-request.mjs';
 
 async function serve({ openSignup = { on: false }, billing = null } = {}) {
   const idp = await startIdp();
@@ -372,11 +356,6 @@ test('start sign-in: failures come back to the setup pane as a code, and next ke
   } finally { s.stop(); }
 });
 
-const clerkAt = (routes) => async (url, init = {}) => {
-  const hit = routes[`${init.method ?? 'GET'} ${String(url).slice(CLERK_API.length).split('?')[0]}`];
-  const [status, body] = hit ?? [404, { errors: [{ code: 'resource_not_found' }] }];
-  return new Response(JSON.stringify(body), { status });
-};
 const rpc = (method, params = {}) => ({ jsonrpc: '2.0', id: 1, method, params });
 
 test('billing on: a workspace made at /start opens on a trial, the AI app works, and /api/start names the trial and the wait', async () => {

@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROOT } from '../lib/source.mjs';
 import { tempDir } from '../lib/temp.mjs';
 
 const DIR = tempDir('weave-xws-');
@@ -12,37 +11,13 @@ test.after(() => rmSync(DIR, { recursive: true, force: true }));
 const { Weave } = await import('../../src/engine.js');
 const { createWorkspaceHub } = await import('../../src/server.js');
 const { client } = await import('../lib/fixtures.mjs');
-const { COMMANDS, httpPaths } = await import('../../src/commands.js');
+const { ID, TOKEN, listRoutes } = await import('../lib/routes.mjs');
 
-const ID = '00000000-0000-4000-8000-000000000000';
-const TOKEN = 'nosuchtoken';
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const REFUSED = [401, 403, 404];
 const NEEDLE = /alpha-(row|code|doc|blob|comment|view|share|key|run)-needle/;
 const NOT_WORKSPACE_KEYED = [/^\/api\/backups\//];
 const LEAKS = [];
-
-function listRoutes(src = readFileSync(join(ROOT, 'src/routes.js'), 'utf8')) {
-  const seen = new Map();
-  const add = (method, path) => seen.set(`${method} ${path}`, { method, path });
-  const concretise = (re) => re
-    .replace(/^\^/, '').replace(/\$$/, '')
-    .replace(/\(\?:\\\/\(\[\^\/\]\+\?\)\)\?/g, '')
-    .replace(/\(\[\^\/\]\+\??\)/g, ID)
-    .replace(/\(\[A-Za-z0-9_-\]\+\)/g, TOKEN)
-    .replace(/\(\.\+\)/g, ID)
-    .replace(/\(\\\/\.\*\|\$\)/g, '/')
-    .replace(/\(([a-z]+)(?:\|[a-z]+)+\)/g, '$1')
-    .replace(/\\\//g, '/').replace(/\\\./g, '.');
-  for (const line of src.split('\n')) {
-    const method = line.match(/rx\.method === '([A-Z]+)'/)?.[1] ?? 'GET';
-    for (const [, m, p] of line.matchAll(/route === '([A-Z]+) ([^']+)'/g)) add(m, p);
-    for (const [, p] of line.matchAll(/path === '([^']+)'/g)) add(method, p);
-    for (const [, re] of line.matchAll(/path\.match\(\/(\^.+?\$)\/\)/g)) add(method, concretise(re));
-  }
-  for (const c of COMMANDS) for (const p of httpPaths(c)) add(c.http.method, p.replace(/:[a-z]+\*?/gi, ID));
-  return [...seen.values()];
-}
 
 const RESOURCE_PATHS = [...new Set(listRoutes()
   .map((r) => r.path)

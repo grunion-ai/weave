@@ -12,6 +12,7 @@ import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import { backup, restore, cloud, cloudStore, destKind, scheduleNightly, CLOUD_QUOTA_BYTES, RETAIN, ARCHIVE_PREFIX } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
+import { memoryBucket } from './lib/s3.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -21,32 +22,7 @@ const MAGIC = Buffer.from('WVBK1\0');
 const sealed = (n = 64) => Buffer.concat([MAGIC, randomBytes(n)]);
 const PASS = 'correct horse battery staple';
 
-function fakeS3() {
-  const objects = new Map();
-  const requests = [];
-  let clock = Date.parse('2026-10-12T04:00:00Z');
-  const fetchImpl = async (url, { method = 'GET', headers = {}, body } = {}) => {
-    const u = new URL(url);
-    requests.push({ method, path: u.pathname });
-    if (!String(headers.Authorization ?? '').startsWith('AWS4-HMAC-SHA256 ')) return new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 });
-    const [, , ...rest] = u.pathname.split('/');
-    const key = rest.map(decodeURIComponent).join('/');
-    if (method === 'PUT') {
-      clock += 1000;
-      objects.set(key, { body: Buffer.from(body), at: new Date(clock).toISOString() });
-      return new Response('', { status: 200 });
-    }
-    if (method === 'DELETE') { objects.delete(key); return new Response(null, { status: 204 }); }
-    if (u.searchParams.get('list-type') === '2') {
-      const prefix = u.searchParams.get('prefix') ?? '';
-      const rows = [...objects].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1));
-      return new Response(`<?xml version="1.0"?><ListBucketResult>${rows.map(([k, o]) => `<Contents><Key>${k}</Key><LastModified>${o.at}</LastModified><Size>${o.body.length}</Size></Contents>`).join('')}</ListBucketResult>`, { status: 200 });
-    }
-    const o = objects.get(key);
-    return o ? new Response(o.body, { status: 200 }) : new Response('<Error><Code>NoSuchKey</Code></Error>', { status: 404 });
-  };
-  return { objects, requests, fetchImpl };
-}
+const fakeS3 = () => memoryBucket({ from: '2026-10-12T04:00:00Z', signed: true, lengths: false, multipart: false });
 
 const cloudEnv = (extra = {}) => ({ WEAVE_BACKUP_BUCKET: 'vault', WEAVE_BACKUP_ENDPOINT: 'http://s3.test', WEAVE_BACKUP_KEY_ID: 'k', WEAVE_BACKUP_SECRET: 's', ...extra });
 

@@ -1,33 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { createOidc } from '../src/oidc.js';
-import { createBilling, CLERK_API } from '../src/billing.js';
+import { createBilling } from '../src/billing.js';
 import { startIdp } from './lib/idp.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { hit, cookieOf, clerkAt } from './lib/host-request.mjs';
 await import('../public/slug-core.js');
 const { WeaveSlugs } = globalThis;
-
-const hit = (port, host, method, path, { cookie, body, token } = {}) => new Promise((resolve, reject) => {
-  const payload = body === undefined ? null : JSON.stringify(body);
-  const req = request({
-    host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
-  }, (res) => {
-    let text = '';
-    res.setEncoding('utf8');
-    res.on('data', (c) => { text += c; });
-    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
-  });
-  req.on('error', reject);
-  req.end(payload ?? undefined);
-});
-const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 
 async function serve({ limits = { options: 1000, failed: 1000, slugs: 1000 }, rootArchitect = true, billing = null, openSignup = { on: false }, kyleWorkspaces = [] } = {}) {
   const idp = await startIdp();
@@ -342,11 +326,6 @@ test('start: an architect creates a workspace from a name and a slug, and become
   } finally { s.stop(); }
 });
 
-const clerkAt = (routes) => async (url, init = {}) => {
-  const hit = routes[`${init.method ?? 'GET'} ${String(url).slice(CLERK_API.length).split('?')[0]}`];
-  const [status, body] = hit ?? [404, { errors: [{ code: 'resource_not_found' }] }];
-  return new Response(JSON.stringify(body), { status });
-};
 const SEAT = [200, { subscription_items: [{ status: 'active', plan: { slug: 'seat' } }] }];
 
 test('start: with billing on, a new person creates a first workspace and is its Observer-only Architect until it buys its first seat', async () => {

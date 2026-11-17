@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { receiver } from './lib/receiver.mjs';
 
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
@@ -25,17 +25,8 @@ function demo(path) {
 }
 
 async function endpoint() {
-  const seen = [];
-  const server = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    seen.push(body);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{}');
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  return { seen, port, url: `http://127.0.0.1:${port}/sync`, close: () => { server.closeAllConnections(); return new Promise((r) => server.close(r)); } };
+  const api = await receiver();
+  return { ...api, url: `${api.base}/sync` };
 }
 
 test('claimKey acknowledges a key seen within the window and forgets it after', () => {

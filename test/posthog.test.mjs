@@ -11,6 +11,7 @@ import { PRIVACY } from '../src/legal.js';
 import { startIdp, serveOidc } from './lib/idp.mjs';
 import '../public/consent.js';
 import { tempDir } from './lib/temp.mjs';
+import { cookieOf } from './lib/host-request.mjs';
 
 const { consentCookie, OPTIONS, BANNER } = globalThis.WeaveConsent;
 
@@ -29,7 +30,6 @@ const hit = (port, method, path, { cookie, body, type, headers = {} } = {}) => n
   req.on('error', reject);
   req.end(body ?? undefined);
 });
-const cookieOf = (res, name) => [res.headers['set-cookie'] ?? []].flat().find((c) => c.startsWith(`${name}=`))?.split(';')[0];
 
 async function upstream() {
   const seen = [];

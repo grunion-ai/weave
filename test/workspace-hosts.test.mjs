@@ -1,6 +1,5 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,23 +9,9 @@ import { workspaceSlug, hostSlugRefusal } from '../src/workspace-name.js';
 import { createOidc } from '../src/oidc.js';
 import { startIdp } from './lib/idp.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { hit } from './lib/host-request.mjs';
 
 const BASE = 'weave.test';
-
-const hit = (port, host, method, path, { cookie, body, token } = {}) => new Promise((resolve, reject) => {
-  const payload = body === undefined ? null : JSON.stringify(body);
-  const req = request({
-    host: '127.0.0.1', port, method, path,
-    headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(payload ? { 'Content-Type': 'application/json' } : {}) },
-  }, (res) => {
-    let text = '';
-    res.setEncoding('utf8');
-    res.on('data', (c) => { text += c; });
-    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text, json: () => JSON.parse(text) }));
-  });
-  req.on('error', reject);
-  req.end(payload ?? undefined);
-});
 
 async function serveHub({ baseDomain = BASE, oidc = null, origin = null, before = () => {}, authenticated = false } = {}) {
   const dir = tempDir('weave-hosts-');
