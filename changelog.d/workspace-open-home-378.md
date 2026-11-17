@@ -1,1 +1,0 @@
-- The workspace home on a desktop or tablet opens as one page, like a space page: one link per space with its record count, recents and automation runs from every space, plus Workspace overview at the foot (Feature #378).

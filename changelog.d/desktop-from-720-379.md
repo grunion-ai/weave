@@ -1,1 +1,0 @@
-- Desktop format starts at 720 px, so each of two side-by-side browser windows on a 14-inch laptop keeps the desktop layout. Phone format applies below 720 px; the 960 px switch is gone. The nav tray still hides on its own below 1200 px, and a docked record still takes the pane when the table does not fit beside it (Feature #379).

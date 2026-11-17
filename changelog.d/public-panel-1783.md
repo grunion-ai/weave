@@ -1,1 +1,0 @@
-- The Built in public panel, and every other handbook panel that linked the Development tables, links the live tracker at https://weave.grunion.ai/w/weave on a server without a tracker read copy, instead of local tables holding only the 22 v0.1 to v0.3 seed rows. A server with a read copy and the canonical tracker keep local links (Issue #1783).
