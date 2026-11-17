@@ -62,7 +62,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a table header beside a docked record keeps one row, and its condensed toolbar keeps View and the menu (Feature #377)', async () => {
+  test('a table header beside a docked record keeps one row, and its condensed toolbar keeps View, Share and the menu and folds search to its icon (Feature #377)', async () => {
     const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${tasks.id}?e=${row.id}`, { waitUntil: 'networkidle' });
@@ -81,16 +81,17 @@ if (s) {
       await settle(page);
       const names = tight.controls.map((c) => c.name);
       assert.ok(names.some((n) => /view/i.test(n)), `View stays in the row: ${names}`);
-      assert.ok(!names.some((n) => /^Share/.test(n)), `Share leaves the row: ${names}`);
-      assert.ok(tight.search <= 2, `the search field leaves the row: ${tight.search}px`);
+      assert.ok(names.some((n) => /^Share/.test(n)), `Share stays in the row: ${names}`);
+      assert.equal(tight.search, 28, `the search bar folds to its icon: ${tight.search}px`);
       await page.click('#main .view-header .crumb-row .dots-btn');
       const labels = await page.locator('.wv-menu-label').allTextContents();
-      assert.ok(labels.some((l) => /^Search/.test(l)), `the menu offers Search: ${labels}`);
-      assert.ok(labels.some((l) => /^Share/.test(l)), `the menu offers Share: ${labels}`);
-      await page.locator('.wv-menu-label', { hasText: /^Search/ }).click();
+      assert.ok(!labels.some((l) => /^Search/.test(l)), `the menu repeats no Search, the icon is in the row: ${labels}`);
+      assert.ok(!labels.some((l) => /^Share \(/.test(l)), `the menu repeats no Share, the button is in the row: ${labels}`);
+      await page.keyboard.press('Escape');
+      await page.click('#main .view-header .crumb-row .table-search-btn');
       await settle(page);
       const searching = await read(page);
-      assert.ok(searching.search >= 80, `choosing Search opens the field: ${searching.search}px`);
+      assert.ok(searching.search >= 80, `the icon opens the field: ${searching.search}px`);
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'and focuses it');
       oneRow(searching, 'while searching');
     } finally { await page.close(); }

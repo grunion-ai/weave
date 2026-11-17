@@ -58,7 +58,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a wide record header shows every action and a tight one keeps fields, the menu and close (Feature #377)', async () => {
+  test('a wide record header shows every action and a tight desktop one sheds Activity alone (Feature #377)', async () => {
     const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
     try {
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
@@ -68,21 +68,43 @@ if (s) {
       assert.equal(wide.tight, false, 'a wide header is not condensed');
       assert.ok(wide.buttons.some((b) => b.name === 'Activity'), `Activity shows when there is room: ${wide.buttons.map((b) => b.name)}`);
       let tight = null;
-      for (let width = 1200; width >= 320 && !tight; width -= 20) {
+      for (let width = 1200; width >= 720 && !tight; width -= 20) {
         await page.setViewportSize({ width, height: 900 });
         await settle(page);
         const m = await read(page, '#main');
         if (m.tight) tight = m;
       }
-      assert.ok(tight, 'the header condenses somewhere before the narrowest phone');
+      assert.ok(tight, 'the header condenses at a desktop width');
       const names = tight.buttons.map((b) => b.name);
-      assert.ok(!names.includes('Activity') && !names.some((n) => /^Collapse/.test(n)), `Activity and Collapse leave the row: ${names}`);
+      assert.ok(!names.includes('Activity'), `Activity leaves the row: ${names}`);
       assert.ok(names.includes('Show or hide fields'), `Show or hide fields stays: ${names}`);
+      assert.ok(names.some((n) => /^Share/.test(n)), `Share stays: ${names}`);
+      assert.ok(names.some((n) => /^Collapse/.test(n)), `Collapse stays: ${names}`);
       assert.ok(names.some((n) => /^Close/.test(n)), `Close stays: ${names}`);
       await page.click('#main .view-header .crumb-actions .dots-btn');
       const labels = await page.locator('.wv-menu-label').allTextContents();
       assert.ok(labels.some((l) => /Activity/.test(l)), `the menu offers Activity: ${labels}`);
-      assert.ok(labels.some((l) => /Collapse/.test(l)), `the menu offers Collapse: ${labels}`);
+      assert.ok(!labels.some((l) => /Collapse|^Share \(/.test(l)), `the menu repeats no button the row still shows: ${labels}`);
+      await page.locator('.wv-menu-label', { hasText: 'Activity' }).click();
+      await page.waitForSelector('#main .activity-btn[aria-pressed="true"]', { state: 'attached' });
+    } finally { await page.close(); }
+  });
+
+  test('a tight phone record header keeps fields, the menu and close, and its menu offers the rest (Feature #377)', async () => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    try {
+      await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#main .view-header .crumb-cur');
+      await settle(page);
+      const tight = await read(page, '#main');
+      assert.equal(tight.tight, true, 'a 390 px header is condensed');
+      const names = tight.buttons.map((b) => b.name);
+      assert.ok(!names.includes('Activity') && !names.some((n) => /^Collapse|^Share/.test(n)), `Activity, Share and Collapse leave the row: ${names}`);
+      assert.ok(names.includes('Show or hide fields'), `Show or hide fields stays: ${names}`);
+      assert.ok(names.some((n) => /^Close/.test(n)), `Close stays: ${names}`);
+      await page.click('#main .view-header .crumb-actions .dots-btn');
+      const labels = await page.locator('.wv-menu-label').allTextContents();
+      for (const want of [/Activity/, /^Share \(/, /Collapse/]) assert.ok(labels.some((l) => want.test(l)), `the menu offers ${want}: ${labels}`);
       await page.locator('.wv-menu-label', { hasText: 'Activity' }).click();
       await page.waitForSelector('#main .activity-btn[aria-pressed="true"]', { state: 'attached' });
     } finally { await page.close(); }

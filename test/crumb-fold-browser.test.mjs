@@ -23,7 +23,7 @@ const s = await launch('crumb fold', (weave) => {
 if (s) {
   const { base, browser } = s;
   const docked = (page, i) => page.waitForFunction((n) => document.querySelector('#dock .name-edit')?.value.startsWith(n), `Step ${i} `);
-  async function walk({ to = 5, width = 1200, pin = 550 } = {}) {
+  async function walk({ to = 5, width = 1500, pin = 550 } = {}) {
     const page = await browser.newPage({ viewport: { width, height: 800 } });
     await page.addInitScript((pin) => localStorage.setItem('wv-dock-width', String(pin)), pin);
     await page.goto(`${base}/#/table/${steps.id}?e=${chain[0].id}`, { waitUntil: 'networkidle' });
@@ -52,6 +52,7 @@ if (s) {
   test('a narrow dock keeps one row: the first crumb and whole current crumb stay in the box (Issues #765, #1513, Feature #377)', async () => {
     const page = await walk();
     await page.waitForSelector('#dock .crumb-more');
+    assert.equal(await page.locator('#dock').evaluate((n) => Math.round(n.getBoundingClientRect().width)), 550, 'the dock holds its pinned 550 px');
     const m = await read(page);
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
@@ -159,8 +160,8 @@ if (s) {
   }
 
   test('the "…" menu stays inside the window when the dock sits at its right edge', async () => {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-    await page.addInitScript(() => localStorage.setItem('wv-dock-width', '420'));
+    const page = await browser.newPage({ viewport: { width: 1300, height: 800 } });
+    await page.addInitScript(() => localStorage.setItem('wv-dock-width', '500'));
     await page.goto(`${base}/#/table/${steps.id}?e=${chain[0].id}`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value.startsWith('Step 0 '));
     for (let i = 1; i <= 5; i++) {

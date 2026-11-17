@@ -66,9 +66,9 @@ if (s) {
     try {
       const m = await read(page);
       const search = m.main.controls.find((c) => /table-search/.test(c.label));
-      assert.ok(search && search.height >= 34, `the search box keeps its 34px: ${JSON.stringify(m.main.controls)}`);
+      assert.equal(search?.height, 28, `the search bar is the 28px of every bar tool: ${JSON.stringify(m.main.controls)}`);
       const share = await page.locator('#dock .view-header .crumb-row .table-share-btn').evaluate((n) => n.getBoundingClientRect().height);
-      assert.ok(share >= 28, `the dock's share button keeps its 28px: ${share}`);
+      assert.equal(share, 28, `the dock's share button keeps its 28px: ${share}`);
     } finally { await page.close(); }
   });
 }
