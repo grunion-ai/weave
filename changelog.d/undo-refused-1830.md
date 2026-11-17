@@ -1,0 +1,1 @@
+- Undo after a refused write now takes back the last change that was saved (Issue #1830). A record edit the database refused used to leave its undo entry behind, so the next undo did nothing and reported that you had changed the record since. The entry is now written in the same transaction as the edit, so a refused edit leaves none.

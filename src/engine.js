@@ -2032,6 +2032,7 @@ export class Weave {
         writeFileDurable(path, bytes);
       }
       this.store.batch(() => {
+        for (const entry of this.#undoPending.splice(0)) this.store.pushUndo(entry);
         if (pending) {
           for (const [id, storage] of pending.storage) this.store.setFileStorage(id, storage);
           for (const group of pending.revisions) {
@@ -5310,7 +5311,14 @@ export class Weave {
       data,
     };
     if (this.#undoHeld) this.#undoHeld.push(entry);
-    else this.store.pushUndo(entry);
+    else this.#pushUndo(entry);
+  }
+
+  #undoPending = [];
+
+  #pushUndo(entry) {
+    if (this.store.batching) this.store.pushUndo(entry);
+    else this.#undoPending.push(entry);
   }
 
   #holdUndo(fn) {
@@ -5322,7 +5330,7 @@ export class Weave {
       this.#undoHeld = outer;
       for (const entry of held) {
         if (outer) outer.push(entry);
-        else this.store.pushUndo(entry);
+        else this.#pushUndo(entry);
       }
     }
   }
