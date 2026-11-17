@@ -7,6 +7,8 @@ import { ROOT, read } from './lib/source.mjs';
 import { GUIDES } from '../src/handbook.js';
 
 const DOCKERFILE = read('Dockerfile');
+const DEV_WORKFLOW = read('.github/workflows/dev.yml');
+const NODE_VERSION = read('.node-version').trim();
 const COMPOSE = read('compose.yaml');
 const RAILWAY = read('railway.json');
 const FLY = read('fly.toml');
@@ -31,6 +33,7 @@ test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 by digest and r
   const from = DOCKERFILE.match(/^FROM node:(\d+)\.(\d+)\.(\d+)-slim@sha256:[0-9a-f]{64}$/m);
   assert.ok(from, 'FROM pins an exact node:<major>.<minor>.<patch>-slim tag and its sha256 digest');
   assert.equal(Number(from[1]), 22);
+  assert.equal(`${from[1]}.${from[2]}.${from[3]}`, NODE_VERSION, `.node-version names the image's Node, so a gate can run it: ${NODE_VERSION}`);
   assert.ok(Number(from[2]) >= 16, `node 22.${from[2]} is below 22.16, the floor package.json declares`);
   assert.match(DOCKERFILE, /^WORKDIR \/opt\/weave$/m);
   assert.match(DOCKERFILE, /^USER node$/m, 'the process runs as the image\'s unprivileged node user');
@@ -40,6 +43,17 @@ test('the Dockerfile pins a node 22.x-slim tag at or above 22.16 by digest and r
   assert.match(DOCKERFILE, /^HEALTHCHECK [\s\S]*?\/api\/health/m, 'the health check probes /api/health');
   assert.match(DOCKERFILE, /^CMD \["node", ?"bin\/weave\.js", ?"serve"\]$/m, 'CMD is the serve verb, port/host/data from the environment');
   assert.doesNotMatch(DOCKERFILE, /^RUN .*(npm|build)/m, 'weave has no dependencies and no build step');
+});
+
+test('the image\'s Node is declared in .node-version, satisfies the engines floor, and a required gate runs it (Issue #1653)', () => {
+  assert.match(NODE_VERSION, /^\d+\.\d+\.\d+$/, '.node-version holds one exact version and nothing else');
+  const [major, minor] = NODE_VERSION.split('.').map(Number);
+  const floor = JSON.parse(read('package.json')).engines.node.match(/^>=(\d+)\.(\d+)$/);
+  assert.ok(floor, 'engines.node is a >=<major>.<minor> floor');
+  assert.ok(major > Number(floor[1]) || (major === Number(floor[1]) && minor >= Number(floor[2])), `the image's Node ${NODE_VERSION} is at or above the engines floor ${floor[0]}`);
+  const gate = DEV_WORKFLOW.slice(DEV_WORKFLOW.indexOf('  gate:'), DEV_WORKFLOW.indexOf('  deploy:'));
+  assert.match(gate, /node-version-file: \.node-version\n/, 'the Dev gate boots on the image\'s Node, so a release that needs a newer one fails a required check instead of production');
+  assert.doesNotMatch(gate, /node-version: /, 'no second version is pinned beside the file');
 });
 
 test('.dockerignore keeps workspace state, the browser install and the suite out of the image', () => {

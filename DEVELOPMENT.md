@@ -103,7 +103,10 @@ commit subject or a changelog fragment names.
    where behavior changes.
 3. Self-review, then arm auto-merge: `gh pr merge --auto --squash`.
    Three checks are required: `Dev gate` (the `dev` workflow: syntax and a
-   boot health check, about a minute), `PR gate` (the `pr` workflow: the planned
+   boot health check on the image's own Node, read from `.node-version`, about a
+   minute; every other job runs the newer Node the suite is developed on, so a
+   commit that needs it fails a required check instead of production, Issue
+   #1653), `PR gate` (the `pr` workflow: the planned
    unit and browser shards, ten to twenty minutes, longest when the diff touches
    a monolith or a `test/lib/` helper) and `security scan` (the `security`
    workflow: the secret, workflow, Dockerfile and code scanners, about a minute).

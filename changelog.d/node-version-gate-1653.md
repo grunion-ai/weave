@@ -1,0 +1,1 @@
+- `.node-version` names the Node the container image runs, and the `Dev gate` boots on it, so a commit that needs a newer Node fails a required check instead of the hosted instance (Issue #1653).
