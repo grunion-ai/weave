@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { Weave } from '../src/engine.js';
 import { createContext, runInContext } from 'node:vm';
 import { withServer } from './lib/fixtures.mjs';
 

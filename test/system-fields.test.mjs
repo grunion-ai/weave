@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, WeaveError } from '../src/engine.js';
+import { Weave } from '../src/engine.js';
 import { withServer } from './lib/fixtures.mjs';
 
 function fresh(actor) {

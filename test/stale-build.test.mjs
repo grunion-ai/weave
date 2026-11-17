@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeBuild, buildInfo, startServer } from '../src/server.js';
+import { describeBuild, buildInfo } from '../src/server.js';
 import { Weave } from '../src/engine.js';
 import { withServer } from './lib/fixtures.mjs';
 

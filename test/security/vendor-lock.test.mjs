@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { readLock, diffLock, sha256 } from '../../scripts/vendor-lock.mjs';
 import { queryable, buildQueries, toRows } from '../../scripts/vendor-advisories.mjs';

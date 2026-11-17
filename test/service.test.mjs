@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Weave } from '../src/engine.js';
 import { serviceOptions, buildPlist, parseLaunchctlPrint, buildStatus, probeHealth } from '../src/service.js';
 import { withServer } from './lib/fixtures.mjs';
 

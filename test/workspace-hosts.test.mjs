@@ -1,7 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, hostAllowed, hostCheckFor, baseDomainFromEnv } from '../src/server.js';

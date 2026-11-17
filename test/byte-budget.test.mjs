@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Weave } from '../src/engine.js';
 import { ROOT } from './lib/source.mjs';
 import { BUDGET_FILE, CODINGS, fit, firstPartyAssets, judge, unexplainedRaises } from './lib/bytes.mjs';
 import { withServer } from './lib/fixtures.mjs';

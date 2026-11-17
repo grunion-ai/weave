@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Weave, CREDENTIAL_KINDS, KEYSTORES } from '../src/engine.js';
 import { FIELD_TYPE_VOCABULARY } from '../src/vocabulary.js';

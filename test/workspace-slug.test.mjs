@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { createWorkspaceHub, startServer } from '../src/server.js';

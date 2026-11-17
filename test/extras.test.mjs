@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer } from 'node:http';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave, parseCSV } from '../src/engine.js';
 import { tempDir } from './lib/temp.mjs';

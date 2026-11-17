@@ -30,6 +30,28 @@ test('no test file opens a temp directory the suite never removes', () => {
   assert.deepEqual(offenders, [], `call tempDir() from test/lib/temp.mjs instead, so the directory goes when the process does: ${offenders.join(', ')}`);
 });
 
+const TEMP_IMPORT = /^import\s+\{([^}]*)\}\s+from\s+['"](?:node:)?(?:fs|os)['"];?[ \t]*$/gm;
+
+function unusedTempImports(source) {
+  const imports = [...source.matchAll(TEMP_IMPORT)];
+  const body = imports.reduce((text, [statement]) => text.replace(statement, ''), source);
+  return imports
+    .flatMap(([, names]) => names.split(',').map((spec) => spec.trim().split(/\s+as\s+/)))
+    .filter(([name]) => name === 'tmpdir' || name === 'mkdtempSync')
+    .map(([name, local = name]) => local)
+    .filter((local) => !new RegExp(`(?<![\\w$])${local}(?![\\w$])`).test(body));
+}
+
+test('no test file imports tmpdir or mkdtempSync and leaves it unused', () => {
+  assert.deepEqual(unusedTempImports("import { mkdtempSync as make, rmSync } from 'node:fs';\nimport { tmpdir } from 'node:os';\nrmSync(tmpdir());\n"), ['make']);
+  const offenders = [];
+  for (const file of sources()) {
+    if (ALLOWED.has(file)) continue;
+    for (const name of unusedTempImports(readFileSync(join(ROOT, file), 'utf8'))) offenders.push(`${file} ${name}`);
+  }
+  assert.deepEqual(offenders, [], `drop the import tempDir() replaced: ${offenders.join(', ')}`);
+});
+
 test('tempDir removes every directory it opened when the process exits', () => {
   const module = pathToFileURL(join(ROOT, 'test/lib/temp.mjs')).href;
   const script = `import { tempDir } from ${JSON.stringify(module)};

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phonePage, phoneBrowser, eventually } from './lib/browser.mjs';
-import { seedIssues, combinations, STANDARD_FIELDS, LIVE, SEVERITY, LAYOUTS, ROLLUP_MODES, GROUPS, FILTERS, SORTS, HIDDEN } from './lib/view-pane-fixture.mjs';
+import { seedIssues, combinations, STANDARD_FIELDS, SEVERITY, LAYOUTS, ROLLUP_MODES, GROUPS, FILTERS, SORTS, HIDDEN } from './lib/view-pane-fixture.mjs';
 
 let issue;
 const s = await launch('the View pane over Issue', (weave) => { ({ issue } = seedIssues(weave)); });

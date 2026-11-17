@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { admits, billingFromEnv, createBilling, CLERK_API, PAID_ROLES, BillingUnavailable } from '../src/billing.js';
+import { admits, billingFromEnv, CLERK_API, PAID_ROLES, BillingUnavailable } from '../src/billing.js';
 
 const ISSUER = 'https://clerk.weave.example.com';
 const DAY = 86_400_000;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { readFileSync } from 'node:fs';
 import { Weave } from '../src/engine.js';
-import { startMcpServer, TOOLS, dispatchTool } from '../src/mcp.js';
+import { startMcpServer, dispatchTool } from '../src/mcp.js';
 import { unwrapData } from './lib/fixtures.mjs';
 
 function makeSession() {

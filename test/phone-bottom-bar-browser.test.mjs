@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, eventually, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 const s = await launch('phone bottom bar', (weave) => {
   weave.createSpace({ name: 'Development' });

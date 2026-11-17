@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
 import { build, withServer } from './lib/fixtures.mjs';
 
 test('every table gets a default Description document field', () => {

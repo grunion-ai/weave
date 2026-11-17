@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { VOCABULARY, FIELD_TYPE_VOCABULARY, OPTION_COLORS, ICONS } from '../src/vocabulary.js';
-import { FIELD_TYPES, Weave, STATE_CATEGORIES, CELL_COLORS } from '../src/engine.js';
+import { FIELD_TYPES, STATE_CATEGORIES, CELL_COLORS } from '../src/engine.js';
 import { withServer } from './lib/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

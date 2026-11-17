@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, WeaveError } from '../src/engine.js';
+import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
 test('an account is born with a token that is never stored in the clear', () => {
