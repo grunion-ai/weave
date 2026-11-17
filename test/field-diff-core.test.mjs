@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+await import('../public/history-core.js');
 await import('../public/field-diff-core.js');
 const D = globalThis.WeaveFieldDiff;
 
@@ -44,6 +45,17 @@ test('a formula reads as text with a word diff', () => {
   assert.equal(c.kind, 'text');
   assert.equal(c.label, 'Formula');
   assert.deepEqual(c.diff, [{ op: '=', text: '[Price] * ' }, { op: '-', text: '2' }, { op: '+', text: '3' }]);
+});
+
+test('a text diff keeps history-core word order, joins runs of one kind, and reads a missing side as empty', () => {
+  const cases = [
+    ['a b', 'b a', [{ op: '-', text: 'a ' }, { op: '=', text: 'b' }, { op: '+', text: ' a' }]],
+    ['x = 1', 'y = 1 + 2', [{ op: '-', text: 'x' }, { op: '+', text: 'y' }, { op: '=', text: ' = 1' }, { op: '+', text: ' + 2' }]],
+    ['SUM([A]) * 2', 'SUM([B]) * 2 / [C]', [{ op: '-', text: 'SUM([A])' }, { op: '+', text: 'SUM([B])' }, { op: '=', text: ' * 2' }, { op: '+', text: ' / [C]' }]],
+    ['', 'new', [{ op: '+', text: 'new' }]],
+    ['old', null, [{ op: '-', text: 'old' }]],
+  ];
+  for (const [before, after, want] of cases) assert.deepEqual(D.textDiff(before, after), want, JSON.stringify([before, after]));
 });
 
 test('name, type, format and a default read as plain before and after values; a select default by option name', () => {
