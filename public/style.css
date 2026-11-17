@@ -2290,7 +2290,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .crumb a.crumb-item, .crumb a.crumb-item:hover { background: var(--tblr-bg-surface); color: var(--tblr-body-color); }
   .crumb-cur { font-weight: 700; }
   .crumb-item .crumb-ic { width: 18px; height: 18px; color: var(--tblr-body-color); }
-  .crumb-pid { font-size: var(--fs-grid); }
+  .crumb-pid { font-family: inherit; font-size: inherit; letter-spacing: inherit; }
   :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table):not(.crumb-cur) { max-width: 18ch; }
   .crumb-sep { padding: 0 1px; }
   .crumb-cur.crumb-k-row:has(> .crumb-pid) > .crumb-nm { display: none; }
