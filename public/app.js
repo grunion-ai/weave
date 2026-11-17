@@ -4164,7 +4164,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
   if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
   const saved = async (written = null) => {
     const fresh = written?.id === id && written.affected ? written : await api('GET', `/entities/${id}`);
-    await onSaved(fresh, f.name);
+    await onSaved(fresh);
   };
   const patch = async (value, paint = null) => {
     paint?.(value);
