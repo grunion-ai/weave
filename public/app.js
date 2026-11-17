@@ -9273,6 +9273,27 @@ function docSectionCollapse(entityId, field, next) {
   return next;
 }
 
+function foldCaret(title, scope, key, nodes, { stop = false, also = null, onToggle = null, closed = docSectionCollapse(scope, key) } = {}) {
+  const fold = (shut) => {
+    for (const n of nodes) n.classList.toggle('hidden', shut);
+    also?.(shut);
+    caret.classList.toggle('closed', shut);
+    setDisclosure(caret, !shut);
+  };
+  const caret = disclosure('doc-caret', true, {
+    title,
+    onclick: (e) => {
+      if (stop) e.stopPropagation();
+      const shut = !nodes[0].classList.contains('hidden');
+      fold(shut);
+      docSectionCollapse(scope, key, shut);
+      onToggle?.(shut);
+    },
+  });
+  if (closed) fold(true);
+  return caret;
+}
+
 function appearsAsPanel(db, entity, refresh) {
   const hidden = new Set(db.hiddenFields ?? []);
   const shownView = (role) => { const f = viewFieldOf(db, role); return f && !hidden.has(f.name) ? f : null; };
@@ -9489,16 +9510,9 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const nameEl = el('span', { class: 'doc-section-name' }, f.name);
     let sourceBox = null;
     let docOpen = !!f.displayInline || !docSectionCollapse(id, f.name);
-    const caret = disclosure('doc-caret', true, {
-      title: 'Collapse section',
-      onclick: () => {
-        const open = body.classList.toggle('hidden');
-        caret.classList.toggle('closed', open);
-        setDisclosure(caret, !open);
-        docSectionCollapse(id, f.name, open);
-        docOpen = !open;
-        fillOpenDoc();
-      },
+    const caret = foldCaret('Collapse section', id, f.name, [body], {
+      closed: !docOpen,
+      onToggle: (shut) => { docOpen = !shut; fillOpenDoc(); },
     });
     const section = el('section', { class: 'doc-section', 'data-doc-field': f.name },
       kindContext(el('div', { class: 'doc-section-head' },
@@ -9512,11 +9526,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         dl), 'doc', f, () => ({ entity })),
       body);
 
-    if (!docOpen) {
-      body.classList.add('hidden');
-      caret.classList.add('closed');
-      setDisclosure(caret, false);
-    }
     if (f.displayInline) {
       section.classList.add('document-inline');
       section.setAttribute('aria-label', f.name);
@@ -9768,24 +9777,12 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           el('span', { class: 'wv-sum-label', onclick: f && !locked ? () => editFieldDialog(db, f) : null }, system ? label.textContent : fieldNameLabel(f)),
           system ? sumValue(row) : streamed(f, () => labeledEditorFor(f, entity, db, saved, { compact: true, label: f.name, locked })));
       }));
-    const setFolded = (closed) => {
-      values.classList.toggle('hidden', closed);
-      summary.classList.toggle('hidden', !closed);
-      fieldsCaret.classList.toggle('closed', closed);
-      setDisclosure(fieldsCaret, !closed);
-    };
-    const fieldsCaret = disclosure('doc-caret', true, {
-      title: 'Collapse fields',
-      onclick: (e) => {
-        e.stopPropagation();
-        const closed = !values.classList.contains('hidden');
-        setFolded(closed);
-        docSectionCollapse(id, VALUES_BLOCK, closed);
-      },
+    const fieldsCaret = foldCaret('Collapse fields', id, VALUES_BLOCK, [values], {
+      stop: true,
+      also: (shut) => summary.classList.toggle('hidden', !shut),
     });
     const valuesHead = el('div', { class: 'block-head' },
       handle('the fields'), fieldsCaret, el('span', { class: 'block-name' }, 'Fields'));
-    if (docSectionCollapse(id, VALUES_BLOCK)) setFolded(true);
     fields.append(valuesHead, values, summary);
     wireBlock(VALUES_BLOCK, fields, [valuesHead.querySelector('.opt-grip'), valuesHead]);
   }
@@ -9809,15 +9806,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const label = deckRole === 'deck' ? 'Deck' : 'Slide preview';
     const frame = el('iframe', { class: 'deck-frame', src: deckUrl, sandbox: HTML_FRAME_SANDBOX, allowfullscreen: '', allow: 'fullscreen', title: label });
     const body = el('div', { class: 'doc-section-body' }, frame);
-    const caret = disclosure('doc-caret', true, {
-      title: 'Collapse section',
-      onclick: () => {
-        const open = body.classList.toggle('hidden');
-        caret.classList.toggle('closed', open);
-        setDisclosure(caret, !open);
-        docSectionCollapse(id, label, open);
-      },
-    });
+    const caret = foldCaret('Collapse section', id, label, [body]);
     const newVersion = async (promote) => {
       try {
         const made = await api('POST', `/entities/${id}/version${promote ? '?promote=1' : ''}`);
@@ -9849,7 +9838,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         ...deckButtons),
       body);
     blocks.set(DECK_BLOCK, section);
-    if (docSectionCollapse(id, label)) { body.classList.add('hidden'); caret.classList.add('closed'); setDisclosure(caret, false); }
   }
   const given = db.bodyBlocks ?? [VALUES_BLOCK];
   const named = (given.includes(FILES_BLOCK) ? given : given.flatMap((k) => (k === VALUES_BLOCK ? [k, FILES_BLOCK] : [k])))
@@ -9866,20 +9854,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const filesBody = el('div', { class: 'attach-chips' }, ...loose.map((file) => attachItemEl(file, { group: loose })));
     const introTable = db.fields.some((f) => f.type === 'attachments' && (f.displayInline || f.preview === 'intro'));
     const pages = (introTable ? [] : loose.filter((file) => !file.missing && fileKind(file) === 'html')).map((file) => el('div', { class: 'entity-files-page' }, fileViewerEl(file)));
-    const foldFiles = (closed) => {
-      for (const n of [filesBody, ...pages]) n.classList.toggle('hidden', closed);
-      filesCaret.classList.toggle('closed', closed);
-      setDisclosure(filesCaret, !closed);
-    };
-    const filesCaret = disclosure('doc-caret', true, {
-      title: 'Collapse files',
-      onclick: (e) => {
-        e.stopPropagation();
-        const closed = !filesBody.classList.contains('hidden');
-        foldFiles(closed);
-        docSectionCollapse(id, FILES_BLOCK, closed);
-      },
-    });
+    const filesCaret = foldCaret('Collapse files', id, FILES_BLOCK, [filesBody, ...pages], { stop: true });
     const makeField = async () => {
       try {
         const name = boardCore.freeFieldName(db, 'Files');
@@ -9897,7 +9872,6 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         type: 'button', class: 'btn btn-sm btn-ghost-secondary entity-files-make',
         title: `Make an attachments field on ${db.name} that holds these files`, onclick: makeField,
       }, 'Make a field'));
-    if (docSectionCollapse(id, FILES_BLOCK)) foldFiles(true);
     filesCard = wireBlock(FILES_BLOCK, el('div', { class: 'entity-files-card' }, filesHead, filesBody, ...pages), [filesHead.querySelector('.opt-grip'), filesHead]);
     if (!placed) return;
     const order = [...named, ...blocks.keys()];
@@ -9928,20 +9902,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     if (!refs.length) return;
     const body = el('div', { class: 'card-body ref-backlinks' },
       ...refs.map((r) => (r.external ? externalRefChipEl(r) : relationChipEl({ targetDbIds: true }, r))));
-    const fold = (closed) => {
-      body.classList.toggle('hidden', closed);
-      caret.classList.toggle('closed', closed);
-      setDisclosure(caret, !closed);
-    };
-    const caret = disclosure('doc-caret', true, {
-      title: `Collapse ${title}`,
-      onclick: () => {
-        const closed = !body.classList.contains('hidden');
-        fold(closed);
-        docSectionCollapse(db.id, extraClass, closed);
-      },
-    });
-    if (docSectionCollapse(db.id, extraClass)) fold(true);
+    const caret = foldCaret(`Collapse ${title}`, db.id, extraClass, [body]);
     right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
       el('div', { class: 'card-header' },
         caret, el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
