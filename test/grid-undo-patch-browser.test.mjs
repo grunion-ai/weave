@@ -8,6 +8,11 @@ const s = await launch('an undo patches the rows it changed instead of rebuildin
   weave.createSpace({ name: 'Ops' });
   plain = weave.createTable({ space: 'Ops', name: 'Task' });
   weave.addField(plain, { name: 'Note', type: 'text' });
+  weave.addField(plain, {
+    name: 'Stage',
+    type: 'workflow',
+    config: { states: [{ name: 'Open', category: 'not-started', default: true }, { name: 'Done', category: 'done' }] },
+  });
   rowA = weave.createEntity(plain, { name: 'Alpha', values: { Note: 'a0' } });
   weave.createEntity(plain, { name: 'Beta', values: { Note: 'b0' } });
   sorted = weave.createTable({ space: 'Ops', name: 'Ranked' });
@@ -84,4 +89,26 @@ if (s) {
     await page.close();
   });
 
+
+  test('a bulk Set a field patches the rows it wrote (Issue #1693)', async () => {
+    const page = await open(plain, rowA.id, 'Note');
+    const boxes = page.locator('.wv-grid tbody .sel-box');
+    for (let i = 0; i < 2; i++) await boxes.nth(i).check();
+    await page.locator('.sel-puck .sel-act[aria-label="Set a field\u2026"]').click();
+    await page.locator('.picker-pop .picker-row', { hasText: 'Stage' }).first().click();
+    await page.waitForSelector('.picker-pop .picker-search:focus');
+    await mark(page, rowA.id);
+    page.queries.length = 0;
+    await page.locator('.picker-pop .picker-row', { hasText: 'Done' }).first().click();
+    assert.equal(await eventually(() => stored(rowA.id, 'Stage'), 'Done'), 'Done', 'the bulk set landed');
+    await page.waitForFunction(
+      (eid) => document.querySelector(`tr[data-eid="${eid}"] td[data-field="Stage"]`)?.textContent.includes('Done'),
+      rowA.id,
+    );
+    assert.deepEqual(await marks(page, rowA.id), { wrap: 'wrap', row: 'row' },
+      'the bulk write patched its rows: neither the table-wrap nor the row node was replaced');
+    assert.ok(page.queries.length && page.queries.every((q) => q.where?.[0]?.[0] === 'id'),
+      `the bulk read only the rows it wrote, got ${JSON.stringify(page.queries)}`);
+    await page.close();
+  });
 }
