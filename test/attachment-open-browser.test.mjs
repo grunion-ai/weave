@@ -45,7 +45,7 @@ if (s) {
         const got = await framed(page);
         assert.ok(got, 'the file panel opened');
         assert.ok(got.src.endsWith('?view'), `the panel frames the viewer url: ${got.src}`);
-        assert.equal(got.sandbox, 'allow-scripts allow-popups allow-popups-to-escape-sandbox', 'the frame keeps its sandbox');
+        assert.equal(got.sandbox, 'allow-scripts allow-popups', 'the frame keeps its sandbox');
         assert.equal(got.name, 'review.html', 'the panel names the clicked file');
       } finally { await page.close(); }
     });

@@ -3813,7 +3813,7 @@ function toggleSwitch(f, val, patch) {
   return wrap;
 }
 
-const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups';
 const FILE_FRAME_SANDBOX = { html: HTML_FRAME_SANDBOX, pdf: null, text: '', image: '' };
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
@@ -3924,6 +3924,10 @@ addEventListener('message', (e) => {
   const frame = fileFrameOf(e.source);
   const h = Math.round(Number(e.data.height));
   if (frame?.classList.contains('fits-content') && Number.isFinite(h) && h > 0) fitFrame(frame, h);
+});
+addEventListener('message', (e) => {
+  if (e.data?.weave !== 'frame-link' || !fileFrameOf(e.source)) return;
+  if (typeof e.data.href === 'string' && /^https?:\/\//i.test(e.data.href)) window.open(e.data.href, '_blank', 'noopener');
 });
 const PAGE_STORAGE_SAVE_MS = 400;
 (() => {

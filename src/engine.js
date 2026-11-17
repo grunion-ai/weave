@@ -171,14 +171,14 @@ async function webhookRefusal(url) {
 }
 
 const INLINE_FILE_TYPES = new Set(['application/pdf', 'text/plain']);
-export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
-export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
+export const HTML_VIEW_POLICY = "sandbox allow-scripts allow-popups; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+export const HTML_PAGE_POLICY = "sandbox allow-scripts allow-popups; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; frame-src 'self'";
 export const sandboxedHtmlHeaders = (extra = {}, policy = HTML_VIEW_POLICY) => ({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': policy, ...extra });
 const HTML_FILE_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 export const FILE_STORAGE_CAP = 5 * 1024 * 1024;
 export const isHtmlFile = (meta) => HTML_FILE_TYPES.has(String(meta?.mime ?? '').split(';')[0].trim().toLowerCase());
 export const FRAME_HEIGHT_SCRIPT = "<script>(() => { if (parent === window) return; let sent = -1, gap = -1; const send = () => { const h = Math.ceil(Math.max(document.documentElement.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0)); if (h === sent) return; const over = h - innerHeight; if (over > 0 && sent === innerHeight && over === gap) return; gap = over; sent = h; parent.postMessage({ weave: 'frame-height', height: h }, '*'); }; new ResizeObserver(send).observe(document.documentElement); addEventListener('load', send); })();</script>";
-export const FRAME_LINK_BASE = "<base target=\"_blank\"><script>addEventListener('click', (e) => { const a = e.target.closest?.('a[href], area[href]'); if (!a || a.hasAttribute('target') || typeof a.href !== 'string') return; if (a.protocol === 'javascript:' || a.href.split('#')[0] === location.href.split('#')[0]) a.target = '_self'; }, true);</script>";
+export const FRAME_LINK_BASE = "<base target=\"_blank\"><script>addEventListener('click', (e) => { const a = e.target.closest?.('a[href], area[href]'); if (!a || a.hasAttribute('target') || typeof a.href !== 'string') return; if (a.protocol === 'javascript:' || a.href.split('#')[0] === location.href.split('#')[0]) a.target = '_self'; }, true); addEventListener('click', (e) => { const a = e.target.closest?.('a[href], area[href]'); if (!a || e.defaultPrevented || parent === window || typeof a.href !== 'string' || a.hasAttribute('download') || (a.getAttribute('target') ?? '_blank') !== '_blank' || !/^https?:$/.test(a.protocol)) return; e.preventDefault(); parent.postMessage({ weave: 'frame-link', href: a.href }, '*'); });</script>";
 export const frameLinkBase = (bytes) => (/<base[\s/>]/i.test(bytes.toString('latin1')) ? '' : FRAME_LINK_BASE);
 const scriptJson = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 export const frameStorageScript = (items = {}) => `<script>(() => {
