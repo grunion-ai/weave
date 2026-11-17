@@ -53,8 +53,7 @@ if (s) {
   const reset = () => { for (const e of weave.listEntities(id)) weave.updateEntity(e.id, { Status: 'Open', Severity: 'High', Done: false, Points: 3, Due: '2026-10-12' }); };
 
   for (const [engine, b, profile] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`on a phone a tap on the Severity chip opens its picker sheet and writes the row without opening it, with Undo in the top toast (${engine}, ${theme}, Feature #300)`, async () => {
         reset();
         const page = await open(b, profile, theme);

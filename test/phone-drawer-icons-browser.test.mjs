@@ -15,8 +15,7 @@ const s = await launch('phone drawer icons', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`every row in the phone drawer carries its icon at one size and inset, iconless tables included (Issue #1394, ${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 402, height: 874 } });
       try {

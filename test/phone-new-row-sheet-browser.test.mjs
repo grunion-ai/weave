@@ -45,8 +45,7 @@ if (s) {
   };
 
   for (const [engine, make] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`on a phone + opens the create tray, never a bottom sheet or a popover, and writes nothing until Create (${engine}, ${theme}, Issue #739, Issue #1471)`, async () => {
         const page = await open(make, issues, theme);
         try {

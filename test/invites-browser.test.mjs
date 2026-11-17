@@ -20,8 +20,7 @@ const strayNull = (page) => page.evaluate(() => {
 if (s) {
   const { base, browser, weave } = s;
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`the home header ends on Invite, the default workspace has no workspace dots, and home has no Members box (${theme}, Issue #759, Feature #347)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });

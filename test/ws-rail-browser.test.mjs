@@ -9,8 +9,7 @@ const s = await launch('workspace rail', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`the + New workspace glyph sits on the button's centre (${theme})`, async () => {
       const page = await browser.newPage();
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);

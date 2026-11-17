@@ -9,8 +9,7 @@ const s = await launch('space icon spacing', (weave) => {
 });
 
 if (s) {
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     for (const width of [1470, 390]) {
       test(`${theme} ${width}: a space name clears its icon (Issue #888)`, async () => {
         const page = await s.browser.newPage({ viewport: { width, height: 844 } });

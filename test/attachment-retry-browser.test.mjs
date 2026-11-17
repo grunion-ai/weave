@@ -30,8 +30,7 @@ if (s) {
   const pick = (page, name = 'deck.pdf') => picker(page).setInputFiles({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 fake') });
   const stored = (row) => (weave.getEntity(rows[row].id).files ?? []).map((f) => f.name);
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`a failed upload leaves a tile with the reason and a Retry button, and empties the input (${theme})`, async () => {
       const page = await open(theme, theme);
       try {

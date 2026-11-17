@@ -74,28 +74,6 @@ if (s) {
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: a failed run reads in the warning colour with a success run beside it`, async () => {
-      const page = await open(theme, 1280, ids.sales);
-      try {
-        const attention = page.locator('.space-home-run[data-outcome=attention]').first();
-        await attention.waitFor();
-        const [text, token] = await attention.locator('.space-home-result').evaluate((n) => [getComputedStyle(n).color, (() => {
-          const probe = document.createElement('span');
-          probe.style.color = 'var(--wv-warn-text)';
-          document.body.append(probe);
-          const c = getComputedStyle(probe).color;
-          probe.remove();
-          return c;
-        })()]);
-        assert.equal(text, token);
-      } finally {
-        await page.close();
-      }
-    });
-  }
-
-  {
-    const theme = 'light';
     for (const width of [1280, WIDTH.narrowestDesktop]) {
       test(`${theme} ${width}: sections run in the ruled order on one page and long names fit`, async () => {
         const page = await open(theme, width, ids.sales, recentsOf());
@@ -116,6 +94,25 @@ if (s) {
         }
       });
     }
+
+    test(`${theme}: a failed run reads in the warning colour with a success run beside it`, async () => {
+      const page = await open(theme, 1280, ids.sales);
+      try {
+        const attention = page.locator('.space-home-run[data-outcome=attention]').first();
+        await attention.waitFor();
+        const [text, token] = await attention.locator('.space-home-result').evaluate((n) => [getComputedStyle(n).color, (() => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--wv-warn-text)';
+          document.body.append(probe);
+          const c = getComputedStyle(probe).color;
+          probe.remove();
+          return c;
+        })()]);
+        assert.equal(text, token);
+      } finally {
+        await page.close();
+      }
+    });
   }
 
   test('table links carry their row counts and open the table', async () => {
