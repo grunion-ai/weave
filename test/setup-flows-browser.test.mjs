@@ -659,8 +659,9 @@ if (openHub) {
     assert.equal(await p.locator('#clerk-pane').getAttribute('aria-busy'), null, 'the loaded sign-in form is no longer busy');
     assert.equal(await p.evaluate(() => location.hash), '', 'a leftover hash is cleared before Clerk mounts (Issue #933)');
     assert.equal(await p.locator('main [data-go="signin"]').isHidden(), true, 'the provider button steps aside for the mounted form');
-    const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display }));
+    const options = () => p.evaluate(() => ({ mounted: window.__clerkMounted, ...window.__clerkOptions, appearance: !!window.__clerkOptions.appearance?.variables?.colorPrimary, footer: window.__clerkOptions.appearance?.elements?.footerAction?.display, cardBoxOverflow: window.__clerkOptions.appearance?.elements?.cardBox?.overflow }));
     const inn = await options();
+    assert.equal(inn.cardBoxOverflow, 'visible', 'the card box clips nothing, so the email code boxes keep their top edge and focus ring (Issue #1839)');
     assert.deepEqual([inn.mounted, inn.withSignUp, inn.routing, inn.appearance, inn.footer], ['signin', true, 'virtual', true, 'none'], 'sign-in first; a first-time SSO login becomes a sign-up; Clerk never reads the page hash');
     assert.equal(await p.evaluate(() => window.__clerkLoadedWithUi), true, 'clerk-js 6 is loaded with its UI bundle (Issue #922)');
     assert.match(inn.forceRedirectUrl, /^\/api\/auth\/oidc\/start\?start=1&next=%2Fstart$/);
