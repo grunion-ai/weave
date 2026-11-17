@@ -1,1 +1,0 @@
-- A board redraws when a record is saved in the docked pane (Issue #1833). The pane told only the grid about a save, so a card kept its old group and old field values until the page was reloaded. A state picked from the pane's chip menu now refreshes the grid as well, which it also skipped.
