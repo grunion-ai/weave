@@ -12,7 +12,7 @@ import { runInNewContext } from 'node:vm';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
-import { packTar } from '../src/backup.js';
+import { packTar } from './lib/tar.mjs';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
 import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, shaFromRefs, rateLimitReset, REPO_API, REPO_GIT, REPO_CODELOAD } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';

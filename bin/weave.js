@@ -47,14 +47,6 @@ function parseJsonFlag(name) {
   }
 }
 
-function numberFlag(name, fallback = null) {
-  const raw = flags[name];
-  if (raw == null || raw === true || raw === '') return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) throw new WeaveError(`--${name} must be a number, not '${raw}'`, 'invalid');
-  return value;
-}
-
 function resolveEntityRef(w, ref, dbFlag) {
   const m = String(ref).match(/^(.+)#(\d+)$/);
   if (m) {

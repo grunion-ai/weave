@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import vm from 'node:vm';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 
@@ -25,6 +26,7 @@ async function stand() {
     return { status: res.status, json: await res.json() };
   };
   const page = async () => (await fetch(`${base}/t`, { headers: { Cookie: cookie } })).text();
+  const served = async (path) => (await fetch(base + path)).text();
   const stop = () => {
     server.close();
     for (const [k, v] of [['WEAVE_APPLET_PASSCODE', prior.passcode], ['WEAVE_APPLET_TABLE', prior.table]]) {
@@ -32,7 +34,7 @@ async function stand() {
       else process.env[k] = v;
     }
   };
-  return { w, task, call, page, stop };
+  return { w, task, call, page, served, stop };
 }
 
 test('the applet reads a task with the base of its description, and a write from that base lands and answers the next one (Issue #1682)', async () => {
@@ -69,14 +71,15 @@ test('an applet write from a stale base, or with none on a written document, is 
 });
 
 test('the applet page hashes text exactly as the server does, with no crypto.subtle (Issue #1682)', async () => {
-  const { page, stop } = await stand();
+  const { page, served, stop } = await stand();
   try {
     const src = await page();
-    const fn = /const docBase = (\(text\) => \{[\s\S]*?\n {2}\});/.exec(src)?.[1];
-    assert.ok(fn, 'the page carries its own SHA-256');
-    assert.doesNotMatch(fn, /crypto/, 'a page served over plain http has no crypto.subtle to lean on');
-    const docBase = new Function(`return ${fn}`)();
+    assert.ok(src.indexOf('<script src="/doc-base.js"></script>') > -1, 'the page loads the shared SHA-256');
+    assert.ok(src.indexOf('/doc-base.js') < src.indexOf('const docBase = globalThis.weaveDocBase;'), 'before the client that reads it');
+    const sandbox = { TextEncoder };
+    vm.runInNewContext(await served('/doc-base.js'), sandbox);
+    assert.equal(typeof sandbox.crypto, 'undefined', 'a page served over plain http has no crypto.subtle to lean on');
     const samples = ['', 'a', 'FIRST_TEXT', 'é à ü', '日本語のテキスト', '🧵 weave 🪡', '\n\n- [ ] task\n', 'x'.repeat(55), 'x'.repeat(56), 'x'.repeat(63), 'x'.repeat(64), 'x'.repeat(65), 'ü'.repeat(60), 'line\n'.repeat(4000)];
-    for (const text of samples) assert.equal(docBase(text), hash(text), `${JSON.stringify(text.slice(0, 20))} (${text.length} chars)`);
+    for (const text of samples) assert.equal(sandbox.weaveDocBase(text), hash(text), `${JSON.stringify(text.slice(0, 20))} (${text.length} chars)`);
   } finally { stop(); }
 });

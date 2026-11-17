@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { backup, packTar, streamTar } from '../src/backup.js';
+import { backup, streamTar } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
+import { packTar } from './lib/tar.mjs';
 
 const BLOCK = 512;
 const PASS = 'correct horse battery staple';

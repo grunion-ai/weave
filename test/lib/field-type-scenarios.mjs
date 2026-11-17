@@ -191,13 +191,3 @@ export function nameFieldScenarios() {
     return { to, ...(r.error ? { error: r.error } : { type: w.getField(deal.id, deal.nameFieldId).type }) };
   });
 }
-
-export function fieldTypeScenarios() {
-  return {
-    add: addScenarios(),
-    update: updateScenarios(),
-    extraUpdate: extraUpdateScenarios(),
-    migrate: migrationScenarios(),
-    nameField: nameFieldScenarios(),
-  };
-}

@@ -306,12 +306,6 @@ async function hook(handler) {
   return { server, url: `http://127.0.0.1:${server.address().port}/hook` };
 }
 
-async function until(fn) {
-  const deadline = Date.now() + 5000;
-  while (!fn() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
-  return fn();
-}
-
 function notifier(w, t, url) {
   return w.createAutomation(t.id, { name: 'Notify', trigger: { type: 'state-changed', field: 'Status', toState: 'Done' }, actions: [{ type: 'webhook', url }] });
 }

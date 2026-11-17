@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -50,12 +50,10 @@ const INTERNAL = {
   settleDeferred: 'process plumbing (Feature #250): runDeferredMigrations settles each workspace a supervised worker opened while the old worker still served; an agent never calls it',
   userTables: 'read helper (Issue #386) — the tables a person made, registry excluded; the hub list\'s `tables` count reads it, and describeSchema already carries the `system` flag an agent filters on',
   schemaVersion: 'read helper (Issue #274) — the structure\'s fingerprint; every API response stamps it as X-Weave-Schema-Version and GET /api/workspace ships it in the body, so an agent reads it without a verb of its own',
-  workflowWorkspace: 'hub plumbing (Issue #875): the member route asks which workspace a Workflows row belongs to before it lets a member read it by id; an agent reads the row\'s Workspace column',
   detachHubRegistry: 'migration plumbing (Issue #979): validates and copies legacy hub registry records into independent workspaces before serving requests; never an agent action',
   joinRegistry: 'legacy registry enrollment retained for migration fixtures and compatibility; the current hub keeps workspaces independent',
   hostRegistry: 'legacy local registry restoration for migration and recovery plumbing; never an agent action',
   syncRegistry: 'hub plumbing (Feature #219) — re-asserts a workspace\'s rows after a soft delete or restore; rebuildRegistry is the surfaced verb',
-  dropWorkspace: 'hub plumbing (Feature #219) — a hard workspace delete drops its rows; DELETE /api/workspaces/:id is the door',
   ownsKey: 'permission helper (Issue #497): the key routes ask whether the caller\'s account owns a credential before letting a non-architect rotate or delete it; weave_keys list shows the owner',
   auditWorkspace: 'audit plumbing (Issue #495): the hub writes one audit entry on the root for each workspace create, trash, restore and delete; GET /api/audit and weave_audit read them',
   now: 'the engine clock — the short and relative date costumes and today()/now() defaults read it; a test pins it',
@@ -66,8 +64,8 @@ const INTERNAL = {
   credentialConfig: 'read helper — a key field\'s config with the #143 defaults filled in',
   credentialLink: 'read helper — where a remote keystore keeps the credential',
   bodyBlocks: 'read helper — the resolved body order already ships inside the schema payload',
-  viewByShareToken: 'the share link IS this call', verifyToken: 'auth path',
-  canSee: 'access helper (Feature #141): the router asks whether a mention or path target sits in a space the caller sees', hidesAnySpace: 'access helper (Feature #141): true when the caller cannot see every space', asAccount: 'test and CLI helper (Feature #141): runs a block as one account, the way a request does', noteTokenWrite: 'audit hook (Feature #141): the router records each write a space-scoped token makes',
+  verifyToken: 'auth path',
+  canSee: 'access helper (Feature #141): the router asks whether a mention or path target sits in a space the caller sees', asAccount: 'test and CLI helper (Feature #141): runs a block as one account, the way a request does', noteTokenWrite: 'audit hook (Feature #141): the router records each write a space-scoped token makes',
   shareByToken: 'auth path (Feature #194): a /s/<token> link and an Authorization: Bearer wvs_ header ARE this call; GET /api/share answers what the token reaches',
   verifySession: 'auth path — the wv_session cookie IS this call (Feature #222 part 2)',
   removedSession: 'auth path (Feature #280) — the access-removed page reads it from a browser cookie; an agent holds no browser session',
@@ -93,7 +91,6 @@ const INTERNAL = {
   invitesForEmail: 'auth path (Feature #290) — the pending invites sent to the signed-in person\'s verified address; GET /api/start lists them as rows of kind "invite", and an agent holds no browser session',
   acceptInvite: 'auth path (Feature #290) — accepts one of those invites by its id through the same path as the link; POST /api/start/invites/:slug/:ref is the door',
   renameAccount: 'Users row door (Feature #318) — editing a Users row\'s Name renames the account; weave_update_entity is the tool',
-  viewQuery: 'read helper (Issue #839): the where, sort and search one saved view applies; weave_query {view}, CLI query --view and POST /tables/:id/query {view} run it',
   permalink: 'link formatter (Feature #203): the one /w/<ws>/e/<uuid> path every door emits as `url`; the permalink gate below holds every emitter to it',
   takeOneTime: 'write plumbing (Feature #318) — the invite link or token a Users row create hands back once; every create door ships it beside the row',
   readFileStorage: 'browser bridge (Issue #1176): the app reads an HTML file\'s page storage over GET /api/files/:id/storage and seeds it into the ?view page; an agent reads the file itself with weave_files',
@@ -117,6 +114,15 @@ test('every engine capability is a decision: surfaced, or internal with a reason
     .filter((n) => n !== 'constructor' && typeof Weave.prototype[n] === 'function')
     .filter((n) => !mapped.has(n) && !(n in INTERNAL));
   assert.deepEqual(missing, [], `unsurfaced engine methods — add them to SURFACE or INTERNAL: ${missing.join(', ')}`);
+});
+
+test('an internal method whose reason names a route or door has a caller in src/', () => {
+  const src = readdirSync(join(ROOT, 'src'), { recursive: true }).filter((f) => f.endsWith('.js') && !f.startsWith('vendor')).map((f) => readFileSync(join(ROOT, 'src', f), 'utf8')).join('\n');
+  const stale = Object.entries(INTERNAL)
+    .filter(([, why]) => /\b(route|routes|router|door)\b/i.test(why))
+    .filter(([name]) => !new RegExp(`\\.${name}\\b`).test(src))
+    .map(([name]) => name);
+  assert.deepEqual(stale, [], `INTERNAL reasons name a route or door that never calls them: ${stale.join(', ')}`);
 });
 
 test('every capability has an MCP tool that exists and dispatches', () => {

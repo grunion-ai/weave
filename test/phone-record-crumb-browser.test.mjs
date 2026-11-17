@@ -50,6 +50,27 @@ if (s) {
       } finally { await page.close(); }
     });
 
+    test(`the phone record chip sets its number in the table name's face, size, tracking and baseline (${engine}, Issue #1391)`, async () => {
+      const page = await open(make, peek, '#dock:not([hidden]) textarea.name-edit');
+      try {
+        const m = await page.evaluate(() => {
+          const cur = document.querySelector('#dock .crumb-row .crumb-cur');
+          const read = (sel) => {
+            const node = cur.querySelector(sel);
+            const css = getComputedStyle(node);
+            const box = node.getBoundingClientRect();
+            return { family: css.fontFamily, size: css.fontSize, tracking: css.letterSpacing, top: box.top, bottom: box.bottom };
+          };
+          return { tbl: read('.crumb-tbl'), pid: read('.crumb-pid') };
+        });
+        assert.equal(m.pid.family, m.tbl.family, `the number draws in the chip's own face: ${JSON.stringify(m)}`);
+        assert.equal(m.pid.size, m.tbl.size, `the number draws at the chip's own size: ${JSON.stringify(m)}`);
+        assert.equal(m.pid.tracking, m.tbl.tracking, `the number keeps the chip's tracking: ${JSON.stringify(m)}`);
+        assert.ok(Math.abs(m.pid.top - m.tbl.top) <= 1, `the number's box top meets the table name's: ${JSON.stringify(m)}`);
+        assert.ok(Math.abs(m.pid.bottom - m.tbl.bottom) <= 1, `the number sits on the table name's baseline: ${JSON.stringify(m)}`);
+      } finally { await page.close(); }
+    });
+
     test(`the full record page on a phone shows only the number after its table crumb (${engine}, Issue #982)`, async () => {
       const page = await open(make, full, '#main textarea.name-edit');
       try {

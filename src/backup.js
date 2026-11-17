@@ -87,13 +87,6 @@ export function tarWriter(out, { mtime = Math.floor(Date.now() / 1000), seal = n
   };
 }
 
-export function packTar(out, entries) {
-  const t = tarWriter(out);
-  const digests = entries.map((e) => t.add(e));
-  t.close();
-  return digests;
-}
-
 const field = (h, off, len) => h.toString('utf8', off, off + len).replace(/\0.*$/s, '');
 
 function tarHeader(h, off) {
@@ -106,19 +99,6 @@ function tarHeader(h, off) {
   const name = (prefix ? `${prefix}/` : '') + field(h, 0, 100);
   const type = h[156];
   return { name, size, file: type === 0x30 || type === 0 };
-}
-
-export function readTar(path) {
-  const buf = Buffer.isBuffer(path) ? path : readFileSync(path);
-  const entries = [];
-  for (let off = 0; off + BLOCK <= buf.length; ) {
-    const h = tarHeader(buf.subarray(off, off + BLOCK), off);
-    if (!h) break;
-    off += BLOCK;
-    if (h.file) entries.push({ name: h.name, data: buf.subarray(off, off + h.size) });
-    off += Math.ceil(h.size / BLOCK) * BLOCK;
-  }
-  return entries;
 }
 
 export async function streamTar(chunks, open) {
@@ -171,15 +151,9 @@ export function isEncrypted(path) {
   } finally { closeSync(fd); }
 }
 
-function pump(src, dst, transform, { start = 0, end = Infinity } = {}) {
+function pump(src, dst) {
   const buf = Buffer.alloc(CHUNK);
-  let pos = start;
-  while (pos < end) {
-    const n = readSync(src, buf, 0, Math.min(CHUNK, end - pos), pos);
-    if (n <= 0) break;
-    writeSync(dst, transform(buf.subarray(0, n)));
-    pos += n;
-  }
+  for (let n, pos = 0; (n = readSync(src, buf, 0, CHUNK, pos)) > 0; pos += n) writeSync(dst, buf.subarray(0, n));
 }
 
 export function sealer(passphrase, { salt = randomBytes(16), iv = randomBytes(12) } = {}) {
@@ -189,16 +163,6 @@ export function sealer(passphrase, { salt = randomBytes(16), iv = randomBytes(12
     update: (chunk) => cipher.update(chunk),
     final: () => Buffer.concat([cipher.final(), cipher.getAuthTag()]),
   };
-}
-
-export function encryptFile(src, dst, passphrase, { salt, iv } = {}) {
-  const seal = sealer(passphrase, { salt, iv });
-  const s = openSync(src, 'r'), d = openSync(dst, 'w');
-  try {
-    writeSync(d, seal.head);
-    pump(s, d, (c) => seal.update(c));
-    writeSync(d, seal.final());
-  } finally { closeSync(s); closeSync(d); }
 }
 
 const cannotDecrypt = () => new WeaveError('Cannot decrypt the archive — wrong passphrase, or the archive was altered', 'invalid');
@@ -218,7 +182,7 @@ function decipherOf(path, passphrase) {
   return { decipher, size };
 }
 
-async function* unsealed(path, passphrase) {
+export async function* unsealed(path, passphrase) {
   const { decipher, size } = decipherOf(path, passphrase);
   if (size > SEALED_HEAD + 16) {
     for await (const chunk of createReadStream(path, { start: SEALED_HEAD, end: size - 17, highWaterMark: STREAM_CHUNK })) yield decipher.update(chunk);
@@ -226,21 +190,6 @@ async function* unsealed(path, passphrase) {
   let last;
   try { last = decipher.final(); } catch { throw cannotDecrypt(); }
   yield last;
-}
-
-export function decryptFile(src, dst, passphrase) {
-  const { decipher, size } = decipherOf(src, passphrase);
-  const s = openSync(src, 'r');
-  let d = null;
-  try {
-    d = openSync(dst, 'w');
-    pump(s, d, (c) => decipher.update(c), { start: SEALED_HEAD, end: size - 16 });
-    try { writeSync(d, decipher.final()); } catch {
-      closeSync(d); d = null;
-      rmSync(dst, { force: true });
-      throw cannotDecrypt();
-    }
-  } finally { closeSync(s); if (d != null) closeSync(d); }
 }
 
 export const keystorePath = (env, dataDir) => keystoreFilePath(env.WEAVE_KEYSTORE) || join(dataDir, 'keystore.json');
@@ -477,7 +426,7 @@ function landFile(from, to, mode) {
   try {
     const src = openSync(from, 'r'), dst = openSync(temporary, 'wx', mode);
     try {
-      pump(src, dst, (c) => c);
+      pump(src, dst);
       fsyncSync(dst);
     } finally { closeSync(src); closeSync(dst); }
     renameSync(temporary, to);

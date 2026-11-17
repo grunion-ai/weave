@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { backup, restore, readTar, keystorePath } from '../src/backup.js';
+import { backup, restore, keystorePath } from '../src/backup.js';
+import { readTar } from './lib/tar.mjs';
 import { keychainStore, fileStore } from '../src/keystore.js';
 import { tempDir } from './lib/temp.mjs';
 import { hasKeychain, throwawayKeychain } from './lib/keychain.mjs';
@@ -50,10 +51,11 @@ test('under the keychain store a backup carries key names and no secret material
   const raw = readFileSync(r.path);
   assert.equal(raw.includes(SECRET), false, 'the known test value is not in the archive');
   assert.equal(raw.includes(Buffer.from(SECRET).toString('hex')), false);
-  const names = readTar(r.path).map((e) => e.name);
+  const entries = await readTar(r.path);
+  const names = entries.map((e) => e.name);
   assert.ok(names.includes('keys.json'));
   assert.ok(!names.includes('keystore.json'));
-  assert.deepEqual(JSON.parse(readTar(r.path).find((e) => e.name === 'keys.json').data), { store: 'keychain', names: ['hook', 'stripe'] });
+  assert.deepEqual(JSON.parse(entries.find((e) => e.name === 'keys.json').data), { store: 'keychain', names: ['hook', 'stripe'] });
 });
 
 test('a restore of a keychain backup reports each value the key store here is missing', async () => {
