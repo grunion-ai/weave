@@ -3098,7 +3098,6 @@ function menuBounds(node) {
   return viewport;
 }
 
-const MENU_SHEET = matchMedia('(max-width: 719px)');
 let openMenu = null;
 
 function menuRow(it, done) {
@@ -3125,7 +3124,7 @@ function menuRow(it, done) {
   return el('button', { ...attrs, class: cls, type: 'button', title: it.title, onclick: async () => { done(); await it.run(); } }, ...body);
 }
 
-function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, head = null, align = 'left', label = null, className = '', minWidth = 0, trigger = anchor, onRun = null } = {}) {
+function menu(items, { anchor = null, point = null, sheet = dockCoversScreen.matches, head = null, align = 'left', label = null, className = '', minWidth = 0, trigger = anchor, onRun = null } = {}) {
   if (openMenu && !openMenu.pop.isConnected) openMenu.close();
   if (openMenu && trigger && openMenu.trigger === trigger) { openMenu.close(); return null; }
   openMenu?.close();
@@ -6283,7 +6282,7 @@ function tableGroupButton(ref) {
     const rows = (db) => [tableControlHeader('Group', () => pop?.remove()), ...levelsBlock(db, 'group', (patch) => paneWrite(db, patch))];
     pop = tableControlPopover(btn, ref.db, 'table-group-popover', rows(ref.db));
     if (!pop) return;
-    const grip = MENU_SHEET.matches ? sheetGrip(pop, () => pop.remove()) : null;
+    const grip = dockCoversScreen.matches ? sheetGrip(pop, () => pop.remove()) : null;
     if (grip) pop.prepend(grip);
     pop.refresh = (db) => { pop.replaceChildren(...(grip ? [grip] : []), ...rows(db)); pop.reposition?.(); };
   });
@@ -11629,7 +11628,6 @@ function wireWsNew() {
   }
 }
 
-const narrowShell = matchMedia('(max-width: 719px)');
 const tightShell = matchMedia('(max-width: 1199px)');
 let navPeekDwell, navPeekLeave;
 function closeNavPeek() {
@@ -11653,7 +11651,7 @@ function wireNavCollapse() {
   const rail = $('#ws-rail');
   if (!app || !collapse || !sidebar || !rail) return;
   const apply = setNavCollapsed;
-  collapse.addEventListener('click', () => (narrowShell.matches ? closeNavPeek() : apply(true)));
+  collapse.addEventListener('click', () => (dockCoversScreen.matches ? closeNavPeek() : apply(true)));
   const strip = el('div', { id: 'nav-hot-strip', 'aria-hidden': 'true' });
   app.append(strip);
   const panel = [sidebar, rail, strip];
@@ -11661,24 +11659,24 @@ function wireNavCollapse() {
   const leave = () => {
     clearTimeout(navPeekDwell);
     navPeekDwell = null;
-    if (!narrowShell.matches && app.classList.contains('nav-peek') && !navPeekLeave) navPeekLeave = setTimeout(closeNavPeek, 400);
+    if (!dockCoversScreen.matches && app.classList.contains('nav-peek') && !navPeekLeave) navPeekLeave = setTimeout(closeNavPeek, 400);
   };
   addEventListener('pointermove', (e) => {
     const moved = pointer && (pointer.x !== e.clientX || pointer.y !== e.clientY);
     pointer = { x: e.clientX, y: e.clientY };
-    if (!moved || narrowShell.matches) return;
+    if (!moved || dockCoversScreen.matches) return;
     if (!panel.some((n) => n.contains(e.target)) && !e.target.closest('.wv-menu')) return leave();
     clearTimeout(navPeekLeave);
     navPeekLeave = null;
     if (e.target !== strip || !app.classList.contains('nav-collapsed') || app.classList.contains('nav-peek') || navPeekDwell) return;
     navPeekDwell = setTimeout(() => {
       navPeekDwell = null;
-      if (app.classList.contains('nav-collapsed') && !narrowShell.matches && strip.matches(':hover')) app.classList.add('nav-peek');
+      if (app.classList.contains('nav-collapsed') && !dockCoversScreen.matches && strip.matches(':hover')) app.classList.add('nav-peek');
     }, 150);
   }, true);
   strip.addEventListener('click', () => apply(false));
   sidebar.addEventListener('click', (e) => {
-    if (!app.classList.contains('nav-peek') || narrowShell.matches) return;
+    if (!app.classList.contains('nav-peek') || dockCoversScreen.matches) return;
     if (e.target.closest('a,button,input,textarea,select,label')) return;
     apply(false);
   });
@@ -11695,8 +11693,8 @@ function wireNavCollapse() {
   const shut = closeNavPeek;
   app.addEventListener('click', (e) => { if (e.target === app) shut(); });
   addEventListener('hashchange', shut);
-  for (const side of [sidebar, rail]) side.addEventListener('click', (e) => { if (narrowShell.matches && e.target.closest('a[href]')) shut(); }, true);
-  narrowShell.addEventListener('change', () => {
+  for (const side of [sidebar, rail]) side.addEventListener('click', (e) => { if (dockCoversScreen.matches && e.target.closest('a[href]')) shut(); }, true);
+  dockCoversScreen.addEventListener('change', () => {
     shut();
     for (const btn of document.querySelectorAll('.nav-menu')) labelNavMenu(btn);
   });
@@ -11758,7 +11756,7 @@ function wireNavHold() {
   const rail = $('#ws-rail');
   const sidebar = $('#sidebar');
   if (!app || !rail || !sidebar) return;
-  const drawer = () => (narrowShell.matches ? [sidebar, rail] : [sidebar]);
+  const drawer = () => (dockCoversScreen.matches ? [sidebar, rail] : [sidebar]);
   const stops = () => drawer().flatMap((n) => [...n.querySelectorAll(MODAL_STOPS)])
     .filter(reachableStop);
   const expanded = (on) => { for (const b of document.querySelectorAll('.nav-menu')) b.setAttribute('aria-expanded', on ? 'true' : 'false'); };
@@ -11794,12 +11792,12 @@ function wireNavHold() {
     holdFrame = requestAnimationFrame(() => {
       holdFrame = requestAnimationFrame(() => {
         holdFrame = null;
-        if (!held && app.classList.contains('nav-peek') && narrowShell.matches) hold();
+        if (!held && app.classList.contains('nav-peek') && dockCoversScreen.matches) hold();
       });
     });
   };
   new MutationObserver(() => {
-    const open = app.classList.contains('nav-peek') && narrowShell.matches;
+    const open = app.classList.contains('nav-peek') && dockCoversScreen.matches;
     if (open) {
       if (!held && holdFrame == null) holdAfterPaint();
       return;
@@ -11831,7 +11829,7 @@ function wireNavHold() {
 }
 
 function labelNavMenu(btn) {
-  const label = narrowShell.matches ? 'Open navigation' : 'Show sidebar';
+  const label = dockCoversScreen.matches ? 'Open navigation' : 'Show sidebar';
   btn.title = label;
   btn.setAttribute('aria-label', label);
 }
@@ -11839,7 +11837,7 @@ function navMenuButton() {
   const btn = el('button', {
     class: 'btn btn-sm btn-icon btn-ghost-secondary nav-menu', type: 'button', 'aria-controls': 'sidebar',
     'aria-expanded': $('#app')?.classList.contains('nav-held') ? 'true' : 'false',
-    onclick: () => (narrowShell.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
+    onclick: () => (dockCoversScreen.matches ? $('#app').classList.add('nav-peek') : setNavCollapsed(false)),
   });
   labelNavMenu(btn);
   btn.innerHTML = '<svg class="nav-menu-panel" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
