@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 import { tempDir } from './lib/temp.mjs';
+import { receiver, reply } from './lib/receiver.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
 const SECRET = 'pasted-listener-value-wxyz-3131';
@@ -13,29 +13,17 @@ const START = Date.parse('2026-11-09T12:00:00Z');
 
 async function source() {
   const list = { data: [{ id: 't1', title: 'One', status: 'open' }, { id: 't2', title: 'Two', status: 'open' }] };
-  const api = { list, seen: [], answer: null, etag: null, cursor: null };
-  const server = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    api.seen.push({ method: req.method, url: req.url, headers: req.headers, body });
-    if (req.method !== 'GET') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}'); return; }
+  const api = { list, answer: null, etag: null, cursor: null };
+  Object.assign(api, await receiver((req, res) => {
+    if (req.method !== 'GET') { reply(res); return; }
     if (api.answer) { const a = api.answer; api.answer = null; a(req, res); return; }
     const text = JSON.stringify(api.cursor ? { ...api.list, next: api.cursor } : api.list);
     const tag = api.etag ? `"${api.etag}"` : null;
     if (tag && req.headers['if-none-match'] === tag) { res.writeHead(304, { ETag: tag }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'application/json', ...(tag ? { ETag: tag } : {}) });
     res.end(text);
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const real = globalThis.fetch;
-  globalThis.fetch = (url, init) => {
-    const u = new URL(String(url));
-    if (u.protocol === 'https:' && u.hostname === HOST) { u.protocol = 'http:'; u.host = `127.0.0.1:${port}`; }
-    return real(u, init);
-  };
+  }, { host: HOST }));
   api.gets = () => api.seen.filter((s) => s.method === 'GET' && s.url.startsWith('/v1/tasks'));
-  api.close = () => { globalThis.fetch = real; server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); };
   return api;
 }
 

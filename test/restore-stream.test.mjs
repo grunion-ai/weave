@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -10,6 +10,7 @@ import { Weave } from '../src/engine.js';
 import { backup, restore, tarWriter, cloudStore } from '../src/backup.js';
 import { ROOT } from './lib/source.mjs';
 import { tempDir } from './lib/temp.mjs';
+import { rssServe } from './lib/rss-serve.mjs';
 
 const BIN = join(ROOT, 'bin', 'weave.js');
 const MiB = 1024 * 1024;
@@ -74,16 +75,6 @@ function fileBucket() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, objects, endpoint: `http://127.0.0.1:${server.address().port}` })));
 }
 
-const PROBE = `data:text/javascript,${encodeURIComponent(`
-let base = 0, peak = 0, sweep = null;
-const look = () => { const now = process.memoryUsage.rss(); if (now > peak) peak = now; };
-setInterval(look, 2).unref();
-process.on('message', (m) => {
-  if (m?.rss === 'start') { globalThis.gc(); base = peak = process.memoryUsage.rss(); clearInterval(sweep); sweep = setInterval(() => globalThis.gc(), 20); process.send({ rss: 'started', base }); }
-  if (m?.rss === 'read') { clearInterval(sweep); look(); process.send({ rss: 'read', base, peak }); }
-});
-`)}`;
-
 async function serving(endpoint) {
   const dir = tempDir('weave-restore-stream-hub-');
   const db = join(dir, 'home.db');
@@ -97,30 +88,10 @@ async function serving(endpoint) {
   docs.save();
   docs.store.close();
   const env = { ...ENV, WEAVE_BACKUP_BUCKET: 'vault', WEAVE_BACKUP_ENDPOINT: endpoint, WEAVE_BACKUP_KEY_ID: 'k', WEAVE_BACKUP_SECRET: 's', WEAVE_BACKUP_REGION: 'auto' };
-  const child = spawn(process.execPath, ['--expose-gc', '--import', PROBE, BIN, 'serve', '--port', '0', '--host', '127.0.0.1', '--data', db], {
-    cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    timeout: 300_000,
-  });
-  let log = '';
-  child.stdout.on('data', (d) => { log += d; });
-  child.stderr.on('data', (d) => { log += d; });
-  const exited = new Promise((resolve) => child.once('exit', resolve));
-  const { port } = await new Promise((resolve, reject) => {
-    child.on('message', (m) => { if (m?.weave === 'listening') resolve(m); });
-    exited.then((code) => reject(new Error(`weave serve exited (${code}) before it listened:\n${log}`)));
-  });
-  const ask = (rss, answer) => new Promise((resolve) => {
-    const on = (m) => { if (m?.rss === answer) { child.off('message', on); resolve(m); } };
-    child.on('message', on);
-    child.send({ rss });
-  });
+  const s = await rssServe(db, env);
   return {
-    dir, alice,
-    migrate: (body) => fetch(`http://127.0.0.1:${port}/api/workspaces`, { method: 'POST', headers: { Authorization: `Bearer ${alice.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
-    start: () => ask('start', 'started'),
-    grown: async () => { const { base, peak } = await ask('read', 'read'); return peak - base; },
-    log: () => log,
-    stop: async () => { if (child.exitCode === null && child.signalCode === null) child.disconnect(); await exited; },
+    ...s, dir, alice,
+    migrate: (body) => fetch(`${s.base}/api/workspaces`, { method: 'POST', headers: { Authorization: `Bearer ${alice.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   };
 }
 

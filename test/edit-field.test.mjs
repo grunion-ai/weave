@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { cssRules } from './lib/source.mjs';
+import { contrast } from './lib/contrast.mjs';
 
 const PUBLIC = new URL('../public/', import.meta.url);
 const read = (p) => readFileSync(new URL(p, PUBLIC), 'utf8');
@@ -8,20 +10,6 @@ const CSS = read('style.css');
 const SCRIPTS = readdirSync(PUBLIC).filter((f) => f.endsWith('.js')).map((f) => [f, read(f)]);
 const APP = read('app.js');
 
-const rules = () => {
-  const out = [];
-  const tok = /([^{}]+)\{|\}/g;
-  let m;
-  while ((m = tok.exec(CSS))) {
-    if (m[0] === '}') continue;
-    const head = m[1].trim();
-    if (head.startsWith('@')) continue;
-    const end = CSS.indexOf('}', tok.lastIndex);
-    out.push({ selector: head, body: CSS.slice(tok.lastIndex, end) });
-    tok.lastIndex = end + 1;
-  }
-  return out;
-};
 const split = (list) => {
   const parts = [];
   let depth = 0;
@@ -76,7 +64,7 @@ test('every grid cell, field row, view rename, nav add and description editor is
 });
 
 test('.wv-edit paints rest, hover and one focus ring, and beats the global focus outline (Issue #1030)', () => {
-  const all = rules();
+  const all = cssRules();
   const base = all.find((r) => r.selector === '.wv-edit');
   assert.ok(base, 'a bare .wv-edit rule');
   assert.equal(decl(base.body, 'padding'), 'var(--wv-edit-pad)');
@@ -99,7 +87,7 @@ test('.wv-edit paints rest, hover and one focus ring, and beats the global focus
 
 test('no rule for the six editable fields paints its own focus border, outline or shadow (Issue #1030)', () => {
   const own = [];
-  for (const r of rules()) {
+  for (const r of cssRules()) {
     for (const sel of split(r.selector)) {
       const bare = stripNot(sel);
       if (!FIELDS.test(bare) || !/:focus(?!-within)/.test(bare)) continue;
@@ -110,13 +98,13 @@ test('no rule for the six editable fields paints its own focus border, outline o
 });
 
 test('no rule for the six editable fields paints its own resting border colour or outline (Issue #1030)', () => {
-  const own = rules().filter((r) => split(r.selector).some((s) => FIELDS.test(s) && !/:hover|:focus|::placeholder/.test(s) && !s.startsWith('.cell-pop') && !s.startsWith('#main > .table-wrap'))
+  const own = cssRules().filter((r) => split(r.selector).some((s) => FIELDS.test(s) && !/:hover|:focus|::placeholder/.test(s) && !s.startsWith('.cell-pop') && !s.startsWith('#main > .table-wrap'))
     && /(?:^|;)\s*(?:border-color|outline)\s*:/.test(r.body));
   assert.deepEqual(own.map((r) => r.selector), []);
 });
 
 test('an editable field that sizes to its content never collapses below 8ch, outside the phone list pill that hides when empty (Issue #1030)', () => {
-  const all = rules();
+  const all = cssRules();
   const floor = all.find((r) => split(r.selector).includes('.wv-edit:placeholder-shown'));
   assert.equal(floor && decl(floor.body, 'min-width'), '8ch', 'an empty field showing its placeholder is at least 8ch');
   const sized = all.filter((r) => split(r.selector).some((s) => FIELDS.test(s) && !s.startsWith('#main > .table-wrap')) && decl(r.body, 'field-sizing') === 'content');
@@ -126,16 +114,11 @@ test('an editable field that sizes to its content never collapses below 8ch, out
 });
 
 test('one ring token paints the editor and the selected cell, opaque and at least 3:1 in both themes (Issue #1366)', () => {
-  const all = rules();
+  const all = cssRules();
   const token = (head) => decl(all.find((r) => r.selector === head && decl(r.body, '--wv-edit-ring')).body, '--wv-edit-ring');
   const light = token(':root, [data-bs-theme="light"]');
   const dark = token('[data-bs-theme="dark"]');
-  const lum = (hex) => {
-    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  };
-  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const ratio = (a, b) => contrast(...[a, b].map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))));
   assert.match(light, /^#[0-9a-f]{6}$/);
   assert.match(dark, /^#[0-9a-f]{6}$/);
   assert.ok(ratio(light, '#ffffff') >= 3, `light ring ${ratio(light, '#ffffff').toFixed(2)}:1`);
@@ -146,7 +129,7 @@ test('one ring token paints the editor and the selected cell, opaque and at leas
 });
 
 test('the view title pulls left only when it leads its row, and the row keeps an 8px gap in both modes (Issue #1030)', () => {
-  const all = rules();
+  const all = cssRules();
   const pulls = all.filter((r) => /\.view-title(?![-\w])/.test(r.selector) && /margin(-left)?\s*:/.test(r.body) && /-\d/.test(decl(r.body, 'margin') ?? decl(r.body, 'margin-left') ?? ''));
   assert.ok(pulls.some((r) => r.selector === '.view-title-row > .view-title-h:first-child > .view-title'), 'the title pulls left when it leads');
   assert.deepEqual(pulls.filter((r) => !/:first-child > \.view-title$|\.icon-btn:has\(> \.icon-ghost\) \+ \.view-title-h > \.view-title$/.test(r.selector)).map((r) => r.selector), [], 'or when the only thing before it is the icon slot the phone hides');
@@ -156,7 +139,7 @@ test('the view title pulls left only when it leads its row, and the row keeps an
 });
 
 test('the title info button is a superscript glyph whose hit area leaves the row height alone (Issue #1030)', () => {
-  const all = rules();
+  const all = cssRules();
   const info = all.find((r) => r.selector === '.view-title-row > .desc-info');
   assert.ok(info);
   assert.equal(decl(info.body, '--wv-hit'), undefined, 'the box reads the one --wv-hit token, 24px on a fine pointer, instead of a copy of its own (Issue #1712)');

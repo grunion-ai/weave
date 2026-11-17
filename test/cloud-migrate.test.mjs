@@ -11,31 +11,13 @@ import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import { backup, cloudStore } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
+import { memoryBucket } from './lib/s3.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
 const run = promisify(execFile);
 const tmp = (label) => tempDir(`weave-migrate-${label}-`);
 const PASS = 'correct horse battery staple';
-
-function memoryBucket() {
-  const objects = new Map();
-  let clock = Date.parse('2026-10-12T04:00:00Z');
-  const fetchImpl = async (url, { method = 'GET', body } = {}) => {
-    const u = new URL(url);
-    const key = u.pathname.split('/').slice(2).map(decodeURIComponent).join('/');
-    if (method === 'PUT') { clock += 1000; objects.set(key, { body: Buffer.from(body), at: new Date(clock).toISOString() }); return new Response('', { status: 200 }); }
-    if (method === 'DELETE') { objects.delete(key); return new Response(null, { status: 204 }); }
-    if (u.searchParams.get('list-type') === '2') {
-      const prefix = u.searchParams.get('prefix') ?? '';
-      const rows = [...objects].filter(([k]) => k.startsWith(prefix));
-      return new Response(`<ListBucketResult>${rows.map(([k, o]) => `<Contents><Key>${k}</Key><LastModified>${o.at}</LastModified><Size>${o.body.length}</Size></Contents>`).join('')}</ListBucketResult>`);
-    }
-    const o = objects.get(key);
-    return o ? new Response(o.body) : new Response('<Error><Code>NoSuchKey</Code></Error>', { status: 404 });
-  };
-  return { objects, fetchImpl };
-}
 
 async function cloud() {
   const dir = tmp('cloud');
@@ -44,7 +26,7 @@ async function cloud() {
   root.save();
   const alice = root.createAccount({ name: 'alice', role: 'architect' });
   const bob = root.createAccount({ name: 'bob', role: 'architect' });
-  const bucket = memoryBucket();
+  const bucket = memoryBucket({ from: '2026-10-12T04:00:00Z', sorted: false, lengths: false, multipart: false });
   const env = { WEAVE_BACKUP_BUCKET: 'vault', WEAVE_BACKUP_ENDPOINT: 'http://s3.test', WEAVE_BACKUP_KEY_ID: 'k', WEAVE_BACKUP_SECRET: 's' };
   const { server, port } = await startServer(root, { port: 0, cloudBackups: cloudStore({ env, fetchImpl: bucket.fetchImpl }) });
   const base = `http://127.0.0.1:${port}`;

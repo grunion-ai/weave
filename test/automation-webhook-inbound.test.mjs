@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 import { tempDir } from './lib/temp.mjs';
+import { receiver } from './lib/receiver.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
 const { withServer } = await import('./lib/fixtures.mjs');
@@ -154,16 +154,9 @@ test('a POST to the minted URL is admitted only signed and fresh, or with the se
 });
 
 test('a rule that is Off answers 202 and runs nothing; an echo of what weave sent is dropped', async () => {
-  const seen = [];
-  const api = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    seen.push(body);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{}');
-  });
-  await new Promise((resolve) => api.listen(0, '127.0.0.1', resolve));
-  const source = `127.0.0.1:${api.address().port}`;
+  const api = await receiver();
+  const { seen } = api;
+  const source = `127.0.0.1:${api.port}`;
   try {
     const { w, task } = workspace();
     const off = w.createAutomation(task.id, { ...intake(), enabled: false });
@@ -205,8 +198,7 @@ test('a rule that is Off answers 202 and runs nothing; an echo of what weave sen
       assert.deepEqual(w.hookDeliveries(sync.id).map((x) => x.outcome), ['failed', 'ran', 'echo']);
     });
   } finally {
-    api.closeAllConnections();
-    await new Promise((r) => api.close(r));
+    await api.close();
   }
 });
 

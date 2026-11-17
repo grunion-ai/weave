@@ -1,38 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { dispatchTool } from '../src/mcp.js';
-import { COMMANDS, httpPaths } from '../src/commands.js';
-import { ROOT } from './lib/source.mjs';
-
-const SRC = readFileSync(join(ROOT, 'src/routes.js'), 'utf8');
-const ID = '00000000-0000-4000-8000-000000000000';
-
-export function listRoutes(src = SRC) {
-  const seen = new Map();
-  const add = (method, path, line) => seen.set(`${method} ${path}`, { method, path, line });
-  const concretise = (re) => re
-    .replace(/^\^/, '').replace(/\$$/, '')
-    .replace(/\(\?:\\\/\(\[\^\/\]\+\?\)\)\?/g, '')
-    .replace(/\(\[\^\/\]\+\??\)/g, ID)
-    .replace(/\(\[A-Za-z0-9_-\]\+\)/g, 'nosuchtoken')
-    .replace(/\(\.\+\)/g, ID)
-    .replace(/\(\\\/\.\*\|\$\)/g, '/')
-    .replace(/\(([a-z]+)(?:\|[a-z]+)+\)/g, '$1')
-    .replace(/\\\//g, '/').replace(/\\\./g, '.');
-  for (const c of COMMANDS) for (const p of httpPaths(c)) add(c.http.method, p.replace(/:[a-z]+\*?\??/gi, ID), 'src/commands.js');
-  for (const line of src.split('\n')) {
-    const method = line.match(/rx\.method === '([A-Z]+)'/)?.[1] ?? 'GET';
-    for (const [, m, p] of line.matchAll(/route === '([A-Z]+) ([^']+)'/g)) add(m, p, line);
-    for (const [, p] of line.matchAll(/path === '([^']+)'/g)) add(method, p, line);
-    for (const [, re] of line.matchAll(/path\.match\(\/(\^.+?\$)\/\)/g)) add(method, concretise(re), line);
-  }
-  return [...seen.values()];
-}
+import { ID, listRoutes } from './lib/routes.mjs';
 
 const ROUTES = listRoutes();
 

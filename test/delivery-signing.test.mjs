@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { receiver, reply } from './lib/receiver.mjs';
 
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
@@ -16,26 +16,8 @@ const HOST = 'api.example.com';
 const NOW = Date.parse('2026-11-09T16:00:00Z');
 
 async function endpoint() {
-  const seen = [];
-  const server = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    seen.push({ method: req.method, url: req.url, headers: req.headers, body });
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{"ok":true}');
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const real = globalThis.fetch;
-  globalThis.fetch = (url, init) => {
-    const u = new URL(String(url));
-    if (u.protocol === 'https:' && u.hostname === HOST) { u.protocol = 'http:'; u.host = `127.0.0.1:${port}`; }
-    return real(u, init);
-  };
-  return {
-    seen, url: `http://127.0.0.1:${port}/in`,
-    close: () => { globalThis.fetch = real; server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); },
-  };
+  const api = await receiver((req, res) => reply(res, 200, '{"ok":true}'), { host: HOST });
+  return { ...api, url: `${api.base}/in` };
 }
 
 function demo() {

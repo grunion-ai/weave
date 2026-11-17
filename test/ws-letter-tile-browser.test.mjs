@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
+import { contrast as ratioOf } from './lib/contrast.mjs';
 
 let holding, sandbox;
 const s = await launch('workspace letter tile', (weave) => {
@@ -17,9 +18,7 @@ const s = await launch('workspace letter tile', (weave) => {
   sandbox.markOnboarded();
 }, { server: () => ({ workspaces: { holding, sandbox } }) });
 
-const channel = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-const luminance = (rgb) => { const [r, g, b] = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number); return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b); };
-const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const contrast = (a, b) => ratioOf(...[a, b].map((c) => c.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number)));
 
 if (s) {
   const { base, browser } = s;

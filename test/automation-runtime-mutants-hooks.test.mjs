@@ -1,30 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
+import { endpoint } from './lib/receiver.mjs';
 process.env.WEAVE_WEBHOOK_ALLOW_PRIVATE = '1';
 const { Weave } = await import('../src/engine.js');
 const MINUTE = 60_000;
-async function endpoint() {
-  const seen = [];
-  const plan = [];
-  const server = createServer(async (req, res) => {
-    let body = '';
-    for await (const chunk of req) body += chunk;
-    seen.push({ method: req.method, url: req.url, body });
-    const next = plan.length ? plan.shift() : 200;
-    res.writeHead(next, { 'Content-Type': 'application/json' });
-    res.end(next < 300 ? '{"id":"remote-1"}' : '{"error":"down"}');
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  return {
-    seen, port, url: `http://127.0.0.1:${port}/hook`,
-    fail: (...codes) => plan.push(...codes),
-    close: () => { server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); },
-  };
-}
 function workspace({ dir = tempDir('weave-runtime-hooks-'), path } = {}) {
   const w = new Weave({ actor: 'kyle', path, keystorePath: join(dir, 'keystore.json') });
   const state = { t: Date.parse('2026-11-09T15:00:00Z') };

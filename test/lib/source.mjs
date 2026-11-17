@@ -11,7 +11,27 @@ export const ROUTED = ['public/relation-map.js', 'public/doc-editor.js'];
 export const APP = ['public/app.js', ...LAZY, ...ROUTED].map(read).join('\n');
 export const HTML = read('public/index.html');
 export const CHIP_CSS = read('public/chip.css');
-export const CSS = [CHIP_CSS, read('public/style.css')].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+export const STYLE = read('public/style.css');
+export const CSS = [CHIP_CSS, STYLE].join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+
+export function cssRules(css = STYLE) {
+  const out = [];
+  const media = [];
+  const tok = /([^{}]+)\{|\}/g;
+  let m;
+  let line = 1;
+  let at = 0;
+  while ((m = tok.exec(css))) {
+    if (m[0] === '}') { media.pop(); continue; }
+    const head = m[1].trim();
+    if (head.startsWith('@')) { media.push(head); continue; }
+    for (; at < m.index; at++) if (css[at] === '\n') line++;
+    const end = css.indexOf('}', tok.lastIndex);
+    out.push({ selector: head, body: css.slice(tok.lastIndex, end), media: media.join(' '), line });
+    tok.lastIndex = end + 1;
+  }
+  return out;
+}
 
 export function rulesFor(selector, css = CSS) {
   const out = {};
