@@ -294,7 +294,7 @@ test('the recorder stores a request by its path and allow-listed names, never wh
 test('the server shapes a trace with the page recorder and redacts every string it keeps', () => {
   assert.ok(!bug.PATH_PARAMS.has('q'), 'the search box is never an allow-listed name');
   const events = [
-    { kind: 'api', method: 'Bearer wv_abcdef123456', path: '/api/x?token=abc&limit=5&q=hunter', status: 'sk_live_1234567890', ms: 7, t: 1, extra: 'ghp_0123456789abcdef' },
+    { kind: 'api', method: 'Bearer wv_abcdef123456', path: '/api/x?token=abc&limit=5&q=hunter', status: 'sk_abcdefgh12345', ms: 7, t: 1, extra: 'ghp_0123456789abcdef' },
     { kind: 'api', path: 42, status: null, ms: { n: 1 }, message: ['Bearer abcdefgh'], t: 2 },
     { kind: 'error', message: 'failed at /x?password=hunter2 with Basic dXNlcjpwYXNz', source: 'https://h/app.js?key=k1', line: 9, t: 'auth=zz' },
     { to: 'ucmcp_abcdefgh123', target: 'pk_test_ABCDEFGHIJ', t: 3 },
