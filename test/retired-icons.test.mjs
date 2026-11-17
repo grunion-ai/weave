@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join, relative, extname } from 'node:path';
+import { join, extname } from 'node:path';
 import { APP } from './lib/source.mjs';
 await import('../public/icon-registry.js');
 await import('../public/vendor/lucide-moving.js');

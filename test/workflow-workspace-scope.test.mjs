@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { startServer, createWorkspaceHub } from '../src/server.js';
+import { createWorkspaceHub } from '../src/server.js';
 import { withServer } from './lib/fixtures.mjs';
 
 const rule = { trigger: { type: 'entity-created' }, actions: [{ type: 'add-comment', text: 'seen' }] };

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync, writeFileSync, chmodSync, openSync, writeSync, closeSync, createReadStream, createWriteStream } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { gzipSync, createGzip } from 'node:zlib';
 import { createHash, randomBytes } from 'node:crypto';

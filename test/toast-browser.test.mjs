@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
 import { launch } from './lib/browser.mjs';
 
 

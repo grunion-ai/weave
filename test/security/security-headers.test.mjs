@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from '../lib/temp.mjs';
 process.env.WEAVE_KEYSTORE ??= join(tempDir('weave-sec-'), 'keystore.json');

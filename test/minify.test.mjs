@@ -1,13 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, statSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { request } from 'node:http';
 import { gunzipSync } from 'node:zlib';
 import { minifyJs, minifyCss, createMinified } from '../src/minify.js';
-import { Weave } from '../src/engine.js';
 import { ROOT } from './lib/source.mjs';
 import { firstPartyAssets } from './lib/bytes.mjs';
 import { tempDir } from './lib/temp.mjs';

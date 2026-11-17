@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { startServer, createWorkspaceHub } from '../src/server.js';
+import { createWorkspaceHub } from '../src/server.js';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
 

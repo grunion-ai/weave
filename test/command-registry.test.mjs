@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { handleMcpMessage, TOOLS } from '../src/mcp.js';
-import { COMMANDS, BY_TOOL, FAMILIES, cliHelp, cliCommand, matchRoute, toolCommand, toolDefinition, httpPaths } from '../src/commands.js';
+import { COMMANDS, BY_TOOL, cliHelp, cliCommand, matchRoute, toolCommand, httpPaths } from '../src/commands.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, chmodSync, accessSync, rmSync, constants } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, accessSync, rmSync, constants } from 'node:fs';
 import { join } from 'node:path';
 import { Store, WeaveError } from '../src/store.js';
 import { tempDir } from './lib/temp.mjs';

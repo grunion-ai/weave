@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer, request } from 'node:http';
-import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Weave } from '../src/engine.js';
 import { startServer, posthogFromEnv } from '../src/server.js';

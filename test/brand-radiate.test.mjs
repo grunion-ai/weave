@@ -1,9 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { RADIATE, SIZES, STAGE, rings, radiateSvg, build, buildStage } from "../brand/build-radiate.mjs";
+import { RADIATE, STAGE, rings, radiateSvg, build, buildStage } from "../brand/build-radiate.mjs";
 import { tempDir } from './lib/temp.mjs';
 
 const { width, height, pitch } = RADIATE;

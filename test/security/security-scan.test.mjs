@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fingerprint, newFindings, settle, semgrepVerdict, SEMGREP_ARGS, CUT_SHORT, summarize, onPath, steps, gitleaksArgs, ROOT } from '../../scripts/security-scan.mjs';

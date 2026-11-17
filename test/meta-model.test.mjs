@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave, WeaveError } from '../src/engine.js';
+import { Weave } from '../src/engine.js';
 import { fresh } from './lib/fixtures.mjs';
 
 test('every workspace carries the System space with Spaces and Tables', () => {
