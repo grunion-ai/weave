@@ -573,7 +573,8 @@ async function uploadDocFiles(files, entityId, getEditor, onInput, host = null) 
   const seen = api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id)), () => new Set());
   const mine = new Set();
   uploadState(key).ctl = {
-    send: (f, progress) => streamUpload(`/entities/${entityId}/files`, { entity: entityId, file: f }, progress),
+    pausable: true,
+    send: (f, progress, job) => streamUpload(`/entities/${entityId}/files`, { entity: entityId, file: f }, progress, job),
     known: () => seen.then((ids) => new Set([...ids, ...mine])),
     found: (f, before) => landedFile(entityId, f, before),
     landed: (f, meta) => {

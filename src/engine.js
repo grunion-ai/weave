@@ -13,7 +13,7 @@ import '../public/board-core.js';
 import '../public/phone-row.js';
 import '../public/cell-graphics.js';
 import '../public/field-dialog-core.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync, statSync, truncateSync } from 'node:fs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { openKeyStore, keystoreFilePath, keystoreKind, migrateKeys } from './keystore.js';
 import { join, dirname } from 'node:path';
@@ -11418,6 +11418,21 @@ export class Weave {
     }
   }
 
+  stagedSize(id) {
+    const path = this.#stagePath(id);
+    return existsSync(path) ? statSync(path).size : 0;
+  }
+  async appendStagedBlob(id, source, max) {
+    const path = this.#stagePath(id);
+    const before = this.stagedSize(id);
+    try {
+      await streamToFileDurable(source, path, max, { append: true });
+    } catch (err) {
+      if (err instanceof WeaveError && err.code === 'too-large') truncateSync(path, before);
+      throw err;
+    }
+    return this.stagedSize(id);
+  }
   dropStagedBlob(id) {
     rmSync(this.#stagePath(id), { force: true });
   }

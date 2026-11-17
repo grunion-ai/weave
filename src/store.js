@@ -15,9 +15,9 @@ export class WeaveError extends Error {
   }
 }
 
-export async function streamToFileDurable(source, path, max) {
+export async function streamToFileDurable(source, path, max, { append = false } = {}) {
   mkdirSync(dirname(path), { recursive: true });
-  const handle = await open(path, 'w');
+  const handle = await open(path, append ? 'a' : 'w');
   let size = 0;
   try {
     for await (const chunk of source) {

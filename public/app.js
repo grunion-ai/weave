@@ -85,9 +85,12 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
       clearTimeout(timer);
       timer = setTimeout(() => { fail({ kind: 'timeout' }); xhr.abort(); }, ms);
     };
+    const from = raw?.offset ?? 0;
+    const size = from + (body?.size ?? 0);
+    raw?.track?.(() => { fail({ kind: 'paused' }); xhr.abort(); });
     xhr.upload.onprogress = (e) => {
       const whole = e.lengthComputable && e.total > 0;
-      if (whole) onProgress(e.loaded / e.total);
+      if (whole) onProgress(from ? (from + e.loaded) / size : e.loaded / e.total);
       wait(whole && e.loaded >= e.total ? UPLOAD_ANSWER_MS : UPLOAD_STALL_MS);
     };
     xhr.upload.onload = () => { onProgress(1); wait(UPLOAD_ANSWER_MS); };
@@ -107,9 +110,10 @@ function sendUpload(path, body, onProgress = () => {}, raw = null) {
     xhr.open(raw ? raw.method : 'POST', raw ? raw.url : WS_PREFIX + '/api' + path);
     xhr.responseType = 'json';
     for (const [header, value] of Object.entries(raw ? raw.headers : { 'Content-Type': 'application/json' })) xhr.setRequestHeader(header, value);
+    if (raw?.offset != null) xhr.setRequestHeader('Upload-Offset', String(raw.offset));
     xhr.setRequestHeader('X-Weave-Zone', LOCAL_ZONE);
     wait(UPLOAD_STALL_MS);
-    xhr.send(raw ? body : JSON.stringify(body));
+    xhr.send(raw ? (from ? body.slice(from) : body) : JSON.stringify(body));
   });
 }
 
@@ -127,7 +131,7 @@ const withErrorId = (text, id) => {
 const uploadWaits = () => globalThis.WEAVE_UPLOAD_RETRY_MS ?? uploadCore.RESTART_WAIT_MS;
 
 function paintUploadTile(tile, job) {
-  tile.querySelector('.attach-up-what').textContent = job.state === 'restarting' ? uploadCore.RESTARTING : job.state === 'saving' ? 'Saving' : `Uploading ${job.percent}%`;
+  tile.querySelector('.attach-up-what').textContent = job.state === 'restarting' ? uploadCore.RESTARTING : job.state === 'saving' ? 'Saving' : job.state === 'paused' ? `Paused ${job.percent}%` : `Uploading ${job.percent}%`;
   const bar = tile.querySelector('[role="progressbar"]');
   bar.setAttribute('aria-valuenow', String(job.percent));
   bar.firstChild.style.width = `${job.percent}%`;
@@ -154,11 +158,23 @@ function uploadTileEl(key, job) {
         },
       }, iconEl('lucide:x', 'wv-icon wv-icon-xs')));
   }
-  const tile = el('span', { class: 'attach-item is-pending', title: name, dataset: { uploadJob: job.id } },
+  const paused = job.state === 'paused';
+  const pausable = uploadState(key).ctl?.pausable && (paused || job.state === 'pending');
+  const tile = el('span', { class: `attach-item is-pending${paused ? ' is-paused' : ''}`, title: name, dataset: { uploadJob: job.id } },
     el('span', { class: 'attach-up-name' }, name),
     el('span', { class: 'attach-up-what' }),
     el('span', { class: 'attach-up-bar', role: 'progressbar', 'aria-label': `Uploading ${name}`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' },
-      el('span', { class: 'attach-up-fill' })));
+      el('span', { class: 'attach-up-fill' })),
+    pausable ? ghostBtn({
+      type: 'button', class: 'attach-up-toggle', title: `${paused ? 'Resume' : 'Pause'} ${name}`, 'aria-label': `${paused ? 'Resume' : 'Pause'} ${name}`,
+      onclick: (e) => {
+        stop(e);
+        if (paused) { runJobs(key, [job]); return; }
+        if (job.state !== 'pending') return;
+        job.pauseWanted = true;
+        job.abort?.();
+      },
+    }, iconEl(paused ? 'lucide:play' : 'lucide:pause', 'wv-icon wv-icon-xs')) : null);
   paintUploadTile(tile, job);
   return tile;
 }
@@ -169,7 +185,7 @@ function drawUploads(host) {
   const slot = host.uploadSlot ?? host;
   for (const n of slot.querySelectorAll(':scope > [data-upload-job]')) n.remove();
   for (const job of jobs) slot.insertBefore(uploadTileEl(key, job), host.uploadBefore?.parentNode === slot ? host.uploadBefore : null);
-  const busy = jobs.some((j) => j.state !== 'failed');
+  const busy = jobs.some((j) => j.state !== 'failed' && j.state !== 'paused');
   if (busy) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');
 }
 const paintUploads = (key) => { for (const host of uploadHostsFor(key)) drawUploads(host); };
@@ -206,7 +222,7 @@ function runUploads(key, files) {
 async function runJobs(key, jobs) {
   const st = uploadState(key);
   for (const job of jobs) {
-    Object.assign(job, { state: 'pending', percent: 0, failure: null });
+    Object.assign(job, { state: 'pending', percent: job.grant ? job.percent : 0, failure: null, pauseWanted: false });
     if (!st.jobs.includes(job)) st.jobs.push(job);
   }
   paintUploads(key);
@@ -242,7 +258,7 @@ async function runJobs(key, jobs) {
       let data;
       for (const wait of [...uploadWaits(), null]) {
         try {
-          data = await st.ctl.send(file, progress);
+          data = await st.ctl.send(file, progress, job);
           break;
         } catch (err) {
           if (wait == null || uploadCore.reasonOf(err) !== 'restarting') throw err;
@@ -253,6 +269,12 @@ async function runJobs(key, jobs) {
       }
       await land(data);
     } catch (err) {
+      if (err.kind === 'paused') {
+        job.state = 'paused';
+        job.abort = null;
+        paintUploads(key);
+        continue;
+      }
       const lost = err.kind === 'timeout' || err.status === 504;
       const kept = lost ? await st.ctl.found?.(file, before)?.catch?.(() => null) : null;
       if (kept) await land(kept); else fail(err);
@@ -3817,15 +3839,31 @@ const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sa
 const FILE_FRAME_SANDBOX = { html: HTML_FRAME_SANDBOX, pdf: null, text: '', image: '' };
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
-async function streamUpload(path, { entity, field = null, file }, onProgress) {
+async function uploadOffset(grant) {
+  const res = await fetch(grant.url, { method: 'HEAD', headers: { Authorization: grant.headers.Authorization, 'X-Weave-Zone': LOCAL_ZONE } }).catch(() => null);
+  const offset = res?.status === 204 ? Number(res.headers.get('Upload-Offset')) : NaN;
+  return Number.isSafeInteger(offset) ? offset : null;
+}
+async function streamUpload(path, { entity, field = null, file }, onProgress, job = {}) {
   const refusal = fileTooBig(file);
   if (refusal) throw new Error(refusal);
-  const preview = await WeavePreview.make(file);
-  const grant = await api('POST', '/uploads', {
-    entity, field, name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
-    ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),
-  });
-  return sendUpload(path, file, onProgress, grant);
+  const offset = job.grant ? await uploadOffset(job.grant) : null;
+  if (offset == null) {
+    const preview = await WeavePreview.make(file);
+    job.grant = await api('POST', '/uploads', {
+      entity, field, name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
+      ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),
+    });
+    job.percent = 0;
+  }
+  const grant = job.grant;
+  if (!grant.resumable) job.grant = null;
+  if (job.pauseWanted) throw Object.assign(new Error('paused'), { kind: 'paused' });
+  try {
+    return await sendUpload(path, file, onProgress, { ...grant, ...(grant.resumable ? { offset: offset ?? 0 } : {}), track: (abort) => { job.abort = abort; } });
+  } finally {
+    job.abort = null;
+  }
 }
 
 function fileKind(file) {
@@ -4366,7 +4404,8 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
     const upKey = `${id}:${f.name}`;
     const known = new Set((item.files ?? []).map((x) => x.id));
     uploadState(upKey).ctl = {
-      send: (file, progress) => streamUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, { entity: id, field: f.name, file }, progress),
+      pausable: true,
+      send: (file, progress, job) => streamUpload(`/entities/${id}/fields/${encodeURIComponent(f.name)}/files`, { entity: id, field: f.name, file }, progress, job),
       known: () => new Set(known),
       found: (file, before) => landedFile(id, file, before, f.name),
       landed: (file, meta) => { if (meta?.id) known.add(meta.id); },
