@@ -39,7 +39,7 @@ if (s) {
     assert.deepEqual(full.map(([k]) => k), ['crumb-k-ws', 'crumb-k-space', 'crumb-k-table', 'crumb-k-row', 'crumb-k-row']);
     assert.deepEqual(full.slice(1).map(([, n]) => n), ['Sales', 'Deals', 'Acme Working Capital', 'Jane Rivera'],
       'the full page: workspace › space › table where the path started, then both hops');
-    await headerAction(page, '#main', '.pose-btn', 'Collapse beside the table');
+    await headerAction(page, '#main', '.pose-btn', 'Dock beside table');
     await named(page, '#dock', 'Jane Rivera');
     assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera'], 'collapse keeps the path too');
     await page.close();

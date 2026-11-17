@@ -68,8 +68,8 @@ if (s) {
             assert.equal(seen.theme, theme);
             assert.equal(seen.sheet, true, 'the same menu() draws a sheet');
             const phoneOnly = ['Report a problem', 'Activity', 'Share (Beta)', 'Collapse beside the table'];
-            assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels,
-              'the desktop rows, in the desktop order');
+            assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels.filter((l) => l !== 'Dock beside table'),
+              'the desktop rows, in the desktop order; the desktop pose row reads Collapse beside the table on a phone');
             assert.deepEqual(seen.labels.filter((l) => phoneOnly.includes(l)),
               what === 'record' ? ['Activity', 'Share (Beta)', 'Collapse beside the table', 'Report a problem'] : [],
               'plus the rows a condensed phone header sheds (Feature #377) and the row a phone has no other route to (Issue #1023)');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { launch, phoneBrowser, phonePage, toggleActivity } from './lib/browser.mjs';
 
 let orders, order;
 const s = await launch('tray builder', (weave) => {
@@ -68,7 +68,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
       await page.goto(`${base}/#/entity/${order.id}`, { waitUntil: 'networkidle' });
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       await page.waitForSelector('.wv-activity');
       await page.click('.fieldrow[data-field="Vendor"] .fieldrow-label');
       await page.waitForSelector('#tray input');

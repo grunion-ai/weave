@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventually, launch } from './lib/browser.mjs';
+import { eventually, launch, toggleActivity } from './lib/browser.mjs';
 import { LAZY } from './lib/source.mjs';
 
 let deals, big;
@@ -118,16 +118,20 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the row Activity button loads the activity panel once, and the keyboard drives it', async () => {
+  test('the record\'s Activity row loads the activity panel once, and the keyboard drives it', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     try {
       const fetched = watch(page);
       await page.goto(`${base}/#/entity/${big.id}`, { waitUntil: 'networkidle' });
       const btn = page.locator('#main .activity-btn');
-      await btn.waitFor();
+      const eye = page.locator('#main .view-header .crumb-actions > .eye-btn');
+      await eye.waitFor();
       assert.deepEqual(fetched, []);
-      await btn.focus();
+      await eye.focus();
       await page.keyboard.press('Enter');
+      await page.waitForSelector('.table-fields-popover [data-record-activity] input:focus');
+      await page.keyboard.press('Space');
+      await page.keyboard.press('Escape');
       const row = page.locator('aside.wv-activity .wv-act-row').first();
       await row.waitFor();
       assert.deepEqual(fetched, ['/activity-panel.js']);
@@ -138,7 +142,7 @@ if (s) {
       await page.keyboard.press('Escape');
       await page.waitForSelector('aside.wv-activity', { state: 'detached' });
       assert.equal(await btn.getAttribute('aria-pressed'), 'false');
-      await btn.click();
+      await toggleActivity(page, '#main');
       await row.waitFor();
       assert.deepEqual(fetched, ['/activity-panel.js'], 'the second open reuses the loaded file');
     } finally { await page.close(); }

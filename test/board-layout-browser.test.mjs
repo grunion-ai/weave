@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
-import { launch, eventually, atRest } from './lib/browser.mjs';
+import { launch, eventually, atRest, toggleActivity } from './lib/browser.mjs';
 import { openPane } from './lib/view-pane.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
@@ -280,7 +280,7 @@ if (s) {
       assert.equal(await page.locator('#dock .name-edit').inputValue(), 'Walking mat', 'and leaves the pane on the record it held (Issue #1832)');
       await page.keyboard.press('Escape');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
-      await page.click('#dock .activity-btn');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity');
       await page.evaluate(() => document.activeElement?.blur());
       await page.keyboard.press('Escape');

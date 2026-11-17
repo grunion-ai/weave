@@ -76,17 +76,17 @@ if (s) {
       },
     },
     {
-      kind: 'record', hash: `#/entity/${entityId}`, ready: '#main textarea.name-edit',
+      kind: 'record', hash: `#/entity/${entityId}`, ready: '#main textarea.name-edit', rows: ['Dock beside table', ...ROWS.record],
       triggers: {
         'header ⋮': via('#main .view-header .crumb-row .dots-btn'),
-        'header right-click': via('#main .view-header .activity-btn', 'right'),
+        'header right-click': via('#main .view-header .crumb-actions > .eye-btn', 'right'),
       },
     },
     {
       kind: 'record', label: 'record in peek', hash: `#/table/${tableId}?e=${entityId}`, ready: '#dock:not([hidden]) textarea.name-edit',
       triggers: {
         'peek ⋮': via('#dock .view-header .crumb-row .dots-btn'),
-        'peek right-click': via('#dock .view-header .activity-btn', 'right'),
+        'peek right-click': via('#dock .view-header .crumb-actions > .eye-btn', 'right'),
       },
     },
     {
@@ -134,7 +134,7 @@ if (s) {
           const seen = {};
           for (const [name, run] of Object.entries(k.triggers)) seen[name] = await run(page);
           const names = Object.keys(seen);
-          const want = ROWS[k.kind] ?? seen[names[0]].rows;
+          const want = k.rows ?? ROWS[k.kind] ?? seen[names[0]].rows;
           for (const name of names) assert.deepEqual(seen[name].rows, want, `${name} opens the ${k.kind} menu`);
           if (k.kind === 'workspace') assert.deepEqual(want, ['Delete workspace…'], 'the workspace menu holds Delete alone (Feature #347)');
           for (const name of names.filter((n) => /right-click|nav row|tray/.test(n))) assert.equal(seen[name].head, 1, `${name} names the object in a head row`);

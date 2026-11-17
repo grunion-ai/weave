@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, styleOf, eventually } from './lib/browser.mjs';
+import { launch, styleOf, eventually, toggleActivity, headerAction } from './lib/browser.mjs';
 
 let id, lone;
 const s = await launch('record activity panel', (weave) => {
@@ -34,17 +34,17 @@ if (s) {
   const row = (page, rid) => page.locator(`.wv-activity .wv-act-row[data-id="${rid}"]`);
   const pick = async (page, rid) => { await row(page, rid).locator('.wv-act-what').click(); await page.waitForSelector(`.wv-act-row.sel[data-id="${rid}"]`); };
   const showDoc = async (page, field) => {
-    if (!(await page.locator('.wv-activity').count())) await page.click('.activity-btn');
+    if (!(await page.locator('.wv-activity').count())) await toggleActivity(page, '#main');
     await page.waitForSelector('.wv-activity .wv-act-row');
     await page.click(`.wv-act-filters button:text-is("${field}")`);
     await page.waitForSelector(`.wv-act-filters button[aria-pressed="true"]:text-is("${field}")`);
     await pick(page, await page.locator('.wv-act-row').first().getAttribute('data-id'));
   };
 
-  test('the header clock-arrow opens one panel for the whole record; a document\'s chip filters it; no per-document button (Feature #315)', async () => {
+  test('the eye popover\'s Activity row opens one panel for the whole record; a document\'s chip filters it; no per-document button (Feature #315)', async () => {
     const page = await open();
     try {
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       await page.waitForSelector('.wv-activity .wv-act-row');
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await page.locator('.wv-act-filters button[data-filter]').allTextContents(), ['All', 'Description', 'Spec', 'Release note', 'Fields'], 'a chip per document; no Comments chip (Feature #323)');
@@ -67,7 +67,7 @@ if (s) {
       const ids = await page.locator('.wv-act-row').evaluateAll((rs) => rs.map((r) => r.dataset.id));
       assert.deepEqual(ids, revs('Spec').map((r) => `r${r.seq}`), 'Spec\'s chip shows Spec\'s versions only');
       assert.equal(await page.locator('.doc-history-btn').count(), 0, 'no document carries its own History button');
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       await page.waitForSelector('.wv-activity', { state: 'detached' });
       assert.equal(await page.locator('.activity-btn').getAttribute('aria-pressed'), 'false');
     } finally { await page.close(); }
@@ -153,7 +153,7 @@ if (s) {
   test('a field change sits as a card on top, reverts from its row, and comes back with Undo', async () => {
     const page = await open();
     try {
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       const change = weave.activityFeed({ entityId: id }).items.find((a) => a.kind === 'field-updated' && a.detail.field === 'Priority');
       await pick(page, `a${change.seq}`);
       await page.waitForSelector('.wv-act-view.top .wv-act-card');
@@ -173,7 +173,7 @@ if (s) {
     assert.equal(change.detail.from, null, 'the change starts from an empty value');
     const page = await open(lone);
     try {
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       await page.waitForSelector(`.wv-act-row[data-id="a${change.seq}"]`);
       const r = row(page, `a${change.seq}`);
       if (await r.evaluate((n) => n.classList.contains('sel'))) await pick(page, await page.locator('.wv-act-row').last().getAttribute('data-id'));
@@ -193,7 +193,7 @@ if (s) {
     const page = await open(lone);
     try {
       await page.evaluate(() => localStorage.setItem('wv-side-width', '300'));
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       const r = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
       await r.waitFor();
       const fit = await r.evaluate((n) => {
@@ -240,12 +240,12 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('in a docked record the Activity button opens the context pane right of the dock, and Escape closes the pane, not the dock (Feature #296, Feature #348)', async () => {
+  test('in a docked record Activity opens the context pane right of the dock, and Escape closes the pane, not the dock (Feature #296, Feature #348)', async () => {
     const page = await open();
     try {
-      await page.click('#main button[title="Collapse (⌘⇧E)"]');
-      await page.waitForSelector('#dock:not([hidden]) .crumb-actions .activity-btn');
-      await page.click('#dock .crumb-actions .activity-btn');
+      await headerAction(page, '#main', '.pose-btn', 'Dock beside table');
+      await page.waitForSelector('#dock:not([hidden]) .crumb-actions > .eye-btn');
+      await toggleActivity(page, '#dock');
       await page.waitForSelector('.wv-activity .wv-act-row');
       const [panel, dock] = await Promise.all(['.wv-activity', '#dock'].map((sel) => page.locator(sel).evaluate((n) => n.getBoundingClientRect().toJSON())));
       assert.ok(panel.left >= dock.right, `the pane sits right of the dock (${panel.left} >= ${dock.right})`);
@@ -259,7 +259,7 @@ if (s) {
   test('a row\'s action shows on hover; the panel paints in both themes; Escape closes', async () => {
     const page = await open();
     try {
-      await page.click('.activity-btn');
+      await toggleActivity(page, '#main');
       await page.waitForSelector('.wv-act-row:not(.sel) > .wv-act-icon');
       const r = page.locator('.wv-act-row:not(.sel):has(> .wv-act-icon)').first();
       assert.equal(await styleOf(r.locator('> .wv-act-icon'), 'opacity', '0'), '0', 'hidden at rest');
