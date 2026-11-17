@@ -1,0 +1,1 @@
+- The email code boxes on sign-in keep their top edge and focus ring (Issue #1839). The sign-in card clipped whatever drew past its box, and with the card padding at zero the six code boxes lost their top border.

@@ -25,9 +25,9 @@ test('every width query in the stylesheet sits inside phone format or starts des
   assert.ok(used.some((q) => q.edge === 'max' && q.px === PHONE_MAX) && used.some((q) => q.edge === 'min' && q.px === DESKTOP_MIN), 'both sides of the switch are in use');
 });
 
-test('every width query in the app script is one of the three named ones (Feature #377)', () => {
+test('every width query in the app script is one of the two named ones (Feature #377)', () => {
   const named = [...APP.matchAll(/const (\w+) = matchMedia\('\((?:max|min)-width: (\d+)px\)'\)/g)].map((m) => `${m[1]}:${m[2]}`);
-  assert.deepEqual(named.sort(), [`MENU_SHEET:${PHONE_MAX}`, `dockCoversScreen:${PHONE_MAX}`, `narrowShell:${PHONE_MAX}`, `tightShell:${TRAY_HIDDEN_MAX}`].sort());
+  assert.deepEqual(named.sort(), [`dockCoversScreen:${PHONE_MAX}`, `tightShell:${TRAY_HIDDEN_MAX}`].sort());
   const inline = [...APP.matchAll(/matchMedia\('\((?:max|min)-width: \d+px\)'\)/g)].length;
   assert.equal(inline, named.length, 'no unnamed width query hides in the script');
 });

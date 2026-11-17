@@ -42,7 +42,7 @@ test('.hidden beats id-selector display rules', () => {
 test('wireNavCollapse wires both directions and persists the state', () => {
   const fn = APP.slice(APP.indexOf('function wireNavCollapse'));
   const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
-  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(narrowShell\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
+  assert.match(body, /collapse\.addEventListener\('click',\s*\(\)\s*=>\s*\(dockCoversScreen\.matches \? closeNavPeek\(\) : apply\(true\)\)\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekDwell\)/);
   assert.match(fnBody('closeNavPeek'), /clearTimeout\(navPeekLeave\)/);
   assert.match(body, /WeavePrefs\.read\('weave-nav-collapsed'\)/);
@@ -1128,7 +1128,7 @@ test('formula is a checkbox; the script editor lives inside the tray (Kyle, 2026
   const dlg = fnBody('fieldDialog');
   assert.doesNotMatch(dlg, /def-code|\{ \} definition/, 'no definition pane');
   assert.doesNotMatch(APP, /formulaScriptDialog/, 'no separate script window');
-  assert.match(dlg, /dsection\('Script', formulaBuilder\(db, state, changed, \{ selfName: existing\?\.name \?\? null, fieldName: \(\) => nameInput\.value/, 'the builder is a tray section, told which field it edits and what it is being called');
+  assert.match(dlg, /dsection\('Script', formulaBuilder\(db, state, \{ selfName: existing\?\.name \?\? null, fieldName: \(\) => nameInput\.value/, 'the builder is a tray section, told which field it edits and what it is being called');
   assert.match(fnBody('formulaBuilder'), /class: 'fx-agent'/, 'the agent panel rides under the script (Feature #205)');
   assert.match(dlg, /fdc\.typeChoices\(isEdit \? existing\.type : null\)/, 'existing fields see self + migrations only');
   assert.match(dlg, /patch\.type = def\.type/, 'a changed type is sent as a migration');
@@ -1145,7 +1145,7 @@ test('dates: one smart control everywhere, a calendar popover with month/year gr
     assert.ok(pop.includes(need), `popover has ${need}`);
   }
   const dlg = fnBody('fieldDialog');
-  assert.match(dlg, /dateCostumeControls\(state, drawCfg, changed/, 'the grain and costume tray is one shared block for date and daterange');
+  assert.match(dlg, /dateCostumeControls\(state, drawCfg, \{ type: t \}\)/, 'the grain and costume tray is one shared block for date and daterange');
   const costume = fnBody('dateCostumeControls');
   assert.match(costume, /dc\.formatDate\(todayIso, \{ \.\.\.costume, format: fmt, time: false \}\)/, 'each format is shown as an example, in the grain the field stores');
   assert.match(costume, /fdc\.legalFormats\(g\)/, 'only the styles the grain can wear are offered');
@@ -1225,7 +1225,7 @@ test('number costume controls: unit for plain numbers, an ISO-code picker for cu
   assert.match(ctl, /dsection\('Currency', pick/, 'currency takes a code through the picker dialect');
   assert.match(ctl, /fdc\.CURRENCIES/, 'codes come from the tested core list');
   const dlg = fnBody('fieldDialog');
-  assert.match(dlg, /numberCostumeControls\(state, drawCostume, changed, \{ label: 'Result format', column \}\)/, 'a formula result wears the same costume, sampled from its own column (Issue #388)');
+  assert.match(dlg, /numberCostumeControls\(state, drawCostume, \{ label: 'Result format', column \}\)/, 'a formula result wears the same costume, sampled from its own column (Issue #388)');
   assert.match(dlg, /resultType === null \|\| resultType === 'number'/, 'and only a numeric result wears it (Feature #206) — a table with no rows to type on keeps the section');
 });
 
@@ -1285,10 +1285,10 @@ test('workflow states: rows drag to reorder, icon instead of a default radio, an
   assert.deepEqual(rulesFor('.chip.state-other'), {}, "'other' leaves no tint behind");
   const ed = fnBody('stateListEditor');
   assert.doesNotMatch(ed, /draggable/, 'no native drag source (Feature #282)');
-  assert.match(ed, /optRowGrip\(wrap, \(\) => state\.states, i,/, 'the grip drags through the shared reorder module');
+  const shell = fnBody('choiceListEditor');
+  assert.match(shell, /optRowGrip\(wrap, \(\) => state\[key\], i,/, 'the grip drags through the shared reorder module');
   assert.match(fnBody('optRowGrip'), /fieldDialogCore\.moveItem\(list\(\), i,/, 'a drop reorders the states');
-  assert.match(fnBody('optionListEditor'), /optRowGrip\(wrap, \(\) => state\.options, i,/, 'and select options drag the same way');
-  assert.match(ed, /iconButton\(/, 'an icon picker per state');
+  assert.match(shell, /iconButton\(/, 'an icon picker per state');
   assert.match(fnBody('iconButton'), /iconCatalogue\(\)/, 'over the shared vocabulary');
   assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');
   assert.doesNotMatch(ed, /type: 'radio'/, 'no default radio — the Default picker under the list names one (Issue #422)');
@@ -1689,7 +1689,7 @@ test('no surface says "entity" to a reader where a table has a row term', () => 
 });
 
 test('the Name field\'s dialog carries the grouped term picker', () => {
-  assert.match(APP, /if \(isEdit && existing\.role === 'name'\) kids\.push\(termSection\(state, changed\)\)/);
+  assert.match(APP, /if \(isEdit && existing\.role === 'name'\) kids\.push\(termSection\(state\)\)/);
   const sec = fnBody('termSection');
   assert.doesNotMatch(sec, /datalist|term-options/, 'the flat datalist is gone (Kyle, 2026-09-02: the grouped selector from the mockup)');
   assert.match(sec, /searchPicker\(\{[\s\S]*groups: true/, 'the house picker draws the curated terms in groups');
@@ -1822,7 +1822,7 @@ test('a record page save applies the entity it returned, and the grid repaints f
   assert.match(fnBody('renderEntityView'), /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
 });
 
-const SOURCE_GREP_CEILING = { greps: 551, bodies: 173 };
+const SOURCE_GREP_CEILING = { greps: 550, bodies: 173 };
 
 test('the source greps only come down: a behaviour a browser suite proves loses its regex here', () => {
   const self = read('test/ui-contract.test.mjs');
