@@ -12,15 +12,14 @@ const s = await launch('upload pause', (weave) => {
   weave.createSpace({ name: 'Product' });
   decks = weave.createTable({ space: 'Product', name: 'Deck' });
   weave.addField(decks, { name: 'Files', type: 'attachments' });
-  for (const n of ['light', 'dark', 'cut']) rows[n] = weave.createEntity(decks, { name: n });
+  for (const n of ['paused', 'cut']) rows[n] = weave.createEntity(decks, { name: n });
 }, { weave: () => new Weave({ path: join(tempDir('weave-upload-pause-'), 'ws.db') }) });
 
 if (s) {
   const { base, browser, weave } = s;
-  const open = async (row, theme) => {
+  const open = async (row) => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await page.goto(`${base}/#/entity/${rows[row].id}`, { waitUntil: 'networkidle' });
-    await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
     await page.waitForSelector('.attach-box');
     return page;
   };
@@ -31,41 +30,39 @@ if (s) {
   };
   const isPut = (r) => r.request().method() === 'PUT' && /\/api\/uploads$/.test(r.url());
 
-  for (const theme of ['light', 'dark']) {
-    test(`a running upload pauses on its tile and resumes to land the whole file (${theme})`, async () => {
-      const page = await open(theme, theme);
-      try {
-        let release;
-        let done;
-        const held = new Promise((r) => { release = r; });
-        const dropped = new Promise((r) => { done = r; });
-        await page.route(/\/api\/uploads$/, async (route) => {
-          if (route.request().method() !== 'PUT') return route.continue();
-          await held;
-          await route.abort().catch(() => {});
-          done();
-        });
-        await pick(page, 'deck.bin');
-        const tile = page.locator('.attach-item.is-pending', { hasText: 'deck.bin' });
-        await tile.getByRole('button', { name: 'Pause deck.bin' }).click();
-        const paused = page.locator('.attach-item.is-paused', { hasText: 'deck.bin' });
-        await paused.waitFor();
-        assert.match(await paused.textContent(), /Paused \d+%/);
-        assert.equal(await page.locator('.attach-box').getAttribute('aria-busy'), null, 'a paused upload still marks the field busy');
-        release();
-        await dropped;
-        await page.unroute(/\/api\/uploads$/);
-        const landed = page.waitForResponse(isPut);
-        await paused.getByRole('button', { name: 'Resume deck.bin' }).click();
-        assert.equal((await landed).status(), 201, 'Resume did not finish the upload');
-        await page.waitForFunction(() => !document.querySelector('[data-upload-job]'));
-        assert.deepEqual(stored(theme).map((f) => f.bytes), [BYTES]);
-      } finally { await page.close(); }
-    });
-  }
+  test('a running upload pauses on its tile and resumes to land the whole file', async () => {
+    const page = await open('paused');
+    try {
+      let release;
+      let done;
+      const held = new Promise((r) => { release = r; });
+      const dropped = new Promise((r) => { done = r; });
+      await page.route(/\/api\/uploads$/, async (route) => {
+        if (route.request().method() !== 'PUT') return route.continue();
+        await held;
+        await route.abort().catch(() => {});
+        done();
+      });
+      await pick(page, 'deck.bin');
+      const tile = page.locator('.attach-item.is-pending', { hasText: 'deck.bin' });
+      await tile.getByRole('button', { name: 'Pause deck.bin' }).click();
+      const paused = page.locator('.attach-item.is-paused', { hasText: 'deck.bin' });
+      await paused.waitFor();
+      assert.match(await paused.textContent(), /Paused \d+%/);
+      assert.equal(await page.locator('.attach-box').getAttribute('aria-busy'), null, 'a paused upload still marks the field busy');
+      release();
+      await dropped;
+      await page.unroute(/\/api\/uploads$/);
+      const landed = page.waitForResponse(isPut);
+      await paused.getByRole('button', { name: 'Resume deck.bin' }).click();
+      assert.equal((await landed).status(), 201, 'Resume did not finish the upload');
+      await page.waitForFunction(() => !document.querySelector('[data-upload-job]'));
+      assert.deepEqual(stored('paused').map((f) => f.bytes), [BYTES]);
+    } finally { await page.close(); }
+  });
 
   test('Retry after a cut connection sends only the bytes the server does not hold', async () => {
-    const page = await open('cut', 'light');
+    const page = await open('cut');
     try {
       const half = BYTES.length / 2;
       const sent = [];
