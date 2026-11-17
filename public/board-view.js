@@ -95,6 +95,7 @@ function renderBoard(main, db, items, ctx) {
   const everyRow = (everyone ?? items).map((it) => ({ id: it.id }));
   const effective = () => listCore.applyManual(everyRow, manual).map((r) => r.id);
   const reload = () => ctx.reload ? ctx.reload() : keepScroll(() => showDatabase(db.id, db.view.id));
+  const edited = (written) => (!ctx.embedded && queuedWrites.has(written) ? null : reload());
   const write = async (item, values, order, undo = null, settled = null) => {
     const release = gridHold();
     try {
@@ -140,7 +141,7 @@ function renderBoard(main, db, items, ctx) {
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
           el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1' }, label)),
         fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
-          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, () => reload(), { compact: true }))))) : null));
+          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, edited, { compact: true }))))) : null));
     card.wvPath = path;
     card.wvItem = node;
     if (masonry) masonryRows.observe(card);
@@ -258,6 +259,8 @@ function renderBoard(main, db, items, ctx) {
     el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint, picks);
   const wrap = el('div', { class: 'board-wrap', dataset: { layout: 'board', density: gridDensity(db) } }, board, footer);
   wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
+  wrap.wvRefresh = () => reload();
+  wrap.wvSaved = async (written) => { if (known.has(written.id)) await reload(); };
   main.append(wrap);
   syncPicks();
   board.style.setProperty('--board-top', `${Math.max(0, Math.round(board.getBoundingClientRect().top + scrollY))}px`);
