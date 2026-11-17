@@ -155,7 +155,7 @@ function renderBoard(main, db, items, ctx) {
     card.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.shiftKey) return;
       const phone = dockCoversScreen.matches;
-      if (!phone && e.target.closest('.tile-field > dd')) { if (!ctx.embedded && !nativeClick(e)) dockEntity(db, it.id, { step: true }); return; }
+      if (!phone && e.target.closest('.tile-field > dd')) return;
       if (!e.target.closest(phone ? TILE_FORM : TILE_HANDS_OFF)) boardDrag(e, card);
     });
     card.addEventListener('click', (e) => {
