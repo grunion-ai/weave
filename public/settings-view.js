@@ -11,7 +11,7 @@ async function showTrash(dbId) {
   if (dbId && !db) return showHome();
   state.route = { page: 'trash', dbId };
   renderNav();
-  let { items, views = [] } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
+  let { items, views = [], purge = false } = await api('GET', db ? `/tables/${db.id}/trash` : '/trash');
   if (!db) items = items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views');
   const main = $('#main');
   main.replaceChildren();
@@ -29,24 +29,44 @@ async function showTrash(dbId) {
     return;
   }
   const rows = el('tbody');
+  const span = db ? 4 : 5;
+  const purgeButton = (tr, name, path) => (purge ? el('button', {
+    class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
+    onclick: confirmToggle(tr, () => {
+      const { box, input } = typedHold(name, 'This cannot be undone.', {
+        label: 'Delete forever', hold: true, holdingLabel: 'Hold to purge…',
+        run: async () => {
+          try {
+            await api('DELETE', `${path}?hard=1`);
+            toast(`${name} deleted forever`);
+            await loadSchema();
+            showTrash(dbId);
+          } catch (err) { toast(err.message, true); }
+        },
+      });
+      return { node: el('tr', {}, el('td', { colspan: span }, box)), input };
+    }),
+  }, 'Delete forever…') : null);
   for (const item of items) {
-    rows.append(el('tr', {},
+    const name = item.name || `#${item.publicId}`;
+    const tr = el('tr', { class: 'purge-row' },
       el('td', { class: 'pid-cell' }, `#${item.publicId}`),
       el('td', {}, item.name || el('span', { class: 'view-desc-empty' }, 'Untitled')),
       ...(db ? [] : [el('td', { class: 'trash-table' }, trashKind(item))]),
       el('td', { class: 'trash-when' }, whenEl(item.deletedAt)),
-      el('td', { class: 'trash-acts' },
-        el('button', {
-          class: 'btn btn-sm', type: 'button',
-          onclick: async () => {
-            try {
-              await api('POST', `/entities/${item.id}/restore`);
-              toast('Restored');
-              await loadSchema();
-              showTrash(dbId);
-            } catch (err) { toast(err.message, true); }
-          },
-        }, 'Restore'))));
+      el('td', { class: 'trash-acts' }));
+    tr.lastChild.append(el('button', {
+      class: 'btn btn-sm', type: 'button',
+      onclick: async () => {
+        try {
+          await api('POST', `/entities/${item.id}/restore`);
+          toast('Restored');
+          await loadSchema();
+          showTrash(dbId);
+        } catch (err) { toast(err.message, true); }
+      },
+    }, 'Restore'), purgeButton(tr, name, `/entities/${item.id}`) ?? '');
+    rows.append(tr);
   }
   for (const v of views) {
     const act = (run, done) => async () => {
@@ -56,15 +76,16 @@ async function showTrash(dbId) {
         showTrash(dbId);
       } catch (err) { toast(err.message, true); }
     };
-    rows.append(el('tr', {},
+    const tr = el('tr', { class: 'purge-row' },
       el('td', { class: 'pid-cell' }),
       el('td', {}, v.name),
       el('td', { class: 'trash-table' }, 'Share page'),
       el('td', { class: 'trash-when' }, whenEl(v.deletedAt)),
-      el('td', { class: 'trash-acts' },
-        el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'))));
+      el('td', { class: 'trash-acts' }));
+    tr.lastChild.append(el('button', { class: 'btn btn-sm', type: 'button', onclick: act(() => api('POST', `/views/${v.id}/restore`), 'Restored') }, 'Restore'), purgeButton(tr, v.name, `/views/${v.id}`) ?? '');
+    rows.append(tr);
   }
-  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap' },
+  if (items.length || views.length) main.append(el('div', { class: 'card table-wrap trash-list' },
     el('table', { class: 'table table-sm table-vcenter card-table wv-grid' },
       el('thead', {}, el('tr', {},
         el('th', { class: 'pid-head' }, '#'), el('th', {}, 'Name'),
@@ -143,84 +164,161 @@ function deleteWorkspaceDialog(w, after = null) {
 async function showSettings() {
   state.route = { page: 'settings' };
   renderNav();
-  const [trash, list, ws] = await Promise.all([api('GET', '/trash'), api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null)]);
+  const [list, ws, me] = await Promise.all([api('GET', '/workspaces').catch(() => []), api('GET', '/workspace').catch(() => null), accountNow().catch(() => null)]);
+  if (state.route?.page !== 'settings') return;
   const main = $('#main');
-  main.replaceChildren();
-  main.append(viewHeader({
+  const header = viewHeader({
     crumbs: [{ label: $('#ws-name').textContent || 'workspace', href: wsHomeHref() }],
     permalink: `${location.origin}${WS_PREFIX}/#/settings`,
     title: 'Settings',
-  }));
+  });
+  const pages = [
+    { id: 'preferences', label: 'Preferences', icon: 'sliders-horizontal', body: () => preferencesPage() },
+    { id: 'workspace', label: 'Workspace', icon: 'layout-grid', body: () => workspacePage(ws, list) },
+  ];
+  if (me?.clerk && await settingsInClerk(main, header, me.clerk, pages)) return;
+  clerkSettings = null;
+  main.replaceChildren(header, settingsShell(pages));
+}
+
+function settingsShell(pages) {
+  let current = pages.find((p) => p.id === settingsShell.last) ?? pages[0];
+  const body = el('section', { class: 'settings-page', role: 'tabpanel' });
+  const tabs = pages.map((p) => el('button', {
+    type: 'button', class: 'settings-tab', role: 'tab', 'data-page': p.id,
+    onclick: () => { current = p; settingsShell.last = p.id; draw(); },
+  }, lucideEl(p.icon, 'wv-icon'), el('span', {}, p.label)));
+  const draw = () => {
+    tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.page === current.id)));
+    body.replaceChildren(el('h2', { class: 'settings-page-title' }, current.label), ...current.body());
+  };
+  draw();
+  return el('div', { class: 'settings-shell' },
+    el('nav', { class: 'settings-nav', role: 'tablist', 'aria-label': 'Settings' }, ...tabs),
+    body);
+}
+
+function settingsSection(label, hint, ...controls) {
+  return el('div', { class: 'settings-sec' },
+    el('div', { class: 'settings-sec-label' }, el('span', {}, label), hint ? el('small', {}, hint) : null),
+    el('div', { class: 'settings-sec-body' }, ...controls));
+}
+
+function prefSelect(name, title, options, value, after = () => {}) {
+  const pick = pickerSelect({ name, options: options.map((o) => ({ id: String(o.id), label: o.label })), value: String(value), title });
+  pick.classList.add('settings-select');
+  pick.input.addEventListener('change', () => {
+    if (!WeavePrefs.setPersonal(name, pick.input.value)) return toast('This browser does not keep preferences', true);
+    after(pick.input.value);
+  });
+  return pick;
+}
+
+function prefSegments(name, options, value, after = () => {}) {
+  const seg = el('div', { class: 'settings-seg', role: 'radiogroup' });
+  const mark = (id) => [...seg.children].forEach((b) => b.setAttribute('aria-checked', String(b.dataset.id === String(id))));
+  seg.append(...options.map((o) => el('button', {
+    type: 'button', role: 'radio', 'data-id': String(o.id),
+    onclick: () => {
+      if (!WeavePrefs.setPersonal(name, o.id)) return toast('This browser does not keep preferences', true);
+      mark(o.id);
+      after(o.id);
+    },
+  }, o.label)));
+  mark(value);
+  return seg;
+}
+
+const DATE_STYLES = [['long', 'Long'], ['us', 'US'], ['eu', 'European'], ['iso', 'ISO']];
+function preferencesPage() {
+  const p = WeavePrefs.personal();
+  const sample = (format) => weaveDateGrain.formatDate('2026-03-09', { format });
+  return [
+    settingsSection('Appearance', 'Auto follows your system setting.',
+      prefSegments('theme', [{ id: 'auto', label: 'Auto' }, { id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }], p.theme, () => applyTheme())),
+    settingsSection('Week starts on', 'Calendars and date pickers open on this day.',
+      prefSelect('weekStart', 'Week starts on', [{ id: 0, label: 'Sunday' }, { id: 1, label: 'Monday' }], p.weekStart)),
+    settingsSection('Date format', 'For date fields that do not set their own.',
+      prefSelect('dateFormat', 'Date format', DATE_STYLES.map(([id, label]) => ({ id, label: `${label} · ${sample(id)}` })), p.dateFormat, applyPersonalPrefs)),
+    settingsSection('Time format', 'For times in fields that do not set their own.',
+      prefSegments('clock', [{ id: '12h', label: '12-hour' }, { id: '24h', label: '24-hour' }], p.clock, applyPersonalPrefs)),
+    settingsSection('Start page', 'Where a workspace opens from a bookmark or a typed address.',
+      prefSelect('startPage', 'Start page', [{ id: 'last', label: 'Last page visited' }, { id: 'home', label: 'Workspace home' }], p.startPage)),
+  ];
+}
+
+function workspacePage(ws, list) {
+  const out = [];
   if (typeof ws?.linkPreview === 'boolean') {
-    main.append(el('div', { class: 'card settings-link-preview' },
-      el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Link preview')),
-      el('p', { class: 'settings-note' }, 'A record permalink pasted into Slack, Messages or email unfurls with its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.'),
+    out.push(settingsSection('Link preview', 'A record link pasted into Slack, Messages or email shows its title, path and first fields before anyone signs in. Documents, other fields and the API stay behind sign-in.',
       paneSwitch({
-        label: 'Link preview before sign-in', on: ws.linkPreview,
+        label: 'Show before sign-in', on: ws.linkPreview,
         onChange: async (on) => {
           const now = await setLinkPreview(on);
           if (now !== on) showSettings();
         },
       })));
   }
-  const gone = [
-    ...trash.items.filter((i) => allTables().find((d) => d.id === i.dbId)?.system !== 'views')
-      .map((i) => ({ name: i.name || `#${i.publicId}`, where: trashKind(i), deletedAt: i.deletedAt, path: `/entities/${i.id}` })),
-    ...(trash.views ?? []).map((v) => ({ name: v.name, where: 'Share page', deletedAt: v.deletedAt, path: `/views/${v.id}` })),
-  ];
-  const purge = el('div', { class: 'card settings-purge' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Delete forever')),
-    el('p', { class: 'settings-note' }, 'Records, tables, spaces and share pages in the trash. Deleting one forever cannot be undone, and Activity cannot restore it.'));
-  if (!gone.length) purge.append(el('div', { class: 'empty-note' }, 'Nothing in the trash.'));
-  else {
-    const rows = el('tbody');
-    for (const g of gone) {
-      const tr = el('tr', { class: 'purge-row' },
-        el('td', {}, g.name),
-        el('td', { class: 'trash-table' }, g.where),
-        el('td', { class: 'trash-when' }, whenEl(g.deletedAt)),
-        el('td', { class: 'trash-acts' }));
-      if (trash.purge) {
-        tr.lastChild.append(el('button', {
-          class: 'btn btn-sm btn-outline-danger purge-open', type: 'button',
-          onclick: confirmToggle(tr, () => {
-            const { box, input } = typedHold(g.name, 'This cannot be undone.', {
-              label: 'Delete forever', hold: true, holdingLabel: 'Hold to purge…',
-              run: async () => {
-                try {
-                  await api('DELETE', `${g.path}?hard=1`);
-                  toast(`${g.name} deleted forever`);
-                  await loadSchema();
-                  showSettings();
-                } catch (err) { toast(err.message, true); }
-              },
-            });
-            return { node: el('tr', {}, el('td', { colspan: 4 }, box)), input };
-          }),
-        }, 'Delete forever…'));
-      }
-      rows.append(tr);
-    }
-    purge.append(el('div', { class: 'table-wrap' },
-      el('table', { class: 'table table-sm table-vcenter card-table' },
-        el('thead', {}, el('tr', {}, el('th', {}, 'Name'), el('th', {}, 'Type'), el('th', {}, 'Deleted'), el('th', {}, ''))),
-        rows)));
-  }
-  main.append(purge);
   const deletable = list.filter((w) => w.deletable);
-  if (!deletable.length) return;
-  main.append(el('div', { class: 'card settings-workspaces' },
-    el('div', { class: 'card-header' }, el('h3', { class: 'card-title' }, 'Workspaces')),
-    el('p', { class: 'settings-note' }, 'Deleting a workspace is permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.'),
-    ...deletable.map((w) => {
-      const row = el('div', { class: 'list-row' },
+  if (deletable.length) {
+    out.push(settingsSection('Delete a workspace', 'Permanent: it leaves the rail for everyone, its links stop working, and it cannot be undone.',
+      ...deletable.map((w) => el('div', { class: 'settings-ws-row' },
         el('span', { class: 'list-row-name' }, w.name),
         el('span', { class: 'text-secondary' }, `${w.tables ?? 0} tables, ${w.entities ?? 0} entities`),
-        el('span', { class: 'spacer' }));
-      row.append(el('button', {
-        class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button',
-        onclick: () => deleteWorkspaceDialog(w),
-      }, 'Delete…'));
-      return row;
-    })));
+        el('button', { class: 'btn btn-sm btn-outline-danger ws-delete-open', type: 'button', onclick: () => deleteWorkspaceDialog(w) }, 'Delete…')))));
+  }
+  if (!out.length) out.push(el('p', { class: 'settings-empty' }, 'Nothing here to change for this workspace.'));
+  return out;
+}
+
+let clerkSettings = null;
+const clerkAppearance = () => {
+  const v = (name, fallback) => `var(${name}${fallback ? `, ${fallback}` : ''})`;
+  return {
+    variables: {
+      colorPrimary: v('--tblr-primary'), colorPrimaryForeground: v('--tblr-primary-fg', '#ffffff'), colorDanger: v('--tblr-danger'),
+      colorBackground: v('--tblr-bg-surface'), colorForeground: v('--tblr-body-color'), colorMutedForeground: v('--tblr-secondary'),
+      colorNeutral: v('--tblr-body-color'), colorBorder: v('--tblr-border-color'), colorInput: v('--tblr-bg-surface'), colorInputForeground: v('--tblr-body-color'),
+      fontFamily: v('--tblr-font-sans-serif'), borderRadius: '8px',
+    },
+    elements: { rootBox: { width: '100%' }, cardBox: { width: '100%', maxWidth: '100%', boxShadow: 'none', border: '1px solid var(--tblr-border-color)' } },
+  };
+};
+const loadClerk = (pane) => (loadClerk.p ??= (async () => {
+  const origin = new URL(pane.script).origin;
+  const inject = (src, data = {}) => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    Object.assign(s, { src, async: true, crossOrigin: 'anonymous', onload: resolve, onerror: () => reject(new Error(`${src} did not load`)) });
+    Object.assign(s.dataset, data);
+    document.head.append(s);
+  });
+  await Promise.all([inject(pane.script, { clerkPublishableKey: pane.publishableKey }), inject(`${origin}/npm/@clerk/ui@1/dist/ui.browser.js`)]);
+  await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+  return window.Clerk;
+})().catch((err) => { loadClerk.p = null; throw err; }));
+
+async function settingsInClerk(main, header, pane, pages) {
+  const fill = () => pages.forEach((p) => clerkSettings.holders[p.id].replaceChildren(...p.body()));
+  if (clerkSettings) {
+    main.replaceChildren(header, clerkSettings.root);
+    fill();
+    return true;
+  }
+  let clerk;
+  try { clerk = await loadClerk(pane); } catch { return false; }
+  if (state.route?.page !== 'settings') return true;
+  if (!clerk?.user) return false;
+  clerkSettings = { root: el('div', { class: 'settings-clerk' }), holders: Object.fromEntries(pages.map((p) => [p.id, el('div', { class: 'settings-page settings-clerk-page' })])) };
+  fill();
+  main.replaceChildren(header, clerkSettings.root);
+  clerk.mountUserProfile(clerkSettings.root, {
+    routing: 'virtual',
+    appearance: clerkAppearance(),
+    customPages: pages.map((p) => ({
+      url: p.id, label: p.label,
+      mountIcon: (n) => n.replaceChildren(lucideEl(p.icon, 'wv-icon')), unmountIcon: (n) => n.replaceChildren(),
+      mount: (n) => n.replaceChildren(clerkSettings.holders[p.id]), unmount: (n) => n.replaceChildren(),
+    })),
+  });
+  return true;
 }

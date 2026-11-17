@@ -18,12 +18,12 @@ if (s) {
     page ??= await browser.newPage({ viewport: { width: 1280, height: 860 } });
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(`${base}/#/settings`);
-    await page.waitForSelector('#main .settings-purge');
+    await page.goto(`${base}/#/trash`);
+    await page.waitForSelector('#main .trash-list');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
     return page;
   }
-  const purgeRow = (page, name) => page.locator('#main .settings-purge tr.purge-row', { has: page.locator('td', { hasText: new RegExp(`^${name}$`) }) });
+  const purgeRow = (page, name) => page.locator('#main .trash-list tr.purge-row', { has: page.locator('td', { hasText: new RegExp(`^${name}$`) }) });
   const colorsDiffer = (locator) => locator.evaluate((b) => {
     const bg = (e) => { for (let x = e; x; x = x.parentElement) { const c = getComputedStyle(x).backgroundColor; if (!/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; } return 'rgb(255, 255, 255)'; };
     return getComputedStyle(b).color !== bg(b);
@@ -31,7 +31,7 @@ if (s) {
   async function purge(page, name) {
     const row = purgeRow(page, name);
     await row.locator('.purge-open').click();
-    const confirm = page.locator('#main .settings-purge .purge-confirm');
+    const confirm = page.locator('#main .trash-list .purge-confirm');
     const go = confirm.locator('.hold-btn');
     await go.waitFor();
     assert.ok(await go.isDisabled(), 'the hold is off until the name is typed');
@@ -78,19 +78,19 @@ if (s) {
     });
   }
 
-  test('the Settings purge header names the column Type (Feature #160)', async () => {
+  test('the Trash purge header names the column Type (Feature #160)', async () => {
     const name = uniq('Header');
     const db = weave.createTable({ space: 'Product', name });
     weave.deleteTable(db.id);
     const page = await open();
     try {
       await purgeRow(page, name).waitFor();
-      assert.deepEqual((await page.locator('#main .settings-purge thead th').allTextContents()).map((t) => t.trim()), ['Name', 'Type', 'Deleted', '']);
+      assert.deepEqual((await page.locator('#main .trash-list thead th').allTextContents()).map((t) => t.trim()), ['#', 'Name', 'Type', 'Deleted', '']);
     } finally { await page.close(); }
   });
 
   for (const theme of ['light', 'dark']) {
-    test(`${theme}: at phone width Settings fits the screen and purges a table (Feature #160)`, async () => {
+    test(`${theme}: at phone width the Trash page fits the screen and purges a table (Feature #160)`, async () => {
       const name = uniq('Pocket');
       const db = weave.createTable({ space: 'Product', name });
       weave.deleteTable(db.id);

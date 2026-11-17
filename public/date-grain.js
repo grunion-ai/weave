@@ -4,6 +4,15 @@
   const CLOCKS = ['24h', '12h'];
   const DEFAULT_FORMAT = 'long';
   const DEFAULT_CLOCK = '12h';
+  const VIEWER_FORMATS = ['long', 'us', 'eu', 'iso'];
+  const viewer = { format: null, clock: null };
+  const setViewerDefaults = ({ format, clock } = {}) => {
+    viewer.format = VIEWER_FORMATS.includes(format) ? format : null;
+    viewer.clock = CLOCKS.includes(clock) ? clock : null;
+  };
+  const viewerDefaults = () => ({ ...viewer });
+  const formatFor = (c = {}) => c.format ?? viewer.format ?? DEFAULT_FORMAT;
+  const clockFor = (c = {}) => c.clock ?? viewer.clock ?? DEFAULT_CLOCK;
   const ZONES = ['floating', 'fixed', 'instant'];
   const NEEDS = { month: ['month'], quarter: ['month'], ordinal: ['day'], relative: ['year'] };
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -249,8 +258,8 @@
     } else if (time && parts.t && c.zone === 'fixed' && c.zoneName) {
       tag = ' ' + zoneAbbr(new Date(parts.y != null ? asUtcMs(parts) : now.getTime()), c.zoneName);
     }
-    const date = dateText(parts, grain, c.format ?? DEFAULT_FORMAT, !!c.pad, now);
-    const clock = time && parts.t ? clockText(parts.t, c.clock ?? DEFAULT_CLOCK) : '';
+    const date = dateText(parts, grain, formatFor(c), !!c.pad, now);
+    const clock = time && parts.t ? clockText(parts.t, clockFor(c)) : '';
     return (date && clock ? `${date} ${clock}` : date || clock) + (clock ? tag : '');
   }
   function formatDateRange(value, c = {}) {
@@ -258,7 +267,7 @@
     const { start, end } = value;
     if (!start && !end) return '';
     let text;
-    if ((c.format ?? DEFAULT_FORMAT) === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4) && grainOf(c).length === 3) {
+    if (formatFor(c) === 'long' && !c.time && start && end && String(start).slice(0, 4) === String(end).slice(0, 4) && grainOf(c).length === 3) {
       text = `${formatDate(start, c).replace(`, ${String(start).slice(0, 4)}`, '')} – ${formatDate(end, c)}`;
     } else {
       text = `${start ? formatDate(start, c) : ''} – ${end ? formatDate(end, c) : ''}`.trim();
@@ -277,7 +286,8 @@
   }
 
   root.weaveDateGrain = {
-    PARTS, DATE_FORMATS, CLOCKS, DEFAULT_FORMAT, DEFAULT_CLOCK, ZONES, NEEDS, MON, MON_LONG,
+    PARTS, DATE_FORMATS, CLOCKS, DEFAULT_FORMAT, DEFAULT_CLOCK, VIEWER_FORMATS, ZONES, NEEDS, MON, MON_LONG,
+    setViewerDefaults, viewerDefaults, formatFor, clockFor,
     normalizeGrain, grainOf, legalFormats, formatProblem,
     partsOf, storeOf, coerce, coerceInstant, isZone, toInstant, fromInstant, wallIn, zoneAbbr,
     formatDate, formatDateRange, clockText, parseClock, elapsedText, ordinal, rangeKey,

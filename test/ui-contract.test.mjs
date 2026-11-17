@@ -316,8 +316,8 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
 });
 
 test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
-  assert.match(fnBody('showSettings', SETTINGS_VIEW), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, in Settings (Feature #295)');
-  assert.doesNotMatch(fnBody('showTrash', SETTINGS_VIEW), /hard=1|holdToConfirm/, 'the Trash page restores and never purges');
+  assert.match(fnBody('showTrash', SETTINGS_VIEW), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, on each Trash row (Feature #295, Feature #382)');
+  assert.doesNotMatch(fnBody('showSettings', SETTINGS_VIEW), /hard=1|Delete forever/, 'Settings holds preferences and never purges (Feature #382)');
   const hard = [...(APP + SETTINGS_VIEW).matchAll(/\?hard=1/g)];
   assert.equal(hard.length, 1, 'exactly one call site may purge');
   assert.match(SETTINGS_VIEW, /function showTrash/);
@@ -1141,7 +1141,7 @@ test('dates: one smart control everywhere, a calendar popover with month/year gr
   const ctl = fnBody('dateControl');
   assert.match(fnBody('readTypedDate'), /parseNaturalDate\(bare, new Date\(\), \{ dayFirst: format === 'eu' \}\)/, 'typed text is autodetected, day-first for eu fields');
   const pop = fnBody('datePopover');
-  for (const need of ["view = 'months'", "view = 'years'", 'dc.calendarMonth(y, m)', "'Clear'", "'Today'", "type: 'time'"]) {
+  for (const need of ["view = 'months'", "view = 'years'", 'dc.calendarMonth(y, m, weekStart())', "'Clear'", "'Today'", "type: 'time'"]) {
     assert.ok(pop.includes(need), `popover has ${need}`);
   }
   const dlg = fnBody('fieldDialog');
