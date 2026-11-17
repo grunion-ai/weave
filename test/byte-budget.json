@@ -84,6 +84,10 @@
       "gzip": 3662,
       "br": 3291
     },
+    "/doc-base.js": {
+      "gzip": 710,
+      "br": 654
+    },
     "/doc-draft-core.js": {
       "gzip": 476,
       "br": 409
@@ -109,8 +113,8 @@
       "br": 15216
     },
     "/field-diff-core.js": {
-      "gzip": 1593,
-      "br": 1410
+      "gzip": 1400,
+      "br": 1227
     },
     "/file-preview-core.js": {
       "gzip": 770,

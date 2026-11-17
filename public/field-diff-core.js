@@ -35,25 +35,11 @@
   function words(text) { return String(text ?? '').split(/(\s+)/).filter((w) => w !== ''); }
 
   function textDiff(before, after) {
-    const a = words(before), b = words(after);
-    const n = a.length, m = b.length;
-    const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
     const out = [];
-    const push = (op, text) => {
+    for (const [op, text] of root.weaveHistoryCore.lcs(words(before), words(after))) {
       const last = out[out.length - 1];
       if (last?.op === op) last.text += text; else out.push({ op, text });
-    };
-    let i = 0, j = 0;
-    while (i < n && j < m) {
-      if (a[i] === b[j]) { push('=', a[i]); i++; j++; }
-      else if (dp[i + 1][j] >= dp[i][j + 1]) push('-', a[i++]);
-      else push('+', b[j++]);
     }
-    while (i < n) push('-', a[i++]);
-    while (j < m) push('+', b[j++]);
     return out;
   }
 
