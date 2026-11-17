@@ -12,16 +12,22 @@ import { Weave, FIELD_TYPES } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { GUIDES } from '../src/handbook.js';
 import {
-  packTar, readTar, streamTar, tarWriter, classify, heldOpen, encryptFile, decryptFile, isEncrypted, resolvePassphrase,
+  streamTar, tarWriter, classify, heldOpen, isEncrypted, resolvePassphrase, unsealed,
   backup, restore, signV4, s3, scheduleNightly, nextFireAt, sealer, ARCHIVE_PREFIX, RETAIN, PART_BYTES,
 } from '../src/backup.js';
 import { tempDir } from './lib/temp.mjs';
+import { packTar, readTar } from './lib/tar.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
 const tmp = (label) => tempDir(`weave-backup-${label}-`);
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const PASS = 'correct horse battery staple';
+
+function sealWhole(src, dst, passphrase, opts) {
+  const seal = sealer(passphrase, opts);
+  writeFileSync(dst, Buffer.concat([seal.head, seal.update(readFileSync(src)), seal.final()]));
+}
 
 function seedDataDir({ passphrase = null } = {}) {
   const dir = tmp('data');
@@ -52,7 +58,7 @@ function seedDataDir({ passphrase = null } = {}) {
 
 const closeAll = (...ws) => ws.forEach((w) => w.store.close?.());
 
-test('the ustar writer and reader round-trip long names, empty files and binary bytes', () => {
+test('the ustar writer and the streaming reader round-trip long names, empty files and binary bytes', async () => {
   const dir = tmp('tar');
   const long = 'files/' + 'a'.repeat(120) + '/' + 'b'.repeat(90) + '.bin';
   const bin = Buffer.from(Array.from({ length: 1500 }, (_, i) => i % 256));
@@ -64,7 +70,7 @@ test('the ustar writer and reader round-trip long names, empty files and binary 
     { name: 'disk/on-disk.txt', path: join(dir, 'on-disk.txt') },
   ]);
   assert.equal(statSync(out).size % 512, 0, 'a tar is a whole number of blocks');
-  const entries = readTar(out);
+  const entries = await readTar(out);
   assert.deepEqual(entries.map((e) => e.name), ['empty.txt', long, 'disk/on-disk.txt']);
   assert.equal(entries[0].data.length, 0);
   assert.ok(entries[1].data.equals(bin), 'binary bytes survive');
@@ -73,30 +79,27 @@ test('the ustar writer and reader round-trip long names, empty files and binary 
   assert.deepEqual(listed, ['empty.txt', long, 'disk/on-disk.txt']);
 });
 
-test('a corrupt header is refused rather than read as garbage', () => {
+test('a corrupt header is refused rather than read as garbage', async () => {
   const dir = tmp('tar-bad');
   const out = join(dir, 'x.tar');
   packTar(out, [{ name: 'a.txt', data: Buffer.from('aaa') }]);
   const buf = readFileSync(out);
   buf[148] = 0x30; buf[149] = 0x30;
   writeFileSync(out, buf);
-  assert.throws(() => readTar(out), /checksum/i);
+  await assert.rejects(readTar(out), /checksum mismatch at byte 0/i);
 });
 
-test('an encrypted archive is opaque without the passphrase and refuses the wrong one', () => {
+test('an encrypted archive is opaque without the passphrase and refuses the wrong one', async () => {
   const dir = tmp('enc');
   const plain = join(dir, 'p.tar');
   packTar(plain, [{ name: 'secret.txt', data: Buffer.from('the keystore is in here') }]);
   const enc = join(dir, 'p.tar.enc');
-  encryptFile(plain, enc, PASS);
+  sealWhole(plain, enc, PASS);
   assert.ok(isEncrypted(enc), 'the envelope announces itself');
   assert.ok(!isEncrypted(plain));
   assert.doesNotMatch(readFileSync(enc, 'latin1'), /the keystore is in here/);
-  const back = join(dir, 'back.tar');
-  decryptFile(enc, back, PASS);
-  assert.ok(readFileSync(back).equals(readFileSync(plain)));
-  assert.throws(() => decryptFile(enc, join(dir, 'no.tar'), 'wrong'), /passphrase|auth/i);
-  assert.ok(!existsSync(join(dir, 'no.tar')), 'nothing lands when the tag fails');
+  assert.ok(Buffer.concat(await Array.fromAsync(unsealed(enc, PASS))).equals(readFileSync(plain)));
+  await assert.rejects(Array.fromAsync(unsealed(enc, 'wrong')), /passphrase/i);
 });
 
 test('the passphrase comes from WEAVE_BACKUP_PASSPHRASE, then the keystore passphrase, then the key file, else none', () => {
@@ -127,15 +130,14 @@ test('backup → restore → boot: counts equal, attachment identical, orphan re
   assert.deepEqual(r.orphans.list, [{ workspace: 'alpha', id: src.orphan.id, name: 'lost.png' }]);
   assert.equal(r.files, 1, 'one blob actually copied');
 
-  const tar = join(outDir, 'peek.tar');
-  decryptFile(r.path, tar, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
-  const names = readTar(tar).map((e) => e.name);
+  const peek = await readTar(r.path, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
+  const names = peek.map((e) => e.name);
   assert.ok(names.includes('alpha.db') && names.includes('beta.db') && names.includes('keystore.json'));
   assert.ok(names.includes(`files/${src.kept.id}`));
   assert.ok(!names.includes('keystore.key'), 'keystore.key never leaves the machine');
   assert.ok(!names.some((n) => n.endsWith('-wal') || n.endsWith('-shm')), 'no sidecars — VACUUM INTO folded them');
   assert.equal(names.at(-1), 'manifest.json');
-  const manifest = JSON.parse(readTar(tar).at(-1).data.toString());
+  const manifest = JSON.parse(peek.at(-1).data.toString());
   assert.equal(manifest.weave, JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version);
   assert.equal(manifest.entries.find((e) => e.name === `files/${src.kept.id}`).sha256, sha256(src.bytes));
   assert.equal(manifest.orphans.count, 1);
@@ -188,7 +190,7 @@ test('a plain tar is written when no key material exists, and one workspace can 
   closeAll(src.alpha, src.beta);
   assert.equal(r.encrypted, false);
   assert.match(r.archive, /^weave-backup-beta-.*\.tar$/);
-  const names = readTar(r.path).map((e) => e.name);
+  const names = (await readTar(r.path)).map((e) => e.name);
   assert.ok(names.includes('beta.db') && !names.includes('alpha.db'));
   assert.ok(names.includes('keystore.json'), 'the keystore rides along with any workspace — it is shared');
 });
@@ -238,7 +240,7 @@ test('restore refuses an archive whose bytes do not match its manifest', async (
   rmSync(join(src.dir, 'keystore.key'));
   const r = await backup({ dataDir: src.dir, out: tmp('out7'), env: {} });
   closeAll(src.alpha, src.beta);
-  const entries = readTar(r.path);
+  const entries = await readTar(r.path);
   const i = entries.findIndex((e) => e.name === 'beta.db');
   entries[i].data[100] ^= 0xff;
   packTar(r.path, entries);
@@ -423,7 +425,7 @@ test('a backup to a bucket never holds more than one part in memory, and the sto
   } finally { server.close(); }
 });
 
-test('the sealed archive the backup writes is the same bytes the two-pass encryptFile wrote, and nothing is staged twice', async () => {
+test('the sealed archive the backup writes is the same bytes as sealing the finished tar whole, and nothing is staged twice', async () => {
   const dir = tmp('sealed');
   const plain = join(dir, 'plain.tar');
   const payload = randomBytes(1024 * 1024 + 777);
@@ -433,16 +435,14 @@ test('the sealed archive the backup writes is the same bytes the two-pass encryp
   flat.close();
   const salt = Buffer.alloc(16, 7), iv = Buffer.alloc(12, 9);
   const twoPass = join(dir, 'two-pass.enc');
-  encryptFile(plain, twoPass, PASS, { salt, iv });
+  sealWhole(plain, twoPass, PASS, { salt, iv });
   const streamed = join(dir, 'streamed.enc');
   const t = tarWriter(streamed, { mtime: 0, seal: sealer(PASS, { salt, iv }) });
   for (const e of entries) t.add(e);
   t.close();
-  assert.deepEqual(readTar(plain).map((e) => e.name), ['blob', 'manifest.json'], 'the plain tar reads back');
+  assert.deepEqual((await readTar(plain)).map((e) => e.name), ['blob', 'manifest.json'], 'the plain tar reads back');
   assert.ok(readFileSync(streamed).equals(readFileSync(twoPass)), 'sealing into the stream writes the same bytes as sealing a finished tar');
-  const back = join(dir, 'back.tar');
-  decryptFile(streamed, back, PASS);
-  assert.ok(readFileSync(back).equals(readFileSync(plain)), 'and it reads back as the tar it sealed');
+  assert.ok(Buffer.concat(await Array.fromAsync(unsealed(streamed, PASS))).equals(readFileSync(plain)), 'and it reads back as the tar it sealed');
   assert.ok(isEncrypted(streamed));
 
   const src = seedDataDir();
@@ -453,6 +453,21 @@ test('the sealed archive the backup writes is the same bytes the two-pass encryp
   assert.ok(isEncrypted(r.path));
   const rr = await restore({ source: r.path, dataDir: tmp('nostageback'), env: { WEAVE_BACKUP_PASSPHRASE: PASS } });
   assert.ok(rr.landed.includes('alpha.db'));
+});
+
+test('an archive sealed whole, as the two-pass encryptFile of earlier releases wrote it, restores through the streaming unsealer', async () => {
+  const src = seedDataDir();
+  rmSync(join(src.dir, 'keystore.key'));
+  const r = await backup({ dataDir: src.dir, out: tmp('twopass'), env: {} });
+  closeAll(src.alpha, src.beta);
+  assert.equal(r.encrypted, false);
+  const old = join(tmp('twopass-sealed'), 'old.tar.enc');
+  sealWhole(r.path, old, PASS);
+  assert.ok(isEncrypted(old));
+  await assert.rejects(restore({ source: old, dataDir: tmp('twopass-wrong'), env: { WEAVE_BACKUP_PASSPHRASE: 'wrong' } }), /passphrase/i);
+  const rr = await restore({ source: old, dataDir: tmp('twopass-back'), env: { WEAVE_BACKUP_PASSPHRASE: PASS } });
+  assert.deepEqual(rr.landed.sort(), ['alpha.db', 'beta.db', `files/${src.kept.id}`, 'keystore.json'].sort());
+  assert.equal(rr.verified, rr.landed.length, 'every entry the manifest lists was verified');
 });
 
 test('restore takes an s3:// source through the same signer', async () => {
@@ -754,7 +769,7 @@ test('streamTar skips non-file entries, refuses a truncated archive and a corrup
   const got = await streamed(buf, 100);
   assert.deepEqual(got.map((e) => e.name), ['after.bin'], 'the extended-header entry is read past, never opened');
   assert.equal(got[0].data.toString(), 'after');
-  assert.deepEqual(readTar(buf).map((e) => e.name), ['after.bin'], 'readTar agrees');
+  assert.deepEqual((await readTar(buf)).map((e) => e.name), ['after.bin'], 'the test reader agrees');
 
   packTar(out, [{ name: 'big.bin', data: Buffer.alloc(1100, 9) }]);
   const whole = readFileSync(out);
@@ -797,7 +812,7 @@ test('heldOpen sees a live WAL and a writer lock, and clears for a closed databa
 const FIXTURE = join(ROOT, 'test', 'fixtures', 'backup-v0.4.100.tar');
 
 test('an archive taken by release v0.4.100 restores with today\'s code and reads back its seeded rows', async () => {
-  const names = readTar(FIXTURE).map((e) => e.name);
+  const names = (await readTar(FIXTURE)).map((e) => e.name);
   assert.deepEqual(names.filter((n) => !n.startsWith('files/')), ['ledger.db', 'manifest.json']);
   const fresh = tmp('v04100');
   const rr = await restore({ source: FIXTURE, dataDir: fresh, env: {} });
@@ -824,12 +839,12 @@ test('full backups preserve hub routing aliases without putting them in single-w
   writeFileSync(join(dir, '_hub.json'), JSON.stringify(routes));
   closeAll(alpha, beta);
   const full = await backup({ dataDir: dir, out: tmp('hub-full'), env: {} });
-  assert.ok(readTar(full.path).some(e => e.name === '_hub.json'));
+  assert.ok((await readTar(full.path)).some(e => e.name === '_hub.json'));
   const target = tmp('hub-restored');
   await restore({ source: full.path, dataDir: target, env: {} });
   assert.deepEqual(JSON.parse(readFileSync(join(target, '_hub.json'), 'utf8')), routes);
   const single = await backup({ dataDir: dir, workspace: 'alpha', out: tmp('hub-single'), env: {} });
-  assert.equal(readTar(single.path).some(e => e.name === '_hub.json'), false);
+  assert.equal((await readTar(single.path)).some(e => e.name === '_hub.json'), false);
 });
 
 test('a temp file left in files/ by an interrupted blob write is neither archived nor counted an orphan', async () => {
@@ -840,7 +855,6 @@ test('a temp file left in files/ by an interrupted blob write is neither archive
   closeAll(src.alpha, src.beta);
   assert.equal(r.files, 1, 'the interrupted write is not a blob');
   assert.equal(r.orphans.count, 1, 'only the deleted blob is an orphan');
-  const tar = join(outDir, 'peek-tmp.tar');
-  decryptFile(r.path, tar, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
-  assert.ok(!readTar(tar).some((e) => e.name.endsWith('.tmp')), 'a .tmp entry rode into the archive');
+  const peek = await readTar(r.path, readFileSync(join(src.dir, 'keystore.key'), 'utf8').trim());
+  assert.ok(!peek.some((e) => e.name.endsWith('.tmp')), 'a .tmp entry rode into the archive');
 });
