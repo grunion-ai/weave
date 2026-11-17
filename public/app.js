@@ -1308,7 +1308,7 @@ function fitCrumbs(path, foldFrom) {
     more = false;
   } else if (over) {
     more = fit && n > 1 && CRUMB_MORE_PX + plan[n - 1] <= room;
-    if (!more && !(fit && widths[n - 1] <= room + 0.5)) {
+    if (!more && !(fit && (!dockCoversScreen.matches || widths[n - 1] <= room + 0.5))) {
       for (const sl of slots) sl.hidden = true;
       return;
     }
@@ -1329,19 +1329,13 @@ function fitCrumbs(path, foldFrom) {
   path.querySelector(':scope > .crumb-slot:not([hidden])')?.classList.add('crumb-lead');
 }
 const CRUMB_MORE_PX = 40;
-function tableShedRows(db, row) {
-  const share = row?.querySelector(':scope > .crumb-actions > .table-share-btn');
-  return {
-    find: row?.querySelector('.table-search') ? { label: `Search ${db.term?.plural ?? 'records'}`, icon: 'lucide:search', run: () => openTableSearch(row) } : null,
-    share: share ? { label: 'Share (Beta)', icon: 'lucide:upload', run: () => share.click() } : null,
-  };
-}
 function shedRows(shed, inPeek) {
-  const row = (btn, label, icon) => (btn?.isConnected ? { label, icon, run: () => btn.click() } : null);
+  const gone = (btn) => !!btn?.isConnected && !btn.getClientRects().length;
+  const row = (btn, label, icon) => (gone(btn) ? { label, icon, run: () => btn.click() } : null);
   return {
     activity: row(shed?.activity, 'Activity', 'lucide:history'),
     share: row(shed?.share, 'Share (Beta)', 'lucide:upload'),
-    pose: shed?.pose?.isConnected && !(inPeek && dockCoversScreen.matches) ? {
+    pose: gone(shed?.pose) && !(inPeek && dockCoversScreen.matches) ? {
       label: inPeek ? 'Expand to the full page' : 'Collapse beside the table', run: () => shed.pose.click(),
       nodes: [el('span', { class: 'wv-icon wv-menu-icon' }, poseGlyph(!inPeek)), el('span', { class: 'wv-menu-label' }, inPeek ? 'Expand to the full page' : 'Collapse beside the table')],
     } : null,
@@ -3325,7 +3319,6 @@ const OPEN_TRASH = { label: 'Open trash', run: () => { location.hash = '#/trash'
 
 const MENU_ROWS = {
   table: (db, { anchor = null } = {}) => ({
-    ...tableShedRows(db, anchor?.closest?.('.crumb-row-tight')),
     move: db.system ? null : {
       label: 'Move to space…',
       run: () => searchPicker({
@@ -9460,7 +9453,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       onclick: () => collapseToSplit(entity),
     }, poseGlyph(true)),
     el('button', {
-      class: 'btn btn-sm', type: 'button',
+      class: 'btn btn-sm page-close', type: 'button',
       title: 'Close', 'aria-label': 'Close — back to the table',
       onclick: () => closeToTable(entity),
     }, iconEl('✕')),

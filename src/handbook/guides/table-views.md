@@ -8,7 +8,7 @@ The controls sit beside the breadcrumb: **Search → View → Table actions (⋮
 
 | Control | What it does |
 | --- | --- |
-| **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
+| **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. When the header runs short of room, beside a docked record for example, the box folds to its magnifier; click the magnifier to open the box again. A box that holds a query stays open. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
 | **View** | Opens the View pane beside the table, and closes it again. Its badge counts the active filters, deleted records included. Closing the pane gives the table the full width. |
 
 ## The View pane
