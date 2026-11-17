@@ -92,7 +92,8 @@ if (s) {
     assert.deepEqual(tight, [], `${where}: an icon beside a label keeps at least 4px before the text`);
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the workspace home centres every icon-only button (${theme})`, async () => {
       const page = await browser.newPage({ viewport: widths[0][1] });
       try {

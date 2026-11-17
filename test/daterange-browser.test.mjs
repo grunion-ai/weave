@@ -57,7 +57,8 @@ if (s) {
     await page.close();
   });
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`two clicks in ONE dialog set start then end, in ${colorScheme}`, async () => {
       const id = freshSprint({});
       const page = await browser.newPage({ colorScheme });

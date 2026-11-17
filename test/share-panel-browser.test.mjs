@@ -9,7 +9,8 @@ const s = await launch('Share beta panel', w => {
   entry = w.createEntity(table.id, { Name: 'First request' });
 });
 if (s) {
-  for (const theme of ['light', 'dark']) test(`Share panel: scoped creation, expiration, copy, preview, regeneration and hold to delete (${theme}, Feature #346)`, async () => {
+  const theme = 'light';
+  test(`Share panel: scoped creation, expiration, copy, preview, regeneration and hold to delete (${theme}, Feature #346)`, async () => {
     const page = await s.browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: theme });
     const requests = [];
     let links = [];

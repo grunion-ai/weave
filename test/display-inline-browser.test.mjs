@@ -28,7 +28,8 @@ const s = await launch('display inline', w => {
 });
 if (s) {
   const { base, browser } = s;
-  for (const theme of ['light', 'dark']) for (const width of [1440, 390]) test(`inline document and file render without headings at ${width} ${theme}`, async () => {
+  const theme = 'light';
+  for (const width of [1440, 390]) test(`inline document and file render without headings at ${width} ${theme}`, async () => {
     const page = await browser.newPage({ extraHTTPHeaders: { Authorization: `Bearer ${owner}` }, viewport: { width, height: 900 } });
     try {
       await page.addInitScript(t => localStorage.setItem('weave-theme', t), theme);

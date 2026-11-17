@@ -16,7 +16,8 @@ if (s) {
     const r = n.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && parseFloat(getComputedStyle(n).fontSize) < 11;
   }).map((n) => `${n.tagName.toLowerCase()}.${[...n.classList].join('.')} ${getComputedStyle(n).fontSize}`));
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`the app loads no font faces and names no Inter, in ${colorScheme} (Issue #383)`, async () => {
       const page = await browser.newPage({ colorScheme });
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });

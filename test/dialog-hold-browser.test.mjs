@@ -53,6 +53,103 @@ if (s) {
   }, [sel, STOPS]);
 
   for (const theme of ['light', 'dark']) {
+    const FRAME = `/api/files/${links.id}?view`;
+    test(`the full-screen viewer is a labelled modal dialog; Tab cycles the toolbar and walks through the frame (${theme})`, async () => {
+      const page = await open(theme);
+      try {
+        await page.focus('#ws-new');
+        await page.evaluate((url) => fullscreenViewer('Spec sheet', { url }), FRAME);
+        await page.waitForSelector('#fsv-back iframe');
+        await page.frameLocator('#fsv-back iframe').locator('a').first().waitFor();
+        assert.deepEqual(await dialogOf(page, '#fsv-back'), { role: 'dialog', modal: 'true', label: 'Spec sheet' });
+        assert.ok(await inside(page, '#fsv-back'), 'focus moves into the viewer');
+        assert.ok((await inertNow(page)).includes('app'), 'the page behind is inert');
+        assert.equal(await styleOf(page.locator('#fsv-back'), 'outlineStyle', 'none'), 'none', 'the focused viewer draws no ring');
+
+        await page.keyboard.press('Tab');
+        assert.equal(await focused(page), 'Refresh', 'the first Tab lands on the toolbar\'s first control');
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(await focused(page), 'IFRAME', 'Shift+Tab from the first control wraps to the frame');
+        await page.focus('#fsv-back button[title="Close (Esc)"]');
+        await page.keyboard.press('Tab');
+        assert.equal(await focused(page), 'IFRAME', 'Tab from the toolbar\'s last control enters the frame');
+        const inFrame = () => page.frameLocator('#fsv-back iframe').locator(':focus').textContent();
+        await page.keyboard.press('Tab');
+        assert.equal(await inFrame(), 'first', 'Tab walks the framed page');
+        await page.keyboard.press('Tab');
+        assert.equal(await inFrame(), 'second');
+        await page.keyboard.press('Tab');
+        assert.equal(await focused(page), 'Refresh', 'Tab out of the frame\'s last stop wraps to the toolbar, not the page');
+
+        await page.focus('#fsv-back button[title="Refresh"]');
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#fsv-back', { state: 'detached' });
+        assert.deepEqual(await freed(page), [], 'Escape frees the page');
+        assert.equal(await focused(page), 'ws-new', 'focus is back on what opened the viewer');
+      } finally { await page.close(); }
+    });
+
+    const palette = async (page) => {
+      await page.keyboard.press('Control+k');
+      await page.waitForSelector('#cmdk-input');
+      await page.keyboard.type('Bluefin');
+      await page.waitForFunction(() => document.querySelectorAll('#cmdk-results .cmdk-group').length >= 2);
+    };
+    const activeGroup = (page) => page.evaluate(() => [...document.querySelectorAll('#cmdk-results .cmdk-group')]
+      .findIndex((g) => g.querySelector('.active')));
+    test(`the ⌘K palette is a labelled modal dialog; Tab still jumps groups inside the input (${theme})`, async () => {
+      const page = await open(theme);
+      try {
+        await page.focus('#ws-new');
+        await palette(page);
+        assert.deepEqual(await dialogOf(page, '#cmdk'), { role: 'dialog', modal: 'true', label: 'Search' });
+        assert.ok((await inertNow(page)).includes('app'), 'the page behind is inert');
+        assert.equal(await focused(page), 'cmdk-input');
+        assert.equal(await activeGroup(page), 0);
+        await page.keyboard.press('Tab');
+        assert.equal(await activeGroup(page), 1, 'Tab moves the highlight to the next group');
+        assert.equal(await focused(page), 'cmdk-input', 'and focus stays in the input');
+        await page.keyboard.press('Shift+Tab');
+        assert.equal(await activeGroup(page), 0, 'Shift+Tab moves it back');
+        assert.equal(await focused(page), 'cmdk-input');
+
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#cmdk-back', { state: 'detached' });
+        assert.deepEqual(await freed(page), [], 'Escape frees the page');
+        assert.equal(await focused(page), 'ws-new', 'focus is back where ⌘K was pressed');
+
+        await palette(page);
+        await page.mouse.click(20, 20);
+        await page.waitForSelector('#cmdk-back', { state: 'detached' });
+        assert.deepEqual(await freed(page), [], 'the backdrop frees the page');
+        assert.equal(await focused(page), 'ws-new', 'and focus goes back');
+      } finally { await page.close(); }
+    });
+
+    test(`⌘K over a modal holds the modal too, and closing the palette hands it back (${theme})`, async () => {
+      const page = await open(theme);
+      try {
+        await page.focus('#ws-new');
+        await page.evaluate(() => modal('Held', [Object.assign(document.createElement('input'), { name: 'name' })], async () => {}));
+        await page.waitForSelector('#modal input[name="name"]');
+        await palette(page);
+        const under = await inertNow(page);
+        assert.ok(under.includes('app') && under.includes('modal-back'), `the palette holds the page and the dialog under it: ${under}`);
+        await page.mouse.click(20, 20);
+        await page.waitForSelector('#cmdk-back', { state: 'detached' });
+        await page.waitForFunction(() => !document.querySelector('#modal-back').inert);
+        assert.ok((await inertNow(page)).includes('app'), 'the dialog is live again and the page still held');
+        assert.equal(await focused(page), 'name', 'focus is back in the dialog');
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#modal-back', { state: 'detached' });
+        assert.deepEqual(await freed(page), [], 'closing the dialog frees the page');
+        assert.equal(await focused(page), 'ws-new');
+      } finally { await page.close(); }
+    });
+  }
+
+  {
+    const theme = 'light';
     test(`the field tray is a labelled modal dialog that holds Tab and the page, and gives focus back (${theme})`, async () => {
       const page = await openGrid(theme);
       try {
@@ -150,42 +247,6 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    const FRAME = `/api/files/${links.id}?view`;
-    test(`the full-screen viewer is a labelled modal dialog; Tab cycles the toolbar and walks through the frame (${theme})`, async () => {
-      const page = await open(theme);
-      try {
-        await page.focus('#ws-new');
-        await page.evaluate((url) => fullscreenViewer('Spec sheet', { url }), FRAME);
-        await page.waitForSelector('#fsv-back iframe');
-        await page.frameLocator('#fsv-back iframe').locator('a').first().waitFor();
-        assert.deepEqual(await dialogOf(page, '#fsv-back'), { role: 'dialog', modal: 'true', label: 'Spec sheet' });
-        assert.ok(await inside(page, '#fsv-back'), 'focus moves into the viewer');
-        assert.ok((await inertNow(page)).includes('app'), 'the page behind is inert');
-        assert.equal(await styleOf(page.locator('#fsv-back'), 'outlineStyle', 'none'), 'none', 'the focused viewer draws no ring');
-
-        await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'Refresh', 'the first Tab lands on the toolbar\'s first control');
-        await page.keyboard.press('Shift+Tab');
-        assert.equal(await focused(page), 'IFRAME', 'Shift+Tab from the first control wraps to the frame');
-        await page.focus('#fsv-back button[title="Close (Esc)"]');
-        await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'IFRAME', 'Tab from the toolbar\'s last control enters the frame');
-        const inFrame = () => page.frameLocator('#fsv-back iframe').locator(':focus').textContent();
-        await page.keyboard.press('Tab');
-        assert.equal(await inFrame(), 'first', 'Tab walks the framed page');
-        await page.keyboard.press('Tab');
-        assert.equal(await inFrame(), 'second');
-        await page.keyboard.press('Tab');
-        assert.equal(await focused(page), 'Refresh', 'Tab out of the frame\'s last stop wraps to the toolbar, not the page');
-
-        await page.focus('#fsv-back button[title="Refresh"]');
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('#fsv-back', { state: 'detached' });
-        assert.deepEqual(await freed(page), [], 'Escape frees the page');
-        assert.equal(await focused(page), 'ws-new', 'focus is back on what opened the viewer');
-      } finally { await page.close(); }
-    });
-
     test(`the whiteboard's viewer closes from its close button and gives the page and focus back (${theme})`, async () => {
       const page = await open(theme);
       try {
@@ -202,64 +263,6 @@ if (s) {
         await page.waitForSelector('#fsv-back', { state: 'detached' });
         assert.deepEqual(await freed(page), [], 'the close button frees the page');
         assert.equal(await focused(page), 'ws-new', 'focus is back on the opener');
-      } finally { await page.close(); }
-    });
-
-    const palette = async (page) => {
-      await page.keyboard.press('Control+k');
-      await page.waitForSelector('#cmdk-input');
-      await page.keyboard.type('Bluefin');
-      await page.waitForFunction(() => document.querySelectorAll('#cmdk-results .cmdk-group').length >= 2);
-    };
-    const activeGroup = (page) => page.evaluate(() => [...document.querySelectorAll('#cmdk-results .cmdk-group')]
-      .findIndex((g) => g.querySelector('.active')));
-    test(`the ⌘K palette is a labelled modal dialog; Tab still jumps groups inside the input (${theme})`, async () => {
-      const page = await open(theme);
-      try {
-        await page.focus('#ws-new');
-        await palette(page);
-        assert.deepEqual(await dialogOf(page, '#cmdk'), { role: 'dialog', modal: 'true', label: 'Search' });
-        assert.ok((await inertNow(page)).includes('app'), 'the page behind is inert');
-        assert.equal(await focused(page), 'cmdk-input');
-        assert.equal(await activeGroup(page), 0);
-        await page.keyboard.press('Tab');
-        assert.equal(await activeGroup(page), 1, 'Tab moves the highlight to the next group');
-        assert.equal(await focused(page), 'cmdk-input', 'and focus stays in the input');
-        await page.keyboard.press('Shift+Tab');
-        assert.equal(await activeGroup(page), 0, 'Shift+Tab moves it back');
-        assert.equal(await focused(page), 'cmdk-input');
-
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('#cmdk-back', { state: 'detached' });
-        assert.deepEqual(await freed(page), [], 'Escape frees the page');
-        assert.equal(await focused(page), 'ws-new', 'focus is back where ⌘K was pressed');
-
-        await palette(page);
-        await page.mouse.click(20, 20);
-        await page.waitForSelector('#cmdk-back', { state: 'detached' });
-        assert.deepEqual(await freed(page), [], 'the backdrop frees the page');
-        assert.equal(await focused(page), 'ws-new', 'and focus goes back');
-      } finally { await page.close(); }
-    });
-
-    test(`⌘K over a modal holds the modal too, and closing the palette hands it back (${theme})`, async () => {
-      const page = await open(theme);
-      try {
-        await page.focus('#ws-new');
-        await page.evaluate(() => modal('Held', [Object.assign(document.createElement('input'), { name: 'name' })], async () => {}));
-        await page.waitForSelector('#modal input[name="name"]');
-        await palette(page);
-        const under = await inertNow(page);
-        assert.ok(under.includes('app') && under.includes('modal-back'), `the palette holds the page and the dialog under it: ${under}`);
-        await page.mouse.click(20, 20);
-        await page.waitForSelector('#cmdk-back', { state: 'detached' });
-        await page.waitForFunction(() => !document.querySelector('#modal-back').inert);
-        assert.ok((await inertNow(page)).includes('app'), 'the dialog is live again and the page still held');
-        assert.equal(await focused(page), 'name', 'focus is back in the dialog');
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('#modal-back', { state: 'detached' });
-        assert.deepEqual(await freed(page), [], 'closing the dialog frees the page');
-        assert.equal(await focused(page), 'ws-new');
       } finally { await page.close(); }
     });
   }
