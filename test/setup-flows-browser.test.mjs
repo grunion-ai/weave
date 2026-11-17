@@ -932,8 +932,7 @@ if (openHub) {
     await p.close();
   });
   for (const phone of [false, true]) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`onboarding recovery and second workspace (${phone ? 'phone' : 'desktop'}, ${theme})`, async () => {
         const p = await page({ phone, theme });
         const suffix = `${phone ? 'phone' : 'desktop'}-${theme}`;

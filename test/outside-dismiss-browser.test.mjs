@@ -58,8 +58,7 @@ if (s) {
   ];
 
   for (const [engine, b, profile] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`on a phone a touch outside an open overlay closes it with no click event (${engine}, ${theme}, Issue #726)`, async () => {
         for (const o of OVERLAYS) {
           const page = await open(b, profile, theme, o.at());

@@ -67,10 +67,9 @@ if (s) {
     return window.__tileSizes.filter((r) => Math.abs(r.h - last.get(r.eid)) > 0.5).map((r) => `${r.eid.slice(0, 8)} ${Math.round(r.h)}px`);
   });
 
-  test('every tile is laid out at its settled height from the first frame, with the name inside the tile, in both engines and group layouts', async () => {
+  test('every tile is laid out at its settled height from the first frame, with the name inside the tile, in both engines, themes and group layouts', async () => {
     for (const [name, engine] of await engines()) {
-      const theme = 'light';
-      for (const groups of ['side', 'stacked']) {
+      for (const theme of ['light', 'dark']) for (const groups of ['side', 'stacked']) {
         const page = await open(engine, { theme, groups });
         assert.equal(await page.locator('.wv-board .tile').count(), 37, `${name} ${theme} ${groups}: tiles`);
         assert.deepEqual(await resized(page), [], `${name} ${theme} ${groups}: a tile was laid out at another height before it settled`);

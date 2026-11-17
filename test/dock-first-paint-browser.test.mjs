@@ -39,8 +39,7 @@ if (s) {
   const fieldOrder = (page) => page.$$eval('#dock .entity-values > .fieldrow', (rows) => rows.map((r) => r.dataset.field));
   const statusText = (page) => page.$eval(`${DOCK_STATUS} .chip-trigger, ${DOCK_STATUS} .picker-face`, (n) => n.textContent.trim());
 
-  {
-    const colorScheme = 'light';
+  for (const colorScheme of ['light', 'dark']) {
     test(`opening a row paints the dock from the grid row before the entity request answers, in ${colorScheme} (Issue #1057)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       await page.goto(`${base}/#/table/${tasks.id}/view/${compact.id}`, { waitUntil: 'networkidle' });

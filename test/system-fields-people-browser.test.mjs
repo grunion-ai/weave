@@ -40,8 +40,7 @@ const s = await launch('system fields read as people', (w) => {
 if (s) {
   const { weave, base, browser, table, row, other, dana, agent } = s;
 
-  const colorScheme = 'light';
-  test(`the record header strip shows a friendly stamp and linked Users chips (${colorScheme})`, async () => {
+  for (const colorScheme of ['light', 'dark']) test(`the record header strip shows a friendly stamp and linked Users chips (${colorScheme})`, async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme, timezoneId: 'UTC' });
     try {
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });

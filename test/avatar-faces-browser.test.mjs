@@ -128,8 +128,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  const colorScheme = 'light';
-  test(`an actor chip wears the Users row's face at the grid's avatar size (${colorScheme})`, async () => {
+  for (const colorScheme of ['light', 'dark']) test(`an actor chip wears the Users row's face at the grid's avatar size (${colorScheme})`, async () => {
     const page = await grid(colorScheme);
     try {
       const chip = page.locator(`tr[data-eid="${stamped.id}"] td[data-sys="Created By"] .k-actor`);

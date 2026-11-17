@@ -17,8 +17,7 @@ if (s) {
   const box = (loc) => loc.evaluate((n) => { const b = n.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width }; });
   const meets = (a, b) => a.w > 0 && b.w > 0 && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`with a file in the side panel or full screen, Report a problem moves into the viewer's own bar (${theme}) (Issue #1193)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
