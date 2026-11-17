@@ -68,6 +68,7 @@ if (s) {
     if (got === 'row') {
       await page.click('#dock button[aria-label="Close"]');
       await page.waitForSelector('#dock', { state: 'hidden' });
+      await page.waitForURL((u) => !u.hash.includes('?e='));
     } else {
       await page.click('.picker-pop button:has(.chip-pop-check)');
       await page.waitForSelector('.picker-pop', { state: 'detached' });
