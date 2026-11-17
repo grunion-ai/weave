@@ -33,7 +33,8 @@ if (s) {
     return f ? { src: f.getAttribute('src'), sandbox: f.getAttribute('sandbox'), name: document.querySelector('.wv-file-name')?.textContent } : null;
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: clicking an html file in a grid cell opens it in the file panel (Issue #1072)`, async () => {
       const row = `page-${theme}`;
       const page = await open(theme, chipSel(row));

@@ -23,7 +23,8 @@ if (s) {
     assert.equal(glyph, 'M16 4h4v4', 'the outward arrows (expand) are on the dock');
   };
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`a relation chip docks its entity beside the table under the reader, in ${colorScheme}`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
       await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });

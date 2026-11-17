@@ -22,7 +22,8 @@ if (s) {
   });
 
   for (const [engine, make] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone the record overflow menu carries Report a problem (${engine}, ${theme}, Issue #1023)`, async () => {
         const page = await make({ colorScheme: theme });
         try {

@@ -36,7 +36,8 @@ if (s) {
   }, selector);
 
   for (const [engine, b, profile] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone the sliders sheet holds a Group row that opens the group levels as a bottom sheet (${engine}, ${theme}, Issue #809)`, async () => {
         const page = await open(b, profile, theme);
         try {

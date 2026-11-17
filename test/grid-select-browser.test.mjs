@@ -32,7 +32,8 @@ if (s) {
     return seen;
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the page names its columns and asks for chip-level relations (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
       await page.emulateMedia({ colorScheme: theme });

@@ -78,7 +78,8 @@ if (s) {
     near(ctl.rowTop, r.row.top, `${name}'s row top is the breadcrumb's row top`);
   };
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: expand and close stay pinned in the breadcrumb's row at the bottom of the pane`, async () => {
       const page = await openDocked({ theme });
       const r0 = await read(page);

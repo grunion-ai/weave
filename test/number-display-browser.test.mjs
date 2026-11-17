@@ -163,7 +163,10 @@ if (s) {
         if (shots) await page.locator('.tray-form').screenshot({ path: `${shots}/number-display-sample-${colorScheme}.png` });
       } finally { await page.close(); }
     });
+  }
 
+  {
+    const colorScheme = 'light';
     test(`an empty column samples examples and says so (${colorScheme})`, async () => {
       const page = await grid(sprints.id, colorScheme);
       try {

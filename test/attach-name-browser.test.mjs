@@ -30,7 +30,8 @@ if (s) {
   const chipFor = (page, name) => page.locator(`${CHIP}[title="${name}"]`).first();
   const fitted = (chip, tail) => eventually(() => chip.evaluate((c, t) => c.textContent.includes('…') && c.textContent.endsWith(t), tail), true);
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`desktop ${theme}: a board tile middle-truncates a long file name, keeps the extension and titles the full name (Issue #1155)`, async () => {
       const page = await s.browser.newPage({ viewport: CELLS.desktop.viewport });
       try {

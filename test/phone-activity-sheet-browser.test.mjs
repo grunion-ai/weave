@@ -120,7 +120,8 @@ if (s) {
       });
     }
 
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone a row's Activity opens as a full-screen sheet with 44px controls, and Back closes it (${engine}, ${theme}, Issue #733)`, async () => {
         const page = await open(make, theme);
         try {

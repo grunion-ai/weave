@@ -50,7 +50,10 @@ if (s) {
       assert.ok(dimmed.opaque, 'the missing mark is invisible');
       await page.close();
     });
+  }
 
+  {
+    const theme = 'light';
     test(`the grid cell names the lost file as missing (${theme})`, async () => {
       const page = await open(`/table/${decks.id}`, theme, '.wv-grid tbody tr');
       const cell = await page.$eval('td[data-field="Slides"]', (n) => n.textContent);

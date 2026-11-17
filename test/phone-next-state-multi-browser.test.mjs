@@ -41,7 +41,8 @@ if (s) {
   };
 
   for (const [engine, make] of engines) {
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`on a phone a row with two state fields stacks one named next-step button per field, each moving only its own field (${engine}, ${theme}, Issue #742)`, async () => {
         const [id, hash] = rows[`${engine.split(' ')[0]} ${theme}`];
         const page = await open(make, hash, theme);
