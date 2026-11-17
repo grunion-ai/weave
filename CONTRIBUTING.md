@@ -21,7 +21,9 @@ node bin/weave.js serve --port 4400 --data ./my-workspace.db
 ```
 
 Node ≥ 22.16 (Node 24 LTS recommended), the floor `node:sqlite` needs. There is
-nothing to install.
+nothing to install. `.node-version` names the Node the container image runs,
+which the `Dockerfile` tag and the `Dev gate` both hold to
+(`test/deploy-artifacts.test.mjs`).
 
 ## The rules
 
