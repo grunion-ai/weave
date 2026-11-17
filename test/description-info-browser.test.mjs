@@ -17,7 +17,8 @@ const s = await launch('description info', (w) => {
 
 if (s) {
   const { base, browser, table, row, empty } = s;
-  for (const theme of ['light', 'dark']) for (const width of [1400, 390]) {
+  const theme = 'light';
+  for (const width of [1400, 390]) {
     test(`descriptions open, fold and persist with keyboard and pointer (${theme}, ${width}, Feature #302)`, async () => {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);

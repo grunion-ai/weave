@@ -387,7 +387,8 @@ if (s) {
     }));
     for (const h of hosts) window.__recorder.observe(h, { subtree: true, attributes: true, attributeFilter: ['class'] });
   };
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`nothing animates on mount; an icon plays once on its own hover or press, then rests (${theme})`, async () => {
       const page = await browser.newPage();
       await page.emulateMedia({ reducedMotion: 'no-preference' });

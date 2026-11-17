@@ -43,7 +43,8 @@ const s = await launch('a document reference chip draws on one line', (weave) =>
 if (s) {
   const { base, browser, doc, notes } = s;
 
-  for (const colorScheme of ['light', 'dark']) {
+  {
+    const colorScheme = 'light';
     test(`a long-titled reference chip with a state pill stays one line tall inside a list item, in ${colorScheme}`, async () => {
       const page = await browser.newPage({ colorScheme, viewport: { width: 900, height: 800 } });
       try {

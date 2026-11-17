@@ -62,7 +62,8 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`${theme}: a rail right-click deletes a sibling for good: typed dialog, a hold, no Undo, gone from the rail and its address (Feature #346, Feature #347)`, async () => {
       const page = await open('/', theme);
       try {

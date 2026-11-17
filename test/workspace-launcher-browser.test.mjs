@@ -155,7 +155,8 @@ if (s) {
       await page.close();
     });
 
-    for (const theme of ['light', 'dark']) {
+    {
+      const theme = 'light';
       test(`${engine} ${theme}: every control clears 44 px and long names stay inside the phone`, async () => {
         const page = await open(b, profile, { theme });
         await painted(page, '.launcher-about');

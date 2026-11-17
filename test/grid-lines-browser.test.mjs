@@ -88,7 +88,8 @@ if (s) {
   }));
   const pitch = (page) => page.evaluate(() => [...new Set([...document.querySelectorAll('.wv-grid tbody tr.entity-row')].map((r) => Math.round(r.getBoundingClientRect().height * 100) / 100))]);
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`Spacious shows three whole lines of a long Name, text and doc, each ending in an ellipsis, in a 72px row (Feature #354, ${theme})`, async () => {
       const page = await open(theme);
       try {

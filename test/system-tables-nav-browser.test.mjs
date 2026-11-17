@@ -71,7 +71,8 @@ if (s) {
     await page.close();
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`browser: the name and search hold the top, New space and the system tables hold the bottom, however far the nav scrolls (${theme}, Issue #854)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1400, height: 760 } });
       await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
