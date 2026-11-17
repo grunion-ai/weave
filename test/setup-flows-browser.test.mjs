@@ -968,6 +968,7 @@ if (openHub) {
           await p.waitForSelector('.ws-slug-status[data-state="available"]');
           await go(p, 'skip');
           await p.waitForURL(new RegExp(`/w/second-${suffix}/$`));
+          await p.locator('.wv-start-new').waitFor();
           assert.equal(await p.locator('.wv-start-new').count(), 1);
         } finally { await p.close(); }
       });
