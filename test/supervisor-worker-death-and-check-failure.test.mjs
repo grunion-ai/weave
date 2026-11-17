@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
-import { packTar } from '../src/backup.js';
+import { packTar } from './lib/tar.mjs';
 import { startSupervisor, REPO_GIT } from '../src/supervisor.js';
 import { tempDir } from './lib/temp.mjs';
 
