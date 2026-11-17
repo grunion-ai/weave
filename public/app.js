@@ -4162,9 +4162,9 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
   const val = item.fields[f.name];
   if (db?.system === 'runs') return readOnlyValue(f, val);
   if (locked && !READ_ONLY_KEEPS.has(f.type) && !READONLY_FIELD_TYPES.includes(f.type)) return readOnlyValue(f, val);
-  const saved = async () => {
-    const fresh = await api('GET', `/entities/${id}`);
-    onSaved(fresh);
+  const saved = async (written = null) => {
+    const fresh = written?.id === id && written.affected ? written : await api('GET', `/entities/${id}`);
+    await onSaved(fresh);
   };
   const patch = async (value, paint = null) => {
     paint?.(value);
@@ -4229,8 +4229,7 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
         const name = picked === '—' ? null : picked;
         paint(name);
         try {
-          await api('POST', `/entities/${id}/state`, { field: f.name, state: name });
-          await saved();
+          await saved(await api('POST', `/entities/${id}/state`, { field: f.name, state: name }));
         } catch (err) { paint(val); toast(err.message, true); }
       },
     });
@@ -4316,9 +4315,11 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
       onclick: () => linkSearch(f, {
         linked: all,
         commit: async (add, drop) => {
-          if (add.length) await api('POST', `/entities/${id}/link`, { field: f.name, targets: add });
-          if (drop.length) await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop });
-          await saved();
+          const wrote = [];
+          if (add.length) wrote.push(await api('POST', `/entities/${id}/link`, { field: f.name, targets: add }));
+          if (drop.length) wrote.push(await api('POST', `/entities/${id}/unlink`, { field: f.name, targets: drop }));
+          const last = wrote.at(-1);
+          await saved(last && { ...last, affected: [...new Set(wrote.flatMap((r) => r.affected ?? []))] });
         },
       }),
     }, '+ link'));
@@ -5045,10 +5046,21 @@ async function readAndDrawTable(db, dbId, search, cold = false, gen = navDraw) {
   paint(result, domains);
 }
 
+const BULK_KEEPS_ROWS = ['set', 'link'];
+
+function bulkPatch(op, results) {
+  if (!BULK_KEEPS_ROWS.includes(op)) return null;
+  const affected = [...new Set(results.flatMap((r) => r?.affected ?? []))];
+  return affected.length ? { affected } : null;
+}
+
 function gridMoves(db, field) {
-  if (!field) return true;
-  if ((gridSort(db) ?? []).some((s) => s.field === field || s.field === 'Modified At' || s.field === 'Modified By')) return true;
-  return Object.keys(tableFilters(db) ?? {}).includes(field);
+  const sort = gridSort(db) ?? [];
+  const filtered = Object.keys(tableFilters(db) ?? {});
+  if (tableSearchText(db)) return true;
+  if (!field) return sort.length > 0 || filtered.length > 0;
+  if (sort.some((s) => s.field === field || s.field === 'Modified At' || s.field === 'Modified By')) return true;
+  return filtered.includes(field);
 }
 
 function gridFields(db) {
@@ -6672,7 +6684,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     const t = SEL().bulkToast({ verb, count: ids.length, term: db.term, result });
     toast(t.msg, t.err);
     clearChosen();
-    await onSaved?.();
+    await onSaved?.(bulkPatch(op, [result]));
   };
   const relations = () => db.fields.filter((f) => f.type === 'relation');
   const otherTables = () => allTables().filter((t) => !t.system && t.id !== db.id);
@@ -7500,11 +7512,15 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     if (slots) return false;
     const arr = ordered();
     const at = (eid) => arr.findIndex((r) => r && r.id === eid);
-    if (at(fresh.id) < 0) return false;
+    if (fresh.id && at(fresh.id) < 0) return false;
     const stale = fresh.affected.filter((x) => x !== fresh.id && at(x) >= 0);
-    const rows = [fresh];
+    if (!fresh.id && !stale.length) return false;
+    const rows = fresh.id ? [fresh] : [];
     if (stale.length) {
-      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', [fresh.id, ...stale]]], limit: -1 });
+      const ask = fresh.id ? [fresh.id, ...stale] : stale;
+      const read = await api('POST', `/tables/${db.id}/query`, { where: [['id', 'in', ask]], limit: -1 });
+      const back = new Set(read.items.map((r) => r.id));
+      if (stale.some((x) => !back.has(x))) return false;
       rows.push(...read.items.filter((r) => r.id !== fresh.id));
     }
     for (const item of rows) {
@@ -7551,7 +7567,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   wrap.wvScrollToRow = ensureRow;
   wrap.wvSetDensity = setDensity;
   wrap.wvPatchRows = patchRows;
-  wrap.wvRefresh = () => onSaved?.();
+  wrap.wvRefresh = (written = null, field = null) => onSaved?.(written, field);
 
   const draw = () => {
     sortedItems = [...items];
@@ -7842,7 +7858,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     }
     const t = RG().toast({ verb, cells: plan.writes.length, refused: plan.refused, unparsed: plan.unparsed, unmatched: plan.unmatched, results });
     toast(t.msg, t.err, gesture.ids.length ? { label: 'Undo', run: () => undoGesture(gesture) } : null);
-    await onSaved?.();
+    await onSaved?.(bulkPatch('set', results));
   };
 
   const openControl = () => {
@@ -9368,8 +9384,9 @@ function nextStateFor(entity, f, named, refresh) {
   const next = states[states.findIndex((st) => st.name === was) + 1];
   if (!next) return null;
   const move = async (to) => {
-    await refresh?.(await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to }));
-    $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.();
+    const written = await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to });
+    await refresh?.(written);
+    $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.(written, f.name);
   };
   const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
   return el('button', {
@@ -9450,7 +9467,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const frame = (e) => JSON.stringify([e.name ?? '', e.avatar ?? null, boardCore.coverOf(db, e)?.id ?? null, (e.files ?? []).map((x) => x.id)]);
   const saved = async (fresh, field = null) => {
     if (later) await later.catch(() => {});
-    if (!field && !mount.closest('#main')) $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.();
+    if (!field && !mount.closest('#main')) $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.(fresh);
     if (!nameInput.isConnected) return;
     if (fresh?.id !== id || frame(fresh) !== frame(entity)) return refresh();
     Object.assign(entity, fresh);
@@ -10737,22 +10754,29 @@ async function stepBackOwn(only, recount = true) {
   while (owner && steps < top.length && owner.keys.has(undoKey(top[steps]))) steps++;
   if (!steps) return { blocked: pool.some((g) => g.keys.size) };
   const run = top.slice(0, steps);
-  let undone;
+  let undone, affected;
   try {
-    ({ undone } = await api('POST', '/undo', { steps, expect: run.map(undoKey) }));
+    ({ undone, affected } = await api('POST', '/undo', { steps, expect: run.map(undoKey) }));
   } catch (err) {
     if (err?.status !== 409 || !recount) throw err;
     return stepBackOwn(only, false);
   }
   for (const u of run) owner.keys.delete(undoKey(u));
-  return { undone, popped: run };
+  return { undone, affected, popped: run };
 }
 
 async function unlinkWithUndo(entityId, f, target, after = () => {}) {
   const gesture = newGesture('update');
-  await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] }, { gesture });
+  const written = await api('POST', `/entities/${entityId}/unlink`, { field: f.name, targets: [target.id] }, { gesture });
   toast(`Unlinked ${target.name ?? 'the row'} from ${f.name}`, false, { label: 'Undo', run: () => undoGesture(gesture) });
-  await after();
+  await after(written);
+}
+
+function undoPatch(r) {
+  if (!r?.affected?.length) return null;
+  const undone = r.undone ?? [];
+  if (!undone.length || !undone.every((u) => u.kind === 'update' && !u.skipped)) return null;
+  return { affected: r.affected };
 }
 
 async function undoGesture(g) {
@@ -10767,15 +10791,15 @@ async function undoGesture(g) {
       for (const id of new Set(g.ids)) if (!back.has(id)) await api('POST', `/entities/${id}/restore`, undefined, { gesture: false });
     } else if (!r?.undone) return toast(UNDO_REFUSED, true);
     g.keys.clear();
-    await refreshView();
+    await refreshView(undoPatch(r));
     focusGridRow(g.ids[0]);
     toast('Restored');
   } catch (err) { toast(err.message, true); }
 }
 
-async function refreshView() {
+async function refreshView(written = null, field = null) {
   const grid = state.route?.page === 'db' ? $('#main :is(.table-wrap, .board-wrap)') : null;
-  if (grid?.wvRefresh) return grid.wvRefresh();
+  if (grid?.wvRefresh) return grid.wvRefresh(written, field);
   await loadSchema();
   return route();
 }
@@ -10796,7 +10820,7 @@ document.addEventListener('keydown', async (e) => {
     await saves.flush();
     const r = await undoOwn();
     if (!r?.undone?.length) return r?.blocked ? toast(UNDO_REFUSED, true) : toast('Nothing to undo');
-    await refreshView();
+    await refreshView(undoPatch(r));
     undoToast(r.undone);
   } catch (err) { toast(err.message, true); }
 });

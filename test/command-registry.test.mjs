@@ -509,9 +509,17 @@ test('link, unlink, state and restore answer the same on CLI, MCP and HTTP (Feat
       [['restore', 'Task#2'], ['weave_restore_entity', {}, 'Gone'], ['POST', 'restore', {}, 'Gone']],
     ];
     for (const [c, [tool, args, mcpName = 'Alpha'], [method, tail, body, httpName = 'Alpha']] of steps) {
-      const fromHttp = row(await d.http(method, `/api/entities/${idOf(d.httpWeave, httpName)}/${tail}`, body));
-      assert.deepEqual(row(d.mcp(tool, { entity: idOf(d.mcpWeave, mcpName), ...args, verbose: true })), fromHttp, `${tool} and ${method} ${tail} answer alike`);
-      assert.deepEqual(row(d.cli(c)), fromHttp, `weave ${c.join(' ')} and ${method} ${tail} answer alike`);
+      const answered = await d.http(method, `/api/entities/${idOf(d.httpWeave, httpName)}/${tail}`, body);
+      const { affected, ...httpRow } = answered;
+      if (tail === 'restore') assert.equal(affected, undefined, 'restore answers no affected');
+      else assert.ok(Array.isArray(affected) && affected.length, `POST ${tail} answers the rows it changed (Issue #1693)`);
+      const fromHttp = row(httpRow);
+      const fromMcp = d.mcp(tool, { entity: idOf(d.mcpWeave, mcpName), ...args, verbose: true });
+      const fromCli = d.cli(c);
+      assert.equal(fromMcp.affected, undefined, `${tool} answers no affected`);
+      assert.equal(fromCli.affected, undefined, `weave ${c[0]} answers no affected`);
+      assert.deepEqual(row(fromMcp), fromHttp, `${tool} and ${method} ${tail} answer alike`);
+      assert.deepEqual(row(fromCli), fromHttp, `weave ${c.join(' ')} and ${method} ${tail} answer alike`);
     }
     for (const [name, path] of [['entity.link', 'link'], ['entity.unlink', 'unlink'], ['entity.state', 'state'], ['entity.restore', 'restore']]) {
       assert.equal(matchRoute('POST', `/api/entities/x/${path}`)?.cmd.name, name);
@@ -620,8 +628,12 @@ test('query, trash, stats and bulk answer the same on CLI, MCP and HTTP, each do
     };
     const counted = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Array.isArray(v) ? v.length : v]));
     assert.equal(bulk.http.done.length, 1);
-    assert.deepEqual(counted(bulk.mcp), counted(bulk.http), 'weave_bulk and POST /api/bulk answer alike');
-    assert.deepEqual(counted(bulk.cli), counted(bulk.http), 'weave bulk and POST /api/bulk answer alike');
+    const { affected: bulkAffected, ...bulkHttp } = bulk.http;
+    assert.ok(Array.isArray(bulkAffected) && bulkAffected.length, 'POST /api/bulk answers the rows it wrote (Issue #1693)');
+    assert.equal(bulk.mcp.affected, undefined, 'weave_bulk answers no affected');
+    assert.equal(bulk.cli.affected, undefined, 'weave bulk answers no affected');
+    assert.deepEqual(counted(bulk.mcp), counted(bulkHttp), 'weave_bulk and POST /api/bulk answer alike');
+    assert.deepEqual(counted(bulk.cli), counted(bulkHttp), 'weave bulk and POST /api/bulk answer alike');
     assert.equal(d.httpWeave.query('Task', { where: [['Points', '=', 9]] }).total, 1, 'the bulk set landed');
     for (const [method, path, name] of [['POST', '/api/tables/x/query', 'entity.query'], ['GET', '/api/trash', 'entity.trash'], ['GET', '/api/tables/x/trash', 'entity.trash'], ['GET', '/api/tables/x/stats', 'table.stats'], ['POST', '/api/bulk', 'entity.bulk']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
@@ -715,8 +727,12 @@ test('search and undo answer the same on CLI, MCP and HTTP, each door with its o
     assert.deepEqual(hit(d.cli(['undo', 'list'])), hit(history.http), 'weave undo list lists too');
     assert.equal((await d.http('GET', '/api/undo?limit=1', undefined, seeder)).length, 1);
     const undone = { cli: d.cli(['undo']), mcp: d.mcp('weave_undo', {}), http: await d.http('POST', '/api/undo', {}, seeder) };
-    assert.deepEqual(hit(undone.mcp), hit(undone.http), 'weave_undo and POST /api/undo answer alike');
-    assert.deepEqual(hit(undone.cli), hit(undone.http), 'weave undo and POST /api/undo answer alike');
+    const { affected: undoAffected, ...undoneHttp } = undone.http;
+    assert.ok(Array.isArray(undoAffected) && undoAffected.length, 'POST /api/undo answers the rows the pop changed (Issue #1693)');
+    assert.equal(undone.mcp.affected, undefined, 'weave_undo answers no affected');
+    assert.equal(undone.cli.affected, undefined, 'weave undo answers no affected');
+    assert.deepEqual(hit(undone.mcp), hit(undoneHttp), 'weave_undo and POST /api/undo answer alike');
+    assert.deepEqual(hit(undone.cli), hit(undoneHttp), 'weave undo and POST /api/undo answer alike');
     for (const [method, path, name] of [['GET', '/api/search', 'search'], ['GET', '/api/undo', 'undo.list'], ['POST', '/api/undo', 'undo.run']]) {
       assert.equal(matchRoute(method, path)?.cmd.name, name);
     }
