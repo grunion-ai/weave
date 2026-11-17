@@ -314,13 +314,14 @@ test('the colour control opens the ramp instead of cycling seven hexes', () => {
 });
 
 test('a select option can wear a glyph, not just a workflow state', () => {
-  const ed = fnBodyOf('optionListEditor');
-  assert.match(ed, /iconButton\(/, 'the option row offers the icon button');
+  assert.match(fnBodyOf('optionListEditor'), /choiceListEditor\(state, 'options',/, 'the option row is the shared choice row');
+  assert.match(fnBodyOf('choiceListEditor'), /iconButton\(/, 'which offers the icon button');
 });
 
 test('every option row previews the chip it produces', () => {
   assert.match(fnBodyOf('optionListEditor'), /optionPreview\(/, 'an option row shows its chip');
-  assert.match(fnBodyOf('stateListEditor'), /statePreview\(/, 'a state row shows its chip');
+  assert.match(fnBodyOf('stateListEditor'), /preview: statePreview\b/, 'a state row shows its chip');
+  assert.match(fnBodyOf('choiceListEditor'), /chip\.rename\(x\.name\)/, 'and the shared row renames it as the name is typed');
   assert.match(fnBodyOf('previewChip'), /opt-preview/, 'previewChip builds the preview cell');
   assert.match(fnBodyOf('previewChip'), /rename/,
     'and hands back a rename, so a row follows the name as it is typed (Issue #553)');
