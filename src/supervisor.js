@@ -127,13 +127,14 @@ export async function startSupervisor({
   onWorkerDied = () => process.exit(1),
   watchMs = Number(env.WEAVE_WATCH_MS ?? WATCH), watchPollMs = 10_000,
   watchErrorRate = Number(env.WEAVE_WATCH_5XX_RATE ?? 0.25), watchMinRequests = 20, retryMs = 1000,
+  crashWindowMs = Number(env.WEAVE_CRASH_WINDOW_MS ?? WATCH),
   minFreeBytes = Number(env.WEAVE_RELEASE_FREE_MB ?? 128) * MB,
 } = {}) {
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
   const track = trackFromEnv(env);
   const deployToken = String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null;
   const stateFile = join(releasesDir, 'state.json');
-  let state = { failed: {}, lastSwap: null, attempting: null };
+  let state = { failed: {}, lastSwap: null, attempting: null, deaths: {} };
   try { state = { ...state, ...JSON.parse(readFileSync(stateFile, 'utf8')) }; } catch {}
   const save = () => { mkdirSync(releasesDir, { recursive: true }); writeFileSync(stateFile, JSON.stringify(state, null, 1)); };
   if (state.attempting) {
@@ -180,9 +181,34 @@ export async function startSupervisor({
       if (w !== current || closing) return;
       const reason = `the serving worker exited (${signal ?? `code ${code}`})`;
       log.error(`weave supervise: ${reason}`);
-      if (!trip(w, reason)) onWorkerDied();
+      if (trip(w, reason)) return;
+      recordDeath(w, reason);
+      onWorkerDied();
     });
     return w;
+  }
+
+  function recordDeath(w, reason) {
+    const key = keyOf(w);
+    if (w.release === 'image' || !key) return;
+    const lived = Date.now() - Date.parse(w.since);
+    if (w.watch?.migrated || (state.watch?.migrated && state.watch.release === w.release)) {
+      log.warn(`weave supervise: ${w.release} is not marked failed: its deferred migration wrote to the workspace`);
+      return;
+    }
+    if (!(lived <= crashWindowMs)) {
+      delete state.deaths[key];
+      save();
+      return;
+    }
+    const at = new Date().toISOString();
+    const count = (state.deaths[key]?.count ?? 0) + 1;
+    state.deaths[key] = { count, at, afterMs: lived, reason };
+    if (count > 1) {
+      state.failed[key] = { at, reason: `crashed ${count} times within ${Math.round(crashWindowMs / 1000)}s of starting: ${reason}` };
+      log.error(`weave supervise: ${w.release} crashed ${count} times within ${Math.round(crashWindowMs / 1000)}s of starting; the next boot serves another release`);
+    }
+    save();
   }
 
   async function waitHealthy(w) {
