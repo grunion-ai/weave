@@ -41,6 +41,7 @@ if (s) {
     const out = {
       hidden: false,
       right: round(r.right), left: round(r.left), width: round(r.width),
+      top: round(r.top), bottom: round(r.bottom), innerHeight,
       flipped: Math.abs(r.right - b.right) < 1 && Math.abs(r.left - b.left) >= 1,
       clientWidth: document.documentElement.clientWidth,
       title: btn.title,
@@ -104,6 +105,23 @@ if (s) {
     const m = await openAndMeasure(page, i);
     assert.equal(m.flipped, false, 'with 1600px of room to its right it stays left-aligned');
     assert.ok(m.right <= m.clientWidth);
+    await page.close();
+  });
+
+  test('an anchor scrolled past the top or bottom edge still opens its panel inside the page (Issue #1488)', async () => {
+    const page = await entityPage(1280);
+    for (const top of ['1400px', '-300px']) {
+      const i = await page.evaluate((y) => {
+        const wraps = [...document.querySelectorAll('.dl-wrap')];
+        const at = wraps.findIndex((w) => w.querySelector('.dots-btn').title.includes('downloads'));
+        Object.assign(wraps[at].style, { position: 'fixed', left: '20px', top: y });
+        return at;
+      }, top);
+      const m = await openAndMeasure(page, i);
+      assert.equal(m.hidden, false);
+      assert.ok(m.top >= 0 && m.bottom <= m.innerHeight,
+        `anchor at ${top}: panel painted at ${m.top}–${m.bottom}, viewport height ${m.innerHeight}`);
+    }
     await page.close();
   });
 

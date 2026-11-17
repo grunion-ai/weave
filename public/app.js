@@ -3167,6 +3167,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
     const w = pop.offsetWidth;
     const h = pop.offsetHeight;
     const fitX = (x) => Math.max(8, Math.min(x, innerWidth - w - 8));
+    const fitY = (y) => Math.max(8, Math.min(y, innerHeight - h - 8));
     let left;
     let top;
     if (point) {
@@ -3178,7 +3179,7 @@ function menu(items, { anchor = null, point = null, sheet = MENU_SHEET.matches, 
       const side = menuSide({ anchorLeft: a.left, anchorRight: a.right, width: w, boundsLeft: bounds.left, boundsRight: bounds.right, prefer: align });
       left = fitX(side === 'right' ? a.right - w : a.left);
       const up = a.bottom + 4 + h > innerHeight - 8 && a.top - 4 - h >= 8;
-      top = up ? a.top - h - 4 : a.bottom + 4;
+      top = fitY(up ? a.top - h - 4 : a.bottom + 4);
       pop.style.transformOrigin = `${up ? 'bottom' : 'top'} ${side}`;
     }
     pop.style.left = `${Math.round(left)}px`;

@@ -1,0 +1,1 @@
+- A menu whose button has scrolled or moved past the top or bottom of the window now opens inside the window (Issue #1488). Clicking + on the workspace rail while the rail was still filling with workspaces could open the New workspace menu below the window's bottom edge, out of reach.
