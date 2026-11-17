@@ -265,7 +265,7 @@
     const v = (name) => css.getPropertyValue(name).trim();
     return {
       variables: { colorPrimary: v('--accent'), colorTextOnPrimaryBackground: v('--accent-ink'), colorText: v('--ink'), colorTextSecondary: v('--muted'), colorBackground: v('--panel'), colorInputBackground: v('--panel'), colorInputText: v('--ink'), colorNeutral: v('--ink'), borderRadius: '8px', fontFamily: v('--app'), fontSize: '15px' },
-      elements: { rootBox: { width: '100%' }, cardBox: { width: '100%', boxShadow: 'none', border: 'none' }, card: { boxShadow: 'none', border: 'none', padding: '0', background: 'transparent' }, header: { display: 'none' }, footer: { background: 'transparent' }, footerAction: { display: 'none' } },
+      elements: { rootBox: { width: '100%' }, cardBox: { width: '100%', boxShadow: 'none', border: 'none', overflow: 'visible' }, card: { boxShadow: 'none', border: 'none', padding: '0', background: 'transparent' }, header: { display: 'none' }, footer: { background: 'transparent' }, footerAction: { display: 'none' } },
     };
   }
 
