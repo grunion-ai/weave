@@ -42,9 +42,9 @@ test('sharing mints a revocable capability', () => {
   const v = w.createView({ name: 'Focus', blocks: [{ table: 'Task' }] });
   const { url, token } = w.shareView(v.id);
   assert.match(url, /^\/s\/wvs_/);
-  assert.equal(w.viewByShareToken(token).id, v.id);
+  assert.deepEqual(w.shareByToken(token).scope, { kind: 'view', id: v.id });
   w.unshareView(v.id);
-  assert.equal(w.viewByShareToken(token), null);
+  assert.equal(w.shareByToken(token), null);
 });
 
 test('the share URL is readable without auth, and only shows its view', async () => {

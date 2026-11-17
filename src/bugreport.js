@@ -1,3 +1,5 @@
+import '../public/bug-core.js';
+
 export const BUG_CATEGORIES = [
   {
     id: 'slow',
@@ -49,49 +51,10 @@ export function resolveCategories(ids = []) {
 
 export const MAX_EVENTS = 200;
 
-const SECRET_PARAMS = /\b(token|key|secret|password|passwd|share|sig|signature|auth)=([^&\s"'`]+)/gi;
-const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
-const PREFIXED_KEY = /\b(wv[a-z]?|sk|pk|ucmcp|ghp|gho)_[A-Za-z0-9_-]{8,}/gi;
+const { redact, shapeEvent } = globalThis.bugCore;
+export { redact };
 
-export function redact(text) {
-  return String(text ?? '')
-    .replace(BEARER, '$1 ***')
-    .replace(SECRET_PARAMS, '$1=***')
-    .replace(PREFIXED_KEY, '***');
-}
-
-export const EVENT_FIELDS = {
-  nav: ['to'],
-  click: ['target'],
-  key: ['key', 'target'],
-  api: ['method', 'path', 'status', 'ms', 'message'],
-  error: ['message', 'source', 'line'],
-  console: ['level', 'message'],
-};
-const OTHER_FIELDS = ['target'];
-export const PATH_PARAMS = new Set(['limit', 'tables', 'table', 'field', 'entity', 'shape']);
-const NO_ORIGIN = 'http://recorder.invalid';
-
-export function requestPath(raw) {
-  const text = String(raw ?? '');
-  let u;
-  try { u = new URL(text, NO_ORIGIN); } catch { return ''; }
-  const kept = new URLSearchParams([...u.searchParams].filter(([k]) => PATH_PARAMS.has(k))).toString();
-  return `${u.origin === NO_ORIGIN ? '' : u.origin}${u.pathname}${kept ? `?${kept}` : ''}`;
-}
-
-const primitive = (v) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
-
-function scrubEvent(ev) {
-  const kind = String(ev?.kind ?? '');
-  const out = { kind: redact(kind) };
-  for (const k of ['t', ...(EVENT_FIELDS[kind] ?? OTHER_FIELDS)]) {
-    const v = ev?.[k];
-    if (v === undefined || !primitive(v)) continue;
-    out[k] = typeof v !== 'string' ? v : redact(k === 'path' ? requestPath(v) : v);
-  }
-  return out;
-}
+const scrubEvent = (ev) => Object.fromEntries(Object.entries(shapeEvent(ev)).map(([k, v]) => [k, typeof v === 'string' ? redact(v) : v]));
 
 function quote(note) {
   return String(note)

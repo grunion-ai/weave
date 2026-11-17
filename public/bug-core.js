@@ -33,11 +33,12 @@
   const primitive = (v) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
 
   function shapeEvent(ev) {
-    const out = { kind: String(ev.kind) };
-    for (const k of ['t', ...(EVENT_FIELDS[ev.kind] ?? OTHER_FIELDS)]) {
-      const v = ev[k];
+    const kind = String(ev?.kind ?? '');
+    const out = { kind };
+    for (const k of ['t', ...(EVENT_FIELDS[kind] ?? OTHER_FIELDS)]) {
+      const v = ev?.[k];
       if (v === undefined || !primitive(v)) continue;
-      out[k] = k === 'path' ? requestPath(v) : v;
+      out[k] = k === 'path' && typeof v === 'string' ? requestPath(v) : v;
     }
     return out;
   }
@@ -194,5 +195,5 @@
     return out;
   }
 
-  root.bugCore = { CATEGORIES, MAX_EVENTS, REPORT_MAIL, MAILTO_MAX, EVENT_FIELDS, PATH_PARAMS, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit, redact, routeShape, browserLabel, mailtoReport };
+  root.bugCore = { CATEGORIES, MAX_EVENTS, REPORT_MAIL, MAILTO_MAX, EVENT_FIELDS, PATH_PARAMS, shapeEvent, createRecorder, describeTarget, clientContext, toggleCategory, canSubmit, redact, routeShape, browserLabel, mailtoReport };
 })(typeof window !== 'undefined' ? window : globalThis);

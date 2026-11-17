@@ -291,11 +291,25 @@ test('the recorder stores a request by its path and allow-listed names, never wh
   assert.ok(!JSON.stringify(r.events()).includes('alice'), 'q never enters the buffer');
 });
 
-test('the browser and the server keep the same recorder fields and query names (Issue #1708)', async () => {
-  const { EVENT_FIELDS, PATH_PARAMS } = await import('../src/bugreport.js');
-  assert.deepEqual(bug.EVENT_FIELDS, EVENT_FIELDS);
-  assert.deepEqual([...bug.PATH_PARAMS].sort(), [...PATH_PARAMS].sort());
-  assert.ok(!PATH_PARAMS.has('q'), 'the search box is never an allow-listed name');
+test('the server shapes a trace with the page recorder and redacts every string it keeps', () => {
+  assert.ok(!bug.PATH_PARAMS.has('q'), 'the search box is never an allow-listed name');
+  const events = [
+    { kind: 'api', method: 'Bearer wv_abcdef123456', path: '/api/x?token=abc&limit=5&q=hunter', status: 'sk_abcdefgh12345', ms: 7, t: 1, extra: 'ghp_0123456789abcdef' },
+    { kind: 'api', path: 42, status: null, ms: { n: 1 }, message: ['Bearer abcdefgh'], t: 2 },
+    { kind: 'error', message: 'failed at /x?password=hunter2 with Basic dXNlcjpwYXNz', source: 'https://h/app.js?key=k1', line: 9, t: 'auth=zz' },
+    { to: 'ucmcp_abcdefgh123', target: 'pk_test_ABCDEFGHIJ', t: 3 },
+    { kind: 'token=abc', target: 'button.x', t: 4 },
+    null,
+  ];
+  const md = renderBugReport({ categories: ['error'], events, client: CLIENT, server: SERVER }).markdown;
+  assert.deepEqual(JSON.parse(md.match(/```json\n([\s\S]*?)\n```/)[1]), [
+    { kind: 'api', t: 1, method: 'Bearer ***', path: '/api/x?limit=5', status: '***', ms: 7 },
+    { kind: 'api', t: 2, path: 42, status: null },
+    { kind: 'error', t: 'auth=***', message: 'failed at /x?password=*** with Basic ***', source: 'https://h/app.js?key=***', line: 9 },
+    { kind: '', t: 3, target: '***' },
+    { kind: 'token=***', t: 4, target: 'button.x' },
+    { kind: '' },
+  ]);
 });
 
 test('a hostile note cannot forge the sections an agent trusts', () => {
@@ -706,17 +720,6 @@ test('the whole URL stays under the mailto ceiling, trimming the error before th
   assert.match(body, /Note: N+…/, 'and the note after it');
   assert.equal(bug.MAILTO_MAX, 2000);
   assert.ok(mail().length < 1400, 'an ordinary report is nowhere near the cap');
-});
-
-test('the redaction in the page is the redaction on the server, verbatim', () => {
-  const server = src('src/bugreport.js');
-  const client = src('public/bug-core.js');
-  for (const name of ['SECRET_PARAMS', 'BEARER', 'PREFIXED_KEY']) {
-    const re = new RegExp(`const ${name} = (/.*/[gi]*);`);
-    const s = server.match(re)?.[1]; const c = client.match(re)?.[1];
-    assert.ok(s && c, `${name} is declared in both files`);
-    assert.equal(c, s, `${name} drifted between bug-core.js and bugreport.js`);
-  }
 });
 
 test('both entry points build their link through the one builder, and never promise a reply', () => {

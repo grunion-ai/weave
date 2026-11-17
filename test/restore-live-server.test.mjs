@@ -4,7 +4,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Weave } from '../src/engine.js';
-import { backup, restore, heldOpen, readTar } from '../src/backup.js';
+import { backup, restore, heldOpen } from '../src/backup.js';
+import { readTar } from './lib/tar.mjs';
 import { ROOT } from './lib/source.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -142,7 +143,7 @@ test('restore changes hub routing or a blob already there only with --force (Iss
   const routes = JSON.stringify({ 'old.db': 'alpha.db' });
   writeFileSync(join(dir, '_hub.json'), routes);
   const archive = await archiveOf(dir);
-  const names = readTar(archive).map((e) => e.name);
+  const names = (await readTar(archive)).map((e) => e.name);
   assert.ok(names.includes('_hub.json') && names.includes(`files/${blob}`), 'a full backup carries hub routing and the blob');
   const archived = { '_hub.json': routes, [`files/${blob}`]: 'the attachment as backed up\n' };
   const theirs = { '_hub.json': JSON.stringify({ 'old.db': 'beta.db' }), [`files/${blob}`]: 'another attachment under the same id\n' };

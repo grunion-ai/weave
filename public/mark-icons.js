@@ -43,6 +43,5 @@
   const has = (ch) => Object.prototype.hasOwnProperty.call(MARKS, String(ch));
   const markSvg = (ch) => (has(ch) ? MARKS[String(ch)] : null);
 
-  root.WEAVE_MARKS = MARKS;
   root.weaveMarkIcons = { MARKS, has, markSvg, twin };
 })(globalThis);

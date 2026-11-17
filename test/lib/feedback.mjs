@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 export const BUDGET_FILE = 'test/feedback-budget.json';
 
+export const LEDGER = { field: 'ms', unit: 'ms' };
+
 export const API_DELAY_MS = 1000;
 
 export const RUNS = 3;
