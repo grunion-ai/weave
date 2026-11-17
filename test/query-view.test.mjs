@@ -40,14 +40,14 @@ const names = (r) => r.items.map((e) => e.name);
 
 test('a view translates to where, sort and search the way the grid applies them', () => {
   const { w, v } = seed(new Weave());
-  assert.deepEqual(w.viewQuery('Task', 'Triage'), {
-    where: [['Stage', 'in', ['Open', 'Hold']], ['Tags', 'in', ['Web']], ['Shipped', 'in', [false]]],
-    sort: [{ field: 'Points', dir: 'desc' }],
-    search: 'launch',
-  });
-  assert.deepEqual(w.viewQuery('Task', v.id), w.viewQuery('Task', 'triage'), 'a view is named by id or by name, any case');
-  assert.deepEqual(w.viewQuery('Task', 'Standard'), { where: [], sort: [], search: '' }, 'a view with nothing saved adds nothing');
-  assert.throws(() => w.viewQuery('Task', 'Nope'), /View 'Nope' not found/);
+  assert.deepEqual(names(w.query('Task', { view: 'Triage' })), VIEW_ROWS, 'Stage drops Gamma, Tags drops Beta, Shipped off drops Alpha, the search drops Delta');
+  assert.deepEqual(names(w.query('Task', { view: v.id })), names(w.query('Task', { view: 'triage' })), 'a view is named by id or by name, any case');
+  assert.deepEqual(names(w.query('Task', { view: 'Standard' })), names(w.query('Task')), 'a view with nothing saved adds nothing');
+  w.tableView('Task/Triage', { filters: { Shipped: ['Shipped'] }, search: null });
+  assert.deepEqual(names(w.query('Task', { view: 'Triage' })), ['Alpha launch'], 'a toggle filter on its on name keeps the true rows');
+  w.tableView('Task/Triage', { filters: { Tags: ['Web'] } });
+  assert.deepEqual(names(w.query('Task', { view: 'Triage' })), ['Delta cleanup', 'Epsilon launch', 'Alpha launch', 'Gamma launch'], 'the saved sort orders the rows');
+  assert.throws(() => w.query('Task', { view: 'Nope' }), /View 'Nope' not found/);
 });
 
 test('query takes a view: its filters AND the caller where, the caller sort and search win', () => {

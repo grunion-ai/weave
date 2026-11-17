@@ -152,7 +152,7 @@ test('a deleted share page goes to the trash: hidden, unshared while there, rest
   assert.equal(w.listViews().length, 0, 'the page leaves the list');
   assert.deepEqual(w.listViews({ trash: true }).map((x) => x.name), ['Focus'], 'the trash lists it');
   assert.ok(w.listViews({ trash: true })[0].deletedAt);
-  assert.equal(w.viewByShareToken(token), null, 'its link stops serving');
+  assert.equal(w.shareByToken(token), null, 'its link stops serving');
   assert.throws(() => w.resolveView(v.id), /not found|trash/i);
   assert.ok(w.listAudit().some((x) => x.action === 'view-trashed'));
 
@@ -161,7 +161,7 @@ test('a deleted share page goes to the trash: hidden, unshared while there, rest
   assert.equal(back.deletedAt, undefined);
   assert.equal(w.listViews().length, 1);
   assert.equal(w.listViews({ trash: true }).length, 0);
-  assert.equal(w.viewByShareToken(token).id, v.id, 'the link serves again');
+  assert.deepEqual(w.shareByToken(token).scope, { kind: 'view', id: v.id }, 'the link serves again');
   assert.equal(w.resolveView(v.id).blocks[0].items.length, 2);
   assert.ok(w.listAudit().some((x) => x.action === 'view-restored'));
 });

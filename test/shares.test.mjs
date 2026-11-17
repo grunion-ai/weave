@@ -166,7 +166,7 @@ test('a view share is a grant; an old shareToken lifts into one on open and keep
   assert.equal(w.listShares({ kind: 'view', id: v.id })[0].mode, 'read');
   w.unshareView(v.id);
   assert.equal(w.listViews()[0].shared, false);
-  assert.equal(w.viewByShareToken(token), null);
+  assert.equal(w.shareByToken(token), null);
 
   const dir = tempDir('weave-shares-');
   try {
@@ -184,7 +184,7 @@ test('a view share is a grant; an old shareToken lifts into one on open and keep
     const lifted = b.listShares({ kind: 'view', id: old.id });
     assert.equal(lifted.length, 1);
     assert.deepEqual([lifted[0].token, lifted[0].mode, lifted[0].visibility], [legacy, 'read', 'public']);
-    assert.equal(b.viewByShareToken(legacy).id, old.id);
+    assert.deepEqual(b.shareByToken(legacy).scope, { kind: 'view', id: old.id });
     assert.equal(b.listViews()[0].shared, true);
     b.close?.();
     assert.equal(new Weave({ path }).listShares().length, 1, 'lifting twice makes one grant');
