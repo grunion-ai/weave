@@ -883,7 +883,7 @@ const queuedWrites = new WeakSet();
 saves.onSaved((written, job) => {
   if (!written?.affected) return;
   queuedWrites.add(written);
-  $('#main > .table-wrap')?.wvSaved?.(written, job.field).catch((err) => toast(err.message, true));
+  $('#main > :is(.table-wrap, .board-wrap)')?.wvSaved?.(written, job.field).catch((err) => toast(err.message, true));
 });
 const dockHoldsSaveMark = () => (dockCoversScreen.matches || $('#app').classList.contains('table-yield')) && !!$('#dock:not([hidden])');
 const saveMarkHome = () => (dockHoldsSaveMark() && $('#dock .view-header .crumb-row')) || $('#main .view-header .crumb-row');
@@ -9350,7 +9350,7 @@ function nextStateFor(entity, f, named, refresh) {
   if (!next) return null;
   const move = async (to) => {
     await refresh?.(await api('POST', `/entities/${entity.id}/state`, { field: f.name, state: to }));
-    $('#main > .table-wrap')?.wvRefresh?.();
+    $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.();
   };
   const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
   return el('button', {
@@ -9431,6 +9431,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   const frame = (e) => JSON.stringify([e.name ?? '', e.avatar ?? null, boardCore.coverOf(db, e)?.id ?? null, (e.files ?? []).map((x) => x.id)]);
   const saved = async (fresh, field = null) => {
     if (later) await later.catch(() => {});
+    if (!field && !mount.closest('#main')) $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.();
     if (!nameInput.isConnected) return;
     if (fresh?.id !== id || frame(fresh) !== frame(entity)) return refresh();
     Object.assign(entity, fresh);
@@ -10751,7 +10752,7 @@ async function undoGesture(g) {
 }
 
 async function refreshView() {
-  const grid = state.route?.page === 'db' ? $('#main .table-wrap') : null;
+  const grid = state.route?.page === 'db' ? $('#main :is(.table-wrap, .board-wrap)') : null;
   if (grid?.wvRefresh) return grid.wvRefresh();
   await loadSchema();
   return route();
