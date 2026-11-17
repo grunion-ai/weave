@@ -1,25 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-
-const read = (p) => readFileSync(new URL(`../public/${p}`, import.meta.url), 'utf8');
-import { APP } from './lib/source.mjs';
-const CSS = read('style.css');
-
-const rules = () => {
-  const out = [];
-  const tok = /([^{}]+)\{|\}/g;
-  let m;
-  while ((m = tok.exec(CSS))) {
-    if (m[0] === '}') continue;
-    const head = m[1].trim();
-    if (head.startsWith('@')) continue;
-    const end = CSS.indexOf('}', tok.lastIndex);
-    out.push({ selector: head, body: CSS.slice(tok.lastIndex, end) });
-    tok.lastIndex = end + 1;
-  }
-  return out;
-};
+import { APP, cssRules } from './lib/source.mjs';
 
 const classesOf = (marker) => {
   const at = APP.indexOf(marker);
@@ -45,7 +26,7 @@ test('the table search is no longer built as a form-control and then stripped (I
 });
 
 test('only .search-bare drops the border, background and shadow of a search line (Issue #785)', () => {
-  const all = rules();
+  const all = cssRules();
   const base = all.filter((r) => r.selector === '.search-bare');
   assert.equal(base.length, 1, 'one .search-bare rule');
   for (const prop of ['border', 'background', 'box-shadow']) assert.match(base[0].body, new RegExp(`(^|;)\\s*${prop}\\s*:`), prop);

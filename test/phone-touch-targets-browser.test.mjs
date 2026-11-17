@@ -6,10 +6,8 @@ import { dirname, join } from 'node:path';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
 import { HOLD_PLATFORMS, ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
+import { MIN, SPAN, SWEEP } from './lib/touch.mjs';
 
-const MIN = 44;
-const STEP = 0.5;
-const SPAN = MIN - 1;
 const IPHONE = phoneProfile()?.page ?? null;
 const HELD = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'touch-held.json'), 'utf8')).offenders;
 const heldKey = (surface, theme, platform = null) => [surface, theme, platform].filter((p) => p).join(' | ');
@@ -48,75 +46,6 @@ const KEPT_REACH = (sel) => {
       w: Math.round(r.width), h: Math.round(r.height),
       x: reach(n, cx, cy, -1, 0) + reach(n, cx, cy, 1, 0),
       y: reach(n, cx, cy, 0, -1) + reach(n, cx, cy, 0, 1),
-    });
-  }
-  return out;
-};
-const SWEEP = (roots) => {
-  const SEL = 'a[href], button, [role="button"], summary, input:not([type="hidden"]), select, textarea, .text-dressed, tbody tr.entity-row';
-  const tops = roots.flatMap((r) => [...document.querySelectorAll(r)]);
-  const inRoot = (n) => tops.some((t) => t.contains(n));
-  const shown = (n) => {
-    const r = n.getBoundingClientRect();
-    if (!r.width || !r.height || !n.getClientRects().length) return false;
-    const shut = n.closest('details:not([open])');
-    if (n.disabled || (shut && n !== shut.querySelector(':scope > summary'))) return false;
-    const cs = getComputedStyle(n);
-    return cs.visibility !== 'hidden' && cs.pointerEvents !== 'none';
-  };
-  const label = (n) => {
-    const cls = [...n.classList].slice(0, 2).join('.');
-    const name = (n.getAttribute('aria-label') || n.title || n.dataset.field || (n.textContent || '').trim().slice(0, 32) || '').replace(/\s+/g, ' ');
-    return `${n.tagName.toLowerCase()}${cls ? `.${cls}` : ''} "${name}"`;
-  };
-  const owns = (n, hit) => !!hit && (hit === n || n.contains(hit));
-  const parked = (n, r) => {
-    for (let p = n.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-      const cs = getComputedStyle(p);
-      if (!/auto|scroll/.test(cs.overflowY) && !/auto|scroll/.test(cs.overflowX)) continue;
-      const b = p.getBoundingClientRect();
-      if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left - 1 || r.right > b.right + 1) return true;
-    }
-    return false;
-  };
-  const overlay = (n, hit) => {
-    for (let p = hit; p && p !== document.documentElement; p = p.parentElement) {
-      if (/fixed|sticky/.test(getComputedStyle(p).position)) return !p.contains(n);
-    }
-    return false;
-  };
-  const reach = (n, cx, cy, dx, dy) => {
-    let far = 0;
-    for (let d = 0.5; d <= 22; d += 0.5) {
-      const x = cx + dx * d, y = cy + dy * d;
-      if (x < 0 || y < 0 || x > innerWidth - 1 || y > innerHeight - 1) return 22;
-      const hit = document.elementFromPoint(x, y);
-      if (!owns(n, hit)) return overlay(n, hit) ? 22 : far;
-      far = d;
-    }
-    return far;
-  };
-  const found = tops.flatMap((t) => [...t.querySelectorAll(SEL)]).filter(shown);
-  const candidates = new Set(found);
-  const out = [];
-  for (const n of found) {
-    const r = n.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) continue;
-    if (parked(n, r)) continue;
-    const hit = document.elementFromPoint(cx, cy);
-    if (!owns(n, hit)) {
-      if (!hit || !inRoot(hit) || overlay(n, hit)) continue;
-      let up = hit;
-      while (up && !candidates.has(up)) up = up.parentElement;
-      if (up && up.contains(n)) continue;
-      out.push({ label: label(n), left: 0, right: 0, up: 0, down: 0, over: label(hit) });
-      continue;
-    }
-    out.push({
-      label: label(n),
-      left: reach(n, cx, cy, -1, 0), right: reach(n, cx, cy, 1, 0),
-      up: reach(n, cx, cy, 0, -1), down: reach(n, cx, cy, 0, 1),
     });
   }
   return out;

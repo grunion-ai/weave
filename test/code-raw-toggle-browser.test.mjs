@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { contrast as ratioOf } from './lib/contrast.mjs';
 
 let tableRef;
 
@@ -66,17 +67,7 @@ if (s) {
     };
   });
 
-  const contrast = (a, b) => {
-    const lum = (c) => {
-      const [r, g, bl] = c.match(/[\d.]+/g).slice(0, 3).map((n) => {
-        const v = Number(n) / 255;
-        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-      });
-      return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-    };
-    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-    return (hi + 0.05) / (lo + 0.05);
-  };
+  const contrast = (a, b) => ratioOf(...[a, b].map((c) => c.match(/[\d.]+/g).slice(0, 3).map(Number)));
 
   const assertUpperRight = (r, where) => {
     assert.ok(r.btn, `${where}: the </> button is on screen`);

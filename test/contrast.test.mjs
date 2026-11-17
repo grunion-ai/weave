@@ -1,20 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { contrast } from './lib/contrast.mjs';
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
-const channel = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
-const luminance = (hex) => {
+const rgbOf = (hex) => {
   const h = hex.trim().replace('#', '');
   const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;
-  const [r, g, b] = [0, 2, 4].map((i) => channel(parseInt(full.slice(i, i + 2), 16) / 255));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
 };
-const ratio = (fg, bg) => {
-  const [light, dark] = [luminance(fg), luminance(bg)].sort((a, b) => b - a);
-  return Math.round(((light + 0.05) / (dark + 0.05)) * 100) / 100;
-};
+const ratio = (fg, bg) => Math.round(contrast(rgbOf(fg), rgbOf(bg)) * 100) / 100;
 
 const tokensOf = (css) => Object.fromEntries([...css.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)].map((m) => [m[1], m[2]]));
 

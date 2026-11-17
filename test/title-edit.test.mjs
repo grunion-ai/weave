@@ -1,25 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { cssRules } from './lib/source.mjs';
 
 const read = (p) => readFileSync(new URL(`../public/${p}`, import.meta.url), 'utf8');
 const APP = read('app.js');
-const CSS = read('style.css');
-
-const rules = () => {
-  const out = [];
-  const tok = /([^{}]+)\{|\}/g;
-  let m;
-  while ((m = tok.exec(CSS))) {
-    if (m[0] === '}') continue;
-    const head = m[1].trim();
-    if (head.startsWith('@')) continue;
-    const end = CSS.indexOf('}', tok.lastIndex);
-    out.push({ selector: head, body: CSS.slice(tok.lastIndex, end) });
-    tok.lastIndex = end + 1;
-  }
-  return out;
-};
 
 const SHARED = ['font-weight', 'font-family', 'color', 'min-width', 'flex'];
 const declares = (body, prop) => new RegExp(`(^|;)\\s*${prop}\\s*:`).test(body);
@@ -39,7 +24,7 @@ test('the builder gives both editors the shared .title-edit class (Issue #784)',
 });
 
 test('the shared title declarations live once on .title-edit, never on a context modifier (Issue #784)', () => {
-  const all = rules();
+  const all = cssRules();
   const base = all.filter((r) => r.selector === '.title-edit');
   assert.equal(base.length, 1, 'one .title-edit rule');
   for (const prop of SHARED) assert.ok(declares(base[0].body, prop), `.title-edit declares ${prop}`);
