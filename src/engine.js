@@ -2734,11 +2734,6 @@ export class Weave {
     return { id: v.id, shared: false };
   }
 
-  viewByShareToken(token) {
-    const g = this.shareByToken(token);
-    return g?.scope.kind === 'view' ? own(this.state.meta.views, g.scope.id) : null;
-  }
-
   mintShare(opts = {}) {
     const g = Shares.mint(this, opts);
     this.save();
@@ -3193,11 +3188,6 @@ export class Weave {
       if (states.length) out[f.name] = [...states];
     }
     return Object.keys(out).length ? out : null;
-  }
-
-  viewQuery(dbRef, ref) {
-    const { view, ...out } = this.#viewQueryIn(this.getTable(dbRef), ref);
-    return out;
   }
 
   #viewQueryIn(db, ref) {
@@ -5050,20 +5040,6 @@ export class Weave {
     this.#settlePositions();
     this.save();
     return this;
-  }
-
-  dropWorkspace(wsId) {
-    this.members = this.members.filter((m) => m.state.meta.id !== wsId);
-    for (const kind of ['users', 'views', 'fields', 'tables', 'spaces']) {
-      const t = this.#sysTable(kind);
-      if (!t) continue;
-      for (const row of this.listEntities(t.id, { includeDeleted: true })) {
-        if (this.#wsIdOfRow(row) === wsId) this.#metaSync(() => this.deleteEntity(row.id, { hard: true }));
-      }
-    }
-    const wsRow = this.#sysRow('workspaces', wsId);
-    if (wsRow) this.#metaSync(() => this.deleteEntity(wsRow.id, { hard: true }));
-    this.save();
   }
 
   #syncAll() {
@@ -7722,10 +7698,6 @@ export class Weave {
     return !this.#hiddenSpaces()?.has(ref);
   }
 
-  hidesAnySpace() {
-    return !!this.#hiddenSpaces();
-  }
-
   asAccount(account, fn) {
     const viewer = viewerFor(account);
     const prev = this.actor;
@@ -9021,17 +8993,7 @@ export class Weave {
   #inWorkspace(db, workspace) {
     if (db.system !== 'workflows') return null;
     const want = workspace ?? this.state.meta.id;
-    return (e) => this.#workflowWsId(e) === want;
-  }
-
-  #workflowWsId(row) {
-    return this.#wsIdOfRow(row) ?? this.#reg.state.meta.id;
-  }
-
-  workflowWorkspace(id) {
-    const e = own(this.#reg.state.entities, id);
-    if (!e || this.#reg.state.tables[e.dbId]?.system !== 'workflows') return undefined;
-    return this.#workflowWsId(e);
+    return (e) => (this.#wsIdOfRow(e) ?? this.#reg.state.meta.id) === want;
   }
 
   query(dbRef, { viewerZone = null, workspace = null, ...opts } = {}) {

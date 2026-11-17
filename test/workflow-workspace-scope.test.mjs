@@ -48,14 +48,17 @@ test('a local workflow without an explicit workspace belongs to the workspace ru
   const wf = a.getTable('System/Workflows');
   const stray = a.createEntity(wf.id, { values: { Name: 'old alpha rule' }, docs: { Script: JSON.stringify({ table: 'Work/Lead', ...rule }) } });
   a.save();
-  assert.equal(a.workflowWorkspace(stray.id), a.state.meta.id);
-  assert.equal(root.workflowWorkspace(stray.id), undefined);
   assert.deepEqual(names(a.query(wf.id)), ['alpha rule', 'old alpha rule']);
-  const blank = root.createEntity(root.getTable('System/Workflows').id, { Name: 'draft' });
+  assert.deepEqual(names(a.query(wf.id, { workspace: a.state.meta.id })), ['alpha rule', 'old alpha rule']);
+  assert.deepEqual(names(a.query(wf.id, { workspace: root.state.meta.id })), []);
+  assert.equal(root.state.entities[stray.id], undefined);
+  const rootWf = root.getTable('System/Workflows').id;
+  const blank = root.createEntity(rootWf, { Name: 'draft' });
   root.save();
-  assert.equal(root.workflowWorkspace(blank.id), root.state.meta.id);
+  assert.ok(root.query(rootWf).items.some((i) => i.id === blank.id), 'a workflow row with no workspace belongs to the workspace that holds it');
   assert.deepEqual(names(b.query(b.getTable('System/Workflows').id)), ['beta rule']);
-  assert.equal(root.workflowWorkspace(root.getTable('System/Tables').id), undefined);
+  const tables = root.getTable('System/Tables').id;
+  assert.equal(root.query(tables, { workspace: b.state.meta.id }).items.length, root.query(tables).items.length, 'the workspace scope narrows only the Workflows table');
 });
 
 test('member routes use local workflow tables and reject foreign tokens and workflow IDs', async () => {
@@ -83,8 +86,7 @@ test('member routes use local workflow tables and reject foreign tokens and work
     assert.equal((await fetch(`${base}/w/alpha/api/entities/${betaRule.id}`, { headers: headers.get(a) })).status, 404);
     assert.equal((await fetch(`${base}/w/beta/api/entities/${betaRule.id}`, { headers: headers.get(b) })).status, 200);
     const made = await json(await post(`${base}/w/alpha/api/tables/${wf.id}/entities`, { name: 'new alpha rule' }, headers.get(a)));
-    assert.equal(a.workflowWorkspace(made.id), a.state.meta.id);
-    assert.equal(root.workflowWorkspace(made.id), undefined);
+    assert.equal((await fetch(`${base}/api/entities/${made.id}`, { headers: headers.get(root) })).status, 404);
     assert.deepEqual(names(await json(await post(`${base}/w/alpha/api/tables/${wf.id}/query`, {}, headers.get(a)))), ['alpha rule', 'new alpha rule']);
     assert.deepEqual(names(await json(await post(`${base}/w/beta/api/tables/${betaWf.id}/query`, {}, headers.get(b)))), ['beta rule']);
     const trash = await json(await fetch(`${base}/w/alpha/api/tables/${wf.id}/trash`, { headers: headers.get(a) }));

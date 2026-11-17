@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { Weave, WeaveError } from '../src/engine.js';
+import { createWorkspaceHub } from '../src/server.js';
+import { tempDir } from './lib/temp.mjs';
 
 const rowNamed = (w, table, name) => w.listEntities(w.getTable(table).id).find((e) => w.entityName(e) === name);
 const field = (w, table, name) => Object.values(w.getTable(table).fields).find((f) => f.name === name);
@@ -19,6 +22,14 @@ function member(name = 'uno') {
   m.createTable({ space: 'Dev', name: 'Task' });
   m.addField('Dev/Task', { name: 'Cost', type: 'number' });
   return m;
+}
+function onDisk(dir, name) {
+  const w = new Weave({ path: join(dir, `${name}.db`), name });
+  w.createSpace({ name: 'Dev' });
+  w.createTable({ space: 'Dev', name: 'Task' });
+  w.addField('Dev/Task', { name: 'Cost', type: 'number' });
+  w.createAccount({ name: `${name}-owner`, role: 'architect' });
+  return w;
 }
 
 test('the root carries a Workspaces table and its own row; every registry table has a Workspace relation', () => {
@@ -156,13 +167,45 @@ test('joining is idempotent and a re-opened member mints nothing until it hosts 
   assert.ok(rowNamed(again, 'System/Tables', 'Task'));
 });
 
-test('leaving the hub drops the member\'s rows from the root', () => {
-  const r = root();
-  const m = member();
-  m.joinRegistry(r);
-  r.dropWorkspace(m.state.meta.id);
-  assert.equal(rowNamed(r, 'System/Workspaces', 'uno'), undefined);
-  assert.equal(rowNamed(r, 'System/Tables', 'Task'), undefined);
-  assert.equal(rowNamed(r, 'System/Spaces', 'Dev'), undefined);
+const subjects = (w) => {
+  const ids = new Set([w.state.meta.id, ...Object.keys(w.state.spaces), ...Object.keys(w.state.meta.accounts ?? {})]);
+  for (const t of Object.values(w.state.tables)) {
+    ids.add(t.id);
+    for (const id of Object.keys(t.fields)) ids.add(id);
+    for (const v of t.tableViews ?? []) ids.add(v.id);
+  }
+  return ids;
+};
+
+const leftovers = (r, ids) => Object.values(r.state.entities)
+  .filter((row) => !row.deletedAt && r.state.tables[row.dbId]?.system && ids.has(row.sysId))
+  .map((row) => `${r.state.tables[row.dbId].system}:${r.entityName(row)}`);
+
+test('a hard workspace delete leaves no live row for that workspace in the default workspace registry', () => {
+  const dir = tempDir('weave-hard-delete-');
+  const r = onDisk(dir, 'root');
+  const uno = onDisk(dir, 'uno');
+  const ids = subjects(uno);
+  const hub = createWorkspaceHub(r, { workspaces: { uno } });
+  hub.remove('uno', { hard: true });
+  assert.equal(hub.get('uno'), null);
+  assert.deepEqual(r.members, []);
+  assert.deepEqual(leftovers(r, ids), []);
+  assert.deepEqual(r.registryReport().problems, []);
+});
+
+test('a hard delete of a workspace migrated out of the legacy hub registry leaves no live row for it in the root', () => {
+  const dir = tempDir('weave-hard-delete-legacy-');
+  const r = onDisk(dir, 'root');
+  const uno = onDisk(dir, 'uno');
+  uno.joinRegistry(r);
+  const ids = subjects(uno);
+  assert.ok(leftovers(r, ids).length, 'the legacy join put the member\'s structure in the root');
+  const hub = createWorkspaceHub(r, { workspaces: { uno } });
+  assert.equal(uno.registryHost, null);
+  hub.remove('uno', { hard: true });
+  assert.equal(hub.get('uno'), null);
+  assert.deepEqual(r.members, []);
+  assert.deepEqual(leftovers(r, ids), []);
   assert.deepEqual(r.registryReport().problems, []);
 });

@@ -190,7 +190,7 @@ test('Issue #230 (a): an export carries no account hash and no share token, on e
     assert.deepEqual(far.listAccounts().map((a) => [a.name, a.role]).sort(), [['bot', 'editor'], ['eye', 'observer'], ['root', 'architect']]);
     assert.equal(far.verifyToken(admin), null, 'a token minted on the near side does not open the far side');
     assert.equal(far.listViews().find((v) => v.id === view.id).shared, false);
-    assert.equal(far.viewByShareToken(share), null);
+    assert.equal(far.shareByToken(share), null);
     const minted = far.shareView(view.id).token;
     assert.notEqual(minted, share);
     assert.ok(far.state.meta.requireAuth, 'the setting itself travels');
@@ -227,18 +227,18 @@ test('Issue #230 (c): an export imported back into the same workspace keeps its 
     assert.equal((await call('POST', '/api/import', { token: admin, body: dump })).status, 200);
     assert.equal((await call('GET', '/api/workspace', { token: admin })).status, 200, 'the admin who imported is still signed in');
     for (const t of [admin, writer, reader]) assert.ok(w.verifyToken(t), 'every account token still verifies');
-    assert.equal(w.viewByShareToken(share)?.id, view.id, 'the share link still opens its view');
+    assert.equal(w.shareByToken(share)?.scope.id, view.id, 'the share link still opens its view');
     assert.equal((await call('GET', `/s/${share}/view/${view.id}`)).status, 200);
     assert.ok(w.verifySession(session), 'a browser signed in before the import stays signed in');
     await call('POST', '/api/import', { token: admin, body: await (await call('GET', '/api/export', { token: admin })).json() });
-    assert.ok(w.verifyToken(admin) && w.viewByShareToken(share));
+    assert.ok(w.verifyToken(admin) && w.shareByToken(share));
 
     const trimmed = structuredClone(dump);
     delete trimmed.meta.accounts[eye.id];
     delete trimmed.meta.views[view.id];
     assert.equal((await call('POST', '/api/import', { token: admin, body: trimmed })).status, 200);
     assert.equal(w.verifyToken(reader), null, 'a dropped account does not come back through its old token');
-    assert.equal(w.viewByShareToken(share), null, 'a dropped view does not keep its share link');
+    assert.equal(w.shareByToken(share), null, 'a dropped view does not keep its share link');
     assert.ok(w.verifyToken(admin), 'the accounts the dump kept still verify');
 
     const minted = w.createAccount({ name: 'fresh', role: 'reader' });
