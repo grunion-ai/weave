@@ -146,6 +146,7 @@ const withSecret = (w, id, ctx) => {
   return { ...w.readEntity(id, zoned(ctx)), ...(once?.invite ? { invite: { ...once.invite, url: inviteUrl(ctx?.origin ?? '', once.invite.code) } } : once ?? {}) };
 };
 const withoutAffected = ({ affected, ...row }) => row;
+const affectedAll = (w, ids, touched) => [...new Set([...ids, ...touched].flatMap((id) => w.affectedBy(id, touched)))];
 const nameKey = (v) => String(v ?? '').trim().toLowerCase();
 function refuseDuplicate(w, dbRef, input, ctx) {
   const db = w.getTable(dbRef);
@@ -1040,42 +1041,54 @@ export const COMMANDS = [
   },
   {
     name: 'entity.state',
-    engine: ['setState'],
+    engine: ['setState', 'touching', 'affectedBy'],
     writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_set_state',
       description: 'Move an entity to a workflow state (multistate field).',
       inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, state: { type: 'string' } }, required: ['entity', 'field', 'state'] },
     },
-    cli: { command: 'state', positional: ['entity', 'field'], rest: 'state', args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, state: a.state.join(' ') }) },
+    toolResult: withoutAffected,
+    cli: { command: 'state', positional: ['entity', 'field'], rest: 'state', args: (a, flags, { entityRef }) => ({ entity: entityRef(a.entity, flags.db), field: a.field, state: a.state.join(' ') }), result: withoutAffected },
     http: { method: 'POST', path: '/api/entities/:entity/state' },
-    run: (w, a, ctx) => { w.setState(a.entity, a.field, a.state, zoned(ctx)); return w.readEntity(a.entity, zoned(ctx)); },
+    run: (w, a, ctx) => {
+      const { touched } = w.touching(() => w.setState(a.entity, a.field, a.state, zoned(ctx)));
+      return { ...w.readEntity(a.entity, zoned(ctx)), affected: w.affectedBy(a.entity, touched) };
+    },
   },
   {
     name: 'entity.link',
-    engine: ['link'],
+    engine: ['link', 'touching', 'affectedBy'],
     writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_link',
       description: 'Link entities through a relation field (bidirectional; inverse side updates automatically).',
       inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
     },
-    cli: { command: 'link', positional: ['entity', 'field'], rest: 'targets', use: (flags) => (flags.unlink ? 'entity.unlink' : null), args: linkArgs },
+    toolResult: withoutAffected,
+    cli: { command: 'link', positional: ['entity', 'field'], rest: 'targets', use: (flags) => (flags.unlink ? 'entity.unlink' : null), args: linkArgs, result: withoutAffected },
     http: { method: 'POST', path: '/api/entities/:entity/link', args: linkBody },
-    run: (w, a, ctx) => { w.link(a.entity, a.field, a.targets); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+    run: (w, a, ctx) => {
+      const { touched } = w.touching(() => w.link(a.entity, a.field, a.targets));
+      return { ...w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }), affected: w.affectedBy(a.entity, touched) };
+    },
   },
   {
     name: 'entity.unlink',
-    engine: ['unlink'],
+    engine: ['unlink', 'touching', 'affectedBy'],
     writes: 'entity', minRole: 'editor', annotations: EDIT,
     tool: {
       name: 'weave_unlink',
       description: 'Remove entities from a relation field, leaving both entities in place. targets takes ids, names, or "#publicId"; the inverse field on the other table follows.',
       inputSchema: { type: 'object', properties: { entity: { type: 'string' }, field: { type: 'string' }, targets: { type: 'array', items: { type: 'string' } } }, required: ['entity', 'field', 'targets'] },
     },
-    cli: { command: 'unlink', positional: ['entity', 'field'], rest: 'targets', args: linkArgs },
+    toolResult: withoutAffected,
+    cli: { command: 'unlink', positional: ['entity', 'field'], rest: 'targets', args: linkArgs, result: withoutAffected },
     http: { method: 'POST', path: '/api/entities/:entity/unlink', args: linkBody },
-    run: (w, a, ctx) => { w.unlink(a.entity, a.field, a.targets); return w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }); },
+    run: (w, a, ctx) => {
+      const { touched } = w.touching(() => w.unlink(a.entity, a.field, a.targets));
+      return { ...w.readEntity(a.entity, { viewerZone: ctx?.viewerZone }), affected: w.affectedBy(a.entity, touched) };
+    },
   },
   {
     name: 'entity.create',
@@ -1254,7 +1267,7 @@ export const COMMANDS = [
   },
   {
     name: 'entity.bulk',
-    engine: ['bulk'],
+    engine: ['bulk', 'touching', 'affectedBy'],
     writes: 'entity', minRole: 'editor', annotations: DESTROY,
     tool: {
       name: 'weave_bulk',
@@ -1280,9 +1293,15 @@ export const COMMANDS = [
         if (flags.targets != null) params.targets = list(flags.targets);
         return { ...params, ids, op: a.op };
       },
+      result: withoutAffected,
     },
+    toolResult: withoutAffected,
     http: { method: 'POST', path: '/api/bulk' },
-    run: (w, a) => { const { ids, op, ...params } = a; return w.bulk(ids, op, params); },
+    run: (w, a) => {
+      const { ids, op, ...params } = a;
+      const { result, touched } = w.touching(() => w.bulk(ids, op, params));
+      return { ...result, affected: affectedAll(w, ids, touched) };
+    },
   },
   {
     name: 'doc.read',
@@ -1436,15 +1455,19 @@ export const COMMANDS = [
   },
   {
     name: 'undo.run',
-    engine: ['undo'],
+    engine: ['undo', 'touching', 'affectedBy'],
     writes: 'entity', minRole: 'editor', annotations: DESTROY,
     tool: UNDO_TOOL,
     action: false,
     actionArg: 'list',
     toolDefault: true,
-    cli: { command: 'undo', use: (flags) => (flags.list ? 'undo.list' : null), args: (a, flags) => defined({ steps: flags.steps, expect: flags.expect == null ? undefined : list(flags.expect) }) },
+    cli: { command: 'undo', use: (flags) => (flags.list ? 'undo.list' : null), args: (a, flags) => defined({ steps: flags.steps, expect: flags.expect == null ? undefined : list(flags.expect) }), result: withoutAffected },
+    toolResult: withoutAffected,
     http: { method: 'POST', path: '/api/undo' },
-    run: (w, a) => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)), expect: a.expect ?? null }),
+    run: (w, a) => {
+      const { result, touched } = w.touching(() => w.undo({ steps: Math.max(1, Number(a.steps ?? 1)), expect: a.expect ?? null }));
+      return { ...result, affected: affectedAll(w, [], touched) };
+    },
   },
   {
     name: 'json.export',

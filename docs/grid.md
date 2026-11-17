@@ -24,7 +24,7 @@ file changes.
 | Behaviour | Where |
 | --- | --- |
 | A cell rests, opens and commits | `activateCell`, `openCellPicker`, `editorFor` |
-| A commit writes and the grid catches up | the `onSaved` closure in `renderTable`, `patchRows` |
+| A commit writes and the grid catches up | the `onSaved` closure in `renderTable`, `patchRows`, `wvRefresh`, `refreshView`, `undoPatch`, `bulkPatch` |
 | A new row is added and takes focus | `newRowTray`, `focusNewRow`, `focusGridRow` |
 | Focus and scroll survive a redraw | `rememberGridFocus`, `restoreGridFocus`, `keepScroll` |
 | The keyboard moves the cursor | `public/grid-keymap.js` (`WeaveGridKeymap`), `gridMoves` |
