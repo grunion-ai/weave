@@ -1286,10 +1286,8 @@ test('workflow states: rows drag to reorder, icon instead of a default radio, an
   const ed = fnBody('stateListEditor');
   assert.doesNotMatch(ed, /draggable/, 'no native drag source (Feature #282)');
   const shell = fnBody('choiceListEditor');
-  assert.match(ed, /choiceListEditor\(state, 'states',/, 'a state row is built by the shared choice row');
   assert.match(shell, /optRowGrip\(wrap, \(\) => state\[key\], i,/, 'the grip drags through the shared reorder module');
   assert.match(fnBody('optRowGrip'), /fieldDialogCore\.moveItem\(list\(\), i,/, 'a drop reorders the states');
-  assert.match(fnBody('optionListEditor'), /choiceListEditor\(state, 'options',/, 'and select options drag the same way');
   assert.match(shell, /iconButton\(/, 'an icon picker per state');
   assert.match(fnBody('iconButton'), /iconCatalogue\(\)/, 'over the shared vocabulary');
   assert.match(fnBody('iconCatalogue'), /fieldDialogCore\.iconChoices/, 'which is the one catalogue');
@@ -1824,7 +1822,7 @@ test('a record page save applies the entity it returned, and the grid repaints f
   assert.match(fnBody('renderEntityView'), /frame\(fresh\) !== frame\(entity\)\) return refresh\(\);/, 'a save that changes the name, face, cover or files still redraws the page');
 });
 
-const SOURCE_GREP_CEILING = { greps: 551, bodies: 173 };
+const SOURCE_GREP_CEILING = { greps: 550, bodies: 173 };
 
 test('the source greps only come down: a behaviour a browser suite proves loses its regex here', () => {
   const self = read('test/ui-contract.test.mjs');
