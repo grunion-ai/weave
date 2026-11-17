@@ -10,8 +10,7 @@ const app = await launch('Submission sharing beta', w => {
   return { table, form };
 });
 
-const theme = 'light';
-if (app) test(`submission link works on phone in ${theme} with lost response and revoked stale page`, async () => {
+if (app) for (const theme of ['light', 'dark']) test(`submission link works on phone in ${theme} with lost response and revoked stale page`, async () => {
   const { browser, weave, table, form, base } = app;
   const grant = weave.mintShare({ scope: { kind: 'table', id: table.id }, mode: 'submit', formId: form.id, expiry: 'never' });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme: theme });

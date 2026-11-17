@@ -34,8 +34,7 @@ if (s) {
     return { before, gone: before.slice(1, 3) };
   }
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`the bar's trash toast carries Undo, and Undo brings back every row it took (${theme})`, async () => {
       const page = await grid(theme);
       try {
