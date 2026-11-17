@@ -38,8 +38,7 @@ if (s) {
 
   test('a related Board preserves its entity context, density, links and local collapse', async () => {
     weave.tableView(`${issueDb.id}/Standard`, { layout: 'board', picture: 'off', group: ['Status'], density: 'compact' });
-    {
-      const colorScheme = 'light';
+    for (const colorScheme of ['light', 'dark']) {
       const page = await open(`entity/${release.id}`, { colorScheme });
       try {
         await page.waitForSelector('.related-section .wv-board .tile');

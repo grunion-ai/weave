@@ -17,8 +17,7 @@ const s = await launch('members invites by email', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`an emailed invite says Emailed; a failed one shows the link (${theme})`, async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await page.goto(`${base}/`, { waitUntil: 'networkidle' });

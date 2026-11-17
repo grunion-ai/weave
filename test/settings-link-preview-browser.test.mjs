@@ -10,8 +10,7 @@ const s = await launch('settings link preview', (weave) => {
 if (s) {
   const { base, browser, weave } = s;
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`${theme}: Link preview before sign-in is a switch on the Settings page (Feature #347)`, async () => {
       weave.updateWorkspace({ linkPreview: false });
       const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });

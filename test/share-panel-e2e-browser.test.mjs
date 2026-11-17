@@ -66,8 +66,7 @@ if (app) {
     } finally { await preview?.close(); await owner.close(); await recipientContext.close(); }
   });
 
-  const theme = 'light';
-  test(`entity, selection and table links use one panel and enforce their recipient scope (${theme})`, async () => {
+  for (const theme of ['light', 'dark']) test(`entity, selection and table links use one panel and enforce their recipient scope (${theme})`, async () => {
     const { browser, weave, base } = app;
     const table = weave.createTable({ space: 'Intake', name: `Sharing ${theme}` });
     const rows = ['First', 'Second', 'Third'].map(Name => weave.createEntity(table.id, { Name }));

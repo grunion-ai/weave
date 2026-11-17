@@ -277,8 +277,7 @@ if (s) {
   });
   for (const [engine, b, profile] of engines) {
     for (const state of STATES.filter((st) => st.layout === 'board' && st.open === 'rest')) {
-      {
-        const theme = 'light';
+      for (const theme of themesOn(engine)) {
         test(`on a phone every fold on the ${state.name} draws its own ${MIN}px box (${engine}, ${theme}, Issue #1217)`, async () => {
           const page = await open(b, profile, theme, surfaceOf(state));
           try {
@@ -296,8 +295,7 @@ if (s) {
   const sinkRow = surfaceOf(walked('touch').concat(held('touch')).find((p) => p.state.name === 'sink-row').state);
   const avatars = { ...sinkRow, name: 'avatar controls on the phone record page', roots: ['#dock .av-control'] };
   for (const [engine, b, profile] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of themesOn(engine)) {
       test(`on a phone the avatar Change photo button keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #1167)`, async () => {
         const { seen, offenders } = await measure(b, profile, theme, avatars);
         assert.deepEqual(seen.map((c) => c.label), ['button.av-pick "Change photo"'], 'the record head offers one avatar control, its Change photo button');

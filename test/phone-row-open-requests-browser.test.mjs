@@ -31,8 +31,7 @@ if (s) {
   if (phone) engines.push(['webkit iPhone 15', () => phonePage(phone)]);
 
   for (const [engine, make] of engines) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`on a phone opening a row fetches the row once and its references alongside it, one round trip deep (${engine}, ${theme}, Issue #735)`, async () => {
         const page = await make();
         try {

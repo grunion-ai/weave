@@ -9,8 +9,7 @@ const s = await launch('nav horizontal overflow', (weave) => {
   weave.createTable({ space: 'Stack', name: 'Supercalifragilisticexpialidociousregistry' });
 });
 if (s) {
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`${theme}: the left nav never scrolls sideways`, async () => {
       const page = await s.browser.newPage({ viewport: { width: 1470, height: 844 } });
       try {

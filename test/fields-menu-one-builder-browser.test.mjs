@@ -104,8 +104,7 @@ if (s) {
   });
 
   for (const [label, viewport, names] of [['desktop', { width: 1440, height: 700 }, ['record']], ['phone', { width: 390, height: 700 }, ['record']]]) {
-    {
-      const theme = 'light';
+    for (const theme of ['light', 'dark']) {
       test(`the Fields list keeps a stable scrollbar gutter and its rows clear of it (Issues #909, #915, ${label}, ${theme})`, async () => {
         const page = await browser.newPage({ viewport, colorScheme: theme });
         try {

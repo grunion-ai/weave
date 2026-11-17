@@ -56,6 +56,45 @@ if (s) {
   });
 
   for (const colorScheme of ['light', 'dark']) {
+    test(`every header mark is a narrow text glyph that keeps clear of the next label (${colorScheme})`, async () => {
+      for (const table of [tasks, projects]) {
+        const page = await open(`/table/${table.id}`, colorScheme, '.wv-grid tbody tr.entity-row');
+        try {
+          const heads = await page.locator('.wv-grid thead th.col-head').evaluateAll((ths) => ths.map((th, i) => {
+            const m = th.querySelector('.col-label .field-mark');
+            const next = ths[i + 1]?.querySelector('.col-label');
+            const mr = m?.getBoundingClientRect();
+            return {
+              col: th.dataset.col,
+              mark: m && m.textContent,
+              svg: !!m?.querySelector('svg, .ico'),
+              width: mr?.width,
+              right: mr?.right,
+              thRight: th.getBoundingClientRect().right,
+              nextLeft: next?.getBoundingClientRect().left ?? null,
+            };
+          }));
+          const marked = heads.filter((h) => h.mark != null);
+          assert.ok(marked.length >= 2, JSON.stringify(heads));
+          for (const h of marked) {
+            assert.equal(h.svg, false, `${h.col}: the mark draws no icon`);
+            assert.match(h.mark, /^[ƒΣ↳→]$/, `${h.col}: one text glyph`);
+            assert.ok(h.width < (h.mark === '→' ? 12 : 10), `${h.col}: ${h.width}px wide, a text glyph and not a 21px icon slot`);
+            assert.ok(h.right <= h.thRight, `${h.col}: the mark stays inside its header`);
+            if (h.nextLeft != null) assert.ok(h.nextLeft - h.right >= 20, `${h.col}: ${h.nextLeft - h.right}px to the next label`);
+          }
+          if (table === tasks) {
+            const by = Object.fromEntries(heads.map((h) => [h.col, h.mark]));
+            assert.equal(by.Double, 'ƒ');
+            assert.equal(by['Project name'], '↳');
+            assert.equal(by.Project, '→');
+          } else {
+            assert.equal(heads.find((h) => h.col === 'Total estimate').mark, 'Σ');
+          }
+        } finally { await page.close(); }
+      }
+    });
+
     test(`a computed table cell carries no glyph and no type word, and the whole cell takes the computed tint (${colorScheme})`, async () => {
       const page = await open(`/table/${tasks.id}`, colorScheme, '.wv-grid tbody tr.entity-row');
       try {
@@ -124,48 +163,6 @@ if (s) {
         const alpha = (c) => Number((c.match(/rgba?\(([^)]+)\)/)?.[1].split(',')[3]) ?? 1);
         assert.ok(alpha(want) < alpha(chip), `the tint (${want}) stays lighter than the slate chip (${chip})`);
       } finally { await page.close(); }
-    });
-  }
-
-  {
-    const colorScheme = 'light';
-    test(`every header mark is a narrow text glyph that keeps clear of the next label (${colorScheme})`, async () => {
-      for (const table of [tasks, projects]) {
-        const page = await open(`/table/${table.id}`, colorScheme, '.wv-grid tbody tr.entity-row');
-        try {
-          const heads = await page.locator('.wv-grid thead th.col-head').evaluateAll((ths) => ths.map((th, i) => {
-            const m = th.querySelector('.col-label .field-mark');
-            const next = ths[i + 1]?.querySelector('.col-label');
-            const mr = m?.getBoundingClientRect();
-            return {
-              col: th.dataset.col,
-              mark: m && m.textContent,
-              svg: !!m?.querySelector('svg, .ico'),
-              width: mr?.width,
-              right: mr?.right,
-              thRight: th.getBoundingClientRect().right,
-              nextLeft: next?.getBoundingClientRect().left ?? null,
-            };
-          }));
-          const marked = heads.filter((h) => h.mark != null);
-          assert.ok(marked.length >= 2, JSON.stringify(heads));
-          for (const h of marked) {
-            assert.equal(h.svg, false, `${h.col}: the mark draws no icon`);
-            assert.match(h.mark, /^[ƒΣ↳→]$/, `${h.col}: one text glyph`);
-            assert.ok(h.width < (h.mark === '→' ? 12 : 10), `${h.col}: ${h.width}px wide, a text glyph and not a 21px icon slot`);
-            assert.ok(h.right <= h.thRight, `${h.col}: the mark stays inside its header`);
-            if (h.nextLeft != null) assert.ok(h.nextLeft - h.right >= 20, `${h.col}: ${h.nextLeft - h.right}px to the next label`);
-          }
-          if (table === tasks) {
-            const by = Object.fromEntries(heads.map((h) => [h.col, h.mark]));
-            assert.equal(by.Double, 'ƒ');
-            assert.equal(by['Project name'], '↳');
-            assert.equal(by.Project, '→');
-          } else {
-            assert.equal(heads.find((h) => h.col === 'Total estimate').mark, 'Σ');
-          }
-        } finally { await page.close(); }
-      }
     });
 
     test(`an opened relation chip marks its computed field's label, not its value (${colorScheme})`, async () => {

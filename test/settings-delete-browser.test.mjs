@@ -38,8 +38,7 @@ if (s) {
     await page.mouse.up();
   }
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`${theme}: the Trash page restores and offers no Delete forever (Feature #295)`, async () => {
       trashed(`Kept ${theme}`);
       const page = await open('#/trash', theme);
@@ -80,8 +79,7 @@ if (s) {
     });
   }
 
-  {
-    const theme = 'light';
+  for (const theme of ['light', 'dark']) {
     test(`${theme}: Settings deletes a workspace for good from its own dialog once the name is typed and the hold runs out (Issue #1171, Feature #346, Feature #347)`, async () => {
       const page = await open('#/settings', theme);
       try {
