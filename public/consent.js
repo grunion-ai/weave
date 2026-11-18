@@ -110,6 +110,8 @@
     const text = document.createElement('p');
     const privacy = document.createElement('a');
     privacy.href = '/privacy#cookies';
+    privacy.target = '_blank';
+    privacy.rel = 'noopener';
     privacy.textContent = 'Privacy';
     text.append(`${BANNER} `, privacy);
     const actions = document.createElement('div');

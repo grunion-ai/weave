@@ -219,4 +219,21 @@ if (keyed) {
     assert.equal(await p.locator('[data-consent-open]').isVisible(), true);
     await ctx.close();
   });
+
+  test('the banner Privacy link opens the cookie policy beside the workspace (Issue #1377)', async () => {
+    const { p, ctx } = await page(keyed);
+    await p.goto(`${keyed.base}/start`);
+    await step(p, 'account');
+    await p.waitForSelector(banner);
+    const link = p.locator(`${banner} a`);
+    assert.equal(await link.getAttribute('target'), '_blank', 'the banner link opens a new tab');
+    assert.match(await link.getAttribute('rel') ?? '', /noopener/, 'the new tab gets no handle on the workspace');
+    const here = p.url();
+    const [opened] = await Promise.all([ctx.waitForEvent('page'), link.click()]);
+    await opened.waitForLoadState();
+    assert.equal(new URL(opened.url()).pathname, '/privacy', 'the cookie policy loads in the new tab');
+    assert.equal(p.url(), here, 'the workspace the reporter was on stays put');
+    await opened.close();
+    await ctx.close();
+  });
 }

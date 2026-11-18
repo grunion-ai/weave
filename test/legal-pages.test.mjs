@@ -49,12 +49,12 @@ test('the legal pages open no other door: anonymous API calls and pages stay 401
   } finally { stop(); }
 });
 
-test('the sign-in page links Privacy and Terms', async () => {
+test('the sign-in page links Privacy and Terms, and both open beside the door (Issue #1377)', async () => {
   const { base, stop } = await walled();
   try {
     const html = await (await fetch(base + '/auth')).text();
-    assert.match(html, /<a href="\/privacy">Privacy<\/a>/);
-    assert.match(html, /<a href="\/terms">Terms<\/a>/);
+    assert.match(html, /<a href="\/privacy" target="_blank" rel="noopener">Privacy<\/a>/);
+    assert.match(html, /<a href="\/terms" target="_blank" rel="noopener">Terms<\/a>/);
   } finally { stop(); }
 });
 
