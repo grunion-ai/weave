@@ -60,7 +60,7 @@
 
   const KINDS = {
     table: { settings: ['icon', 'description'], organize: ['move', 'duplicate', 'trash'], share: ['share-page', 'forms', 'create-link'], export: ['csv'], delete: ['delete'] },
-    record: { organize: ['activity', 'share', 'pose', 'duplicate', 'report'], export: ['md', 'html', 'pdf'], delete: ['delete'] },
+    record: { organize: ['activity', 'eye', 'share', 'pose', 'duplicate', 'report'], export: ['md', 'html', 'pdf'], delete: ['delete'] },
     doc: { export: ['md', 'mmd', 'html', 'pdf'] },
     space: { organize: ['trash'], delete: ['delete'] },
     'share-page': { delete: ['delete'] },

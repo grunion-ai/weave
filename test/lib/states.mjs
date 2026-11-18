@@ -220,6 +220,10 @@ const withSink = (build) => (weave) => ({ ...build(weave), sink: sink(weave) });
 export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touch, prose }).map(([name, build]) => [name, withSink(build)]));
 
 const at = (sel) => () => sel;
+const openFromDots = async (page, scope, label) => {
+  await page.locator(`${scope} .view-header .crumb-row .dots-btn`).first().tap();
+  await page.locator('.wv-menu >> visible=true').locator('.wv-menu-label', { hasText: label }).first().tap();
+};
 const eyeActivity = async (page) => {
   await page.click('#main .view-header .crumb-actions > .eye-btn');
   await page.click('.table-fields-popover [data-record-activity]');
@@ -515,11 +519,11 @@ const ACTIVITY_STATE = {
   async setup(page, ctx) {
     const phone = phoneCell(page);
     await page.goto(phone ? `${ctx.base}/#/table/${ctx.notes.id}?e=${ctx.activity}` : `${ctx.base}/#/entity/${ctx.activity}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(phone ? '#dock:not([hidden]) .activity-btn' : '#main .view-header .crumb-actions > .eye-btn');
+    await page.waitForSelector(phone ? '#dock:not([hidden]) .crumb-row .dots-btn' : '#main .view-header .crumb-actions > .eye-btn');
   },
   async run(page) {
     const phone = phoneCell(page);
-    if (phone) await page.locator('#dock .activity-btn >> visible=true').first().tap();
+    if (phone) await openFromDots(page, '#dock', 'Activity');
     else await eyeActivity(page);
     const link = page.locator('.wv-activity .wv-act-row').filter({ has: page.locator('.name', { hasText: /^Link$/ }) }).first();
     await link.waitFor();

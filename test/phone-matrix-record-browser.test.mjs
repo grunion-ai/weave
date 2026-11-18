@@ -46,7 +46,7 @@ if (s) {
     });
   });
 
-  test('the phone record top bar leaves Activity and field visibility to the menu-dots sheet (Issue #1382)', { todo: 'Issue #1382' }, async (t) => {
+  test('the phone record top bar leaves Activity and field visibility to the menu-dots sheet (Issue #1382)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t2);
       if (!(await recordCoversScreen(page))) return WIDE;

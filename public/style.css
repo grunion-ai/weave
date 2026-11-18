@@ -1823,7 +1823,11 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #app .view-header .crumb-row.crumb-row-fit { flex-wrap: nowrap; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-path { flex: 1 1 0; min-width: 0; max-width: none; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-actions { flex: none; flex-wrap: nowrap; }
-@media (max-width: 719px) { #app .view-header .crumb-row.crumb-row-tight > .crumb-actions > :is(.activity-btn, .table-share-btn, .pose-btn) { display: none; } }
+@media (max-width: 719px) {
+  #app .view-header .crumb-row > .crumb-actions > .activity-btn,
+  #app .view-header .crumb-row > .crumb-actions:has(> .activity-btn) > .eye-btn { display: none; }
+  #app .view-header .crumb-row.crumb-row-tight > .crumb-actions > :is(.table-share-btn, .pose-btn) { display: none; }
+}
 }
 #app .crumb-row-fit > .crumb-path > .crumb-slot:has(> :is(.crumb-k-ws, .crumb-k-space, .crumb-k-table)) { flex: none; min-width: auto; }
 .crumb-path > .crumb-slot.crumb-lead > .crumb-sep { display: none; }

@@ -33,7 +33,10 @@ if (s) {
       theme: document.documentElement.dataset.bsTheme,
       name: document.querySelector('#main .title-edit.name-edit').value,
     }));
-    await page.touchscreen.tap(Math.round(title.x + title.width / 2), Math.round(title.y + title.height / 2));
+    const over = await page.locator(sheet).boundingBox();
+    const clear = Math.min(title.y + title.height, over.y) - title.y;
+    assert.ok(clear > 2, `the sheet leaves ${Math.round(clear)} px of the title to tap`);
+    await page.touchscreen.tap(Math.round(title.x + title.width / 2), Math.round(title.y + clear / 2));
     await page.waitForSelector(sheet, { state: 'detached' });
     await page.keyboard.type('x');
     return page.evaluate((before) => {
