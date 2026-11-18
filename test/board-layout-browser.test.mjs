@@ -457,6 +457,35 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('the Columns preset writes the board knobs it owns and leaves Group alone (Issue #1834)', async () => {
+    seed({ groups: 'stacked', picture: 'medium', group: null });
+    const page = await open();
+    try {
+      await openPane(page, 'display');
+      await page.click('.board-preset:text-is("Columns")');
+      await eventually(() => view().groups, 'side');
+      assert.equal(view().picture, 'off');
+      assert.deepEqual(view().group ?? [], [], 'the board a person ungrouped stays ungrouped');
+      await page.waitForSelector('.wv-board .tile');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+  test('the Display pane offers Fit and its shape rows only while the board shows a picture (Issue #1834)', async () => {
+    shaped({ picture: 'off', fit: 'capped' });
+    const page = await open();
+    try {
+      await openPane(page, 'display');
+      await page.waitForSelector('#view-pane .board-picture');
+      assert.equal(await page.locator('.wv-board .tile-cover').count(), 0, 'no picture on the cards for a fit to shape');
+      assert.equal(await page.locator('#view-pane .board-fit').count(), 0, 'so Fit stays out of the pane');
+      assert.equal(await page.locator('#view-pane .board-frame, #view-pane .board-flow').count(), 0, 'and so do Card shape and Uneven cards');
+      await page.click('.board-picture .seg-opt:text-is("Medium")');
+      await eventually(() => view().picture, 'medium');
+      await page.waitForSelector('#view-pane .board-fit');
+      assert.equal(await page.locator('#view-pane .board-flow').count(), 1, 'a picture brings Fit back with the Uneven cards row Capped asks for');
+      assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
   test('hiding a field from the View pane keeps the board a board, in both themes (Issue #1213)', async () => {
     {
       const theme = 'light';
