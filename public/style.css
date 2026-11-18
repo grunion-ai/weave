@@ -2483,9 +2483,9 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .wv-more { width: fit-content; max-width: 100%; margin: 4px 0 8px 30px; white-space: normal; }
 .board-cards > .wv-more { grid-column: 1 / -1; margin-left: 0; }
 .list-footer { padding: 8px 12px; border-top: 1px solid var(--tblr-border-color); color: var(--tblr-secondary); font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; }
-.board-wrap { --board-pad-y: 8px; --board-pad-x: 10px; --board-gap: 6px; overflow: visible; min-width: 0; }
+.board-wrap { --board-pad-y: 8px; --board-pad-x: 10px; --board-gap: 6px; --tile-title-lines: 2; overflow: visible; min-width: 0; }
 .board-wrap[data-density="compact"] { --board-pad-y: 4px; --board-pad-x: 8px; --board-gap: 3px; }
-.board-wrap[data-density="spacious"] { --board-pad-y: 14px; --board-pad-x: 14px; --board-gap: 10px; }
+.board-wrap[data-density="spacious"] { --board-pad-y: 14px; --board-pad-x: 14px; --board-gap: 10px; --tile-title-lines: 3; }
 .wv-board { --card-w: 188px; --col-w: 232px; --phone-cols: 2; display: grid; gap: 18px; padding: 12px; min-width: 0; }
 .wv-board[data-groups="side"] { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; }
 .board-group { display: grid; gap: 10px; align-content: start; min-width: 0; }
@@ -2544,7 +2544,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-body { display: grid; gap: var(--board-gap, 6px); min-width: 0; padding: var(--board-pad-y, 8px) var(--board-pad-x, 10px); font-size: var(--fs-grid); }
 .tile-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }
 .tile-id { flex: none; color: var(--tblr-secondary); font-size: var(--fs-meta); font-weight: 500; font-variant-numeric: tabular-nums; }
-.tile-title { min-width: 0; color: var(--tblr-body-color); text-decoration: none; overflow-wrap: anywhere; -webkit-user-drag: none; }
+.tile-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--tile-title-lines, 2); min-width: 0; overflow: hidden; color: var(--tblr-body-color); text-decoration: none; overflow-wrap: anywhere; -webkit-user-drag: none; }
 .tile-title:hover { color: var(--tblr-primary); }
 .wv-board .tile.done .tile-title { color: var(--tblr-secondary); text-decoration: line-through; }
 .tile-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 3px 10px; margin: 0; font-size: var(--fs-secondary); }
@@ -2582,7 +2582,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .wv-board[data-lanes] :is(.board-col-head, .board-group) { scroll-snap-align: start; }
   .wv-board[data-lanes] .board-col-head { position: sticky; top: 0; z-index: 3; min-height: 44px; background: var(--tblr-bg-surface); }
   .wv-board[data-groups="side"] .board-group-head { position: sticky; top: 0; z-index: 2; min-height: 44px; margin: 0 -8px; padding: 0 8px; background: var(--tblr-bg-surface-secondary); }
-  .tile-title { display: block; padding-block: 12px; line-height: 20px; }
+  .tile-title { padding-block: 12px; line-height: 20px; }
   .tile-field > dt, .tile-field > dd { display: flex; align-items: center; }
   .tile-field > dd > * { pointer-events: none; }
   .tile-pick { width: 32px; height: 32px; }

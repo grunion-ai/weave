@@ -4,7 +4,9 @@ import { launch, engineOf, phonePage, settled } from './lib/browser.mjs';
 import { probe } from './lib/cutoff.mjs';
 
 const NOTES = 'Compare the three standing desks on frame stability, motor noise and the warranty terms, then check whether the walnut top ships before the move, ask the store to hold the oak sample, and write the measurements for the alcove beside the window into the Shopping List so the order can go out on Friday without another trip to the showroom.';
+const WORDY = 'Standing desk, electric, walnut top with the oak sample held at the showroom until the alcove measurements come back from the move';
 const DENSITIES = ['compact', 'comfortable', 'spacious'];
+const TITLE_LINES = { compact: 2, comfortable: 2, spacious: 3 };
 
 let list, ids;
 const s = await launch('board tile density', (weave) => {
@@ -17,6 +19,7 @@ const s = await launch('board tile density', (weave) => {
     short: weave.createEntity(list.id, { name: 'Lamp', values: { Notes: 'Oak', State: 'Research' } }).id,
     other: weave.createEntity(list.id, { name: 'Chair', values: { Notes: NOTES, State: 'Research' } }).id,
     ready: weave.createEntity(list.id, { name: 'Rug', values: { Notes: NOTES, State: 'Ready' } }).id,
+    wordy: weave.createEntity(list.id, { name: WORDY, values: { Notes: 'Oak', State: 'Research' } }).id,
   };
 });
 
@@ -45,6 +48,17 @@ if (s) {
     range.selectNodeContents(box);
     const rows = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
     return { rows, text: box.textContent, clamp: cs.webkitLineClamp, hidden: box.scrollHeight > box.clientHeight + 0.5 || box.closest('dd').scrollHeight > box.closest('dd').clientHeight + 0.5 };
+  }, id);
+  const cardTitle = (page, id) => page.evaluate((eid) => {
+    const box = document.querySelector(`.tile[data-eid="${eid}"] .tile-title`);
+    const cs = getComputedStyle(box);
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    const rows = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    const line = parseFloat(cs.lineHeight);
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const inner = box.clientHeight - pad;
+    return { laid: rows, drawn: Math.round(inner / line), line, text: box.textContent, clamp: cs.webkitLineClamp, box: box.getBoundingClientRect().height, inner };
   }, id);
   const columns = (page) => page.evaluate(() => new Set([...document.querySelector('.board-group[data-key="Research"] .board-cards').querySelectorAll(':scope > .tile')].map((t) => Math.round(t.getBoundingClientRect().left))).size);
 
@@ -79,6 +93,46 @@ if (s) {
           assert.deepEqual(await page.evaluate(probe, '.wv-board'), [], `${density} ${theme}: the board slices no glyph`);
         } finally { await page.close(); }
       }
+    }
+  });
+
+  test('desktop Chromium 1440x900: a card title holds the density line budget and ends on a whole line (Issue #1835, Feature #354)', async () => {
+    const [desktop] = cells;
+    for (const density of DENSITIES) {
+      const budget = TITLE_LINES[density];
+      const page = await open(desktop, density);
+      try {
+        const got = await cardTitle(page, ids.wordy);
+        assert.equal(got.text, WORDY, `${density}: the card carries the whole name for the record page and hover`);
+        assert.equal(got.clamp, String(budget), `${density}: the title clamps to ${budget} lines`);
+        assert.equal(got.drawn, budget, `${density}: the title draws ${budget} lines, got ${got.drawn}`);
+        assert.ok(got.laid > budget, `${density}: the name is longer than its budget, so the clamp bites: ${got.laid} lines of text`);
+        assert.ok(Math.abs(got.inner - budget * got.line) <= 1.5, `${density}: the clamp ends on a whole line: ${got.inner}px for ${budget} lines of ${got.line}px`);
+        const short = await cardTitle(page, ids.short);
+        assert.equal(short.drawn, 1, `${density}: a short title still takes one line`);
+        assert.ok(short.box < got.box, `${density}: a short title keeps a shorter title box than a clamped one`);
+        assert.deepEqual(await page.evaluate(probe, '.wv-board'), [], `${density}: the board slices no glyph`);
+      } finally { await page.close(); }
+    }
+  });
+
+  test('phone WebKit 390x844: a card title holds the same budget and stays a 44 px target (Issue #1835, Feature #354)', async () => {
+    const [, phone] = cells;
+    for (const density of DENSITIES) {
+      const budget = TITLE_LINES[density];
+      const page = await open(phone, density);
+      try {
+        const got = await cardTitle(page, ids.wordy);
+        assert.equal(got.text, WORDY, `${density}: the card carries the whole name`);
+        assert.equal(got.clamp, String(budget), `${density}: the title clamps to ${budget} lines`);
+        assert.equal(got.drawn, budget, `${density}: the title draws ${budget} lines, got ${got.drawn}`);
+        assert.ok(got.laid > budget, `${density}: the name is longer than its budget, so the clamp bites: ${got.laid} lines of text`);
+        assert.ok(Math.abs(got.inner - budget * got.line) <= 1.5, `${density}: the clamp ends on a whole line: ${got.inner}px for ${budget} lines of ${got.line}px`);
+        const short = await cardTitle(page, ids.short);
+        assert.ok(short.box >= 44, `${density}: a short title stays a 44 px tap target, got ${short.box}px`);
+        assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth > document.documentElement.clientWidth), false, `${density}: the page never scrolls sideways`);
+        assert.deepEqual(await page.evaluate(probe, '.wv-board'), [], `${density}: the board slices no glyph`);
+      } finally { await page.close(); }
     }
   });
 }

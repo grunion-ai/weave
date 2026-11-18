@@ -123,15 +123,22 @@ export function probe(target = null) {
     return parseInt(cs.webkitLineClamp, 10) * line - inner;
   };
   const SLICE = 2;
+  const lastDrawn = (e, cs) => {
+    if (!clamped(cs)) return Infinity;
+    const line = parseFloat(cs.lineHeight);
+    if (!(line > 0)) return Infinity;
+    return paddingBox(e).top + parseFloat(cs.paddingTop) + parseInt(cs.webkitLineClamp, 10) * line;
+  };
   const slicedBy = (e, own) => {
     const boxes = clipBoxes(e, e).filter((b) => b.cutY);
     if (!boxes.length) return 0;
+    const drawn = lastDrawn(e, style(e));
     let worst = 0;
     const range = document.createRange();
     for (const node of own) {
       range.selectNodeContents(node);
       for (const r of range.getClientRects()) {
-        if (!r.width || !r.height) continue;
+        if (!r.width || !r.height || r.top >= drawn - 1) continue;
         for (const { box } of boxes) {
           if (r.top >= box.bottom - 1 || r.bottom <= box.top + 1) break;
           worst = Math.max(worst, r.bottom - box.bottom > SLICE ? r.bottom - box.bottom : 0, box.top - r.top > SLICE ? box.top - r.top : 0);

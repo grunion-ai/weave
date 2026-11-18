@@ -128,7 +128,7 @@ if (s) {
       } finally { await page.close(); }
     });
 
-    test(`${engine.name}: a long title wraps inside the card, stays a 44 px target and nothing is cut off (Issue #1123)`, async () => {
+    test(`${engine.name}: a long title wraps to its line budget, stays a 44 px target and nothing is sliced (Issues #1123, #1835)`, async () => {
       seed();
       const long = weave.createEntity(list.id, { name: 'Standing desk: a title that runs well past the card so the tile has to wrap it somewhere sensible', values: { State: 'Research' } }).id;
       const page = await open(engine);
@@ -138,8 +138,9 @@ if (s) {
         const box = (n) => ({ height: n.getBoundingClientRect().height, over: n.scrollWidth - n.clientWidth });
         const got = await title.evaluate(box);
         const short = await page.locator(`${tile(ids.pants)} .tile-title`).evaluate(box);
-        assert.ok(got.height > short.height && short.height >= 44, `the long title takes more lines than a short one and both stay 44 px targets: ${JSON.stringify({ got, short })}`);
+        assert.ok(got.height >= short.height && short.height >= 44, `the long title takes at least as many lines as a short one and both stay 44 px targets: ${JSON.stringify({ got, short })}`);
         assert.ok(got.over <= 1, `no title text runs past the card: ${got.over}px hidden`);
+        assert.equal(await title.evaluate((n) => getComputedStyle(n).webkitLineClamp), '2', 'the title ends on the second whole line at Comfortable (Feature #354)');
         assert.equal(await pageScrollsSideways(page), false, 'a wrapped title never widens the page');
         assert.deepEqual(page.errors, []);
       } finally { await page.close(); }

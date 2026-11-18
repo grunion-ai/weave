@@ -7,6 +7,7 @@ Every piece of text in weave has one role, and the role decides what a line does
 | Page and section titles | Balanced lines | Wraps. A title is never cut. |
 | Prose and descriptions | Even lines, with no single word left alone on the last one | Folds on a whole line, with **Show more** beside it. |
 | Table cells | The line count the density sets: one at Compact and Comfortable, three at Spacious | Ends in an ellipsis on the last whole line. Hover the cell for the full value. |
+| Card titles on a tile | Two lines, three at Spacious | Ends in an ellipsis on the last whole line. Open the card for the full name. |
 | Chips and states | One row in a dense row, two at Spacious with the rest counted in +N, wrapped on a tile or a record page | A state name stays readable in full somewhere on screen. |
 | Long unbroken values | Break anywhere | Stay inside their box and never push the page wider. |
 

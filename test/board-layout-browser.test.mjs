@@ -147,7 +147,7 @@ if (s) {
     }
   });
 
-  test('a long title wraps inside the card and nothing is cut off (Issue #1123)', async () => {
+  test('a long title wraps to its line budget inside the card and nothing is sliced (Issues #1123, #1835)', async () => {
     seed();
     const long = weave.createEntity(list.id, { name: 'Standing desk: a title that runs well past the card so the tile has to wrap it somewhere sensible', values: { State: 'Research' } }).id;
     const page = await open();
@@ -159,7 +159,8 @@ if (s) {
       const short = await page.locator(`${tile(ids.pants)} .tile-title`).evaluate(box);
       assert.ok(got.height > short.height, `the long title takes more lines than a short one: ${JSON.stringify({ got, short })}`);
       assert.ok(got.over <= 1, `no title text runs past the card: ${got.over}px hidden`);
-      assert.equal(await title.evaluate((n) => getComputedStyle(n).textOverflow), 'clip', 'no ellipsis stands in for the title');
+      assert.equal(await title.evaluate((n) => getComputedStyle(n).webkitLineClamp), '2', 'the title ends on the second whole line at Comfortable (Feature #354)');
+      assert.equal(await title.evaluate((n) => n.textContent), weave.readEntity(long).name, 'the whole name stays on the card for the record page');
       assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
   });
