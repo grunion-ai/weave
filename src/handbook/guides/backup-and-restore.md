@@ -70,7 +70,7 @@ Each run writes one audit row: `backup-completed` with the archive name, its byt
 "backup": { "lastAt": "2026-09-12T04:00:00.000Z", "lastStatus": "completed", "nextAt": "2026-09-13T04:00:00.000Z", "dest": "s3://weave-backups/nightly" }
 ```
 
-No credential is in it. A monitor that already reads health can alarm on `lastStatus: "failed"` or on a `lastAt` older than a day and a half.
+No credential is in it. A monitor that already reads health can alarm on `lastStatus: "failed"` or on a `lastAt` older than a day and a half. With `WEAVE_ALERT_URL` set, a failed run also posts one line to that URL, so nobody has to be reading health to find out.
 
 ## Retention
 

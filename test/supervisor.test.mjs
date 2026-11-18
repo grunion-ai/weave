@@ -13,7 +13,7 @@ import { ROOT } from './lib/source.mjs';
 import { bootAndStop } from './lib/serve-fixture.mjs';
 import { packTar } from './lib/tar.mjs';
 import { Weave, deferMigrations, runDeferredMigrations } from '../src/engine.js';
-import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, shaFromRefs, rateLimitReset, REPO_API, REPO_GIT, REPO_CODELOAD } from '../src/supervisor.js';
+import { startSupervisor, autoUpdateFromEnv, trackFromEnv, unpackRelease, pruneReleases, shaFromRefs, rateLimitReset, alertRequest, alertLine, alertPoster, REPO_API, REPO_GIT, REPO_CODELOAD } from '../src/supervisor.js';
 import { RELEASES_URL } from '../src/update-check.js';
 import { tempDir } from './lib/temp.mjs';
 
@@ -814,8 +814,8 @@ test('a release whose health reads a broken sign-in passes its watch: an auth fa
 test('a serving worker that exits inside its watch rolls back to the image when no good release is kept', async () => {
   const dataPath = dataDir('watch-exit');
   const heads = { main: MAIN_A };
-  const gh = fakeMain({ heads, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { afterMigrate: 'setTimeout(() => process.exit(7), 100);' }) }) });
-  const { sup, base, events } = await supervise(dataPath, gh, { env: TRACK, ...WATCH });
+  const gh = alertCapture(fakeMain({ heads, tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { afterMigrate: 'setTimeout(() => process.exit(7), 100);' }) }) }));
+  const { sup, base, events } = await supervise(dataPath, gh, { env: { ...TRACK, WEAVE_ALERT_URL: ALERT_URL }, ...WATCH });
   try {
     assert.equal((await sup.check()).action, 'swapped');
     await waitFor(() => events.some((e) => e.type === 'rolled-back'));
@@ -829,6 +829,7 @@ test('a serving worker that exits inside its watch rolls back to the image when 
     assert.equal(h.supervisor.watch.ok, false);
     assert.deepEqual(h.supervisor.failed, [MAIN_A]);
     assert.equal((await sup.check()).action, 'skipped', 'the rolled-back commit is not tried again until the branch moves');
+    assert.ok(gh.posts.some((post) => /^weave rolled-back: /.test(post.body)), 'the rollback left the instance as an alert (Issue #1655)');
   } finally {
     await sup.close();
   }
@@ -1040,6 +1041,60 @@ test('shaFromRefs reads a branch head out of a git ref advertisement, capabiliti
   assert.equal(shaFromRefs(refs, 'refs/heads/production'), MAIN_B);
   assert.equal(shaFromRefs(refs, 'refs/heads/absent'), null);
   assert.equal(shaFromRefs('', 'refs/heads/main'), null);
+});
+
+const ALERT_URL = 'http://alerts.test/weave';
+const alertCapture = (inner) => {
+  const posts = [];
+  const fetch = (url, init) => (String(url) === ALERT_URL
+    ? (posts.push({ body: init.body, headers: init.headers }), Promise.resolve(new Response('ok')))
+    : inner.fetch(url, init));
+  return { fetch, calls: inner.calls, posts };
+};
+
+test('an instance alert posts the line as the body, with the bearer when a token is set (Issue #1655)', () => {
+  const init = alertRequest({ WEAVE_ALERT_TOKEN: 'abc123' }, 'weave worker-died: release=image');
+  assert.equal(init.method, 'POST');
+  assert.equal(init.body, 'weave worker-died: release=image');
+  assert.deepEqual(init.headers, { Authorization: 'Bearer abc123' });
+  assert.ok(init.signal);
+  assert.deepEqual(alertRequest({}, 'weave disk-floor: freeMB=0').headers, {});
+});
+
+test('alertLine names the event and each of its fields on one line (Issue #1655)', () => {
+  assert.equal(alertLine({ type: 'watch-alert', release: 'cabc', reason: '/api/health failed 3 checks in a row' }),
+    'weave watch-alert: release=cabc reason=/api/health failed 3 checks in a row');
+  assert.equal(alertLine({ type: 'worker-died' }), 'weave worker-died');
+});
+
+test('with no WEAVE_ALERT_URL the poster answers false and sends nothing (Issue #1655)', async () => {
+  const sent = [];
+  const post = alertPoster({}, { fetch: (...a) => (sent.push(a), Promise.resolve(new Response('ok'))) });
+  assert.equal(await post('weave disk-floor: freeMB=1'), false);
+  assert.deepEqual(sent, []);
+});
+
+test('a post the sink cannot deliver is a warning, never a throw (Issue #1655)', async () => {
+  const warnings = [];
+  const post = alertPoster({ WEAVE_ALERT_URL: ALERT_URL }, { fetch: () => Promise.reject(new Error('no route to host')), log: { warn: (m) => warnings.push(m) } });
+  assert.equal(await post('weave worker-died: release=image'), false);
+  assert.match(warnings[0], /alert post failed: no route to host/);
+});
+
+test('a volume under the free-space floor posts a disk-floor alert (Issue #1655)', async () => {
+  const dataPath = dataDir('alert-disk-floor');
+  const gh = alertCapture(fakeMain({ heads: { main: MAIN_A } }));
+  const env = { ...TRACK, WEAVE_ALERT_URL: ALERT_URL, WEAVE_ALERT_TOKEN: 'tok' };
+  const { sup } = await supervise(dataPath, gh, { env, minFreeBytes: Number.MAX_SAFE_INTEGER });
+  try {
+    assert.equal((await sup.check()).action, 'failed');
+    assert.equal(gh.posts.length, 1, 'the floor alert left the instance');
+    assert.match(gh.posts[0].body, /^weave disk-floor: /);
+    assert.match(gh.posts[0].body, /floorMB=\d+/);
+    assert.deepEqual(gh.posts[0].headers, { Authorization: 'Bearer tok' });
+  } finally {
+    await sup.close();
+  }
 });
 
 test('rateLimitReset names the reset only for a spent quota', () => {

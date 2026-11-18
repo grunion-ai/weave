@@ -73,6 +73,7 @@ const waitFor = async (what, ms = 20_000) => {
   throw new Error('timed out waiting');
 };
 
+const ALERT_URL = 'http://alerts.test/weave';
 const COMMIT_A = 'a'.repeat(40);
 const COMMIT_B = 'b'.repeat(40);
 
@@ -150,9 +151,11 @@ test('a worker that wrote its migration and then died is reported as dead once t
     return new Response('not found', { status: 404 });
   };
   const events = [];
+  const posts = [];
   const died = [];
+  const alerting = (url, init) => (String(url) === ALERT_URL ? (posts.push(init.body), Promise.resolve(new Response('ok'))) : fetch(url, init));
   const sup = await startSupervisor({
-    port: 0, host: '127.0.0.1', dataPath, env: ENV, fetch, imageDir: imageDir(root, '1.0.0', workerBin('1.0.0')),
+    port: 0, host: '127.0.0.1', dataPath, env: { ...ENV, WEAVE_ALERT_URL: ALERT_URL }, fetch: alerting, imageDir: imageDir(root, '1.0.0', workerBin('1.0.0')),
     interval: 0, healthTimeoutMs: 1500, watchMs: 20_000, watchPollMs: 60_000,
     log: { log() {}, warn() {}, error() {} },
     onEvent: (e) => events.push(e),
@@ -165,6 +168,8 @@ test('a worker that wrote its migration and then died is reported as dead once t
     assert.equal(died.length, 1);
     assert.equal(sup.status().watch.migrated, true);
     assert.ok(!events.some((e) => e.type === 'rolled-back'), 'a migrated release is never rolled back');
+    assert.ok(posts.some((line) => /^weave watch-alert: /.test(line)), 'the watch alert left the instance (Issue #1655)');
+    assert.ok(posts.some((line) => /^weave worker-died: /.test(line)), 'the worker death left the instance (Issue #1655)');
   } finally {
     await sup.close();
   }

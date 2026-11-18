@@ -28,6 +28,11 @@ services:
       # Set this (plus the bucket credentials — Handbook → "Backup and restore")
       # and the server backs itself up nightly at 04:00 UTC, thirty archives kept.
       # WEAVE_BACKUP_DEST: s3://bucket/weave
+      # Where an operator alert goes: a tripped watch, a rollback, the serving
+      # worker dying, a release refused on a full volume, a failed nightly backup.
+      # One line of plain text per alert; unset, they stay in the log.
+      # WEAVE_ALERT_URL: https://alerts.example.com/weave
+      # WEAVE_ALERT_TOKEN: a-bearer-token
       # Sign in with one OpenID Connect provider (Handbook → "Door C: sign in
       # with a provider"); its redirect URI is <WEAVE_ORIGIN>/api/auth/oidc/callback.
       # WEAVE_OIDC_ISSUER: https://clerk.example.com
