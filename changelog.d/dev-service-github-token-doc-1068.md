@@ -1,1 +1,0 @@
-- The dev deploy walkthrough names `WEAVE_GITHUB_TOKEN` beside the other variables the dev service runs with, and says what a throttled check answers without it (Issue #1068).

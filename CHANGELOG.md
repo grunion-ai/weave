@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.156 (2026-11-18)
+
+- The dev deploy walkthrough names `WEAVE_GITHUB_TOKEN` beside the other variables the dev service runs with, and says what a throttled check answers without it (Issue #1068).
+- The supervisor reads `api.github.com` with `WEAVE_GITHUB_TOKEN` when one is set, so the release check no longer shares the hourly quota GitHub gives an unauthenticated address. A throttled read now names its reset: `POST /_supervisor/check` answers `{"action":"waiting","until":"<ISO time>"}` and the dev deploy sleeps for that time instead of failing (Issue #1068).
+- Renaming a record in the docked pane, or writing its Description there, now updates that row in the table behind it without a reload (Issue #1519).
+- `WEAVE_ALERT_URL` takes operator alerts off the instance: the supervisor posts one line for a tripped watch that was not rolled back, a rollback, the death of the serving worker and a release refused on a volume under the free-space floor, and a server with `WEAVE_BACKUP_DEST` set posts a failed nightly backup. `WEAVE_ALERT_TOKEN` adds the bearer header a sink may want (Issue #1655).
+- The UI catalog gate ties the harvest to the state catalogue: `test/ui-catalog.test.mjs` fails when a route `tools/ui-catalog` crawls resolves to a hash shape no state in `test/lib/states.mjs` walks, or when a harvested overlay trigger's classes and label appear nowhere in that catalogue, so a surface added to the app enters every probe or fails CI by name. `test/ui-surface-baseline.json` records today's eight gaps and only shrinks (Issue #1466).
+
 ## v0.4.155 (2026-11-18)
 
 - The cookie banner Privacy link and the sign-in page Privacy and Terms links open in a new tab, so the cookie policy no longer replaces the workspace you were in (Issue #1377).
