@@ -136,4 +136,42 @@ if (s) {
       assert.equal(await page.evaluate(() => document.querySelector('#app').classList.contains('nav-held')), false, 'and the hold let go');
     } finally { await page.close(); }
   });
+
+  const drawerMetrics = (page) => page.evaluate(() => {
+    const edges = (node) => {
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { left: Math.round(r.left), right: Math.round(r.right) };
+    };
+    const one = (sel) => edges(document.querySelector(sel));
+    const foot = document.querySelector('#sidebar .nav-foot');
+    const newSpace = [...(foot?.querySelectorAll('button') ?? [])].find((b) => b.textContent.trim() === '+ New space');
+    const header = document.querySelector('#sidebar .nav-space-row a.nav-space, #sidebar .nav-space-row button.nav-space');
+    return {
+      rules: { foot: one('#sidebar .nav-foot'), system: one('#sidebar .nav-system'), identity: one('#sidebar .nav-identity') },
+      row: one('#sidebar .nav-space-row'),
+      newSpace: newSpace ? { ...edges(newSpace), fontSize: getComputedStyle(newSpace).fontSize } : null,
+      header: header ? { ...edges(header), fontSize: getComputedStyle(header).fontSize } : null,
+    };
+  });
+
+  for (const theme of ['light', 'dark']) {
+    test(`the phone drawer draws its dividers on the row inset and + New space at row size (Issue #1395, ${theme})`, async () => {
+      const page = await open([402, 874], theme);
+      try {
+        await openMenu(page);
+        const seen = await drawerMetrics(page);
+        const shown = JSON.stringify(seen);
+        for (const [name, rule] of Object.entries(seen.rules)) {
+          assert.ok(rule, `the drawer draws the ${name} divider: ${shown}`);
+          assert.equal(rule.left, seen.row.left, `the ${name} divider starts on the row inset: ${shown}`);
+          assert.equal(rule.right, seen.row.right, `the ${name} divider ends on the row inset: ${shown}`);
+        }
+        assert.ok(seen.newSpace, `the drawer offers + New space: ${shown}`);
+        assert.equal(seen.newSpace.left, seen.header.left, `+ New space starts where a space header starts: ${shown}`);
+        assert.equal(seen.newSpace.fontSize, seen.header.fontSize, `+ New space is set at the space header size: ${shown}`);
+      } finally { await page.close(); }
+    });
+  }
+
 }

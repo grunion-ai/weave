@@ -1791,7 +1791,7 @@ function personalMenuButton() {
     type: 'button', class: 'btn btn-sm btn-icon btn-ghost-secondary nav-identity-more',
     title: 'Your menu', 'aria-label': 'Your menu', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
     onclick: (e) => { e.stopPropagation(); personalMenu(btn); },
-  }, iconEl('lucide:ellipsis', 'wv-icon'));
+  }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
   return btn;
 }
 
