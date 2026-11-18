@@ -22,6 +22,7 @@ if (s) {
   const cases = [
     ['a max-height that stops inside a line is a sliced line', `<div style="${LINE} max-height: 50px; overflow: hidden"><p style="margin: 0">${words(40)}</p></div>`, ['sliced-line']],
     ['a line clamp ends on a whole line', `<p style="${LINE} display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden" title="${words(40)}">${words(40)}</p>`, []],
+    ['a line clamp whose dropped line falls inside its own padding ends on a whole line', `<p style="${LINE} display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding-block: 12px" title="${words(40)}">${words(40)}</p>`, []],
     ['a line clamp over paragraphs ends on a whole line', `<div style="${LINE} display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden" title="${words(10)} ${words(40)}"><p style="margin: 6px 0">${words(10)}</p><p style="margin: 6px 0">${words(40)}</p></div>`, []],
     ['a single word on the last line of prose is a lone word', `<p style="${LINE} text-wrap: wrap">Every line of this paragraph runs on until it reaches a width where one word lands alone<br>on a line of its own and a short tail word</p><p style="font: 14px/20px monospace; width: 192px; margin: 0">aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj kkkk llll mmmm nnnn oooo pppp qqqq</p>`, ['lone-word']],
     ['a last word too long to share a line is not rag', `<p style="font: 14px/20px monospace; width: 192px; margin: 0">aaaa bbbb cccc dddd eeee ${'z'.repeat(22)}</p>`, []],

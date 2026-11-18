@@ -56,10 +56,11 @@ if (s) {
   };
   const clipped = (page) => page.evaluate(() => [...document.querySelectorAll('.wv-board .tile')].filter((t) => {
     const box = t.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(t.querySelector('.tile-title'));
-    const name = range.getBoundingClientRect();
-    return name.top < box.top - 0.5 || name.bottom > box.bottom + 0.5;
+    const title = t.querySelector('.tile-title');
+    const name = title.getBoundingClientRect();
+    const cs = getComputedStyle(title);
+    const lines = (title.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / parseFloat(cs.lineHeight);
+    return name.top < box.top - 0.5 || name.bottom > box.bottom + 0.5 || Math.abs(lines - Math.round(lines)) > 0.1;
   }).map((t) => `${t.querySelector('.tile-id').textContent} ${Math.round(t.getBoundingClientRect().height)}px`));
   const resized = (page) => page.evaluate(() => {
     const last = new Map();
