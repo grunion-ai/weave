@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.154 (2026-11-18)
+
+- **Board Display rows match the board** (Issue #1834): the Columns preset wrote a group onto a view whose group you had just removed, and Fit, Card shape and Uneven cards sat in the pane with Picture off, where no card carries a picture for them to shape. Columns now writes the side by side columns, no picture and manual order it names, and the three shape rows show only while the board shows a picture.
+- **The phone record bar leaves Activity and field visibility to its menu** (Issue #1382): on a phone the record top bar spent two of five round buttons on Activity and the field-visibility eye, which crowded the record chip and its copy-link icon at 402 pt. Both now sit in the menu-dots sheet, where the field list opens under the ⋮ it was reached from, and the bar keeps Share, the ⋮ and Close. A desktop header keeps every button.
+
 ## v0.4.153 (2026-11-18)
 
 - **A board card title holds the density line budget** (Issue #1835): a long record name ran to six or seven lines on a card and pushed every other card out of line. The title now ends on the second whole line, the third at Spacious, with an ellipsis, and the whole name stays on the card for the record page (Feature #354).
