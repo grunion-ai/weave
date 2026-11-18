@@ -201,7 +201,7 @@ ${signUpHref ? `      <p class="sub" style="margin-top:14px">New to weave? <a id
     </section>
     <div id="msg" class="msg" role="status"></div>
   </div>
-  <p class="sub legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>${analyticsKey ? ' · <a href="/privacy#cookies" data-consent-open>Cookies</a>' : ''}</p>
+  <p class="sub legal"><a href="/privacy" target="_blank" rel="noopener">Privacy</a> · <a href="/terms" target="_blank" rel="noopener">Terms</a>${analyticsKey ? ' · <a href="/privacy#cookies" data-consent-open>Cookies</a>' : ''}</p>
 </main>
 <script>${JS}</script>
 ${analyticsKey ? `<script src="/consent.js" data-posthog-key="${esc(analyticsKey)}"></script>\n` : ''}
