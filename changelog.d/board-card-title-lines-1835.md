@@ -1,1 +1,0 @@
-- **A board card title holds the density line budget** (Issue #1835): a long record name ran to six or seven lines on a card and pushed every other card out of line. The title now ends on the second whole line, the third at Spacious, with an ellipsis, and the whole name stays on the card for the record page (Feature #354).

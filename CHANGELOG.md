@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.153 (2026-11-18)
+
+- **A board card title holds the density line budget** (Issue #1835): a long record name ran to six or seven lines on a card and pushed every other card out of line. The title now ends on the second whole line, the third at Spacious, with an ellipsis, and the whole name stays on the card for the record page (Feature #354).
+- **One inset for the phone drawer's dividers, foot rows and row menus** (Issue #1395): the drawer drew its three rules at three widths, set + New space smaller than the rows above it, and ended the identity row in a horizontal ellipsis. Every rule now starts and ends on the row inset, + New space and Templates read at the row size on the row inset, and one glyph serves every row menu.
+
 ## v0.4.152 (2026-11-17)
 
 - **A tapped phone drawer draws no ring on the workspace name** (Issue #1396): the drawer's focus hold now parks focus on the drawer itself when a tap opens it, so the blue rectangle no longer lands on the workspace wordmark. A drawer opened from the keyboard still moves focus to its first stop with the ring, and Tab stays inside either way.
