@@ -6268,8 +6268,8 @@ function boardControls(db, put) {
   const v = db.view ?? {};
   const cover = boardCore.coverField(db);
   const fit = boardCore.fitOf(v);
-  const by = db.fields.find((f) => f.type === 'workflow') ?? db.fields.find((f) => f.type === 'select');
-  const columns = { groups: 'side', picture: 'off', sort: [], ...(!(v.group ?? []).length && by ? { group: [by.name] } : {}) };
+  const picture = boardCore.pictureOf(db, v);
+  const columns = { groups: 'side', picture: 'off', sort: [] };
   const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
   return [
     row('board-presets', 'Start from', el('span', { class: 'board-preset-row' },
@@ -6277,10 +6277,10 @@ function boardControls(db, put) {
       el('button', { class: 'btn btn-sm board-preset', type: 'button', title: 'Gallery: groups stacked, each card headed by its cover picture', onclick: () => put({ groups: 'stacked', picture: cover?.size ?? 'medium' }) }, 'Gallery'))),
     row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
     row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
-      boardCore.pictureOf(db, v), (picture) => put({ picture }))),
-    row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
-    fit === 'crop' || fit === 'fit' ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
-    fit === 'original' || fit === 'capped' ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
+      picture, (size) => put({ picture: size }))),
+    picture === 'off' ? null : row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
+    picture !== 'off' && (fit === 'crop' || fit === 'fit') ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
+    picture !== 'off' && (fit === 'original' || fit === 'capped') ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
   ].filter(Boolean);
 }
 function groupFieldOptions(db) {
