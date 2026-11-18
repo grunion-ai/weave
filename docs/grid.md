@@ -25,6 +25,7 @@ file changes.
 | --- | --- |
 | A cell rests, opens and commits | `activateCell`, `openCellPicker`, `editorFor` |
 | A commit writes and the grid catches up | the `onSaved` closure in `renderTable`, `patchRows`, `wvRefresh`, `refreshView`, `undoPatch`, `bulkPatch` |
+| A write in the docked pane reaches the row behind it | `surfaceBehind`, `tellSurface`, `docSaved` in the dock render, through `wvRefresh` |
 | A new row is added and takes focus | `newRowTray`, `focusNewRow`, `focusGridRow` |
 | Focus and scroll survive a redraw | `rememberGridFocus`, `restoreGridFocus`, `keepScroll` |
 | The keyboard moves the cursor | `public/grid-keymap.js` (`WeaveGridKeymap`), `gridMoves` |
