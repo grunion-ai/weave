@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.152 (2026-11-17)
+
+- **A tapped phone drawer draws no ring on the workspace name** (Issue #1396): the drawer's focus hold now parks focus on the drawer itself when a tap opens it, so the blue rectangle no longer lands on the workspace wordmark. A drawer opened from the keyboard still moves focus to its first stop with the ring, and Tab stays inside either way.
+- **A tapped menu opens with no row drawn as chosen** (Issue #1389): on a coarse pointer the menu sheet now parks focus on the sheet itself, so its first row no longer opens wearing the keyboard fill. A menu opened from the keyboard still lands on its first row, and the arrow keys still walk a tapped sheet.
+
 ## v0.4.151 (2026-11-17)
 
 - A click on a field value on a board card edits that value and opens no record (Issue #1832). The click used to open the record pane and the editor together, so the pane moved under the pointer while the value was being changed. The rest of the card still opens the record.
