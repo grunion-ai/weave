@@ -3134,7 +3134,7 @@ function menu(items, { anchor = null, point = null, sheet = dockCoversScreen.mat
   const sections = globalThis.menuCore.plan(items, { sheet });
   const pop = el('div', {
     class: ['chip-pop', 'wv-menu', sheet ? 'wv-menu-sheet' : '', className].filter(Boolean).join(' '),
-    role: 'menu', 'aria-label': label ?? head?.title ?? trigger?.title ?? 'Actions',
+    role: 'menu', 'aria-label': label ?? head?.title ?? trigger?.title ?? 'Actions', tabindex: '-1',
   });
   let off = () => {};
   const close = ({ focus = false } = {}) => {
@@ -3206,7 +3206,8 @@ function menu(items, { anchor = null, point = null, sheet = dockCoversScreen.mat
     const hit = globalThis.menuCore.typeahead(list.map((r) => r.querySelector('.wv-menu-label, .hold-label')?.textContent ?? r.textContent.trim()), i, typed);
     if (hit >= 0) { e.preventDefault(); at(hit); }
   });
-  at(0);
+  if (touchOnly.matches && !trigger?.matches?.(':focus-visible')) pop.focus({ preventScroll: true });
+  else at(0);
   return pop;
 }
 

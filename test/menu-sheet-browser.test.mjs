@@ -85,6 +85,60 @@ if (s) {
     }
   }
 
+  const sheetFocus = (page) => page.evaluate(() => {
+    const pop = document.querySelector('.chip-pop.wv-menu-sheet');
+    const rows = [...pop.querySelectorAll('.wv-menu-row')];
+    const a = document.activeElement;
+    return {
+      coarse: matchMedia('(hover: none) and (pointer: coarse)').matches,
+      inSheet: a?.closest?.('.wv-menu') === pop,
+      onRow: rows.indexOf(a),
+      ring: rows.filter((r) => r.matches(':focus-visible')).length,
+      fills: [...new Set(rows.map((r) => getComputedStyle(r).backgroundColor))],
+      popOutline: getComputedStyle(pop).outlineStyle,
+      labels: rows.map((r) => r.querySelector('.wv-menu-label')?.textContent ?? ''),
+    };
+  });
+
+  for (const [engine, b, profile] of engines) {
+    test(`a tapped record menu sheet opens with no row drawn as chosen, and the arrows still reach the first (${engine}, Issue #1389)`, async () => {
+      const page = await open(b, profile, 'light', entity);
+      try {
+        await page.click('#main .view-header .dots-btn');
+        await page.waitForSelector('.chip-pop.wv-menu-sheet .wv-menu-row');
+        await settled(page.locator('.chip-pop.wv-menu-sheet'));
+        const seen = await sheetFocus(page);
+        assert.equal(seen.coarse, true, 'the profile is a coarse pointer, which is what the rule keys on');
+        assert.equal(seen.onRow, -1, `a tap leaves no row focused, so none reads as chosen (got "${seen.labels[seen.onRow]}")`);
+        assert.equal(seen.ring, 0, 'and none carries the keyboard ring');
+        assert.deepEqual(seen.fills, ['rgba(0, 0, 0, 0)'], `every row keeps the sheet's own background: ${seen.fills}`);
+        assert.ok(seen.inSheet, 'focus rests in the sheet itself, so Escape and the arrow keys keep working');
+        assert.equal(seen.popOutline, 'none', 'and the sheet draws no ring of its own');
+        await page.keyboard.press('ArrowDown');
+        const walked = await sheetFocus(page);
+        assert.equal(walked.onRow, 0, 'ArrowDown from the tapped sheet reaches the first row');
+        assert.equal(walked.ring, 1, 'and that row carries the ring, because a key moved it');
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });
+      } finally { await page.close(); }
+    });
+
+    test(`a record menu sheet opened with Enter still lands on its first row (${engine}, Issue #1389)`, async () => {
+      const page = await open(b, profile, 'light', entity);
+      try {
+        await page.locator('#main .view-header .dots-btn').focus();
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('.chip-pop.wv-menu-sheet .wv-menu-row');
+        await settled(page.locator('.chip-pop.wv-menu-sheet'));
+        const seen = await sheetFocus(page);
+        assert.equal(seen.onRow, 0, 'a keyboard open keeps the first-row affordance');
+        assert.equal(seen.ring, 1, 'drawn as keyboard focus');
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached' });
+      } finally { await page.close(); }
+    });
+  }
+
   const dragSheet = async (page, sel, dy) => {
     const box = await page.locator(`${sel} .sheet-grip`).boundingBox();
     const x = box.x + box.width / 2;
