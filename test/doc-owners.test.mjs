@@ -79,7 +79,7 @@ test('test runs have one policy: targeted locally, the full suite on CI', () => 
   assert.match(runs, /npm test -- --targeted/);
   assert.match(runs, /Never invoke bare `node --test`/);
   assert.match(runs, /\.github\/test-tools/, 'the Playwright pin browser runs install');
-  for (const ledger of ['a11y-baseline', 'byte-budget', 'click-budget', 'cutoff-baseline', 'feedback-budget', 'flicker-fixed', 'onboarding-steps', 'render-budget', 'touch-baseline', 'touch-held', 'vitals-budget']) {
+  for (const ledger of ['a11y-baseline', 'byte-budget', 'click-budget', 'cutoff-baseline', 'feedback-budget', 'flicker-fixed', 'onboarding-steps', 'render-budget', 'touch-baseline', 'touch-held', 'ui-surface-baseline', 'vitals-budget']) {
     assert.ok(existsSync(join(ROOT, `test/${ledger}.json`)), `test/${ledger}.json exists`);
     assert.match(runs, new RegExp(`test/${ledger}\\.json`), `Running tests lists the ${ledger} ledger`);
   }

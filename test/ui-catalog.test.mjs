@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCatalog, readPageData, VIEWS } from '../tools/ui-catalog/build.mjs';
 import { FUNCTIONS, functionsOf } from '../tools/ui-catalog/functions.mjs';
+import { catalogRoutes, seedCatalogWorkspace } from '../tools/ui-catalog/run.mjs';
+import { tempDir } from './lib/temp.mjs';
+import { catalogNames, harvestedRoutes, harvestedTriggers, stateRoutes, surfaceGaps } from './lib/ui-surfaces.mjs';
 
 const PAGE = fileURLToPath(new URL('../docs/ui-catalog/index.html', import.meta.url));
 const BUDGET = 8 * 1024 * 1024;
@@ -194,4 +198,61 @@ test('the catalog shows each toast kind, an empty and a set icon, and table cell
     assert.match(v.html, /^<table[\s>]/, `${c.code} renders inside a table`);
     assert.match(v.html, /<thead/, `${c.code} carries its header row`);
   }
+});
+
+const BASELINE = fileURLToPath(new URL('./ui-surface-baseline.json', import.meta.url));
+const allowed = JSON.parse(readFileSync(BASELINE, 'utf8'));
+const STATES_SRC = readFileSync(fileURLToPath(new URL('./lib/states.mjs', import.meta.url)), 'utf8');
+const named = (entries) => entries.map((e) => `- ${e}`).join('\n');
+
+test('a surface the state catalogue does not list is named, and one it opens is not (Issue #1466)', () => {
+  const states = new Map([['#/table/:id', 'open-table']]);
+  const names = catalogNames("tap(page, '#main .table-share-btn', cell); menu(page, cell, '.dots-btn', 'Forms…');");
+  const triggers = [
+    { sig: 'btn.table-share-btn', classes: ['btn', 'table-share-btn'], labels: ['Share'] },
+    { sig: 'dots-btn', classes: ['dots-btn'], labels: ['Forms…'] },
+    { sig: 'wv-start-new', classes: ['wv-start-new'], labels: ['+ New table'] },
+  ];
+  const gaps = surfaceGaps({ routes: ['#/table/:id', '#/map'], triggers, states, names, allowed: {} });
+  assert.deepEqual(gaps.missing.routes, ['#/map'], 'a crawled route with no state is named');
+  assert.deepEqual(gaps.missing.triggers, ['wv-start-new'], 'a trigger no state names is named, by its class signature');
+  assert.deepEqual(gaps.stale, { routes: [], triggers: [] });
+  const recorded = { routes: { '#/map': { issue: 1, why: 'no map state' } }, triggers: { 'wv-start-new': { issue: 1, why: 'no new-table state' }, 'dots-btn': { issue: 1, why: 'covered' } } };
+  const held = surfaceGaps({ routes: ['#/table/:id', '#/map'], triggers, states, names, allowed: recorded });
+  assert.deepEqual(held.missing, { routes: [], triggers: [] }, 'a recorded gap holds the gate');
+  assert.deepEqual(held.stale.triggers, ['dots-btn'], 'a recorded entry the catalogue now opens is stale, so the ledger only shrinks');
+});
+
+test('test/ui-surface-baseline.json records each gap with the Issue that tracks it (Issue #1466)', () => {
+  assert.match(allowed._, /only shrinks/, 'the ledger says it only shrinks');
+  for (const section of ['routes', 'triggers']) {
+    assert.ok(allowed[section], `the ledger has a ${section} section`);
+    for (const [key, entry] of Object.entries(allowed[section])) {
+      assert.ok(Number.isInteger(entry.issue), `${section} ${key} names the Issue that tracks it`);
+      assert.ok(entry.why?.length > 10, `${section} ${key} says what the surface opens`);
+    }
+  }
+});
+
+test('every route the UI catalog crawls has a state in test/lib/states.mjs (Issue #1466)', () => {
+  const weave = seedCatalogWorkspace(join(tempDir('weave-ui-surface-'), 'weave.db'));
+  const routes = harvestedRoutes(catalogRoutes(weave).routes);
+  assert.ok(routes.length > 4, 'the crawl lists its routes');
+  const gaps = surfaceGaps({ routes, triggers: [], states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  assert.deepEqual(gaps.missing.routes, [], `routes the UI catalog crawls that no state walks:\n${named(gaps.missing.routes)}`);
+  assert.deepEqual(gaps.stale.routes, [], `test/ui-surface-baseline.json routes that are no longer gaps; drop them:\n${named(gaps.stale.routes)}`);
+});
+
+test('every overlay trigger the UI catalog harvested has a state that opens it (Issue #1466)', () => {
+  const triggers = harvestedTriggers(data);
+  assert.ok(triggers.length > 20, 'the catalog page carries its overlay triggers');
+  const gaps = surfaceGaps({ routes: [], triggers, states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  assert.deepEqual(gaps.missing.triggers, [], `overlay triggers no state in test/lib/states.mjs names, so no probe opens them; add a state or record the gap in test/ui-surface-baseline.json:\n${named(gaps.missing.triggers)}`);
+  assert.deepEqual(gaps.stale.triggers, [], `test/ui-surface-baseline.json triggers a state now names; drop them:\n${named(gaps.stale.triggers)}`);
+});
+
+test('one trigger planted beside the harvested ones fails the gate by name (Issue #1466)', () => {
+  const planted = { sig: 'wv-fresh-surface-btn', classes: ['btn', 'wv-fresh-surface-btn'], labels: ['Open the new thing'] };
+  const gaps = surfaceGaps({ routes: [], triggers: [...harvestedTriggers(data), planted], states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  assert.deepEqual(gaps.missing.triggers, [planted.sig], 'a surface added to the app enters the state catalogue or fails CI with its name');
 });

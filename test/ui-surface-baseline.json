@@ -1,0 +1,14 @@
+{
+  "_": "Surfaces the `tools/ui-catalog` harvest finds that no state in test/lib/states.mjs names, so no probe opens them (Issue #1466). test/ui-catalog.test.mjs crawls the catalog's own route list and reads the overlay triggers out of the committed docs/ui-catalog/index.html. A route is listed when a state's route resolves to the same hash shape; an overlay trigger is listed when one of its classes appears as a selector in test/lib/states.mjs, or its label appears there as a string or the tail of a text= selector. A surface with no entry here fails the gate by name. The file only shrinks: once a state covers the surface, the gate fails on the entry until it is dropped in the same change.",
+  "routes": {},
+  "triggers": {
+    "(no trigger element)": { "issue": 1845, "why": "the catalog's keyboard lane opens the command palette and the keyboard sheet from a key press and records no trigger element, so the gate cannot tie either to the search and shortcuts states" },
+    "add-entity-btn": { "issue": 1845, "why": "the grid footer button that opens the new field tray" },
+    "btn.btn-sm.share-btn": { "issue": 1845, "why": "the share pane opened from a record, where the states only open it from the table toolbar" },
+    "btn.btn-sm.wv-start-new": { "issue": 1845, "why": "the new table tray on the workspace home" },
+    "cat-done.hue-green.k.k-state.wv-chip-mark": { "issue": 1845, "why": "the workflow state picker opened from a grid cell chip" },
+    "doc-anchor.doc-history-btn": { "issue": 1845, "why": "the document history panel on a record document" },
+    "phone-new": { "issue": 1845, "why": "the new row sheet on the phone" },
+    "sel-head": { "issue": 1845, "why": "the select column header menu, which carries Set a field and Link to" }
+  }
+}

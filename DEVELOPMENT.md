@@ -256,6 +256,7 @@ each one moves only in the change that earns the move.
 | `test/render-budget.json` | `test/render-budget-browser.test.mjs` | Renders per journey, read on the trend lane (Render budget) |
 | `test/touch-baseline.json` | `test/phone-touch-baseline-browser.test.mjs` | Phone hit areas under 44 px per platform. A recorded one may not shrink, and a new one is held to 44 px (Issue #1712) |
 | `test/touch-held.json` | `test/phone-touch-targets-browser.test.mjs` | Offenders of the held touch states, one entry per hold in `test/lib/states.mjs` (State catalog) |
+| `test/ui-surface-baseline.json` | `test/ui-catalog.test.mjs` | Routes and overlay triggers the UI catalog harvests that no state in `test/lib/states.mjs` names. A surface with no entry fails by name, and an entry a state now covers fails until it is dropped (State catalog) |
 | `test/vitals-budget.json` | `test/vitals-budget-browser.test.mjs` | LCP, CLS and INP per journey, read on the trend lane (Vitals budget) |
 
 ### Shared test manager
@@ -755,6 +756,15 @@ the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
 gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
 filtered views of it. A state that names no seed renders on every seed, so a
 surface added that way falls under every probe at once.
+
+`test/ui-catalog.test.mjs` holds the catalogue to the app. It crawls the route
+list `tools/ui-catalog/run.mjs` harvests and reads the overlay triggers out of
+the committed `docs/ui-catalog/index.html`, then fails when a route resolves to
+a hash shape no state walks, or when an overlay trigger's classes and label
+appear nowhere in `test/lib/states.mjs` (Issue #1466). A surface added to the
+app enters the catalogue, and so every probe, or fails by name.
+`test/ui-surface-baseline.json` records today's gaps and only shrinks: the gate
+fails on an entry a state now covers.
 
 Every seed also carries the kitchen sink: a Lab/Sample table with all 22
 field types and adversarial values (a 112-character unbroken word as name,
