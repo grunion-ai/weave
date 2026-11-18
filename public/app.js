@@ -9462,15 +9462,26 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
   nameInput.addEventListener('input', () => { for (const st of docFolds) st.schedule(); });
   if (later) fills.push(() => { if (nameInput.value !== (entity.name ?? '') && document.activeElement !== nameInput) nameInput.value = entity.name ?? ''; });
+  const surfaceBehind = () => (mount.closest('#main') ? null : $('#main > :is(.table-wrap, .board-wrap)'));
+  const tellSurface = (fresh) => surfaceBehind()?.wvRefresh?.(fresh);
+  const docSaved = async () => {
+    if (!surfaceBehind()) return;
+    const fresh = await api('GET', `/entities/${id}`).catch(() => null);
+    if (fresh) tellSurface({ ...fresh, affected: [fresh.id] });
+  };
   if (!computed && !locked) nameInput.addEventListener('change', async () => {
     const paint = (e) => { entity.name = e.name ?? ''; nameInput.value = entity.name; };
     const typed = nameInput.value;
-    if (await saveValues(id, { [nameF?.name ?? 'Name']: typed }, { paint })) { entity.name = typed; toast('Renamed'); }
+    const written = await saveValues(id, { [nameF?.name ?? 'Name']: typed }, { paint });
+    if (!written) return;
+    entity.name = typed;
+    toast('Renamed');
+    tellSurface(written);
   });
   const frame = (e) => JSON.stringify([e.name ?? '', e.avatar ?? null, boardCore.coverOf(db, e)?.id ?? null, (e.files ?? []).map((x) => x.id)]);
   const saved = async (fresh, field = null) => {
     if (later) await later.catch(() => {});
-    if (!field && !mount.closest('#main')) $('#main > :is(.table-wrap, .board-wrap)')?.wvRefresh?.(fresh);
+    if (!field) tellSurface(fresh);
     if (!nameInput.isConnected) return;
     if (fresh?.id !== id || frame(fresh) !== frame(entity)) return refresh();
     Object.assign(entity, fresh);
@@ -9605,7 +9616,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           class: 'btn btn-sm btn-primary',
           onclick: () => {
             if (docEd) docEd.setValue(draft.value); else if (sourceBox) sourceBox.value = draft.value;
-            scheduleDocSave(id, f.name, draft.value);
+            scheduleDocSave(id, f.name, draft.value, docSaved);
             bar.remove();
           },
         }, 'Restore draft'),
@@ -9631,7 +9642,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           placeholder: entity.readOnly ? '' : `Write ${f.name}… press / for blocks`,
           onInput: (value) => {
             if (f.displayInline) section.classList.toggle('document-inline-empty', !value.trim());
-            scheduleDocSave(id, f.name, value);
+            scheduleDocSave(id, f.name, value, docSaved);
             rail.schedule();
             folds.schedule();
           },
@@ -9648,7 +9659,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mountSourceEditor = () => {
       const ta = el('textarea', { class: 'doc-source', spellcheck: 'false', title: `${f.name} source`, readonly: locked ? '' : undefined });
       ta.value = pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '';
-      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value));
+      ta.addEventListener('input', () => scheduleDocSave(id, f.name, ta.value, docSaved));
       sourceBox = ta;
       host.append(ta);
     };
