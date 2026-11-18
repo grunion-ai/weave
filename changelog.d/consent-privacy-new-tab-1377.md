@@ -1,1 +1,0 @@
-- The cookie banner Privacy link and the sign-in page Privacy and Terms links open in a new tab, so the cookie policy no longer replaces the workspace you were in (Issue #1377).

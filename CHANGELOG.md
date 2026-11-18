@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.155 (2026-11-18)
+
+- The cookie banner Privacy link and the sign-in page Privacy and Terms links open in a new tab, so the cookie policy no longer replaces the workspace you were in (Issue #1377).
+- The checklist box in a document takes the pointer cursor, so hovering it no longer shows the text caret (Issue #1517).
+- A checked checklist item in a document dims and strikes through, in both themes, so a done line reads as done (Issue #1518).
+
 ## v0.4.154 (2026-11-18)
 
 - **Board Display rows match the board** (Issue #1834): the Columns preset wrote a group onto a view whose group you had just removed, and Fit, Card shape and Uneven cards sat in the pane with Picture off, where no card carries a picture for them to shape. Columns now writes the side by side columns, no picture and manual order it names, and the three shape rows show only while the board shows a picture.

@@ -1,1 +1,0 @@
-- A checked checklist item in a document dims and strikes through, in both themes, so a done line reads as done (Issue #1518).
