@@ -11752,7 +11752,8 @@ function wireNavHold() {
     held = { nodes, opener };
     app.classList.add('nav-held');
     expanded(true);
-    stops()[0]?.focus();
+    if (opener instanceof Element && opener.matches(':focus-visible')) stops()[0]?.focus();
+    else sidebar.focus({ preventScroll: true });
   };
   const release = () => {
     const { nodes, opener } = held;

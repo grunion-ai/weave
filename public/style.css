@@ -2099,6 +2099,7 @@ body:has(#fsv-back > .fsv-frame, #side:not([hidden]) > .wv-file-panel) .bug-fab 
 .fx-ref[open] > summary { margin-bottom: 6px; }
 
 :focus-visible { outline: 2px solid var(--tblr-primary) !important; outline-offset: 2px; }
+#sidebar:focus-visible { outline: none !important; }
 .btn { --tblr-btn-focus-box-shadow: 0 0 0 0 transparent; }
 .btn-ghost-secondary, .btn-ghost.btn-secondary {
   --tblr-btn-hover-color: var(--tblr-body-color); --tblr-btn-hover-bg: var(--wv-hover-wash); --tblr-btn-hover-border-color: transparent;
