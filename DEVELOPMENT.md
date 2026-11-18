@@ -126,6 +126,11 @@ commit subject or a changelog fragment names.
    kept for rollback, and never touches `releases/state.json`) and
    `WEAVE_DEPLOY_TOKEN` (32+ characters; `POST /_supervisor/check` with that
    bearer token checks main at once, which the `Deploy dev` job calls).
+   `WEAVE_GITHUB_TOKEN` (a fine-grained `contents: read` token on
+   grunion-ai/weave) keeps the supervisor's `api.github.com` reads off the
+   quota GitHub gives one unauthenticated address; without it a throttled
+   check answers `{"action":"waiting","until"}` and the `Deploy dev` step
+   sleeps to that time instead of failing (Issue #1068).
    `WEAVE_TRACK=branch:<name>` follows another branch, such as a `production`
    promotion branch, with the same `c<sha>` folders and deploy hook.
 6. After every switch the supervisor watches the new release for
