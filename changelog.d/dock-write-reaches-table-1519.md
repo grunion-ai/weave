@@ -1,1 +1,0 @@
-- Renaming a record in the docked pane, or writing its Description there, now updates that row in the table behind it without a reload (Issue #1519).
