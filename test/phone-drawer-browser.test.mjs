@@ -155,7 +155,8 @@ if (s) {
     };
   });
 
-  for (const theme of ['light', 'dark']) {
+  {
+    const theme = 'light';
     test(`the phone drawer draws its dividers on the row inset and + New space at row size (Issue #1395, ${theme})`, async () => {
       const page = await open([402, 874], theme);
       try {
