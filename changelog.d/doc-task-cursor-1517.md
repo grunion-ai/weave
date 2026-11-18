@@ -1,0 +1,1 @@
+- The checklist box in a document takes the pointer cursor, so hovering it no longer shows the text caret (Issue #1517).

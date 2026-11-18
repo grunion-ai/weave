@@ -1251,6 +1251,7 @@ button.wv-act-subject { border: 0; background: none; padding: 0; text-align: lef
 }
 .doc-editor .vditor-ir__node:not(.vditor-ir__node--expand) > pre.vditor-ir__marker--pre { border-width: 0; }
 .doc-editor .vditor-task { word-break: normal; overflow-wrap: anywhere; }
+.doc-editor .vditor-task > input[type="checkbox"] { cursor: pointer; }
 .doc-editor .vditor-ir pre.vditor-ir__preview > code,
 .doc-editor .vditor-ir pre.vditor-ir__marker--pre > code { background: transparent; color: inherit; }
 .doc-editor .vditor-ir__node--expand[data-type="code-block"] .vditor-ir__preview { display: none; }
