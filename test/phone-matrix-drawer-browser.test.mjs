@@ -67,14 +67,45 @@ if (s) {
     });
   });
 
-  test('opening the phone drawer by tap moves focus without drawing a focus ring on the workspace name (Issue #1396)', { todo: 'Issue #1396' }, async (t) => {
+  const drawerFocus = (page) => page.evaluate(() => {
+    const a = document.activeElement;
+    if (a === document.body) return { what: 'body', ring: false, rings: 0, held: false, wordmark: false, outline: 'none' };
+    const c = getComputedStyle(a);
+    return {
+      what: `${a.tagName.toLowerCase()}#${a.id}.${a.className}`,
+      ring: a.matches(':focus-visible'),
+      rings: [...document.querySelectorAll('#sidebar a, #sidebar button, #ws-rail a, #ws-rail button')].filter((n) => n.matches(':focus-visible')).length,
+      held: !!a.closest('#sidebar, #ws-rail'),
+      wordmark: a.matches('.ws-wordmark'),
+      outline: c.outlineStyle === 'none' || c.outlineWidth === '0px' ? 'none' : `${c.outlineStyle} ${c.outlineWidth}`,
+    };
+  });
+
+  test('opening the phone drawer by tap moves focus without drawing a focus ring on the workspace name (Issue #1396)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openDrawer(page, { untouched: true });
-      const focus = await page.evaluate(() => {
-        const a = document.activeElement;
-        return { what: a === document.body ? 'body' : `${a.tagName.toLowerCase()}#${a.id}.${a.className}`, ring: a !== document.body && a.matches(':focus-visible') };
-      });
-      assert.equal(focus.ring, false, `after a tap that leaves the menu button unfocused, as iOS does, the drawer puts a visible focus ring on ${focus.what}`);
+      const focus = await drawerFocus(page);
+      assert.equal(focus.wordmark, false, `after a tap that leaves the menu button unfocused, as iOS does, the drawer focuses the workspace name, which reads as a selection (focus is on ${focus.what})`);
+      assert.equal(focus.outline, 'none', `and whatever a tap focuses draws no ring: ${focus.what} draws ${focus.outline}`);
+      assert.equal(focus.rings, 0, `no drawer control wears the keyboard ring after a tap, got ${focus.rings}`);
+      assert.ok(focus.held, `focus stays inside the drawer, so the hold is real (focus is on ${focus.what})`);
+      await page.keyboard.press('Tab');
+      const walked = await drawerFocus(page);
+      assert.ok(walked.held, `Tab from there stays inside the drawer (focus moved to ${walked.what})`);
+    });
+  });
+
+  test('opening the phone drawer from the keyboard still lands on its first stop (Issue #1396)', async (t) => {
+    await eachPhone(t, matrix, async (page) => {
+      await openTable(page, base, tasks);
+      await page.locator('#main .nav-menu').focus();
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#app.nav-peek.nav-held #sidebar #nav a.nav-db');
+      await settled(page.locator('#sidebar'));
+      await page.waitForFunction(() => document.activeElement?.matches('.ws-wordmark'), null, { timeout: 3000 }).catch(() => {});
+      const focus = await drawerFocus(page);
+      assert.equal(focus.wordmark, true, `a keyboard open keeps the first stop, got ${focus.what}`);
+      assert.equal(focus.ring, true, 'drawn as keyboard focus');
     });
   });
 }

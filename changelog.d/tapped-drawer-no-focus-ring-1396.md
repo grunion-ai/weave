@@ -1,0 +1,1 @@
+- **A tapped phone drawer draws no ring on the workspace name** (Issue #1396): the drawer's focus hold now parks focus on the drawer itself when a tap opens it, so the blue rectangle no longer lands on the workspace wordmark. A drawer opened from the keyboard still moves focus to its first stop with the ring, and Tab stays inside either way.
