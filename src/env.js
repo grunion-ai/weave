@@ -263,6 +263,10 @@ export const ENV = [
     doc: 'A bearer token of 32 characters or more. With it, `POST /_supervisor/check` makes the supervisor check for a new release or commit at once, and `GET /_supervisor/workspaces` makes the worker list each workspace and whether it requires sign-in. Shorter or unset, neither path exists; a request with another token answers `401`.',
   },
   {
+    name: 'WEAVE_GITHUB_TOKEN', section: 'supervisor', readBy: '`weave supervise`', default: 'unset (anonymous reads)',
+    doc: 'A fine-grained GitHub token with `contents: read` on `grunion-ai/weave`. The supervisor sends it as `Authorization: Bearer` on every `api.github.com` read, so the release check no longer shares the 60 requests an hour GitHub gives one unauthenticated address, which on a hosting platform is an egress IP the deployment does not own. Unset, those reads stay anonymous and share that quota. Either way a throttled read now names its reset: `POST /_supervisor/check` answers `{"action":"waiting","until":"<ISO time>"}` and the deploy waits for that time instead of failing. The token goes to `api.github.com` only, never to `github.com` or `codeload.github.com`.',
+  },
+  {
     name: 'WEAVE_WATCH_MS', section: 'supervisor', readBy: '`weave supervise`', default: '`600000` (ten minutes)',
     doc: 'How long the supervisor watches a release after it switches to it. The worker exiting, three failed `/api/health` polls in a row, or a share of 5xx answers at or above `WEAVE_WATCH_5XX_RATE` swaps back to the kept rollback folder, or to the image when none is kept. `0`, or a value that is not a number, turns the watch off: a release that passes its first health check is kept.',
   },

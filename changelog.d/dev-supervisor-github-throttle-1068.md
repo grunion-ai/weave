@@ -1,0 +1,1 @@
+- The supervisor reads `api.github.com` with `WEAVE_GITHUB_TOKEN` when one is set, so the release check no longer shares the hourly quota GitHub gives an unauthenticated address. A throttled read now names its reset: `POST /_supervisor/check` answers `{"action":"waiting","until":"<ISO time>"}` and the dev deploy sleeps for that time instead of failing (Issue #1068).
