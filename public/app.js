@@ -1329,12 +1329,13 @@ function fitCrumbs(path, foldFrom) {
   path.querySelector(':scope > .crumb-slot:not([hidden])')?.classList.add('crumb-lead');
 }
 const CRUMB_MORE_PX = 40;
-function shedRows(shed, inPeek) {
+function shedRows(shed, inPeek, from) {
   if (!dockCoversScreen.matches) return {};
   const gone = (btn) => !!btn?.isConnected && !btn.getClientRects().length;
   const row = (btn, label, icon) => (gone(btn) ? { label, icon, run: () => btn.click() } : null);
   return {
     activity: row(shed?.activity, 'Activity', 'lucide:history'),
+    eye: gone(shed?.eye) ? { label: 'Show / hide fields', icon: 'lucide:eye', run: () => shed.eye.wvOpenFromMenu(from) } : null,
     share: row(shed?.share, 'Share (Beta)', 'lucide:upload'),
     pose: gone(shed?.pose) && !inPeek ? {
       label: 'Collapse beside the table', run: () => shed.pose.click(),
@@ -3391,7 +3392,7 @@ const MENU_ROWS = {
     }),
   }),
   record: (entity, { db = allTables().find((d) => d.id === entity.dbId), inPeek = false, onClose = null, anchor = null, shed = null } = {}) => ({
-    ...shedRows(anchor?.closest?.('.crumb-row-tight') ? shed : null, inPeek),
+    ...shedRows(shed, inPeek, anchor),
     ...(db && !inPeek && !dockCoversScreen.matches ? { pose: dockRow(entity) } : {}),
     report: bugRecorder && anchor ? {
       label: 'Report a problem', icon: 'lucide:bug', className: 'record-bug-row', phone: true,
@@ -5141,6 +5142,7 @@ function gridPager(db, query, first) {
   return pager;
 }
 
+const classSelector = (node) => [...node.classList].map((c) => `.${c}`).join('') || node.localName;
 function tableControlPopover(anchor, db, className, rows, { selector = `.${[...anchor.classList].find((c) => /^table-.*-btn$/.test(c)) || 'eye-btn'}` } = {}) {
   const old = document.querySelector('.chip-pop');
   const same = old?.classList.contains(className) && old.tableId === db.id;
@@ -6327,7 +6329,7 @@ function eyeGesture(hold) {
 }
 const REFERENCE_PANELS = ['References', 'Referenced by'];
 const showsRefPanel = (db, name) => (db?.referencePanels ?? []).includes(name);
-function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false, refPanels = false, activity = null } = {}) {
+function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, rowsSection = true, mount = false, refPanels = false, activity = null, follow = null } = {}) {
   let pop;
   const home = mount ? $('#main') : anchor.closest('#main, #dock');
   const raw = () => allTables().find((d) => d.id === db.id) ?? db;
@@ -6509,7 +6511,7 @@ function fieldVisibilityPopover(anchor, db, trashCount = 0, { redraw = null, row
     pop.relearnEye = refresh;
     return pop;
   }
-  pop = tableControlPopover(anchor, db, 'table-fields-popover', rows);
+  pop = tableControlPopover(anchor, db, 'table-fields-popover', rows, follow && follow !== anchor ? { selector: classSelector(follow) } : {});
   if (pop) { pop.eyeOf = db.id; pop.relearnEye = refresh; }
   return pop;
 }
@@ -9485,9 +9487,14 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     'aria-pressed': String(activityPanel.openFor === id), onclick: () => activityPanel.toggle(id, mount),
   }, iconEl('lucide:history', 'wv-icon'));
   const eye = el('button', { class: 'btn btn-sm eye-btn', title: 'Show / hide fields', 'aria-label': 'Show or hide fields' }, eyeGlyph());
+  const openEye = (at = eye) => fieldVisibilityPopover(eye, db, 0, {
+    redraw: refresh, rowsSection: false, refPanels: true, follow: at,
+    activity: { on: () => activityPanel.openFor === id, toggle: () => activityPanel.toggle(id, mount) },
+  });
+  eye.wvOpenFromMenu = openEye;
   eye.addEventListener('click', (e) => {
     e.stopPropagation();
-    fieldVisibilityPopover(eye, db, 0, { redraw: refresh, rowsSection: false, refPanels: true, activity: { on: () => activityPanel.openFor === id, toggle: () => activityPanel.toggle(id, mount) } });
+    openEye();
   });
   const poseControls = inPeek ? (dockControls?.pose ?? []) : db ? [
     el('button', {
@@ -9501,7 +9508,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
       onclick: () => closeToTable(entity),
     }, iconEl('✕')),
   ] : [];
-  Object.assign(shed, { activity: activityBtn, share: shareBtn, pose: poseControls.find((b) => b.classList.contains('pose-btn')) });
+  Object.assign(shed, { activity: activityBtn, eye, share: shareBtn, pose: poseControls.find((b) => b.classList.contains('pose-btn')) });
   mount.append(
     kindContext(stickViewHeader(el('div', { class: 'view-header' },
       el('div', { class: 'crumb crumb-row crumb-row-fit' },

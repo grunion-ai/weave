@@ -28,7 +28,13 @@ if (s) {
       await list.waitFor();
       return list;
     }
-    await page.click('#main .eye-btn');
+    await page.waitForSelector('#main .view-header .crumb-actions .dots-btn');
+    const eye = page.locator('#main .view-header .crumb-actions > .eye-btn >> visible=true');
+    if (await eye.count()) await eye.first().click();
+    else {
+      await page.click('#main .view-header .crumb-row .dots-btn');
+      await page.locator('.chip-pop.wv-menu .wv-menu-label', { hasText: 'Show / hide fields' }).click();
+    }
     const pop = page.locator('.table-fields-popover');
     await pop.waitFor();
     await settled(pop);

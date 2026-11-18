@@ -66,17 +66,17 @@ const WANT = {
   sheet: ['table-view-btn 44', 'table-share-btn 44', 'table-density-btn 44', 'eye-btn 44', 'table-filter-btn 44', 'table-group-btn 44', 'table-sort-btn 44'],
   record: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-more 36x36 icon 16 fill', 'crumb-copy 22x22 icon 16', 'eye-btn 33x27 icon 15 border fill', 'dots-btn 28x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
-    gaps: [10, 12], edge: 0, scroll: 0,
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-more 36x36 icon 16 fill', 'crumb-copy 22x22 icon 16', 'dots-btn 28x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
+    gaps: [12], edge: 0, scroll: 0,
   },
-  recordMenu: ['Activity 44', 'Share (Beta) 44', 'Collapse beside the table 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
+  recordMenu: ['Activity 44', 'Show / hide fields 44', 'Share (Beta) 44', 'Collapse beside the table 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
   recordEye: ['table-control-head', 'field-visibility-actions', 'table-field-legend', 'table-field-list', 'hr', 'fields-add', 'Reference panels'],
   dock: {
     row: 44,
-    controls: ['crumb-copy 22x22 icon 16', 'eye-btn 44x44 icon 15 border fill', 'dots-btn 44x44 icon 16 border fill', 'dock-close 44x44 icon 16 border fill'],
+    controls: ['crumb-copy 22x22 icon 16', 'table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill', 'dock-close 44x44 icon 16 border fill'],
     gaps: [3, 3], edge: 0, scroll: 0,
   },
-  dockMenu: ['Activity 44', 'Share (Beta) 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
+  dockMenu: ['Activity 44', 'Show / hide fields 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
 };
 
 if (s) {
@@ -110,7 +110,8 @@ if (s) {
     try {
       assert.deepEqual(await header(page, '#main'), WANT.record);
       assert.deepEqual(await menuRows(page, '#main'), WANT.recordMenu);
-      await page.tap('#main .view-header .crumb-actions > .eye-btn');
+      await page.click('#main .view-header .crumb-row .dots-btn');
+      await page.locator('.chip-pop.wv-menu .wv-menu-label', { hasText: 'Show / hide fields' }).click();
       await page.waitForSelector('.table-fields-popover .eye-row');
       const sections = await page.locator('.table-fields-popover').evaluate((n) => [...n.children].map((c) => c.querySelector('.eye-head')?.textContent
         ?? [...c.classList].find((k) => /table-control-head|field-visibility-actions|table-field-legend|table-field-list|fields-add/.test(k)) ?? c.tagName.toLowerCase()));

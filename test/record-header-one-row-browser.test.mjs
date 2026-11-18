@@ -80,7 +80,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a tight phone record header keeps fields, the menu and close, and its menu offers the rest (Feature #377)', async () => {
+  test('a tight phone record header keeps the menu and close, and its menu offers the rest (Feature #377, Issue #1382)', async () => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     try {
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
@@ -90,7 +90,7 @@ if (s) {
       assert.equal(tight.tight, true, 'a 390 px header is condensed');
       const names = tight.buttons.map((b) => b.name);
       assert.ok(!names.includes('Activity') && !names.some((n) => /^Collapse|^Share/.test(n)), `Activity, Share and Collapse leave the row: ${names}`);
-      assert.ok(names.includes('Show or hide fields'), `Show or hide fields stays: ${names}`);
+      assert.ok(!names.includes('Show or hide fields'), `Show or hide fields leaves the row too (Issue #1382): ${names}`);
       assert.ok(names.some((n) => /^Close/.test(n)), `Close stays: ${names}`);
       await page.click('#main .view-header .crumb-actions .dots-btn');
       const labels = await page.locator('.wv-menu-label').allTextContents();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
+import { headerAction, launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 
 let notes, id;
 const s = await launch('bug fab phone', (weave) => {
@@ -35,7 +35,7 @@ if (s) {
           await page.goto(`${base}/#/table/${notes.id}?e=${id}`, { waitUntil: 'networkidle' });
           await page.waitForSelector('#dock:not([hidden]) textarea.name-edit');
           assert.equal(await drawn(page), 0, 'the record');
-          await page.click('#dock .activity-btn');
+          await headerAction(page, '#dock', '.activity-btn', 'Activity');
           await page.waitForSelector('aside.wv-activity .wv-act-list');
           assert.equal(await drawn(page), 0, 'the Activity sheet');
         } finally { await page.close(); }

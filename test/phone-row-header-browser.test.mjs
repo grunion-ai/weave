@@ -43,28 +43,27 @@ if (s) {
   for (const [engine, make] of engines) {
     {
       const theme = 'light';
-      test(`on a phone the row header drops Expand, keeps the eye and the copy link as 44px controls on one line, and offers Activity and Share in the row or from its menu (${engine}, ${theme}, Issue #734, Feature #296, Feature #377)`, async () => {
+      test(`on a phone the row header drops Expand, the eye and Activity, keeps the copy link, and offers them from its menu (${engine}, ${theme}, Issue #734, Issue #1382, Feature #296, Feature #377)`, async () => {
         const page = await open(make, theme);
         try {
           const h = await header(page);
           assert.equal(h.theme, theme);
           assert.equal(h.expand, false, 'no Expand on a full-screen row');
           assert.equal(h.copy, true, 'the header permalink copy shows on a phone');
-          assert.equal(h.eye, true, 'Show or hide fields is a header button on a phone');
+          assert.equal(h.eye, false, 'Show or hide fields leaves the bar for the menu on a phone (Issue #1382)');
           const controls = h.controls.filter((c) => c.kind === 'control');
-          const shed = !controls.some((c) => c.label === 'Activity');
+          const shed = !controls.some((c) => c.label === 'Share (Beta)');
           assert.deepEqual(controls.map((c) => c.label), shed
-            ? ['Show or hide fields', 'Record actions', 'Close']
-            : ['Activity', 'Show or hide fields', 'Share (Beta)', 'Record actions', 'Close'], 'the row shows every action that fits, or the condensed three');
+            ? ['Record actions', 'Close']
+            : ['Share (Beta)', 'Record actions', 'Close'], 'the row keeps Share where it fits, and always the menu and Close');
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .crumb-row .dots-btn');
           const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
-          assert.deepEqual(items, [...(shed ? ['Activity', 'Share (Beta)'] : []), 'Duplicate', 'Report a problem', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
-            'the record definition, the two actions a condensed header sheds, and the report row a phone has no other route to (Issue #1023)');
-          await page.keyboard.press('Escape');
-          await page.click('#dock .crumb-row .eye-btn');
+          assert.deepEqual(items, ['Activity', 'Show / hide fields', ...(shed ? ['Share (Beta)'] : []), 'Duplicate', 'Report a problem', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
+            'the record definition, the actions a phone header sheds, and the report row a phone has no other route to (Issue #1023, Issue #1382)');
+          await page.locator('.wv-menu .wv-menu-label', { hasText: 'Show / hide fields' }).click();
           await page.waitForSelector('.chip-pop .eye-row, .chip-pop input[type="checkbox"]');
         } finally { await page.close(); }
       });

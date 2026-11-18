@@ -67,11 +67,11 @@ if (s) {
             const seen = await read(page);
             assert.equal(seen.theme, theme);
             assert.equal(seen.sheet, true, 'the same menu() draws a sheet');
-            const phoneOnly = ['Report a problem', 'Activity', 'Share (Beta)', 'Collapse beside the table'];
+            const phoneOnly = ['Report a problem', 'Activity', 'Show / hide fields', 'Share (Beta)', 'Collapse beside the table'];
             assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels.filter((l) => l !== 'Dock beside table'),
               'the desktop rows, in the desktop order; the desktop pose row reads Collapse beside the table on a phone');
             assert.deepEqual(seen.labels.filter((l) => phoneOnly.includes(l)),
-              what === 'record' ? ['Activity', 'Share (Beta)', 'Collapse beside the table', 'Report a problem'] : [],
+              what === 'record' ? ['Activity', 'Show / hide fields', 'Share (Beta)', 'Collapse beside the table', 'Report a problem'] : [],
               'plus the rows a condensed phone header sheds (Feature #377) and the row a phone has no other route to (Issue #1023)');
             assert.ok(seen.heights.every((h) => h >= 44), `every row is a 44px target: ${seen.heights}`);
             assert.ok(Math.abs(seen.box.bottom - seen.vh) <= 1, `pinned to the bottom edge (${seen.box.bottom} vs ${seen.vh})`);
@@ -174,6 +174,33 @@ if (s) {
         assert.ok(['none', 'normal'].includes(drawn.pseudo), `and it is the only handle drawn, got ${drawn.pseudo}`);
         await dragSheet(page, '.chip-pop.wv-menu-sheet', Math.round(drawn.height * 0.5));
         await page.waitForSelector('.chip-pop.wv-menu', { state: 'detached', timeout: 5000 });
+      } finally { await page.close(); }
+    });
+  }
+  for (const [engine, b, profile] of engines) {
+    test(`the record sheet's field-visibility row opens the field list on screen under the \u22ee (${engine}, Issue #1382)`, async () => {
+      const page = await open(b, profile, 'light', entity);
+      try {
+        await page.click('#main .view-header .dots-btn');
+        await page.waitForSelector('.chip-pop.wv-menu-sheet .wv-menu-row');
+        await settled(page.locator('.chip-pop.wv-menu-sheet'));
+        await page.locator('.chip-pop.wv-menu-sheet .wv-menu-label', { hasText: 'Show / hide fields' }).click();
+        await page.waitForSelector('.chip-pop.table-fields-popover');
+        const seen = await page.evaluate(() => {
+          const pop = document.querySelector('.chip-pop.table-fields-popover');
+          const dots = document.querySelector('#main .view-header .crumb-actions .dots-btn').getBoundingClientRect();
+          const r = pop.getBoundingClientRect();
+          return {
+            box: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+            dots: { bottom: dots.bottom, right: dots.right },
+            vw: document.documentElement.clientWidth, vh: innerHeight,
+            rows: pop.querySelectorAll('.table-field-line').length,
+          };
+        });
+        assert.ok(seen.rows > 0, `the field list draws its rows: ${seen.rows}`);
+        assert.ok(seen.box.left >= 0 && seen.box.right <= seen.vw + 0.5, `it stays inside the viewport sideways (${seen.box.left} to ${seen.box.right} of ${seen.vw})`);
+        assert.ok(seen.box.top >= 0 && seen.box.top < seen.vh, `and its top is on screen (${seen.box.top} of ${seen.vh})`);
+        assert.ok(seen.box.top >= seen.dots.bottom - 1, `it hangs under the \u22ee it was opened from, not at the corner (${seen.box.top} vs ${seen.dots.bottom})`);
       } finally { await page.close(); }
     });
   }
