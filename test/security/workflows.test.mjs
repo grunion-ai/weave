@@ -135,6 +135,8 @@ test('dev.yml waits for dev to report the commit instead of failing on a check e
   assert.match(script, /seq 12/, 'each round polls dev for a minute before checking again');
   const fail = script.slice(script.indexOf('exit 1'));
   assert.match(script, /= skipped \]/, 'a skipped verdict still fails at once');
+  assert.match(script, /= waiting \]/, 'a GitHub throttle is a wait, not a failed deploy (Issue #1068)');
+  assert.match(script, /sleep "\$nap"/, 'the step sleeps until the reset the supervisor named');
   assert.ok(fail.length > 0);
 });
 

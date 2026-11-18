@@ -1051,6 +1051,59 @@ test('rateLimitReset names the reset only for a spent quota', () => {
   assert.equal(rateLimitReset(404, limited(at).headers), null);
 });
 
+test('rateLimitReset reads retry-after when GitHub names no remaining quota (Issue #1068)', () => {
+  const now = Date.UTC(2026, 10, 18, 21, 0, 0);
+  const after = (v) => new Response('slow down', { status: 403, headers: { 'retry-after': String(v) } });
+  assert.equal(rateLimitReset(403, after(60).headers, now), new Date(now + 60_000).toISOString());
+  assert.equal(rateLimitReset(429, after(5).headers, now), new Date(now + 5_000).toISOString());
+  assert.equal(rateLimitReset(403, after('Wed, 18 Nov 2026 21:05:00 GMT').headers, now), '2026-11-18T21:05:00.000Z');
+  assert.equal(rateLimitReset(403, after('soon').headers, now), null, 'a retry-after nobody can read names no time');
+  assert.equal(rateLimitReset(403, new Response('nope', { status: 403 }).headers, now), null, 'a plain 403 is still not a rate limit');
+});
+
+async function compareCalls(name, env) {
+  const gh = fakeGitHub({ compare: 'behind' });
+  const seen = [];
+  const ghFetch = (url, opts) => { seen.push([String(url), opts?.headers?.authorization ?? null]); return gh.fetch(url); };
+  const { sup } = await supervise(dataDir(name), { fetch: ghFetch, calls: gh.calls }, { env });
+  try {
+    await sup.check();
+  } finally {
+    await sup.close();
+  }
+  return seen;
+}
+
+test('the supervisor reads api.github.com with a token when one is set, so a shared egress IP keeps its quota (Issue #1068)', async () => {
+  const token = `ghp_${'z'.repeat(36)}`;
+  const withToken = await compareCalls('gh-token', { ...ENV, WEAVE_GITHUB_TOKEN: token });
+  const compare = withToken.find(([u]) => u.includes('/compare/'));
+  assert.ok(compare, 'the release check compares the tag with main');
+  assert.equal(compare[1], `Bearer ${token}`);
+  assert.ok(!withToken.some(([u, auth]) => auth && !u.startsWith(REPO_API)), 'only api.github.com carries the token');
+  const without = await compareCalls('gh-no-token', ENV);
+  assert.ok(without.some(([u]) => u.includes('/compare/')), 'the same call is made without a token');
+  assert.ok(!without.some(([, auth]) => auth), 'no token, no Authorization header');
+});
+
+test('a throttled check answers the deploy hook with the wait instead of an error (Issue #1068)', async () => {
+  const dataPath = dataDir('track-throttled');
+  const at = Math.floor(Date.UTC(2026, 10, 18, 22, 0, 0) / 1000);
+  const inner = fakeMain({ heads: { main: MAIN_A } });
+  const ghFetch = (url) => (String(url) === REFS_URL ? Promise.resolve(limited(at)) : inner.fetch(url));
+  const { sup, base } = await supervise(dataPath, { fetch: ghFetch, calls: inner.calls }, { env: TRACK, retryMs: 1 });
+  try {
+    const r = await fetch(`${base}/_supervisor/check`, { method: 'POST', headers: { authorization: `Bearer ${DEPLOY_TOKEN}` } });
+    assert.equal(r.status, 200, 'a GitHub throttle is not a failed deploy');
+    const body = await r.json();
+    assert.equal(body.action, 'waiting');
+    assert.equal(body.until, new Date(at * 1000).toISOString());
+    assert.ok(!inner.calls.some((u) => u.includes('/tar.gz/')), 'no release was fetched');
+  } finally {
+    await sup.close();
+  }
+});
+
 test('tracking main reads the head through the git protocol, so a spent REST quota still swaps dev', async () => {
   const dataPath = dataDir('track-ratelimited');
   const heads = { main: MAIN_A };

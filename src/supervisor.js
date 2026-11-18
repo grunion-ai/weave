@@ -35,11 +35,17 @@ export function shaFromRefs(advertisement, ref) {
   return null;
 }
 
-export function rateLimitReset(status, headers) {
+export function rateLimitReset(status, headers, now = Date.now()) {
   if (status !== 403 && status !== 429) return null;
-  if (headers?.get?.('x-ratelimit-remaining') !== '0') return null;
-  const reset = Number(headers.get('x-ratelimit-reset'));
-  return Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : '';
+  if (headers?.get?.('x-ratelimit-remaining') === '0') {
+    const reset = Number(headers.get('x-ratelimit-reset'));
+    return Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : '';
+  }
+  const after = headers?.get?.('retry-after');
+  if (!after) return null;
+  const seconds = Number(after);
+  const at = Number.isFinite(seconds) ? now + Math.max(0, seconds) * 1000 : Date.parse(after);
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
 }
 
 export const autoUpdateFromEnv = (env = process.env) => ['1', 'true', 'yes', 'on'].includes(String(env.WEAVE_AUTO_UPDATE ?? '').trim().toLowerCase());
@@ -54,6 +60,12 @@ export function trackFromEnv(env = process.env) {
 }
 
 class Refusal extends Error {}
+class Throttled extends Error {
+  constructor(message, until) {
+    super(message);
+    this.until = until;
+  }
+}
 
 const versionOf = (dir) => { try { return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version; } catch { return null; } };
 const forwardable = (headers, drop = []) => Object.fromEntries(Object.entries(headers).filter(([k]) => !HOP.has(k) && !drop.includes(k)));
@@ -132,6 +144,8 @@ export async function startSupervisor({
 } = {}) {
   const releasesDir = join(dirname(resolve(dataPath)), 'releases');
   const track = trackFromEnv(env);
+  const githubToken = String(env.WEAVE_GITHUB_TOKEN ?? '').trim();
+  const githubHeaders = githubToken ? { ...GITHUB, authorization: `Bearer ${githubToken}` } : GITHUB;
   const deployToken = String(env.WEAVE_DEPLOY_TOKEN ?? '').length >= 32 ? env.WEAVE_DEPLOY_TOKEN : null;
   const stateFile = join(releasesDir, 'state.json');
   let state = { failed: {}, lastSwap: null, attempting: null, deaths: {} };
@@ -282,7 +296,9 @@ export async function startSupervisor({
     const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
     if (req.method !== 'POST') return send(405, { error: 'POST only' });
     if (!sameSecret(req.headers.authorization, `Bearer ${deployToken}`)) return send(401, { error: 'unauthorized' });
-    check().then((r) => send(200, { ...r, commit: current.commit ?? null }), (err) => send(502, { error: err.message }));
+    check().then((r) => send(200, { ...r, commit: current.commit ?? null }), (err) => (err instanceof Throttled
+      ? send(200, { action: 'waiting', until: err.until || null, reason: err.message, commit: current.commit ?? null })
+      : send(502, { error: err.message })));
   }
 
   function route(req, res) {
@@ -298,12 +314,13 @@ export async function startSupervisor({
 
   async function github(url, tries = 3) {
     for (let attempt = 1; ; attempt++) {
-      const r = await fetch(url, { headers: GITHUB, signal: AbortSignal.timeout(15_000) });
+      const r = await fetch(url, { headers: githubHeaders, signal: AbortSignal.timeout(15_000) });
       if (r.ok) return r.json();
       const reset = rateLimitReset(r.status, r.headers);
       if (reset === null || attempt >= tries) {
         const when = reset ? ` (rate limit resets ${reset})` : '';
-        throw new Error(`GitHub answered HTTP ${r.status} for ${url}${when}`);
+        const message = `GitHub answered HTTP ${r.status} for ${url}${when}`;
+        throw reset === null ? new Error(message) : new Throttled(message, reset);
       }
       log.warn(`weave supervise: GitHub rate limit on ${url}${reset ? `, resets ${reset}` : ''}; retrying`);
       await sleep(retryMs * attempt);
@@ -313,7 +330,11 @@ export async function startSupervisor({
   async function refSha(branch) {
     const url = `${REPO_GIT}/info/refs?service=git-upload-pack`;
     const r = await fetch(url, { headers: GIT, signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) throw new Error(`the grunion-ai/weave ref advertisement answered HTTP ${r.status}`);
+    if (!r.ok) {
+      const reset = rateLimitReset(r.status, r.headers);
+      const message = `the grunion-ai/weave ref advertisement answered HTTP ${r.status}${reset ? ` (rate limit resets ${reset})` : ''}`;
+      throw reset === null ? new Error(message) : new Throttled(message, reset);
+    }
     const sha = shaFromRefs(await r.text(), `refs/heads/${branch}`);
     if (!COMMIT.test(sha ?? '')) throw new Error(`grunion-ai/weave advertises no refs/heads/${branch}`);
     return sha;

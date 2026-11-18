@@ -58,9 +58,24 @@ jobs:
           for round in 1 2 3; do
             body=$(curl -sS --max-time 120 -X POST -H "Authorization: Bearer $DEV_DEPLOY_TOKEN" https://dev.weave.grunion.ai/_supervisor/check) || body='{}'
             echo "round $round check: $body"
-            if [ "$(jq -r '.action // empty' <<<"$body")" = skipped ]; then
+            action=$(jq -r '.action // empty' <<<"$body")
+            if [ "$action" = skipped ]; then
               echo "the dev supervisor skipped this commit"
               exit 1
+            fi
+            if [ "$action" = waiting ]; then
+              until_at=$(jq -r '.until // empty' <<<"$body")
+              now=$(date -u +%s)
+              reset=$(date -u -d "$until_at" +%s 2>/dev/null) || reset=$(( now + 60 ))
+              nap=$(( reset - now + 5 ))
+              [ "$nap" -lt 5 ] && nap=5
+              if [ "$nap" -gt 300 ]; then
+                echo "GitHub throttles the dev supervisor until $until_at, past this job; dev swaps on its own next check"
+                exit 1
+              fi
+              echo "GitHub rate limit; sleeping $nap seconds for $until_at"
+              sleep "$nap"
+              continue
             fi
             for _ in $(seq 12); do
               commit=$(curl -fsS --max-time 30 -H "X-Weave-Deploy-Token: $DEV_DEPLOY_TOKEN" https://dev.weave.grunion.ai/api/health | jq -r '.supervisor.commit') || commit=''
