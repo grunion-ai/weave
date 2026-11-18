@@ -647,7 +647,7 @@ export function nextFireAt(now = new Date(), hour = 4) {
   return d;
 }
 
-export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, log = console.log, hour = 4, fork = forkChild }) {
+export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, audit = () => {}, alert = () => {}, log = console.log, hour = 4, fork = forkChild }) {
   const state = { lastAt: null, lastStatus: null, lastError: null, nextAt: null };
   let timer = null, stopped = false;
   const arm = () => {
@@ -669,7 +669,9 @@ export function scheduleNightly({ run, dest, now = () => Date.now(), setTimer = 
     } catch (err) {
       state.lastStatus = 'failed';
       state.lastError = err.message;
-      audit({ action: 'backup-failed', detail: { error: err.message, dest } });
+      const row = { action: 'backup-failed', detail: { error: err.message, dest } };
+      audit(row);
+      alert(row);
       log(`Backup failed: ${err.message}`);
     }
     arm();

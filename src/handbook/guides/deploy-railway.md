@@ -35,7 +35,7 @@ Service → **Settings → Networking → Custom Domain** → `weave.example.com
 
 ## 5. Health check and restarts
 
-`railway.json` carries `healthcheckPath: /api/health` and `healthcheckTimeout: 120`: a deploy is live only once `/api/health` answers `2xx`, and a crash restarts the container up to ten times. Health checks run at deploy time, not continuously; for an alert when the instance is down, point a free uptime monitor at `/api/health`.
+`railway.json` carries `healthcheckPath: /api/health` and `healthcheckTimeout: 120`: a deploy is live only once `/api/health` answers `2xx`, and a crash restarts the container up to ten times. Health checks run at deploy time, not continuously; for an alert when the instance is down, point a free uptime monitor at `/api/health`. For the signals a monitor cannot see, set `WEAVE_ALERT_URL` (and `WEAVE_ALERT_TOKEN` if the sink wants a bearer) to a URL that takes a POST: the instance sends one line there for a tripped watch that was not rolled back, a rollback, the death of the serving worker, a release refused on a full volume and a failed nightly backup.
 
 ## 6. The door
 

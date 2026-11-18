@@ -239,12 +239,15 @@ async function main() {
     }
     if (dest) {
       const { backup, scheduleNightly } = await import('../src/backup.js');
+      const { alertPoster, alertLine } = await import('../src/supervisor.js');
+      const postAlert = alertPoster(process.env);
       const { tmpdir } = await import('node:os');
       const dataDir = dirname(dataPath);
       nightly = scheduleNightly({
         run: () => backup({ dataDir, out: tmpdir(), dest, env: process.env, keep: false }),
         dest,
         audit: (entry) => w.store.audit({ at: new Date().toISOString(), actor: 'backup', ...entry }),
+        alert: (entry) => postAlert(alertLine({ type: entry.action, ...entry.detail })),
       });
       console.log(`Nightly backup → ${dest} at 04:00 UTC (next ${nightly.status().nextAt})`);
     }

@@ -48,6 +48,24 @@ export function rateLimitReset(status, headers, now = Date.now()) {
   return Number.isFinite(at) ? new Date(at).toISOString() : null;
 }
 
+export function alertRequest(env, line) {
+  return { method: 'POST', body: line, headers: env.WEAVE_ALERT_TOKEN ? { Authorization: `Bearer ${env.WEAVE_ALERT_TOKEN}` } : {}, signal: AbortSignal.timeout(10_000) };
+}
+
+export const alertLine = (e) => {
+  const fields = Object.entries(e).filter(([k]) => k !== 'type').map(([k, v]) => `${k}=${v}`).join(' ');
+  return `weave ${e.type}${fields ? `: ${fields}` : ''}`;
+};
+
+export function alertPoster(env, { fetch = globalThis.fetch, log = console } = {}) {
+  const url = String(env.WEAVE_ALERT_URL ?? '').trim();
+  if (!url) return () => Promise.resolve(false);
+  return (line) => fetch(url, alertRequest(env, line)).then(() => true, (err) => {
+    log.warn?.(`weave: alert post failed: ${err.message}`);
+    return false;
+  });
+}
+
 export const autoUpdateFromEnv = (env = process.env) => ['1', 'true', 'yes', 'on'].includes(String(env.WEAVE_AUTO_UPDATE ?? '').trim().toLowerCase());
 
 export function trackFromEnv(env = process.env) {
@@ -168,6 +186,9 @@ export async function startSupervisor({
   let closing = false;
   let swapping = null;
   let hook = () => {};
+  const post = alertPoster(env, { fetch, log });
+  const postAlert = (e) => post(alertLine(e));
+  const workerDied = (w, reason) => postAlert({ type: 'worker-died', release: w.release, reason }).then(() => onWorkerDied());
   const emit = (e) => { onEvent(e); hook(e); };
   const prune = (serving) => pruneReleases(releasesDir, { serving, failed: state.failed, log });
   const disk = () => {
@@ -197,7 +218,7 @@ export async function startSupervisor({
       log.error(`weave supervise: ${reason}`);
       if (trip(w, reason)) return;
       recordDeath(w, reason);
-      onWorkerDied();
+      workerDied(w, reason);
     });
     return w;
   }
@@ -342,7 +363,11 @@ export async function startSupervisor({
 
   async function unpackCommit(name, sha) {
     const free = disk()?.freeMB;
-    if (free != null && free * MB < minFreeBytes) throw new Error(`${name} not downloaded: ${free} MB free on the releases volume, under the ${Math.round(minFreeBytes / MB)} MB floor`);
+    if (free != null && free * MB < minFreeBytes) {
+      const floorMB = Math.round(minFreeBytes / MB);
+      postAlert({ type: 'disk-floor', release: name, freeMB: free, floorMB });
+      throw new Error(`${name} not downloaded: ${free} MB free on the releases volume, under the ${floorMB} MB floor`);
+    }
     const r = await fetch(`${REPO_CODELOAD}/tar.gz/${sha}`, { headers: UA, signal: AbortSignal.timeout(120_000) });
     if (!r.ok) throw new Error(`the ${name} tarball answered HTTP ${r.status}`);
     const part = join(releasesDir, `${name}.part`);
@@ -456,6 +481,7 @@ export async function startSupervisor({
     state.watch = { ...state.watch, ok: false, reason, alert: why };
     save();
     log.error(`weave supervise: ALERT ${w.release} tripped its watch (${reason}); ${why}`);
+    postAlert({ type: 'watch-alert', release: w.release, reason, note: why });
     emit({ type: 'watch-alert', release: w.release, reason });
   }
 
@@ -473,7 +499,7 @@ export async function startSupervisor({
       if (w !== current || closing) return { action: 'current' };
       if (w.watch.migrated) {
         alert(w, reason);
-        if (dead(w)) onWorkerDied();
+        if (dead(w)) workerDied(w, reason);
         return { action: 'alert', reason };
       }
       state.failed[w.watch.key] = { at: new Date().toISOString(), reason: `watch: ${reason}` };
@@ -482,8 +508,10 @@ export async function startSupervisor({
       const back = goodReleases(releasesDir, state.failed).find((r) => r.dir !== w.dir) ?? imageRelease(imageDir, env.RAILWAY_GIT_COMMIT_SHA);
       log.error(`weave supervise: ${w.release} tripped its watch (${reason}); rolling back to ${back.release}`);
       const result = await swapTo(keyOf(back), back.release, () => back, { rollback: reason });
-      if (result.action === 'swapped') emit({ type: 'rolled-back', from: w.release, to: back.release, reason });
-      else if (current === w && dead(w)) onWorkerDied();
+      if (result.action === 'swapped') {
+        postAlert({ type: 'rolled-back', from: w.release, to: back.release, reason });
+        emit({ type: 'rolled-back', from: w.release, to: back.release, reason });
+      } else if (current === w && dead(w)) workerDied(w, reason);
       else if (current === w && w.settling) await migrate(w);
       return result;
     });

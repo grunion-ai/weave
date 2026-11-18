@@ -506,7 +506,8 @@ test('the scheduler chains one timer per day on a fake clock, records the result
   let fail = false;
   const run = async () => { runs.push(clock); if (fail) throw new Error('bucket said no'); return { archive: `a-${runs.length}.tar.enc`, bytes: 10, orphans: { count: 2 } }; };
   const audit = [];
-  const s = scheduleNightly({ run, dest: 's3://b/p', now: () => clock, setTimer, audit: (e) => audit.push(e), log: () => {} });
+  const alerts = [];
+  const s = scheduleNightly({ run, dest: 's3://b/p', now: () => clock, setTimer, audit: (e) => audit.push(e), alert: (e) => alerts.push(e), log: () => {} });
   assert.equal(s.status().nextAt, '2026-09-12T04:00:00.000Z');
   assert.equal(timers[0].ms, 3 * 3600 * 1000);
   assert.deepEqual(s.status(), { lastAt: null, lastStatus: null, nextAt: '2026-09-12T04:00:00.000Z', dest: 's3://b/p', kind: 's3' });
@@ -525,6 +526,7 @@ test('the scheduler chains one timer per day on a fake clock, records the result
   assert.equal(s.status().lastError, 'bucket said no');
   assert.equal(audit.at(-1).action, 'backup-failed');
   assert.equal(audit.at(-1).detail.error, 'bucket said no');
+  assert.deepEqual(alerts, [{ action: 'backup-failed', detail: { error: 'bucket said no', dest: 's3://b/p' } }], 'a failed nightly alerts once, and a completed one never does (Issue #1655)');
   assert.equal(timers.length, 3, 'a failure still schedules tomorrow');
   assert.doesNotMatch(JSON.stringify(s.status()), /secret|key/i, 'status carries no credential');
   s.stop();
