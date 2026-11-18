@@ -1,0 +1,1 @@
+- **A tapped menu opens with no row drawn as chosen** (Issue #1389): on a coarse pointer the menu sheet now parks focus on the sheet itself, so its first row no longer opens wearing the keyboard fill. A menu opened from the keyboard still lands on its first row, and the arrow keys still walk a tapped sheet.
