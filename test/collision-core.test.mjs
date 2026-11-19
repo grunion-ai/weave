@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CELLS, KINDS, NOTE, PLATFORM, TOLERANCE, cellOf, collide, fingerprint, overlapOf, pageWide, pastEdge, sectionOf, tally, verdict } from './lib/collision.mjs';
+import { CELLS, GATE_CELLS, KINDS, NOTE, PLATFORM, TOLERANCE, cellOf, collide, fingerprint, overlapOf, pageWide, pastEdge, restsFor, sectionOf, tally, verdict } from './lib/collision.mjs';
 import { PROBES, held, walked } from './lib/states.mjs';
 
 const holds = JSON.parse(readFileSync(new URL('./collision-held.json', import.meta.url), 'utf8'));
@@ -101,6 +101,14 @@ test('the holds file carries a section per platform, and every hold names its Is
       assert.deepEqual(rest, []);
       assert.ok(Array.isArray(rows) && rows.length && rows.every((n) => Number.isInteger(n) && n > 0), `${platform} ${fp}: names the Issue rows that track it`);
     }
+  }
+});
+
+test('a cell outside the gate walks the rest states of the cell it borrows', () => {
+  for (const cell of Object.keys(CELLS).filter((c) => !GATE_CELLS.includes(c))) {
+    const mine = restsFor(walked('collision'), cell).map((x) => x.name);
+    assert.ok(mine.length > 0, `${cell} walks no rest state, so the sweep reads fewer states than the gate does`);
+    assert.deepEqual(mine, restsFor(walked('collision'), CELLS[cell].like).map((x) => x.name));
   }
 });
 

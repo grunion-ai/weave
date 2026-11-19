@@ -7,7 +7,7 @@ import { loadavg } from 'node:os';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
 import { OVERLAYS } from '../test/lib/overlays.mjs';
-import { CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, sectionOf, seed, sweepCell, tally, verdict } from '../test/lib/cutoff.mjs';
+import { CELLS, GATE_CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, lower, sectionOf, seed, sweepCell, tally, verdict } from '../test/lib/cutoff.mjs';
 
 const BASELINE = new URL('../test/cutoff-baseline.json', import.meta.url);
 const { values: a } = parseArgs({ options: {
@@ -23,7 +23,7 @@ if (!pw) { console.error('playwright not installed: ln -s ~/.gerrit/weave/pw/nod
 const pick = (list, csv) => (csv ? list.filter((x) => csv.split(',').includes(x.name)) : list);
 const journeys = pick(SWEEP_JOURNEYS, a.journey ?? (a.overlay ? '-' : null));
 const overlays = pick(OVERLAYS, a.overlay ?? (a.journey ? '-' : null));
-const wanted = a.cell ? a.cell.split(',') : Object.keys(CELLS);
+const wanted = a.cell ? a.cell.split(',') : GATE_CELLS;
 const out = resolve(a.out);
 mkdirSync(out, { recursive: true });
 

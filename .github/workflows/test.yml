@@ -148,6 +148,51 @@ jobs:
           WEAVE_CI_HISTORY: ci-history
         run: node scripts/ci-test.mjs aggregate ci-results
 
+  widths:
+    name: Width cells
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.ref)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --user 1001 --ipc=host --init --add-host net.localhost:127.0.0.1 --add-host bandito.localhost:127.0.0.1 --add-host scratch.localhost:127.0.0.1
+      volumes:
+        - /usr/share/fonts:/usr/local/share/fonts/runner:ro
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.12.0"
+      - name: Install pinned browser driver
+        run: |
+          npm ci --ignore-scripts --prefix .github/test-tools
+          ln -s .github/test-tools/node_modules node_modules
+      - name: Cut-off, line endings and collisions on every cell the gate leaves out
+        run: |
+          status=0
+          for cell in $(node -e 'import("./test/lib/cutoff.mjs").then((m) => console.log(m.WIDTH_CELLS.join(" ")))'); do
+            node scripts/cutoff-sweep.mjs --cell "$cell" --out "cutoff-out/$cell" || status=1
+            node scripts/line-endings.mjs --cell "$cell" || status=1
+            node scripts/collision-sweep.mjs --cell "$cell" --out "collision-out/$cell" || status=1
+          done
+          exit $status
+      - name: Retain the findings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: width-cells-${{ github.run_attempt }}
+          path: |
+            cutoff-out/
+            collision-out/
+          if-no-files-found: ignore
+          retention-days: 14
+
   compatibility:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.ref)
     name: compatibility node ${{ matrix.node }} on ${{ matrix.os }}

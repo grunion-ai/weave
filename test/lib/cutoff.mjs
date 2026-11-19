@@ -10,7 +10,12 @@ export const NOTE = '_';
 export const CELLS = {
   desktop: { engine: 'chromium', viewport: { width: 1440, height: 900 } },
   phone: { engine: 'webkit', device: 'iPhone 15', viewport: { width: 390, height: 844 } },
+  'small-phone': { engine: 'webkit', device: 'iPhone SE', viewport: { width: 320, height: 568 }, like: 'phone', gate: false },
 };
+
+export const GATE_CELLS = Object.keys(CELLS).filter((c) => CELLS[c].gate !== false);
+export const WIDTH_CELLS = Object.keys(CELLS).filter((c) => CELLS[c].gate === false);
+export const likeOf = (cell) => CELLS[cell]?.like ?? cell;
 
 export function probe(target = null) {
   const { root: rootSelector = null, endings = false } = target && typeof target === 'object' ? target : { root: target };
@@ -295,7 +300,7 @@ export function lower(file, counts, { cells, platform = PLATFORM }) {
 export const seed = SEEDS.messy;
 
 export const SWEEP_JOURNEYS = statesOf(plan('cutoff'), 'journey');
-export const restsFor = (entries, cell) => entries.filter((p) => p.cell === cell && p.state.open === 'rest').map((p) => p.state);
+export const restsFor = (entries, cell) => entries.filter((p) => p.cell === likeOf(cell) && p.state.open === 'rest').map((p) => p.state);
 
 const frames = (page, n = 2) => page.evaluate((k) => new Promise((r) => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
@@ -306,6 +311,7 @@ export async function settle(page) {
 }
 
 export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell), target = (root) => root, fn = probe } = {}) {
+  const as = likeOf(cell);
   const findings = [];
   const failed = [];
   const timings = [];
@@ -317,7 +323,7 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
     for (const f of got) findings.push({ ...f, cell, where });
   };
   const noop = async () => {};
-  const walks = [...journeys.filter((x) => cellsOf(x).includes(cell)), ...rests.map((x) => journeyOf(x, cell))];
+  const walks = [...journeys.filter((x) => cellsOf(x).includes(as)), ...rests.map((x) => journeyOf(x, as))];
   for (const j of walks) {
     const where = `${j.open}:${j.name}`;
     try {
@@ -330,12 +336,12 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
   page.setDefaultTimeout(8000);
   try {
     for (const route of Object.keys(ROUTES)) {
-      const mine = overlaysFor(overlays, route, cell);
+      const mine = overlaysFor(overlays, route, as);
       if (!mine.length) continue;
-      const ready = ROUTES[route].ready(cell);
+      const ready = ROUTES[route].ready(as);
       const fresh = async () => {
         await page.goto('about:blank');
-        await page.goto(ROUTES[route].url(ctx, cell), { waitUntil: 'networkidle' });
+        await page.goto(ROUTES[route].url(ctx, as), { waitUntil: 'networkidle' });
         await page.waitForSelector(ready);
         await settle(page);
       };
@@ -344,10 +350,10 @@ export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, jo
         try {
           if (!clean) await fresh();
           clean = false;
-          await o.act(page, ctx, cell);
+          await o.act(page, ctx, as);
           await page.locator(`${o.root} >> visible=true`).first().waitFor({ timeout: 8000 });
           await read(page, `overlay:${o.name}`, o.root);
-          await (o.close ?? ((p) => p.keyboard.press('Escape')))(page, ctx, cell);
+          await (o.close ?? ((p) => p.keyboard.press('Escape')))(page, ctx, as);
           clean = await page.waitForFunction(([sel, home]) => ![...document.querySelectorAll(sel)].some((n) => n.getClientRects().length) && !!document.querySelector(home)?.getClientRects().length, [o.root, ready], { timeout: 2000 }).then(() => true, () => false);
         } catch (err) {
           failed.push({ where: `overlay:${o.name}`, cell, error: String(err.message).split('\n')[0] });
@@ -373,7 +379,7 @@ export function setDensity(weave, density) {
 export async function sweepEndings(browser, cell, ctx, { page, densities = DENSITIES } = {}) {
   const findings = [];
   const failed = [];
-  const entries = walked('endings').filter((p) => p.cell === cell);
+  const entries = walked('endings').filter((p) => p.cell === likeOf(cell));
   for (const density of densities) {
     setDensity(ctx.weave, density);
     const mine = entries.filter((p) => p.density === density || (p.density === null && density === 'comfortable'));

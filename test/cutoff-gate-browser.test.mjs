@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, settle, sweepCell, tally, verdict } from './lib/cutoff.mjs';
+import { CELLS, GATE_CELLS, PLATFORM, fingerprint, probe, sectionOf, seed, settle, sweepCell, tally, verdict } from './lib/cutoff.mjs';
 import { held, ROUTES } from './lib/states.mjs';
 
 const baseline = sectionOf(JSON.parse(readFileSync(new URL('./cutoff-baseline.json', import.meta.url), 'utf8')));
@@ -117,7 +117,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  for (const cell of Object.keys(CELLS)) {
+  for (const cell of GATE_CELLS) {
     test(`${cell}: every surface opens and no cut-off text passes the baseline ceiling`, async (t) => {
       const m = matrix[cell];
       if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here, and the ${cell} baseline is measured in it`);
@@ -135,7 +135,7 @@ if (s) {
     });
   }
 
-  for (const cell of Object.keys(CELLS)) {
+  for (const cell of GATE_CELLS) {
     test(`${cell}: board and list group heads wrap a long workflow state name instead of cutting it (Issue #1157)`, async (t) => {
       const m = matrix[cell];
       if (!m) return t.skip(`${CELLS[cell].engine} cannot launch here`);

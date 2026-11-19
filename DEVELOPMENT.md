@@ -1047,6 +1047,33 @@ lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.
 
+### Width cells
+
+The pull request gate walks two cells, desktop 1440x900 in Chromium and phone
+390x844 in WebKit, and its time stays flat as cells are added. Every other cell
+in `CELLS` carries `gate: false` and runs on the `Width cells` job of the
+scheduled `tests` run. A width cell names the gate cell whose states it borrows
+with `like`, so the state catalog needs no second entry per state: `small-phone`
+is 320x568 in WebKit and walks the phone states, the width where the 25 October
+audit found two cut-off fingerprints that the 390 px cell misses (Issue #1461).
+
+```bash
+node scripts/cutoff-sweep.mjs --cell small-phone
+node scripts/line-endings.mjs --cell small-phone
+node scripts/collision-sweep.mjs --cell small-phone
+```
+
+The first run of the 320 px cell found six cut-off fingerprints the gate's cells
+do not see, filed as Issues #1852, #1853 and #1854, and no collision and no line
+ending.
+
+The lane fails on a state that could not open and on a collision fingerprint
+`test/collision-held.json` does not name, since that ledger is a hold list and
+takes a width cell's row like any other. It cannot fail on a cut-off or a line
+ending, because `test/cutoff-baseline.json` is a ceiling that only ever comes
+down and has no room for a cell the gate does not walk. Those findings are read
+from the job's `findings.json` artifact and filed one row each.
+
 ### Collision loop
 
 Weave never lays one thing over another, never pushes a control off the screen
