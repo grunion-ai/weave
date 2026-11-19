@@ -16,7 +16,7 @@ test('the catalog spans route, layout, open state, data seed, width and theme', 
   assert.deepEqual(CELLS, ['desktop', 'phone']);
   assert.deepEqual(THEMES, ['light', 'dark']);
   assert.deepEqual(Object.keys(SEEDS).sort(), ['a11y', 'grid', 'messy', 'prose', 'touch']);
-  assert.deepEqual(Object.keys(PROBES).sort(), ['a11y', 'budgets', 'cutoff', 'endings', 'flicker', 'touch']);
+  assert.deepEqual(Object.keys(PROBES).sort(), ['a11y', 'budgets', 'collision', 'cutoff', 'endings', 'flicker', 'touch']);
 });
 
 test('every state names a known open state, layout, route, seed, cell and theme', () => {

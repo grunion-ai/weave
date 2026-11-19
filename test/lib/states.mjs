@@ -740,6 +740,7 @@ export const STATES = [...JOURNEY_STATES, ACTIVITY_STATE, ...OVERLAY_STATES, ...
 
 export const PROBES = {
   cutoff: { seed: 'messy', opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
+  collision: { seed: 'messy', opens: ['journey', 'rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: ['light'] },
   flicker: { seed: 'grid', opens: ['journey', 'rest'], cells: CELLS, themes: ['light'] },
   budgets: { seed: 'grid', opens: ['journey'], cells: CELLS, themes: ['light'] },
   a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: THEMES },

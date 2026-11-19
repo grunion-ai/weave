@@ -241,7 +241,7 @@ by name instead of holding its shard to the job cap (Issue #1817).
 
 ### Ledgers
 
-Eleven JSON files in `test/` hold what a gate tolerates or expects today, and
+Thirteen JSON files in `test/` hold what a gate tolerates or expects today, and
 each one moves only in the change that earns the move.
 
 | Ledger | Gate | Rule |
@@ -250,6 +250,7 @@ each one moves only in the change that earns the move.
 | `test/byte-budget.json` | `test/byte-budget.test.mjs` | Bytes each served file costs, gzip and brotli. Over budget fails, a budget more than a tenth above the size fails until it is lowered, and a raise writes its reason under `raised[...]` |
 | `test/click-budget.json` | `test/click-budget-browser.test.mjs` | Clicks per journey, ratcheting down (Click budget) |
 | `test/cutoff-baseline.json` | `test/cutoff-gate-browser.test.mjs` | Cut-off counts per platform, a ceiling that only comes down (Cut-off loop) |
+| `test/collision-held.json` | `test/collision-gate-browser.test.mjs` | Overlap, protrusion and page-width findings held out of the gate today, each naming the Issue rows that track it. Zero tolerance: there is no count, a fingerprint no hold names fails, and a hold that no longer reproduces fails until it is dropped (Collision loop) |
 | `test/feedback-budget.json` | `test/feedback-budget-browser.test.mjs` | Time to the first visible answer, read on the trend lane (Feedback budget) |
 | `test/flicker-fixed.json` | `test/flicker-gate-browser.test.mjs` | Fixed flicker fingerprints that must stay gone (Flicker loop) |
 | `test/onboarding-steps.json` | `test/onboarding-gate-browser.test.mjs` | Pages, sign-ins, consents and clicks per profile. It never goes up, and a run that got shorter lowers it in the same change |
@@ -1045,6 +1046,54 @@ only ever comes down. **Fixing one:** fix the cut-off, run the sweep until the
 lower count holds, run it once with `--lower`, and commit the lowered counts in
 the same change. A red gate prints the Linux counts it measured; copy them into
 the `linux` section.
+
+### Collision loop
+
+Weave never lays one thing over another, never pushes a control off the screen
+and never draws a page wider than the viewport. `test/lib/collision.mjs` is the
+probe. It reads every atom on the page: an element with its own text, an icon,
+or a control with no text of its own. A text atom is measured by the glyph
+rects it draws, a control or icon by its box, and both are clipped to every
+clipping and scrolling ancestor, the element's own included. A clamped or
+ellipsised label therefore draws only the lines inside its own box, and the text
+it hides lands on nothing.
+
+| Kind | What it found |
+| --- | --- |
+| `overlap` | Two atoms in one stacking layer whose boxes meet by more than 2 px on both axes, neither one inside the other |
+| `protrusion` | An atom whose box runs past the left or right edge of the viewport by more than 2 px, where scrolling its own container cannot reach it |
+| `page-wide` | A page whose `scrollWidth` runs past the viewport |
+
+A control with no text and no paint of its own, a bare drag grip whose negative
+margins widen its touch target, is measured for protrusion and not for overlap:
+its visible mark is the icon inside it, which the probe already reads as an atom
+of its own. A control with a background, a border or a shadow paints over what
+it covers and is measured for both.
+
+A new stacking layer is an ancestor that paints above its siblings: a fixed or
+sticky box, a positioned box with a `z-index`, a dialog, a popover, or a drag
+ghost. Two atoms in different layers are intentional, which is how a popover
+covers the row it opened from without a finding. An atom parked off the left
+edge, the visually hidden pattern, draws nothing in the viewport and is no
+protrusion.
+
+```bash
+node scripts/collision-sweep.mjs                              # both cells, writes collision-out/findings.json
+node scripts/collision-sweep.mjs --cell phone --overlay field-editor   # reproduce one
+```
+
+`PROBES.collision` in the state catalog walks the same journeys, rest states and
+overlays as the cut-off probe, on the messy seed.
+`test/collision-gate-browser.test.mjs` runs each cell on its own at zero
+tolerance: there is no baseline, so a fingerprint `test/collision-held.json`
+does not name fails on its first appearance, and a hold that no longer
+reproduces fails until the change that fixed it drops it. The gate also asserts
+that the probe ran on at least as many states as the catalog plans, because a
+probe that cannot run reports zero findings, which is not a pass (Issue #1675).
+`test/collision-probe-browser.test.mjs` holds the probe to the defects the 25
+October audit injected, a toolbar dropped onto a breadcrumb, tile fields pulled
+onto a tile title and a page wider than the phone, so a quiet gate means a clean
+page.
 
 ### Line endings
 

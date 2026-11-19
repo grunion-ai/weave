@@ -1,0 +1,5 @@
+{
+  "_": "Overlap, protrusion and page-width findings held out of the gate today, one entry per fingerprint naming the Issue rows that track it. There is no baseline and no count: any fingerprint no hold names fails. Reproduce one with node scripts/collision-sweep.mjs --cell phone, and drop the hold in the change that fixes it.",
+  "darwin": {},
+  "linux": {}
+}
