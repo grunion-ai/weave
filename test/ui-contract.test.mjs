@@ -673,11 +673,14 @@ test('the entity ⋮ sits at the right end of the title row, like every other vi
   assert.match(APP, /class: 'crumb crumb-row crumb-row-fit' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
     'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
   const body = fnBody('renderEntityView');
-  assert.match(body, /grid\.classList\.toggle\('side-open', \(showsRefPanel\(db, 'References'\) && refsOut\.length > 0\) \|\| \(showsRefPanel\(db, 'Referenced by'\) && refsIn\.length > 0\)\)/,
-    'the column opens when a shown panel has references (Issue #1479), never on comments (Feature #323) or an Activity switch (Feature #315)');
+  assert.match(body, /grid\.classList\.toggle\('side-open', shown\.length > 0\);\s*\n\s*grid\.classList\.toggle\('side-folded', shown\.length > 0 && shown\.every\(\(key\) => docSectionCollapse\(db\.id, key\)\)\);/,
+    'the column opens when a shown panel has references (Issue #1479), never on comments (Feature #323) or an Activity switch (Feature #315), and hands its width back once every shown panel is folded (Issue #1211)');
   assert.ok(!/localStorage/.test(body.slice(body.indexOf('activityBtn'), body.indexOf('activityBtn') + 600)) && !body.includes('wv-entity-side'), 'the Activity icon keeps no per-browser memory, and the side column has no second switch');
   assert.equal(rulesFor('.entity-grid')['grid-template-columns'], 'minmax(0, 1fr)', 'one column at rest');
-  assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) 320px; \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
+  assert.match(CSS, /\.entity-grid\.side-open \{ grid-template-columns: minmax\(0, 1fr\) var\(--wv-side-track\); \}/, 'two when the side is open (the narrow-screen media rule collapses it again)');
+  assert.equal(rulesFor('.entity-grid')['--wv-side-track'], '320px', 'the side column is 320px wide');
+  assert.equal(rulesFor('.entity-grid.side-folded')['--wv-side-track'], 'max-content',
+    'and shrinks to the folded headers once every shown panel is folded, so the record body takes the rest (Issue #1211)');
   assert.equal(rulesFor('.entity-grid:not(.side-open) > .entity-side').display, 'none', 'the side column is gone, not blank');
   assert.match(APP, /class: 'wv-toolbar entity-head' \}, entityAvatarEl\(entity, db, refresh\), nameInput\)/, 'the title row holds the row\'s face, when its table has an avatar field, and the name (Feature #349)');
   assert.match(APP, /class: 'view-header' \},\s*\n\s*el\('div', \{ class: 'crumb crumb-row crumb-row-fit' \}/,
@@ -722,7 +725,7 @@ test('reference panels join the side column as card panels, wearing the pointer-
   assert.match(block, /el\('div', \{ class: 'card-header' \},\s*caret, el\('h3', \{ class: 'card-title' \}, `\$\{title\} · \$\{refs\.length\}`\)\)/,
     'the header is fold caret + title + count (Issue #993)');
   assert.match(APP, /function foldCaret\([^]*?disclosure\('doc-caret', true/, 'the caret is the shared doc-caret disclosure');
-  assert.match(block, /foldCaret\(`Collapse \$\{title\}`, db\.id, extraClass, \[body\]\)/, 'the fold is remembered per table and per card');
+  assert.match(block, /foldCaret\(`Collapse \$\{title\}`, db\.id, extraClass, \[body\], \{ onToggle: openSide \}\)/, 'the fold is remembered per table and per card, and the side column follows it (Issue #1211)');
   assert.match(APP, /const entityRefs = \(id\) => Promise\.all\(\['references-from', 'references'\]/,
     'both directions load with the record (Feature #315)');
   for (const fn of ['showEntity', 'drawDock']) {
