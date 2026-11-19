@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
 
-let target, issue, loner, mixed, aside, quiet;
+let target, issue, loner, mixed, aside, quiet, hub, spoke;
 
 const s = await launch('reference panels', (weave) => {
   weave.createSpace({ name: 'Dev' });
@@ -23,6 +23,9 @@ const s = await launch('reference panels', (weave) => {
       'and https://net.weave.grunion.ai/e/0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d',
     ].join('\n'),
   });
+  hub = weave.createEntity('Task', { name: 'Points both ways' });
+  spoke = weave.createEntity('Issue', { name: 'Points at the hub', doc: `blocks [[Task#${hub.publicId}]]` });
+  weave.setDoc(hub.id, `waits on [[Issue#${spoke.publicId}]]`);
 });
 if (s) {
   const { base, browser, weave } = s;
@@ -130,6 +133,51 @@ if (s) {
     await page.reload({ waitUntil: 'load' });
     await card(page, '.ref-outbound-card');
     assert.deepEqual(await panelTitles(page), ['References · 1'], 'the choice survives a reload');
+    await page.close();
+  });
+
+  const sideTrack = (page) => page.$eval('.entity-grid', (g) =>
+    parseFloat(getComputedStyle(g).gridTemplateColumns.split(' ').at(-1)));
+  const bodyWidth = (page) => page.$eval('.entity-grid > div:not(.entity-side)', (n) => n.getBoundingClientRect().width);
+  const foldAll = async (page) => {
+    const carets = await page.$$('.entity-side .doc-caret');
+    for (const caret of carets) await caret.click();
+    return carets;
+  };
+
+  test('folding every reference panel hands the record the side column\'s width (Issue #1211)', async () => {
+    const page = await open(hub.id);
+    await card(page, '.ref-outbound-card');
+    await card(page, '.ref-inbound-card');
+    assert.equal(await sideTrack(page), 320, 'the open column is the 320px track');
+    const wasBody = await bodyWidth(page);
+    const carets = await foldAll(page);
+    assert.equal(carets.length, 2, 'one caret per shown panel');
+    await page.waitForSelector('.entity-grid.side-folded');
+    const folded = await sideTrack(page);
+    assert.ok(folded < 320, `the folded column is narrower than 320px, read ${folded}px`);
+    assert.ok(await bodyWidth(page) > wasBody + 100, 'and the record body took the freed width');
+    for (const caret of carets) {
+      assert.equal(await caret.isVisible(), true, 'the caret that unfolds stays on screen');
+      assert.equal(await caret.isEnabled(), true, 'and stays clickable');
+    }
+    await carets[0].click();
+    await page.waitForSelector('.entity-grid.side-open:not(.side-folded)');
+    assert.equal(await sideTrack(page), 320, 'unfolding a panel restores the 320px track');
+    await page.close();
+  });
+
+  test('a record reloaded with every reference panel folded draws the narrow column, never no column (Issue #1211)', async () => {
+    const page = await open(hub.id);
+    await card(page, '.ref-inbound-card');
+    await foldAll(page);
+    await page.waitForSelector('.entity-grid.side-folded');
+    await page.reload({ waitUntil: 'load' });
+    await card(page, '.ref-inbound-card');
+    await page.waitForSelector('.entity-grid.side-open.side-folded');
+    assert.ok(await sideTrack(page) < 320, 'the fold is remembered as a narrow column');
+    assert.equal(await page.isVisible('.entity-side'), true, 'the carets that unfold it are still on screen');
+    assert.equal((await page.$$('.entity-side .doc-caret')).length, 2, 'both of them');
     await page.close();
   });
 

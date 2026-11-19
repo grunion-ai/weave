@@ -737,8 +737,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .entity-head .dl-wrap { margin-left: auto; }
 .crumb { color: var(--tblr-secondary); font-size: var(--fs-grid); margin-bottom: 14px; }
 .crumb a { color: var(--tblr-primary); text-decoration: none; }
-.entity-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
-.entity-grid.side-open { grid-template-columns: minmax(0, 1fr) 320px; }
+.entity-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; --wv-side-track: 320px; }
+.entity-grid.side-folded { --wv-side-track: max-content; }
+.entity-grid.side-open { grid-template-columns: minmax(0, 1fr) var(--wv-side-track); }
 .entity-grid:not(.side-open) > .entity-side { display: none; }
 @media (max-width: 719px) { .entity-grid.side-open { grid-template-columns: minmax(0, 1fr); } }
 .panel { margin-bottom: 16px; }

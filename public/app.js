@@ -9551,7 +9551,15 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
   }
 
   const grid = el('div', { class: 'entity-grid', dataset: { eid: id } });
-  const openSide = () => grid.classList.toggle('side-open', (showsRefPanel(db, 'References') && refsOut.length > 0) || (showsRefPanel(db, 'Referenced by') && refsIn.length > 0));
+  const shownRefPanels = () => [
+    showsRefPanel(db, 'References') && refsOut.length > 0 ? 'ref-outbound-card' : null,
+    showsRefPanel(db, 'Referenced by') && refsIn.length > 0 ? 'ref-inbound-card' : null,
+  ].filter(Boolean);
+  const openSide = () => {
+    const shown = shownRefPanels();
+    grid.classList.toggle('side-open', shown.length > 0);
+    grid.classList.toggle('side-folded', shown.length > 0 && shown.every((key) => docSectionCollapse(db.id, key)));
+  };
   openSide();
   mount.append(el('div', { class: 'entity-split' }, grid));
   const left = el('div');
@@ -9960,7 +9968,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     if (!refs.length) return;
     const body = el('div', { class: 'card-body ref-backlinks' },
       ...refs.map((r) => (r.external ? externalRefChipEl(r) : relationChipEl({ targetDbIds: true }, r))));
-    const caret = foldCaret(`Collapse ${title}`, db.id, extraClass, [body]);
+    const caret = foldCaret(`Collapse ${title}`, db.id, extraClass, [body], { onToggle: openSide });
     right.append(el('div', { class: `card panel ref-backlinks-card ${extraClass}` },
       el('div', { class: 'card-header' },
         caret, el('h3', { class: 'card-title' }, `${title} · ${refs.length}`)),
