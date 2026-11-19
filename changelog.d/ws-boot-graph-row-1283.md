@@ -1,0 +1,1 @@
+- **The code-graph doc names the rail boot script** (Issue #1283): `docs/graph.md` lists every browser file that wraps itself in an immediately invoked function, and `public/ws-boot.js` now has its row there beside `public/theme-boot.js`, with what it exposes, what loads it and who reads it.
