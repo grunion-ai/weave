@@ -728,6 +728,7 @@ Every file in `bin/`, `src/` and `public/` has a row. A file's tests usually car
 | `src/formula.js`, `src/stats.js` | Formula parser and evaluator; the aggregates behind rollups, footers and charts |
 | `src/vocabulary.js`, `src/field-hints.js` | The one field vocabulary and the hints a schema write answers with |
 | `src/ids.js`, `src/mark.js`, `src/workspace-name.js` | Ids and slugs, the logo mark's geometry, workspace names |
+| `src/public-globals.js` | The one name for each global a `public/` classic script sets, and the loud read every server module binds it through |
 | `src/commands.js` | The command registry: one entry per operation names its MCP tool, CLI command, HTTP route, what it writes and how it runs; the three doors dispatch from it |
 | `src/errors.js` | The error contract: each code's HTTP status, MCP code and CLI exit |
 | `src/mcp.js` | MCP server over the engine, with `src/mcp-primer.md` as its primer; the [Tool map](#tool-map) lists its tools |
