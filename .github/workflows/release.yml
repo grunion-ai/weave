@@ -80,6 +80,28 @@ jobs:
           HISTORICAL: ${{ github.event_name == 'workflow_dispatch' && inputs.historical }}
           CI_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
 
+  commit:
+    needs: [guard, publish]
+    if: needs.publish.outputs.state == 'published'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.publish.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Write the published commit onto the Release row on the canonical tracker
+        env:
+          WEAVE_TRACKER_TOKEN: ${{ secrets.WEAVE_TRACKER_TOKEN }}
+          PUBLISHED_SHA: ${{ needs.publish.outputs.sha }}
+        run: node scripts/release-commit.mjs --from https://weave.grunion.ai/w/weave --token-env WEAVE_TRACKER_TOKEN --release "v$(node -p "require('./package.json').version")" --sha "$PUBLISHED_SHA"
+
   image:
     needs: [guard, publish]
     if: needs.publish.outputs.sha != '' && (needs.publish.outputs.state == 'published' || github.event_name == 'workflow_dispatch')

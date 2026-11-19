@@ -596,7 +596,7 @@ A release lands in this order:
 7. The successful main `tests` run publishes the immutable `v<version>` tag and
    the GitHub Release carrying that CHANGELOG section, through the
    `release` workflow (below).
-8. Write the merged commit onto the Release row (below).
+8. The `commit` job writes the published commit onto the Release row (below).
 9. Whoever landed the bump confirms that
    `gh release list -R grunion-ai/weave --limit 1` names it as Latest.
 
@@ -608,17 +608,21 @@ After the `publish` job tags the release, `release.yml` pushes
 `ghcr.io/grunion-ai/weave:<version>` and `:latest`, then publishes `server.json` to the Official MCP Registry with a pinned
 `mcp-publisher` signed in through GitHub OIDC.
 
-Once the version PR is merged, write the merged commit onto the Release row:
+The `commit` job writes the published commit onto the Release row, so no release
+depends on a hand-run command after the merge (Issue #1654). It runs only for a
+release that published, and the image and registry jobs do not wait on it, so a
+tracker outage costs the row's commit and nothing else:
 
 ```bash
 node scripts/release-commit.mjs --from https://weave.grunion.ai/w/weave \
   --token-env WEAVE_TRACKER_TOKEN --release v<version> --sha <merged sha>
 ```
 
-That step appends one line to the notes rather than replacing the document, then
-reads the row back and refuses when the notes came back empty or without the
-commit. A release whose notes are lost by its own run is caught by that run
-(Issue #1329). An older row that has lost its notes stops nothing: the export
+Run that command by hand only to backfill a row the job never reached. It
+appends one line to the notes rather than replacing the document, skips the
+append when the notes already carry that commit, then reads the row back and
+refuses when the notes came back empty or without the commit. A release whose
+notes are lost by its own run is caught by that run (Issue #1329). An older row that has lost its notes stops nothing: the export
 names it, keeps the notes `docs/development.json` already carries, and carries
 on.
 

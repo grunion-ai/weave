@@ -12,8 +12,10 @@ export function landedLine(sha) {
 
 export async function writeReleaseCommit(call, { id, name, sha }) {
   const line = landedLine(sha);
+  const before = await call(`/api/entities/${id}`);
+  const landed = (before.docs?.Description ?? '').includes(line.trim());
   await call(`/api/entities/${id}`, { method: 'PATCH', body: { Commit: sha } });
-  await call(`/api/entities/${id}/doc`, { method: 'POST', body: { doc: line } });
+  if (!landed) await call(`/api/entities/${id}/doc`, { method: 'POST', body: { doc: line } });
   const after = await call(`/api/entities/${id}`);
   const notes = after.docs?.Description ?? '';
   if (!notes.trim()) {
@@ -22,7 +24,7 @@ export async function writeReleaseCommit(call, { id, name, sha }) {
   if (!notes.includes(sha)) {
     throw new Error(`Release ${name} came back without ${sha} after the commit write — read the row on the tracker before the next release`);
   }
-  return { sha, notes: notes.length };
+  return { sha, notes: notes.length, appended: !landed };
 }
 
 export function httpTracker(base, token, { fetchImpl = fetch } = {}) {

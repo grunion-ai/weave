@@ -57,6 +57,7 @@ test('workflow write permissions are confined to guarded release delivery', () =
       assert.match(job('registry'), /needs: \[guard, publish, image\]/);
       assert.match(publish, /needs: guard/);
       assert.doesNotMatch(src, /environment:/, 'a release never deploys production; promote.yml does');
+      assert.match(job('commit'), /permissions:\n      contents: read\n/, 'the tracker write needs no write credentials');
       assert.match(publish, /if: needs.guard.outputs.current == 'true'/);
       assert.match(publish, /ref: \$\{\{ needs.guard.outputs.sha \}\}/);
     }
@@ -104,7 +105,7 @@ test('release validates main CI before checking out the tested SHA with write cr
   assert.match(src, /github.ref == 'refs\/heads\/main'/);
   assert.match(src, /node scripts\/github-release\.mjs --guard/);
   const checkouts = (src.match(/uses: actions\/checkout@/g) ?? []).length;
-  assert.equal(checkouts, 5);
+  assert.equal(checkouts, 6);
   assert.equal((src.match(/persist-credentials: false/g) ?? []).length, checkouts, 'every checkout drops its credentials');
   assert.doesNotMatch(src, /pull_request_target|download-artifact/);
 });
