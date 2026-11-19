@@ -195,6 +195,8 @@ export const CSP_REPORT_PATH = '/csp-report';
 const CSP_FRAME_SOURCES = "'self' https://challenges.cloudflare.com https://*.protect.clerk.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com";
 export const CSP_ENFORCED = `frame-src ${CSP_FRAME_SOURCES}; object-src 'none'; base-uri 'self'; form-action 'self'`;
 export const CSP_REPORT_ONLY = `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; ${CSP_ENFORCED}; report-uri ${CSP_REPORT_PATH}`;
+export const TIMED_PATH = '/api/health';
+export const appTiming = (ns) => `app;dur=${(Number(ns) / 1e6).toFixed(1)}`;
 export const frameAncestorsFromEnv = (env = process.env) => String(env.WEAVE_FRAME_ANCESTORS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
 export function securityHeaders(headers, { https = false, frameAncestors = [] } = {}) {
   const html = /^text\/html/i.test(headers['Content-Type'] ?? '');
@@ -759,6 +761,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   let stopping = null;
   let settle = () => {};
   const server = createHttpServer(async (req, res) => {
+    const began = process.hrtime.bigint();
     inflight.add(res);
     res.once('close', () => { inflight.delete(res); settle(); });
     if (stopping) res.shouldKeepAlive = false;
@@ -807,7 +810,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       });
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
       const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path });
-      res.writeHead(fresh.status, secure(req, sized(fresh.status, headers, body)));
+      const timed = path === TIMED_PATH ? { ...headers, 'Server-Timing': appTiming(process.hrtime.bigint() - began) } : headers;
+      res.writeHead(fresh.status, secure(req, sized(fresh.status, timed, body)));
       if (typeof body?.pipe === 'function') await pipeline(body, res);
       else res.end(body);
     } catch (err) {

@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } f
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TREND } from './ci-test.mjs';
+import { probe, realIO as edgeIO } from './edge-probe.mjs';
 import { TRACKER, alertRequest, short } from './sheriff.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -79,8 +80,11 @@ export const noteLine = (m, point, url) => `${point.at} ${short(point.commit)} r
 export async function trend(io) {
   const { code, text } = await io.suites();
   const point = { commit: io.commit, run: io.run, attempt: io.attempt, at: io.now() };
-  const { readings, misses, faults } = judge(readTap(text), { code, history: io.history(), run: io.run });
+  const tap = readTap(text);
+  const edge = await io.edge();
+  const { readings, misses, faults } = judge({ ...tap, readings: [...tap.readings, ...edge.readings] }, { code, history: io.history(), run: io.run });
   io.write({ ...point, readings });
+  for (const line of edge.skipped) io.log(`::warning::edge probe recorded nothing: ${line}`);
   const tail = io.url ? ` ${io.url}` : '';
   const counted = misses.length ? `${misses.length} of ${readings.length} readings over budget, kept as trend notes, not a red gate` : `${readings.length} readings inside their budgets`;
   const verdict = faults.length ? `trend lane broken (${faults.length} fault${faults.length === 1 ? '' : 's'}): ${counted}` : `timing budgets: ${counted}`;
@@ -95,6 +99,11 @@ export async function trend(io) {
     } catch (error) {
       io.log(`::warning::trend note not filed for ${idOf(m)}: ${error.message}`);
     }
+  }
+  for (const r of edge.readings) {
+    const said = `${idOf(r)} ${r.value} ms (runs ${r.runs.join(', ')}, budget ${r.budget} ms)`;
+    io.log(said);
+    io.summary(`- ${said}`);
   }
   const sustained = misses.filter((m) => m.streak === SUSTAINED);
   if (sustained.length) {
@@ -160,6 +169,7 @@ export function realIO(env = process.env) {
     url: env.GITHUB_RUN_ID ? `https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}` : '',
     now: () => new Date().toISOString(),
     suites: () => runSuites(env),
+    edge: () => probe(edgeIO()),
     history: () => readHistory(env.WEAVE_TREND_HISTORY),
     write: (point) => {
       if (!env.WEAVE_TREND_SERIES) return;

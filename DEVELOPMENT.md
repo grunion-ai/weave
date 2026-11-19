@@ -919,6 +919,27 @@ and the `HEAD^1` checks in `test/vitals-budget.test.mjs`,
 `test/feedback-budget.test.mjs` and `test/render-budget.test.mjs` still gate
 every PR. The click budget counts presses, not time, and stays on the gate.
 
+## Edge first byte
+
+The same lane measures what a caller outside the box waits for. `scripts/edge-probe.mjs`
+opens three fresh TLS connections to `weave.grunion.ai` and three to
+`dev.weave.grunion.ai`, asks each for `/api/health`, and records two readings
+per host: `<host>|first-byte`, the median wait for the first byte, and
+`<host>|after-tls`, the part of it that follows the TLS handshake. `BUDGET` in
+that file holds 350 ms and 250 ms, both between the 507 to 518 ms Issue #1268
+recorded and the 124 to 126 ms the same host answers when the wait is gone, so a
+return of that wait reads as a trend note on the first push and alerts on the
+third. The readings join the run's `trend-series` point, the run log and the step
+summary. A host that refuses the connection or answers anything but 200 records
+nothing and logs a warning naming the host and the reason, which is neither a
+reading nor a fault of the lane. The probe reaches the public internet, so it
+runs only on main pushes and never on a gate.
+
+`/api/health` answers with `Server-Timing: app;dur=<ms>`, the time weave spent
+from the first byte of the request to the first byte of the answer, so the share
+of any such wait that belongs to the edge is the rest of it. Only that route
+reports its handling time; `test/health.test.mjs` holds both.
+
 ## Feedback budget
 
 An action answers on screen before the server does. `test/feedback-budget-browser.test.mjs`
