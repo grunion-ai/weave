@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.161 (2026-11-19)
+
+- **The report button clears the pane scroll bars** (Issue #1314): the floating button moves from a 12px inset to 18px on both edges, so it no longer covers the last stretch of the rightmost pane's thumb travel. A pane keeps an 8px margin and reserves an 8px bar, and the button now sits 2px clear of both.
+- **Chip text clears 4.5:1 on every hue** (Issue #1236): the light slate, blue, red and purple chip inks darken a step, so a chip reads at 4.5:1 or better on its own tint over the panel and over the sunk surface a popover, sidebar or board rail puts it on. A Canceled state chip read 4.46:1 on the panel and 3.61:1 on the sunk surface. `test/contrast.test.mjs` now walks the whole ramp in both themes instead of the one done-category case.
+- **The release workflow writes its own commit back** (Issue #1654): the `publish` job of `release.yml` now runs `scripts/release-commit.mjs` itself, gated on a published release, so the merged commit lands on the `Development/Release` row without a hand-run command after the merge. `writeReleaseCommit` reads the notes first and skips the append when they already carry that commit, so a retry or a second writer leaves one "Landed on main as" line, not two.
+- **The app shells allow page magnification** (Issue #1446): `public/index.html` and `public/404.html` drop `maximum-scale=1`, so a reader who pinches or enlarges text gets it. The 16px floor on phone text controls, which is what actually stops iOS from zooming into a focused field, is unchanged, and the 32 `meta-viewport` entries that the accessibility baseline tolerated are gone.
+
 ## v0.4.160 (2026-11-19)
 
 - The PR gate now runs every browser suite for a diff that touches any script or stylesheet `public/index.html` loads on every route, not just `public/app.js`, and its plan step names the suites it left out, so a shared-chrome change can no longer merge green and take main red ([[Issue#1550]]).
