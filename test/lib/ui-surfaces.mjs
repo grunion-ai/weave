@@ -46,11 +46,12 @@ export function harvestedTriggers(data) {
   return [...by.values()].map((t) => ({ ...t, labels: [...t.labels] })).sort((a, b) => a.sig.localeCompare(b.sig));
 }
 
-export function catalogNames(src) {
+export function catalogNames(src, states = []) {
   const classes = new Set([...src.matchAll(/\.([a-zA-Z][\w-]{2,})/g)].map((m) => m[1]));
   const labels = new Set();
   for (const m of src.matchAll(/'([^'\n]+)'|"([^"\n]+)"/g)) labels.add((m[1] ?? m[2]).toLowerCase());
   for (const m of src.matchAll(/text=([^'"`\n]+)/g)) labels.add(m[1].trim().toLowerCase());
+  for (const state of states) for (const label of state.catalog ?? []) labels.add(label.toLowerCase());
   return { classes, labels };
 }
 

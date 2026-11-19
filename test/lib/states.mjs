@@ -25,7 +25,7 @@ const views = (weave, table) => ({
 });
 
 function grid(weave) {
-  weave.createSpace({ name: 'Work' });
+  const work = weave.createSpace({ name: 'Work' });
   const projects = weave.createTable({ space: 'Work', name: 'Project' });
   const tasks = weave.createTable({ space: 'Work', name: 'Task' });
   weave.addField(tasks, { name: 'Status', type: 'workflow', config: { states: [
@@ -49,7 +49,7 @@ function grid(weave) {
   const doc = weave.createEntity(tasks, { name: 'Spec', doc: '# Spec\n\nFirst paragraph of the spec.\n\n- one\n- two\n' }).id;
   weave.tableView(`${tasks.id}/All`, { from: 'blank' });
   weave.tableView(`${tasks.id}/Compact`, { from: 'blank', fields: ['Name', 'Status'] });
-  return { tasks, projects, ids, doc, table: tasks.id, intro: introPage(weave), ...views(weave, tasks) };
+  return { tasks, projects, ids, doc, space: work.id, table: tasks.id, intro: introPage(weave), ...views(weave, tasks) };
 }
 
 export const INTRO_HTML = `<!doctype html><html><body style="margin:0;font:16px/1.6 system-ui"><h1>Handbook</h1>${Array.from({ length: 24 }, (_, i) => `<p style="margin:0 0 24px">Paragraph ${i + 1} of an introduction tall enough that the record's fields start well below it.</p>`).join('')}</body></html>`;
@@ -242,6 +242,7 @@ const menu = async (page, cell, trigger, label) => {
 export const ROUTES = {
   home: { url: (c) => `${c.base}/#/`, ready: at('#main') },
   table: { url: (c) => `${c.base}/#/table/${c.table}`, ready: at(ROW) },
+  space: { url: (c) => `${c.base}/#/space/${c.space}`, ready: at('#main .space-home-overview') },
   board: { url: (c) => `${c.base}/#/table/${c.table}/view/${c.board}`, ready: at('.wv-board .tile') },
   entity: {
     url: (c, cell) => (cell === 'phone' ? `${c.base}/#/table/${c.table}?e=${c.ids[3]}` : `${c.base}/#/entity/${c.ids[3]}`),
@@ -547,6 +548,7 @@ const tableMenu = (label) => async (page, ctx, cell) => {
   await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
 };
 const scope = (cell) => (cell === 'phone' ? '#dock' : '#main');
+const SET_FIELD = '.sel-puck .sel-act[title="Set a field…"]';
 const paneSection = (section) => async (page, ctx, cell) => {
   if (!await page.locator('#view-pane:not([hidden]) .vp-acc').count()) await tap(page, '#main .table-view-btn', cell);
   await page.waitForSelector('#view-pane:not([hidden]) .vp-acc');
@@ -559,7 +561,7 @@ const shareClose = (page, ctx, cell) => tap(page, '#share-pane button[aria-label
 
 const OVERLAY_STATES = [
   {
-    name: 'search', route: 'home', cells: BOTH, root: '#cmdk-back',
+    name: 'search', route: 'home', cells: BOTH, root: '#cmdk-back', catalog: ['Command palette (⌘K)'],
     async act(page, ctx, cell) {
       await tap(page, cell === 'phone' ? '.phone-search' : '.search-like', cell);
       await page.waitForSelector('#cmdk-input');
@@ -567,7 +569,7 @@ const OVERLAY_STATES = [
       await page.waitForSelector('#cmdk-back mark');
     },
   },
-  { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
+  { name: 'shortcuts', route: 'home', cells: DESKTOP, root: '#modal-back', catalog: ['Keyboard sheet (?)'], act: (page, ctx, cell) => menu(page, cell, '#sidebar .nav-identity-more', 'Keyboard shortcuts') },
   { name: 'personal-menu', route: 'home', cells: DESKTOP, root: '.nav-personal-menu', act: (page, ctx, cell) => tap(page, '#sidebar .nav-identity-more', cell) },
   { name: 'new-workspace', route: 'home', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.ws-new', cell) },
   { name: 'nav-table-menu', route: 'home', cells: DESKTOP, root: '.wv-menu', act: (page, ctx, cell) => tap(page, '#nav .dots-btn[title="Task actions"]', cell) },
@@ -620,6 +622,27 @@ const OVERLAY_STATES = [
     },
   },
   { name: 'new-field', route: 'table', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '#main .add-field-btn', cell) },
+  {
+    name: 'new-table', route: 'space', cells: DESKTOP, root: '#tray-back',
+    async act(page, ctx, cell) {
+      if (!await page.locator('#main .space-home-overview[open]').count()) await tap(page, '#main .space-home-overview > summary', cell);
+      await page.waitForSelector('#main .wv-start-new');
+      await tap(page, '#main .wv-start-new', cell);
+    },
+  },
+  { name: 'new-row-sheet', route: 'table', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.phone-bar .phone-new', cell) },
+  {
+    name: 'select-all-field', route: 'table', cells: DESKTOP, root: '.picker-pop',
+    async act(page, ctx, cell) {
+      await page.locator('.wv-grid thead th.sel-head .sel-box').check();
+      await page.waitForSelector(SET_FIELD);
+      await tap(page, SET_FIELD, cell);
+    },
+    async close(page) {
+      await page.keyboard.press('Escape');
+      await page.locator('.wv-grid thead th.sel-head .sel-box').uncheck();
+    },
+  },
   { name: 'status-picker', route: 'table', cells: DESKTOP, root: '.picker-pop', act: (page, ctx, cell) => tap(page, `${ROW} .chip-trigger[title="Status"]`, cell) },
   { name: 'link-picker', route: 'table', cells: DESKTOP, root: '#cmdk-back', act: (page, ctx, cell) => tap(page, `${ROW} button >> text=+ link`, cell) },
   { name: 'activity', route: 'entity', cells: DESKTOP, root: 'aside.wv-activity', act: (page) => eyeActivity(page) },
