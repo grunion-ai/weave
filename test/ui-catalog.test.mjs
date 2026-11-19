@@ -8,6 +8,7 @@ import { FUNCTIONS, functionsOf } from '../tools/ui-catalog/functions.mjs';
 import { catalogRoutes, seedCatalogWorkspace } from '../tools/ui-catalog/run.mjs';
 import { tempDir } from './lib/temp.mjs';
 import { catalogNames, harvestedRoutes, harvestedTriggers, stateRoutes, surfaceGaps } from './lib/ui-surfaces.mjs';
+import { STATES } from './lib/states.mjs';
 
 const PAGE = fileURLToPath(new URL('../docs/ui-catalog/index.html', import.meta.url));
 const BUDGET = 8 * 1024 * 1024;
@@ -223,6 +224,18 @@ test('a surface the state catalogue does not list is named, and one it opens is 
   assert.deepEqual(held.stale.triggers, ['dots-btn'], 'a recorded entry the catalogue now opens is stale, so the ledger only shrinks');
 });
 
+test('a state declares the catalog label of a surface the harvest recorded without a trigger element (Issue #1845)', () => {
+  const trigger = { sig: '(no trigger element)', classes: [], labels: ['Command palette (\u2318K)'] };
+  const bare = surfaceGaps({ routes: [], triggers: [trigger], states: new Map(), names: catalogNames("tap(page, '.search-like', cell);"), allowed: {} });
+  assert.deepEqual(bare.missing.triggers, ['(no trigger element)'], 'a key press leaves the harvest no classes to match');
+  const declared = surfaceGaps({
+    routes: [], triggers: [trigger], states: new Map(),
+    names: catalogNames("tap(page, '.search-like', cell);", [{ name: 'search', catalog: ['Command palette (\u2318K)'] }]),
+    allowed: {},
+  });
+  assert.deepEqual(declared.missing.triggers, [], 'the state that opens it names the label the keyboard lane recorded');
+});
+
 test('test/ui-surface-baseline.json records each gap with the Issue that tracks it (Issue #1466)', () => {
   assert.match(allowed._, /only shrinks/, 'the ledger says it only shrinks');
   for (const section of ['routes', 'triggers']) {
@@ -238,7 +251,7 @@ test('every route the UI catalog crawls has a state in test/lib/states.mjs (Issu
   const weave = seedCatalogWorkspace(join(tempDir('weave-ui-surface-'), 'weave.db'));
   const routes = harvestedRoutes(catalogRoutes(weave).routes);
   assert.ok(routes.length > 4, 'the crawl lists its routes');
-  const gaps = surfaceGaps({ routes, triggers: [], states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  const gaps = surfaceGaps({ routes, triggers: [], states: stateRoutes(), names: catalogNames(STATES_SRC, STATES), allowed });
   assert.deepEqual(gaps.missing.routes, [], `routes the UI catalog crawls that no state walks:\n${named(gaps.missing.routes)}`);
   assert.deepEqual(gaps.stale.routes, [], `test/ui-surface-baseline.json routes that are no longer gaps; drop them:\n${named(gaps.stale.routes)}`);
 });
@@ -246,13 +259,13 @@ test('every route the UI catalog crawls has a state in test/lib/states.mjs (Issu
 test('every overlay trigger the UI catalog harvested has a state that opens it (Issue #1466)', () => {
   const triggers = harvestedTriggers(data);
   assert.ok(triggers.length > 20, 'the catalog page carries its overlay triggers');
-  const gaps = surfaceGaps({ routes: [], triggers, states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  const gaps = surfaceGaps({ routes: [], triggers, states: stateRoutes(), names: catalogNames(STATES_SRC, STATES), allowed });
   assert.deepEqual(gaps.missing.triggers, [], `overlay triggers no state in test/lib/states.mjs names, so no probe opens them; add a state or record the gap in test/ui-surface-baseline.json:\n${named(gaps.missing.triggers)}`);
   assert.deepEqual(gaps.stale.triggers, [], `test/ui-surface-baseline.json triggers a state now names; drop them:\n${named(gaps.stale.triggers)}`);
 });
 
 test('one trigger planted beside the harvested ones fails the gate by name (Issue #1466)', () => {
   const planted = { sig: 'wv-fresh-surface-btn', classes: ['btn', 'wv-fresh-surface-btn'], labels: ['Open the new thing'] };
-  const gaps = surfaceGaps({ routes: [], triggers: [...harvestedTriggers(data), planted], states: stateRoutes(), names: catalogNames(STATES_SRC), allowed });
+  const gaps = surfaceGaps({ routes: [], triggers: [...harvestedTriggers(data), planted], states: stateRoutes(), names: catalogNames(STATES_SRC, STATES), allowed });
   assert.deepEqual(gaps.missing.triggers, [planted.sig], 'a surface added to the app enters the state catalogue or fails CI with its name');
 });
