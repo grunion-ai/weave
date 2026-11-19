@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.160 (2026-11-19)
+
+- The PR gate now runs every browser suite for a diff that touches any script or stylesheet `public/index.html` loads on every route, not just `public/app.js`, and its plan step names the suites it left out, so a shared-chrome change can no longer merge green and take main red ([[Issue#1550]]).
+- The touch probe now covers every phone-cell state in the catalogue, so the quality scorecard counts the tap-target coverage the phone touch baseline gate has been measuring all along, and a new phone state cannot be added outside it ([[Issue#1462]]).
+
 ## v0.4.159 (2026-11-19)
 
 - **A fresh connection's first byte is measured on every main push, and `/api/health` reports its own share of the wait** (Issue #1268): the budgets lane now opens three fresh TLS connections to `weave.grunion.ai` and `dev.weave.grunion.ai` and records the median time to the first byte of `/api/health`, plus the part of it that follows the TLS handshake, as two readings of the run's trend series with budgets of 350 ms and 250 ms. The row's 450 ms per-connection wait, which arrived unnoticed in October and cleared itself unnoticed a fortnight later, now reads as a trend note on the first push it returns and alerts on the third. `/api/health` answers with `Server-Timing: app;dur=<ms>`, so the share of any such wait that weave itself spent is readable from outside the box and the rest belongs to the edge. An unreachable host records nothing and says so, rather than reading as a healthy run.
