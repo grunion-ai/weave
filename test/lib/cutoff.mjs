@@ -305,14 +305,14 @@ export async function settle(page) {
   await frames(page, 2);
 }
 
-export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell), target = (root) => root } = {}) {
+export async function sweepCell(browser, cell, ctx, { page: pageOptions = {}, journeys = SWEEP_JOURNEYS, overlays = OVERLAYS, rests = restsFor(walked('cutoff'), cell), target = (root) => root, fn = probe } = {}) {
   const findings = [];
   const failed = [];
   const timings = [];
   const read = async (page, where, root = null) => {
     await settle(page);
     const t0 = performance.now();
-    const got = await page.evaluate(probe, target(root));
+    const got = await page.evaluate(fn, target(root));
     timings.push(performance.now() - t0);
     for (const f of got) findings.push({ ...f, cell, where });
   };

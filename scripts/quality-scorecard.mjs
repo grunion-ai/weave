@@ -8,7 +8,7 @@ import { PROBE_QUESTION, PROBE_UNANSWERED } from '../src/bugreport.js';
 
 export const BREAKPOINTS = [480, 600, 700, 900];
 export const BASELINE = /^test\/(?!byte-budget\.json$)[^/]+-(?:baseline|budget)\.json$|^test\/flicker-fixed\.json$/;
-export const PROBES_LIB = ['clicks', 'cutoff', 'feedback', 'flicker', 'journeys', 'overlays', 'renders', 'states', 'vitals']
+export const PROBES_LIB = ['clicks', 'collision', 'cutoff', 'feedback', 'flicker', 'journeys', 'overlays', 'renders', 'states', 'vitals']
   .map((n) => `test/lib/${n}.mjs`);
 export const SOURCE_RULES = [
   'architecture-map', 'brand-kit', 'form-control-classes', 'hover-touch', 'icon-registry',
@@ -19,7 +19,7 @@ export const RULE_CLASSES = {
   'Cut-off repeats': /cut[- ]?off|\bcut\b|clip|truncat|ellips|overflow|\bin full\b/i,
   'Alignment repeats': /\balign|centred|centered|lines? up|off[- ]cent/i,
 };
-const PROBE_LABELS = { cutoff: 'Cut-off', flicker: 'Flicker', budgets: 'Budgets', a11y: 'A11y', touch: 'Touch' };
+const PROBE_LABELS = { collision: 'Collision', cutoff: 'Cut-off', flicker: 'Flicker', budgets: 'Budgets', a11y: 'A11y', touch: 'Touch' };
 const DECLARATION = /(?:^|[;{\s])((?:margin|padding)(?:-(?:top|right|bottom|left|inline|block)(?:-(?:start|end))?)?|(?:row-|column-)?gap|z-index)\s*:\s*([^;{}]+)/g;
 
 const share = (n, d) => (d ? Math.round((n / d) * 10000) / 10000 : null);
