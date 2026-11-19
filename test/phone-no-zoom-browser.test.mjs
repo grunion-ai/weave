@@ -53,7 +53,8 @@ if (s) {
         let page = await open(b, { profile, theme });
         try {
           assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-          assert.match(await page.$eval('meta[name="viewport"]', (m) => m.content), /maximum-scale=1/, 'the viewport tag forbids the focus zoom');
+          const viewport = await page.$eval('meta[name="viewport"]', (m) => m.content);
+          for (const capped of [/maximum-scale/, /user-scalable/]) assert.doesNotMatch(viewport, capped, `the served viewport tag caps magnification with ${capped.source} (Issue #1446)`);
           await page.waitForSelector('#main .table-tools-btn');
           await page.click('#main .table-tools-btn');
           seen.push(...await sweep(page, 'table sheet'));

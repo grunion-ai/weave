@@ -11,12 +11,15 @@ const px = (v) => {
   return m ? Number(m[1]) * (m[2] === 'rem' ? 16 : 1) : null;
 };
 
-test('the app pages forbid the focus zoom with maximum-scale=1 (Issue #724)', () => {
+test('the app shells let the reader magnify the page (Issue #1446)', () => {
   for (const page of ['index.html', '404.html']) {
     const tag = read(page).match(/<meta name="viewport" content="([^"]+)"/);
     assert.ok(tag, `${page} has a viewport tag`);
     assert.match(tag[1], /width=device-width/);
-    assert.match(tag[1], /maximum-scale=1\b/, `${page} keeps iOS from zooming into a focused field`);
+    assert.match(tag[1], /initial-scale=1\b/);
+    for (const capped of [/maximum-scale/, /minimum-scale/, /user-scalable/]) {
+      assert.doesNotMatch(tag[1], capped, `${page} caps magnification with ${capped.source}`);
+    }
   }
 });
 
