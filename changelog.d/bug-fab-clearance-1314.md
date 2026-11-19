@@ -1,1 +1,0 @@
-- **The report button clears the pane scroll bars** (Issue #1314): the floating button moves from a 12px inset to 18px on both edges, so it no longer covers the last stretch of the rightmost pane's thumb travel. A pane keeps an 8px margin and reserves an 8px bar, and the button now sits 2px clear of both.
