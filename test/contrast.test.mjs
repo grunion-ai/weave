@@ -82,6 +82,22 @@ const composite = ([r, g, b, a], groundHex) => {
   return hexOf([r, g, b].map((v, i) => v * a + ground[i] * (1 - a)));
 };
 
+test('every chip hue reads 4.5:1 on its own tint, on the panel and the sunk surface (Issue #1236)', () => {
+  const paints = chipPaints();
+  const themes = APP_THEMES();
+  const misses = [];
+  for (const theme of ['light', 'dark']) {
+    for (const ground of ['--tblr-bg-surface', '--tblr-bg-surface-secondary']) {
+      for (const [hue, paint] of Object.entries(paints[theme])) {
+        const tint = composite(paint.fill, themes[theme][ground]);
+        const r = ratio(paint.text, tint);
+        if (r < 4.5) misses.push(`${theme} ${hue} on ${ground}: ${paint.text} over ${tint} reads ${r}:1`);
+      }
+    }
+  }
+  assert.deepEqual(misses, []);
+});
+
 test('the done state chip reads 4.5:1 on its own tint in both themes (Issue #1100)', () => {
   const paints = chipPaints();
   const hue = core.categoryHue('done');
