@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.157 (2026-11-18)
+
+- **Every refused HTTP answer names a code** (Issue #1640): `GET /api/nothing` answered `{"error":"No route: GET /api/nothing"}` with no `code`, and so did the workspace-delete refusal on a deployment that cannot delete; an unknown page answered `Not found` as text/plain. Both bodies now carry `not-found` and `unsupported`, and `notFound()` takes a coded body. `src/errors.js` adds `HTTP_ONLY_CODES`, the thirteen codes that only HTTP answers carry, so `ERROR_CODES` is the whole set an agent may branch on. The dead second argument to `errorBody()` is gone.
+- **Folding a record's reference panels hands its width back** (Issue #1211): the caret on References and Referenced by hid the card body and nothing else, so the record kept a 320px column holding two folded headers and the reporter went looking for a switch that hides the pane. `renderEntityView`'s `openSide` now reads the stored fold state of every shown panel and marks the grid `side-folded` when all of them are shut; `.entity-grid.side-folded` drops the side track to `max-content`, so the document reflows into the freed width while both carets stay on screen to unfold it. The fold persists per table and per card, so a reload draws the narrow column rather than no column.
+- **Shared browser modules load loudly on the server** (Issue #1597): `src/markdown.js` imported seven `public/` files inside an empty `catch`, so a broken shared module silently turned every chip on an export or share page into a plain link. The nine server modules that read a global a `public/` classic script sets now import that file statically and bind it through `sharedGlobal()` in `src/public-globals.js`, which throws and names the file to import. `src/commands.js` and `src/formula.js` were reading a global no import of theirs provided.
+
 ## v0.4.156 (2026-11-18)
 
 - The dev deploy walkthrough names `WEAVE_GITHUB_TOKEN` beside the other variables the dev service runs with, and says what a throttled check answers without it (Issue #1068).
