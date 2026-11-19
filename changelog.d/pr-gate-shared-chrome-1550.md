@@ -1,0 +1,1 @@
+- The PR gate now runs every browser suite for a diff that touches any script or stylesheet `public/index.html` loads on every route, not just `public/app.js`, and its plan step names the suites it left out, so a shared-chrome change can no longer merge green and take main red ([[Issue#1550]]).

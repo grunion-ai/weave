@@ -322,12 +322,18 @@ The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
 four shards, plus the browser tests the diff maps to.
 
-- A diff that touches `public/app.js`, `public/style.css`, `src/engine.js`,
-  `src/routes.js`, `src/commands.js` or a `test/lib/` file that a browser test
-  imports, directly or through another helper, maps to every gating browser
-  test, spread over eight shards as on main and weighed by file size (Feature
-  #368). The plan finds those helpers by following each browser test's import
-  statements, so there is no list to keep up to date.
+- A diff that touches shared code maps to every gating browser test, spread
+  over eight shards as on main and weighed by file size (Feature #368). Shared
+  code is `src/engine.js`, `src/routes.js`, `src/commands.js`, every script and
+  stylesheet `public/index.html` loads outside a `<template>` (`eagerAssets` in
+  `scripts/ci-test.mjs`), and any `test/lib/` file a browser test imports,
+  directly or through another helper. Both sets are read at plan time, from the
+  markup and from each browser test's import statements, so there is no list to
+  keep up to date. An asset the page loads on every route is exercised by every
+  journey, so stem matching cannot place a change to it: that is what let a
+  `public/menu-core.js` diff merge green and take main red (Issue #1550). A
+  module the page loads from a `<template>`, such as `public/board-view.js`, is
+  not shared and keeps the selection below.
 - Any other diff keeps the name and reach selection, sharded at about twenty
   files each. A changed browser test runs itself. Any other changed file maps to
   browser tests named for its module (`public/chip-core.js` maps to
@@ -343,6 +349,10 @@ four shards, plus the browser tests the diff maps to.
 - A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) and the onboarding
   inventory (`ONBOARDING`) always run, so a diff nothing maps to still boots the
   app in a browser.
+
+The plan step prints the size of the browser lane it chose and names the
+suites it left out, up to `OMITTED_NAMED` of them, so a narrow lane is visible
+in the log and a worker can run the rest before pushing (Issue #1550).
 
 `PR gate` succeeds only when every shard succeeded and `pr-aggregate` finds
 executed evidence for every planned file at the exact commit. A newer push to

@@ -122,6 +122,25 @@ export function touchedBrowser(changed, browser, read, diff = '') {
 
 const MONOLITHS = ['public/app.js', 'public/style.css', 'src/commands.js', 'src/engine.js', 'src/routes.js'];
 const RELATIVE_IMPORT = /(?:^|[\s({,;=])(?:from|import)\s*\(?\s*['"](\.\.?\/[^'"\n]+)['"]/gm;
+const TEMPLATE = /<template\b[^>]*>[\s\S]*?<\/template>/g;
+const ASSET = /(?:src|href)="(\/[^"]+\.(?:js|css))"/g;
+export const OMITTED_NAMED = 20;
+
+export function eagerAssets(read) {
+  let html = '';
+  try { html = read('public/index.html'); } catch { return []; }
+  const bare = String(html).replace(TEMPLATE, '');
+  return [...new Set([...bare.matchAll(ASSET)].map(([, path]) => `public${path}`))].sort();
+}
+
+export function planNotice(manifest, browser) {
+  const planned = new Set(manifest.filter(shard => shard.lane === 'browser').flatMap(shard => shard.files));
+  const left = browser.filter(file => !planned.has(file));
+  const named = left.length > OMITTED_NAMED
+    ? `${left.slice(0, OMITTED_NAMED).join(' ')} and ${left.length - OMITTED_NAMED} more`
+    : (left.join(' ') || 'none');
+  return `plan browser lane: ${planned.size} of ${browser.length} suites; left out ${named}`;
+}
 
 export function browserHelpers(browser, read) {
   const seen = new Set();
@@ -140,8 +159,8 @@ export function browserHelpers(browser, read) {
 }
 
 export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
-  const helpers = browserHelpers(browser, read);
-  if (changed.some(file => MONOLITHS.includes(file) || helpers.includes(file))) return plan([...unit, ...browser], { unit, browser: touchedBrowser(browser, browser, read) }, weight, 4);
+  const shared = [...MONOLITHS, ...eagerAssets(read), ...browserHelpers(browser, read)];
+  if (changed.some(file => shared.includes(file))) return plan([...unit, ...browser], { unit, browser: touchedBrowser(browser, browser, read) }, weight, 4);
   const touched = touchedBrowser(changed, browser, read, diff);
   return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
 }
@@ -200,7 +219,10 @@ export function currentPlan() {
 function currentPrPlan() {
   const changed = execFileSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
   const diff = execFileSync('git', ['diff', '-W', '--no-renames', 'HEAD^1', 'HEAD', '--', 'public', 'src', 'bin'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-  return prPlan(gating(lanes(testFiles(ROOT), ROOT)), changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
+  const groups = gating(lanes(testFiles(ROOT), ROOT));
+  const manifest = prPlan(groups, changed, file => readFileSync(join(ROOT, file), 'utf8'), weightWith(recordedDurations(), sizeOf), diff);
+  console.error(planNotice(manifest, groups.browser));
+  return manifest;
 }
 
 export const UNIT_TEST_TIMEOUT = 240_000;

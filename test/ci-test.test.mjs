@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, prPlan, eagerAssets, planNotice, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -349,6 +349,62 @@ test('the PR plan runs every unit file and the touched browser tests through the
   assert.equal(wide.filter(s => s.lane === 'browser').flatMap(s => s.files).length, browser.length);
   const mid = prPlan({ unit, browser }, many.slice(0, 30), read, () => 1);
   assert.equal(mid.filter(s => s.lane === 'browser').length, 3);
+});
+
+const indexHtml = [
+  '<script src="/theme-boot.js"></script>',
+  '<link rel="stylesheet" href="/style.css">',
+  '<template id="lazy-assets"><script src="/board-view.js"></script><script src="/settings-view.js"></script></template>',
+  '<script src="/chip-core.js"></script>',
+  '<script src="/menu-core.js"></script>',
+  '<script src="/app.js"></script>',
+].join('\n');
+
+test('the eager assets of index.html are the shared front end, and the templated ones are not', () => {
+  assert.deepEqual(eagerAssets((file) => (file === 'public/index.html' ? indexHtml : '')), [
+    'public/app.js', 'public/chip-core.js', 'public/menu-core.js', 'public/style.css', 'public/theme-boot.js',
+  ]);
+  assert.deepEqual(eagerAssets(() => ''), []);
+  assert.deepEqual(eagerAssets(() => { throw new Error('no such file'); }), []);
+});
+
+test('a diff touching a module every app page loads plans the full browser lane, not a stem match', () => {
+  const unit = Array.from({ length: 30 }, (_, i) => `test/u${String(i).padStart(2, '0')}.test.mjs`);
+  const browser = [...Object.keys(sheetSources), ...browserFiles];
+  const readIndex = (file) => (file === 'public/index.html' ? indexHtml : sheetRead(file));
+  const laneOf = (changed) => prPlan({ unit, browser }, changed, readIndex, () => 1).filter((s) => s.lane === 'browser').flatMap((s) => s.files);
+  assert.equal(laneOf(['public/menu-core.js']).length, browser.length, 'public/menu-core.js is loaded by every app page, so every browser suite exercises it');
+  assert.equal(laneOf(['public/theme-boot.js']).length, browser.length);
+  assert.deepEqual(laneOf(['public/board-view.js']).sort(), [...SMOKE].sort(), 'a templated module stays on name and reach selection');
+  for (const file of ['public/app.js', 'public/style.css', 'src/commands.js', 'src/engine.js', 'src/routes.js']) {
+    assert.equal(laneOf([file]).length, browser.length, `${file} keeps the full lane even when index.html does not name it`);
+  }
+});
+
+test('a change to the shared chrome of this repository selects the suite whose silent omission took main red', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { testFiles, lanes } = await import('../scripts/test.mjs');
+  const { browser } = lanes(testFiles());
+  const readFile = (file) => readFileSync(file, 'utf8');
+  const eager = eagerAssets(readFile);
+  for (const file of ['public/menu-core.js', 'public/picker-core.js', 'public/phone-row.js', 'public/app.js']) {
+    assert.ok(eager.includes(file), `${file} is loaded by every app page`);
+  }
+  assert.ok(!eager.includes('public/board-view.js'), 'public/board-view.js is templated, so it is not shared chrome');
+  const lane = prPlan({ unit: ['test/formula.test.mjs'], browser }, ['public/menu-core.js'], readFile, () => 1)
+    .filter((s) => s.lane === 'browser').flatMap((s) => s.files);
+  assert.ok(lane.includes('test/phone-row-header-browser.test.mjs'), 'the suite PR 868 skipped and main failed (Issue #1550)');
+  assert.equal(lane.length, browser.length);
+});
+
+test('the PR plan says on stderr which browser suites it left out, so a silent subset cannot read as green', () => {
+  const browser = [...Object.keys(sheetSources), ...browserFiles];
+  const kept = prPlan({ unit: ['test/formula.test.mjs'], browser }, ['test/formula.test.mjs'], sheetRead, () => 1);
+  const notice = planNotice(kept, browser);
+  assert.match(notice, /^plan browser lane: \d+ of \d+ suites; left out /);
+  for (const file of Object.keys(sheetSources)) assert.ok(notice.includes(file), `${file} is named as left out`);
+  const full = prPlan({ unit: ['test/formula.test.mjs'], browser }, ['public/app.js'], sheetRead, () => 1);
+  assert.equal(planNotice(full, browser), `plan browser lane: ${browser.length} of ${browser.length} suites; left out none`);
 });
 
 test('pr.yml runs the fast tier on ready pull requests and one PR gate requires every shard', async () => {
