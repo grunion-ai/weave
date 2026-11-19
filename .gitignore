@@ -42,5 +42,6 @@ graphify-out/*
 graphify-out/cache/*
 !graphify-out/cache/semantic/
 
-# scripts/collision-sweep.mjs default output
+# scripts/cutoff-sweep.mjs and scripts/collision-sweep.mjs default output
+cutoff-out/
 collision-out/

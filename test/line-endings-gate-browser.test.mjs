@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, ENDING_KINDS, endingPrint, probe, proseSeed, sweepEndings } from './lib/cutoff.mjs';
+import { CELLS, ENDING_KINDS, GATE_CELLS, endingPrint, probe, proseSeed, sweepEndings } from './lib/cutoff.mjs';
 import { DENSITIES } from './lib/states.mjs';
 
 const s = await launch('line endings', proseSeed);
@@ -49,7 +49,7 @@ if (s) {
     await page.goto(`${s.base}/${url}`, { waitUntil: 'networkidle' });
     return page;
   };
-  for (const cell of Object.keys(CELLS)) {
+  for (const cell of GATE_CELLS) {
     test(`${cell}: the related subtable fits its card and ends a long value in an ellipsis (Issue #1260)`, async (t) => {
       if (!matrix[cell]) return t.skip(`${CELLS[cell].engine} cannot launch here`);
       const page = await open(cell, cell === 'phone' ? `#/table/${s.sink.table}?e=${s.sink.row}` : `#/entity/${s.sink.row}`);
@@ -68,7 +68,7 @@ if (s) {
     });
   }
 
-  for (const cell of Object.keys(CELLS)) {
+  for (const cell of GATE_CELLS) {
     for (const density of DENSITIES) {
       test(`${cell} at ${density}: no sliced line and no lone word in prose (Issue #1306)`, async (t) => {
         const m = matrix[cell];

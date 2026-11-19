@@ -1,7 +1,7 @@
-import { CELLS, DESKTOP, NOTE, PLATFORM, settle, sweepCell } from './cutoff.mjs';
+import { CELLS, DESKTOP, GATE_CELLS, NOTE, PLATFORM, likeOf, settle, sweepCell } from './cutoff.mjs';
 import { SEEDS, held, plan, statesOf, walked } from './states.mjs';
 
-export { CELLS, DESKTOP, NOTE, PLATFORM, settle, held, walked };
+export { CELLS, DESKTOP, GATE_CELLS, NOTE, PLATFORM, likeOf, settle, held, walked };
 
 export const KINDS = ['overlap', 'protrusion', 'page-wide'];
 export const TOLERANCE = 2;
@@ -206,7 +206,7 @@ export function verdict(seen, holds, { cells = null } = {}) {
 
 export const seed = SEEDS.messy;
 export const SWEEP_JOURNEYS = statesOf(plan('collision'), 'journey');
-export const restsFor = (entries, cell) => entries.filter((p) => p.cell === cell && p.state.open === 'rest').map((p) => p.state);
+export const restsFor = (entries, cell) => entries.filter((p) => p.cell === likeOf(cell) && p.state.open === 'rest').map((p) => p.state);
 
 export async function sweep(browser, cell, ctx, options = {}) {
   return sweepCell(browser, cell, ctx, {

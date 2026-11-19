@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CELLS, KINDS, NOTE, PLATFORM, cellOf, fingerprint, grew, lower, ratchet, sectionOf, tally, verdict } from './lib/cutoff.mjs';
+import { CELLS, GATE_CELLS, KINDS, NOTE, PLATFORM, WIDTH_CELLS, cellOf, fingerprint, grew, likeOf, lower, ratchet, restsFor, sectionOf, tally, verdict } from './lib/cutoff.mjs';
 import { OVERLAYS } from './lib/overlays.mjs';
-import { ROUTES } from './lib/states.mjs';
+import { ROUTES, walked } from './lib/states.mjs';
 import { JOURNEYS, cellsOf } from './lib/journeys.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -133,6 +133,22 @@ test('the committed baseline never grows past its first parent, the base a pull 
   assert.deepEqual(grew(baselineAt('HEAD^1'), baselineAt('HEAD')), [], `HEAD grew ${FILE} past HEAD^1: fix the cut-off instead of adding it`);
 });
 
+test('the gate walks two cells, and a width cell borrows the states of one of them', () => {
+  assert.deepEqual(GATE_CELLS, ['desktop', 'phone'], 'the pull request gate keeps its two cells, so its time stays flat');
+  assert.deepEqual(WIDTH_CELLS, ['small-phone'], 'every other cell runs on the scheduled width lane');
+  assert.deepEqual(CELLS['small-phone'].viewport, { width: 320, height: 568 });
+  assert.equal(CELLS['small-phone'].engine, 'webkit');
+  assert.equal(likeOf('small-phone'), 'phone', 'the 320 px cell walks the phone states');
+  assert.equal(likeOf('phone'), 'phone');
+  assert.equal(likeOf('desktop'), 'desktop');
+  for (const cell of WIDTH_CELLS) {
+    assert.ok(GATE_CELLS.includes(CELLS[cell].like), `${cell} borrows a gate cell's states`);
+    const mine = restsFor(walked('cutoff'), cell).map((x) => x.name);
+    assert.ok(mine.length > 0, `${cell} walks rest states`);
+    assert.deepEqual(mine, restsFor(walked('cutoff'), CELLS[cell].like).map((x) => x.name), `${cell} walks the rest states of ${CELLS[cell].like}`);
+  }
+});
+
 test('the cells are desktop 1440x900 in Chromium and phone 390x844 in WebKit', () => {
   assert.deepEqual(CELLS.desktop.viewport, { width: 1440, height: 900 });
   assert.equal(CELLS.desktop.engine, 'chromium');
@@ -154,5 +170,5 @@ test('every overlay names a route, a cell, a root and an opener, once', () => {
 
 test('the field editor tray is opened on both cells, so its Description placeholder is measured', () => {
   const trays = OVERLAYS.filter((o) => o.root === '#tray-back' && /field/.test(o.name));
-  for (const cell of Object.keys(CELLS)) assert.ok(trays.some((o) => o.cells.includes(cell)), `a field tray opens on ${cell}`);
+  for (const cell of GATE_CELLS) assert.ok(trays.some((o) => o.cells.includes(cell)), `a field tray opens on ${cell}`);
 });

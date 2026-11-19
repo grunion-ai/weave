@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
-import { CELLS, probe, settle } from './lib/cutoff.mjs';
+import { CELLS, GATE_CELLS, probe, settle } from './lib/cutoff.mjs';
 
 const CENTURY = 'Jan 1, 1999 – Dec 31, 2099';
 let table;
@@ -28,7 +28,7 @@ if (s) {
 
   {
     const colorScheme = 'light';
-    for (const cell of Object.keys(CELLS)) {
+    for (const cell of GATE_CELLS) {
       test(`${cell} ${colorScheme}: a board tile shows the whole date range (Issue #1126)`, async (t) => {
         if (cell === 'phone' && !handset) return t.skip(`${CELLS.phone.engine} cannot launch here`);
         const page = await pages[cell](colorScheme);

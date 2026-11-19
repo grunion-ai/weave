@@ -2,7 +2,7 @@
 import { parseArgs } from 'node:util';
 import { Weave } from '../src/engine.js';
 import { startServer } from '../src/server.js';
-import { CELLS, endingPrint, proseSeed, sweepEndings } from '../test/lib/cutoff.mjs';
+import { CELLS, GATE_CELLS, endingPrint, proseSeed, sweepEndings } from '../test/lib/cutoff.mjs';
 
 const { values: a } = parseArgs({ options: { cell: { type: 'string' }, density: { type: 'string' }, json: { type: 'boolean', default: false } } });
 const pw = await import('playwright').catch(() => null);
@@ -15,7 +15,7 @@ const ctx = { ...handles, base: `http://127.0.0.1:${server.address().port}`, wea
 const findings = [];
 const failed = [];
 const started = performance.now();
-for (const cell of a.cell ? a.cell.split(',') : Object.keys(CELLS)) {
+for (const cell of a.cell ? a.cell.split(',') : GATE_CELLS) {
   const { device, engine, viewport } = CELLS[cell];
   const browser = await pw[engine].launch();
   const profile = device ? (({ defaultBrowserType, ...rest }) => rest)(pw.devices[device]) : {};

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, engineOf, phoneProfile } from './lib/browser.mjs';
 import { cellsOf } from './lib/journeys.mjs';
-import { CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, held, restsFor, sectionOf, seed, sweep, tally, verdict, walked } from './lib/collision.mjs';
+import { CELLS, GATE_CELLS, PLATFORM, SWEEP_JOURNEYS, fingerprint, held, restsFor, sectionOf, seed, sweep, tally, verdict, walked } from './lib/collision.mjs';
 
 const holds = sectionOf(JSON.parse(readFileSync(new URL('./collision-held.json', import.meta.url), 'utf8')));
 
@@ -16,7 +16,7 @@ if (s) {
     phone: handset && { browser: handset, page: { ...phoneProfile().page, viewport: CELLS.phone.viewport } },
   };
 
-  for (const cell of Object.keys(CELLS)) {
+  for (const cell of GATE_CELLS) {
     const floor = SWEEP_JOURNEYS.filter((j) => cellsOf(j).includes(cell)).length + restsFor(walked('collision'), cell).length;
 
     test(`${cell}: nothing overlaps, no control is pushed off the screen and the page is no wider than the viewport`, async (t) => {
