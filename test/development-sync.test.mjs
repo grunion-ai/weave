@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave } from '../src/engine.js';
@@ -335,18 +336,64 @@ test('DEVELOPMENT.md names the post-merge commit write as a release step', () =>
   assert.match(releasing, /reads the row back/, 'and what it guards');
 });
 
-test('the post-merge commit write appends and never replaces the notes', async () => {
+const releaseRow = (notes) => {
   const calls = [];
+  let description = notes;
   const call = async (path, init = {}) => {
     calls.push({ path, method: init.method ?? 'GET' });
+    if (init.method === 'POST' && path.endsWith('/doc')) description += init.body.doc;
     if (init.method) return {};
-    return { docs: { Description: '## v9.9.9\n\n- the notes\n\nLanded on main as abc1234def.' } };
+    return { docs: { Description: description } };
   };
-  const r = await writeReleaseCommit(call, { id: 'rel-1', name: 'v9.9.9', sha: 'abc1234def' });
+  return { calls, call, read: () => description };
+};
+
+test('the post-merge commit write appends and never replaces the notes', async () => {
+  const row = releaseRow('## v9.9.9\n\n- the notes');
+  const r = await writeReleaseCommit(row.call, { id: 'rel-1', name: 'v9.9.9', sha: 'abc1234def' });
   assert.equal(r.sha, 'abc1234def');
-  assert.deepEqual(calls.map((c) => c.method), ['PATCH', 'POST', 'GET'], 'patch the field, append the line, read it back');
-  assert.ok(!calls.some((c) => c.method === 'PUT'), 'no whole-document replace');
-  assert.ok(calls.some((c) => c.method === 'POST' && c.path.endsWith('/doc')));
+  assert.equal(r.appended, true);
+  assert.deepEqual(row.calls.map((c) => c.method), ['GET', 'PATCH', 'POST', 'GET'], 'read the notes, patch the field, append the line, read it back');
+  assert.ok(!row.calls.some((c) => c.method === 'PUT'), 'no whole-document replace');
+  assert.ok(row.calls.some((c) => c.method === 'POST' && c.path.endsWith('/doc')));
+  assert.match(row.read(), /- the notes\n\nLanded on main as abc1234def\.$/);
+});
+
+test('a second commit write for the same sha patches the field and appends nothing', async () => {
+  const row = releaseRow('## v9.9.9\n\n- the notes\n\nLanded on main as abc1234def.');
+  const r = await writeReleaseCommit(row.call, { id: 'rel-1', name: 'v9.9.9', sha: 'abc1234def' });
+  assert.equal(r.appended, false);
+  assert.deepEqual(row.calls.map((c) => c.method), ['GET', 'PATCH', 'GET'], 'no second append');
+  assert.equal(row.read().match(/Landed on main as abc1234def\./g).length, 1, 'the notes carry the line once');
+});
+
+test('the release workflow writes the published commit onto the Release row', () => {
+  const src = readFileSync(join(ROOT, '.github/workflows/release.yml'), 'utf8');
+  const commit = src.slice(src.indexOf('\n  commit:') + 1).split(/\n(?=  \S)/)[0];
+  const run = commit.split('\n').find((l) => l.includes('release-commit.mjs'));
+  assert.ok(run, 'a job of its own runs the commit write, so no release waits on a hand-run step');
+  assert.match(run, /node scripts\/release-commit\.mjs --from https:\/\/weave\.grunion\.ai\/w\/weave --token-env WEAVE_TRACKER_TOKEN/);
+  assert.doesNotMatch(run, /\$\{\{/, 'no workflow expression is spliced into the command');
+  assert.match(commit, /WEAVE_TRACKER_TOKEN: \$\{\{ secrets\.WEAVE_TRACKER_TOKEN \}\}/, 'the token comes from the Actions secret');
+  assert.match(commit, /if: needs\.publish\.outputs\.state == 'published'/, 'only a release that published writes a commit');
+  assert.match(commit, /ref: \$\{\{ needs\.publish\.outputs\.sha \}\}/, 'the released commit names its own version');
+  for (const delivery of ['image', 'registry']) {
+    const needs = src.slice(src.indexOf(`\n  ${delivery}:`) + 1).split(/\n(?=  \S)/)[0].match(/needs: \[(.+)\]/)[1];
+    assert.ok(!needs.includes('commit'), `${delivery} delivery does not wait on the tracker write`);
+  }
+});
+
+test('the commit write refuses an incomplete command line before it reaches the tracker', () => {
+  const script = join(ROOT, 'scripts/release-commit.mjs');
+  const unreachable = 'http://127.0.0.1:1/w/weave';
+  const run = (args, env = {}) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 120_000 });
+  const bare = run([]);
+  assert.equal(bare.status, 1);
+  assert.match(bare.stderr, /usage: release-commit\.mjs --from <workspace base url> --token-env <var> --release v<version> --sha <merged sha>/);
+  assert.equal(run(['--from', unreachable, '--release', 'v9.9.9']).status, 1, 'a missing sha is a refusal, never a release row left unwritten in silence');
+  const empty = run(['--from', unreachable, '--release', 'v9.9.9', '--sha', 'abc1234def', '--token-env', 'WEAVE_TRACKER_TOKEN_FIXTURE']);
+  assert.equal(empty.status, 1);
+  assert.match(empty.stderr, /--token-env WEAVE_TRACKER_TOKEN_FIXTURE: that variable is empty/, 'a workflow step that lost its secret fails loudly');
 });
 
 test('the post-merge read-back refuses a release row that came back empty', async () => {
