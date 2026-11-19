@@ -743,7 +743,7 @@ export const PROBES = {
   flicker: { seed: 'grid', opens: ['journey', 'rest'], cells: CELLS, themes: ['light'] },
   budgets: { seed: 'grid', opens: ['journey'], cells: CELLS, themes: ['light'] },
   a11y: { seed: 'a11y', opens: ['rest', 'overlay', 'hover', 'drag'], cells: CELLS, themes: THEMES },
-  touch: { seed: 'touch', opens: ['rest', 'overlay'], cells: ['phone'], themes: THEMES },
+  touch: { seeds: ['touch', 'prose'], opens: ['journey', 'rest', 'overlay'], cells: ['phone'], themes: THEMES },
   endings: { seed: 'prose', opens: ['journey', 'rest', 'overlay'], cells: CELLS, themes: ['light'], densities: DENSITIES },
 };
 
@@ -764,7 +764,7 @@ export function plan(probe) {
   const p = PROBES[probe];
   const out = [];
   for (const state of STATES) {
-    if (!p.opens.includes(state.open) || !seedsOf(state).includes(p.seed)) continue;
+    if (!p.opens.includes(state.open) || !(p.seeds ?? [p.seed]).some((seed) => seedsOf(state).includes(seed))) continue;
     for (const cell of cellsOf(state).filter((c) => p.cells.includes(c))) {
       for (const theme of themesOf(state).filter((t) => p.themes.includes(t))) {
         const { hold, platform: holdPlatform } = holdOf(state, probe, cell, process.platform);

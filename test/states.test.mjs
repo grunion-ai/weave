@@ -129,6 +129,7 @@ test('journeys, overlays and the cut-off sweep are filtered views of the catalog
 test('each probe keeps the surfaces it walked before the catalog, and adds the board and list views and the kitchen sink', () => {
   const rests = (probe) => unique(plan(probe).filter((p) => p.state.open === 'rest').map((p) => p.state.name)).sort();
   const overlays = (probe) => unique(plan(probe).filter((p) => p.state.open === 'overlay').map((p) => p.state.name)).sort();
+  const journeys = (probe) => unique(plan(probe).filter((p) => p.state.open === 'journey').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 15);
   assert.equal(SWEEP_JOURNEYS.length, 16);
   assert.equal(OVERLAYS.length, 41);
@@ -136,8 +137,9 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   assert.deepEqual(rests('flicker'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
   assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
-  assert.deepEqual(rests('touch'), ['board-view', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
-  assert.deepEqual(overlays('touch'), ['bug panel', 'date picker', 'density', 'field editor tray', 'filters', 'group', 'icon picker', 'menu', 'multi picker', 'picker sheet', 'range picker', 'search sheet', 'share-page', 'share-row', 'share-table', 'sort']);
+  assert.deepEqual(rests('touch'), ['board-view', 'prose-home', 'prose-row', 'prose-space', 'prose-table', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
+  assert.deepEqual(overlays('touch'), ['bug panel', 'bug-report', 'date picker', 'date-picker', 'density', 'doc-downloads', 'entity-field-editor', 'entity-status', 'field editor tray', 'filters', 'group', 'icon picker', 'menu', 'multi picker', 'nav', 'new-row-sheet', 'phone-row', 'picker sheet', 'prose-table-description', 'range picker', 'range-picker', 'row-actions', 'search', 'search sheet', 'share-page', 'share-row', 'share-table', 'sort', 'table-icon', 'table-tools', 'view']);
+  assert.deepEqual(journeys('touch'), ['activity-panel', 'html-intro-row', 'load-home', 'open-table', 'phone-menu', 'phone-open-row', 'phone-picker', 'phone-search', 'phone-table-sheet', 'scroll-grid', 'type-doc']);
 });
 
 const sinkOf = (weave, handles) => {
@@ -218,6 +220,29 @@ test('the line-ending probe walks every layout at all three densities, on phone 
   for (const probe of ['cutoff', 'flicker', 'budgets', 'a11y', 'touch']) assert.ok(plan(probe).every((p) => p.density === null), `${probe} walks each state once`);
 });
 
+
+test('the touch probe walks every phone-cell state, as the baseline gate does (Issue #1462)', () => {
+  const phone = STATES.filter((st) => cellsOf(st).includes('phone'));
+  const entries = walked('touch');
+  const reached = new Set(entries.map((p) => p.state.name));
+  assert.deepEqual(phone.map((st) => st.name).filter((name) => !reached.has(name)), [],
+    'test/phone-touch-baseline-browser.test.mjs measures every phone-cell state, so a state outside the touch probe is a tap target the scorecard reports as uncovered');
+  assert.deepEqual([...new Set(entries.map((p) => p.cell))], ['phone'], 'the touch probe is a phone probe');
+  for (const st of phone) {
+    for (const theme of themesOf(st).filter((t) => PROBES.touch.themes.includes(t))) {
+      assert.ok(entries.some((p) => p.state.name === st.name && p.theme === theme), `${st.name} is touch-swept in ${theme}`);
+    }
+  }
+});
+
+test('the touch probe names the seeds and opens the baseline gate resolves, so the two cannot drift (Issue #1462)', () => {
+  assert.deepEqual(PROBES.touch.seeds, ['touch', 'prose'], 'the seeds test/phone-touch-baseline-browser.test.mjs boots, in its order');
+  assert.equal(PROBES.touch.seed, undefined, 'the touch probe reaches its states through seeds, not one seed');
+  for (const st of STATES.filter((x) => cellsOf(x).includes('phone'))) {
+    assert.ok(PROBES.touch.seeds.some((seed) => seedsOf(st).includes(seed)), `${st.name} resolves to a seed the gate boots`);
+    assert.ok(PROBES.touch.opens.includes(st.open ?? 'journey'), `the touch probe opens ${st.open ?? 'journey'} states for ${st.name}`);
+  }
+});
 
 test('the phone tool and share overlays enter the touch sweep without a hold (Issue #1427)', () => {
   for (const name of ['density', 'filters', 'sort', 'group', 'share-table', 'share-page', 'share-row']) {
