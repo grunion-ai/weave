@@ -1,2 +1,1 @@
-
 - **The app shells allow page magnification** (Issue #1446): `public/index.html` and `public/404.html` drop `maximum-scale=1`, so a reader who pinches or enlarges text gets it. The 16px floor on phone text controls, which is what actually stops iOS from zooming into a focused field, is unchanged, and the 32 `meta-viewport` entries that the accessibility baseline tolerated are gone.
