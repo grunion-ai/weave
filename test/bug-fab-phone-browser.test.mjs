@@ -85,7 +85,7 @@ if (s) {
         assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
         const b = await fab(page);
         assert.equal(Math.round(b.width), 26);
-        assert.equal(Math.round(b.vw - b.right), 12);
+        assert.equal(Math.round(b.vw - b.right), 18, 'the 8px pane margin, its 8px bar and 2px of air (Issue #1314)');
         assert.equal(Math.round(b.vh - b.bottom), Math.round(b.vw - b.right));
       } finally { await page.close(); }
     });

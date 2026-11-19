@@ -192,6 +192,32 @@ if (s) {
       radius: parseFloat(cs.borderTopRightRadius) || parseFloat(cs.borderBottomRightRadius) || 0,
     };
   }, q);
+  const fabClearance = (page, q) => page.evaluate((sel) => {
+    const pane = document.querySelector(sel);
+    const cs = getComputedStyle(pane);
+    const gutter = pane.offsetWidth - pane.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+    const box = pane.getBoundingClientRect();
+    const fab = document.querySelector('.bug-fab').getBoundingClientRect();
+    return { gutter, trackLeft: box.right - parseFloat(cs.borderRightWidth) - gutter, fabRight: fab.right, fabTop: fab.top, paneBottom: box.bottom };
+  }, q);
+
+  for (const name of ['chromium', 'webkit']) {
+    test(`${name}: the report button sits clear of the rightmost pane's bar, with and without the dock (Issue #1314)`, async () => {
+      const engine = await barsOnEngine(name);
+      assert.ok(engine, `${name} is installed`);
+      for (const [hash, q, opts] of [[`#/table/${big.id}`, '#main', {}], [`#/table/${big.id}?e=${first.id}`, '#dock', { width: 1600, dockWidth: 380 }]]) {
+        const page = await open(hash, { engine, ...opts });
+        if (q === '#dock') await page.waitForSelector('#dock:not([hidden]) .name-edit');
+        await page.mouse.move(1, 1);
+        const m = await fabClearance(page, q);
+        assert.equal(m.gutter, 8, `${q} reserves its 8px bar: ${JSON.stringify(m)}`);
+        assert.ok(m.fabTop < m.paneBottom, `the button overlaps ${q} vertically, so the bar runs behind it: ${JSON.stringify(m)}`);
+        assert.ok(m.fabRight <= m.trackLeft, `the button ends ${m.trackLeft - m.fabRight}px left of the ${q} track, wanted 0 or more: ${JSON.stringify(m)}`);
+        await page.close();
+      }
+    });
+  }
+
   const stripOf = async (page, q, axis) => {
     await page.evaluate(() => document.querySelector('.bug-fab')?.style.setProperty('display', 'none'));
     const box = await page.locator(q).boundingBox();
