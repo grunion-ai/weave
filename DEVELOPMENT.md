@@ -760,12 +760,24 @@ nor a helper it calls reads paint (Issue #667).
 `test/lib/states.mjs` is the one list of app states the runtime probes walk
 (Issue #1119). A state names a route, a layout (`table`, `list`, `board`), an
 open state (`journey`, `rest`, `overlay`, `hover`, `drag`), the seeds it
-renders on, its cells and its themes. `PROBES` says which seed, open states,
-cells and themes each probe measures, and `plan(probe)` is the list it walks:
-the cut-off sweep, the flicker gate, the budgets, the a11y gate and the touch
-gate all read it. `test/lib/journeys.mjs` and `test/lib/overlays.mjs` are
-filtered views of it. A state that names no seed renders on every seed, so a
-surface added that way falls under every probe at once.
+renders on, its cells and its themes. `PROBES` says which open states, cells
+and themes each probe measures, and which seed it boots: one `seed`, or `seeds`
+when a probe reaches states that render on more than one, as the touch probe
+reaches every phone-cell state across the `touch` and `prose` seeds (Issue
+#1462). `plan(probe)` is the list it walks: the cut-off sweep, the flicker
+gate, the budgets, the a11y gate and the touch gate all read it.
+`test/lib/journeys.mjs` and `test/lib/overlays.mjs` are filtered views of it. A
+state that names no seed renders on every seed, so a surface added that way
+falls under every probe at once.
+
+The touch probe is read by two gates, and each takes the part it can drive.
+`test/phone-touch-baseline-browser.test.mjs` measures every phone-cell state,
+walking a journey state to its end before it sweeps, and holds each hit area to
+`test/touch-baseline.json`. `test/phone-touch-targets-browser.test.mjs` opens a
+state by its route on the `touch` seed, so it takes the touch-seeded states
+that open at rest or as an overlay and leaves the journeys to the baseline gate;
+its own case says which states it drops and why, so the split cannot drift into
+a silent gap.
 
 `test/ui-catalog.test.mjs` holds the catalogue to the app. It crawls the route
 list `tools/ui-catalog/run.mjs` harvests and reads the overlay triggers out of

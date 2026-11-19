@@ -4,11 +4,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
-import { HOLD_PLATFORMS, ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, walked } from './lib/states.mjs';
+import { HOLD_PLATFORMS, ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, seedsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 import { MIN, SPAN, SWEEP } from './lib/touch.mjs';
 
 const IPHONE = phoneProfile()?.page ?? null;
+const routed = (entries) => entries.filter((p) => p.state.open !== 'journey' && seedsOf(p.state).includes('touch'));
 const HELD = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'touch-held.json'), 'utf8')).offenders;
 const heldKey = (surface, theme, platform = null) => [surface, theme, platform].filter((p) => p).join(' | ');
 const platformOf = (key) => key.split(' | ')[2];
@@ -119,8 +120,18 @@ if (s) {
     }
   });
 
+  test('this gate drives the touch-seeded states a route opens, and leaves the journeys to the baseline gate (Issue #1462)', () => {
+    const dropped = plan('touch').filter((entry) => !routed([entry]).length).map((entry) => entry.state);
+    assert.ok(dropped.length, 'the touch probe reaches states this gate cannot open by route, so the filter earns its place');
+    for (const state of new Map(dropped.map((st) => [st.name, st])).values()) {
+      assert.ok(state.open === 'journey' || !seedsOf(state).includes('touch'),
+        `${state.name} is dropped here for no reason this gate can state: it opens at ${state.open} on a seed this gate boots, so it belongs in the sweep`);
+    }
+    for (const { state } of routed(plan('touch'))) assert.ok(ROUTES[state.route], `${state.name} names a route this gate can open`);
+  });
+
   for (const [engine, b, profile] of engines) {
-    for (const { state, theme } of walked('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+    for (const { state, theme } of routed(walked('touch')).filter((p) => themesOn(engine).includes(p.theme))) {
       const surface = surfaceOf(state);
       test(`on a phone every control on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #737)`, async () => {
         const { seen, offenders } = await measure(b, profile, theme, surface);
@@ -128,7 +139,7 @@ if (s) {
         assert.deepEqual(offenders, [], `${offenders.length} of ${seen.length} controls on the ${surface.name} miss a ${MIN}px hit area:\n${offenders.join('\n')}`);
       });
     }
-    for (const { state, theme, hold, holdPlatform } of held('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+    for (const { state, theme, hold, holdPlatform } of routed(held('touch')).filter((p) => themesOn(engine).includes(p.theme))) {
       const surface = surfaceOf(state);
       const ledger = HELD[heldKey(surface.name, theme, holdPlatform)];
       test(`on a phone the ${surface.name} misses exactly the ${MIN}px hit areas test/touch-held.json records for Issue #${hold.join(', #')} (${engine}, ${theme}, Issues #1119, #1450)`, async (t) => {
@@ -150,7 +161,7 @@ if (s) {
           `the count ceiling is exceeded: ${fingerprints.length} offenders against the ${ledger.offenders.length} recorded, and a bare offenders.length check passed both`);
       });
     }
-    for (const { state, theme } of plan('touch').filter((p) => themesOn(engine).includes(p.theme))) {
+    for (const { state, theme } of routed(plan('touch')).filter((p) => themesOn(engine).includes(p.theme))) {
       const surface = surfaceOf(state);
       for (const kept of state.kept?.touch ?? []) {
         test(`on a phone every ${kept.sel} on the ${surface.name} keeps a ${MIN}px hit area (${engine}, ${theme}, Issue #${kept.issue})`, async () => {
@@ -222,7 +233,7 @@ if (s) {
     }
   }
 
-  const sinkRow = surfaceOf(walked('touch').concat(held('touch')).find((p) => p.state.name === 'sink-row').state);
+  const sinkRow = surfaceOf(routed(walked('touch')).concat(routed(held('touch'))).find((p) => p.state.name === 'sink-row').state);
   const avatars = { ...sinkRow, name: 'avatar controls on the phone record page', roots: ['#dock .av-control'] };
   for (const [engine, b, profile] of engines) {
     {

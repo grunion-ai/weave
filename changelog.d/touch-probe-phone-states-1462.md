@@ -1,0 +1,1 @@
+- The touch probe now covers every phone-cell state in the catalogue, so the quality scorecard counts the tap-target coverage the phone touch baseline gate has been measuring all along, and a new phone state cannot be added outside it ([[Issue#1462]]).
