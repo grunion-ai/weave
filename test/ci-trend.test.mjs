@@ -4,7 +4,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
 import { TREND } from '../scripts/ci-test.mjs';
-import { SUITES, SUSTAINED, NOTE_LOG, readingOf, readTap, judge, streakOf, noteName, noteSymptom, noteLine, readHistory, trend, fileNote, suiteEnv } from '../scripts/ci-trend.mjs';
+import { SUITES, SUSTAINED, NOTE_LOG, readingOf, readTap, judge, streakOf, noteName, noteSymptom, noteLine, readHistory, trend, fileNote, suiteEnv, realIO } from '../scripts/ci-trend.mjs';
+import { BUDGET, SUITE as EDGE } from '../scripts/edge-probe.mjs';
 
 const result = (pass, n, name) => [`# Subtest: ${name}`, `${pass ? 'ok' : 'not ok'} ${n} - ${name}`, '  ---', '  duration_ms: 9125.25', "  type: 'test'", '  ...'];
 const FEEDBACK = 'load-home|desktop: the action paints its answer before a slow server does, within its feedback budget (Issue \\#1042)';
@@ -45,11 +46,12 @@ const POINT = { commit: 'a74d5bc6e92882819365291a16a28d6abd922956', run: '431470
 const URL_OF_RUN = 'https://github.com/grunion-ai/weave/actions/runs/43147007522';
 const past = (run, value, key = 'open-table|desktop|cls', suite = 'vitals') => ({ run, readings: [{ suite, key, value, budget: 0.01 }] });
 
-function fakeIO({ code = 1, text = CLS_RUN, history = [], note = async () => {} } = {}) {
+function fakeIO({ code = 1, text = CLS_RUN, history = [], note = async () => {}, edge = { readings: [], skipped: [] } } = {}) {
   const io = {
     commit: POINT.commit, run: POINT.run, attempt: POINT.attempt, url: URL_OF_RUN, logs: [], summaries: [], notes: [], alerts: [], points: [],
     now: () => POINT.at,
     suites: async () => ({ code, text }),
+    edge: async () => edge,
     history: () => history,
     write: (point) => io.points.push(point),
     note: async (n) => { io.notes.push(n); return note(n); },
@@ -253,4 +255,40 @@ test('the trend lane reads every suite in TREND, and each of them logs the readi
   for (const [file, suite] of Object.entries(SUITES)) {
     assert.ok(readFileSync(file, 'utf8').includes(`t.diagnostic(\`${suite} `), `${file} logs its ${suite} reading as a test diagnostic`);
   }
+});
+
+const EDGE_READING = (value) => ({ suite: EDGE, key: 'weave.grunion.ai|first-byte', value, budget: BUDGET['first-byte'], runs: [value, value + 2, value + 4] });
+
+test('the edge probe rides in the same series as the suites, with its runs on the summary (Issue #1268)', async () => {
+  const io = fakeIO({ edge: { readings: [EDGE_READING(124)], skipped: [] } });
+  assert.equal(await trend(io), 0);
+  const [point] = io.points;
+  assert.equal(point.readings.length, 7, 'the fresh-connection reading is one point of the run, beside the six suite readings');
+  assert.deepEqual(point.readings.at(-1), EDGE_READING(124));
+  assert.ok(io.summaries.includes(`- edge weave.grunion.ai|first-byte 124 ms (runs 124, 126, 128, budget ${BUDGET['first-byte']} ms)`));
+  assert.ok(!io.logs.some((l) => l.startsWith('::error')), 'a probe that answered is no fault of the lane');
+});
+
+test('a fresh connection over its budget files a trend note of its own (Issue #1268)', async () => {
+  const io = fakeIO({ edge: { readings: [EDGE_READING(510)], skipped: [] } });
+  assert.equal(await trend(io), 0);
+  const edge = io.notes.find((n) => n.name.includes('weave.grunion.ai'));
+  assert.deepEqual(edge, {
+    name: 'Slow: edge weave.grunion.ai|first-byte over its budget on main',
+    symptom: 'Slow',
+    line: `2026-11-12T03:21:28.000Z a74d5bc6e9 read 510 against a budget of ${BUDGET['first-byte']}, a new miss: ${URL_OF_RUN}`,
+    quiet: false,
+  });
+});
+
+test('a host the probe could not reach records nothing, warns, and leaves the lane green (Issue #1268)', async () => {
+  const io = fakeIO({ edge: { readings: [], skipped: ['dev.weave.grunion.ai answered nothing on round 1: getaddrinfo ENOTFOUND'] } });
+  assert.equal(await trend(io), 0);
+  assert.ok(io.logs.includes('::warning::edge probe recorded nothing: dev.weave.grunion.ai answered nothing on round 1: getaddrinfo ENOTFOUND'));
+  assert.equal(io.points[0].readings.length, 6, 'an unreachable host adds no reading to the series');
+  assert.ok(!io.logs.some((l) => l.startsWith('::error')), 'an unreachable public host is not a broken trend lane');
+});
+
+test('the budgets lane probes the live hosts itself (Issue #1268)', () => {
+  assert.equal(typeof realIO({}).edge, 'function');
 });
