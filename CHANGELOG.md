@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.162 (2026-11-19)
+
+- **A gate catches overlapping text, a control pushed off the screen and a page wider than the viewport** (Issue #1458): `test/lib/collision.mjs` compares the glyph and control boxes that share a stacking layer, clipped to their scroll containers, and reports an element cut by the viewport edge or a page whose `scrollWidth` runs past it. The gate walks the state catalog on desktop and phone at zero tolerance: there is no baseline, and `test/collision-held.json` takes an entry only for a finding an Issue row already tracks. `test/collision-probe-browser.test.mjs` proves the probe on the defects the 25 October audit injected, so a quiet gate means a clean page rather than a blind probe. Gates: `test/collision-gate-browser.test.mjs`, `test/collision-core.test.mjs`.
+- **The 320 px phone gets the cut-off, line-ending and collision probes** (Issue #1461): `CELLS` in `test/lib/cutoff.mjs` gains `small-phone`, 320x568 in WebKit, the width where the 25 October audit found two cut-off fingerprints the 390 px cell misses. A cell now names the gate cell whose states it borrows with `like`, so the state catalog needs no second entry per state, and `gate: false` keeps it off the pull request gate, whose two cells and running time are unchanged. The new `Width cells` job of the scheduled `tests` run sweeps every cell the gate leaves out and keeps its findings as an artifact.
+
 ## v0.4.161 (2026-11-19)
 
 - **The report button clears the pane scroll bars** (Issue #1314): the floating button moves from a 12px inset to 18px on both edges, so it no longer covers the last stretch of the rightmost pane's thumb travel. A pane keeps an 8px margin and reserves an 8px bar, and the button now sits 2px clear of both.
