@@ -102,7 +102,7 @@ if (s) {
       const b = await bar(page);
       assert.equal(b.bar, false);
       assert.equal(Math.round(b.fab.width), 26);
-      assert.equal(Math.round(b.vh - b.fab.bottom), 12);
+      assert.equal(Math.round(b.vh - b.fab.bottom), 18, 'the 8px pane margin, its 8px bar and 2px of air (Issue #1314)');
     } finally { await page.close(); }
   });
 }

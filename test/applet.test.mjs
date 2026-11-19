@@ -677,7 +677,7 @@ test('applet: the bug reporter is the desktop one, parts and all', async () => {
     assert.ok(fab.includes(prop), `the desktop FAB is ${prop}`);
     assert.ok(flat.includes(prop.replace(': ', ':')), `and the applet's face matches on ${prop}`);
   }
-  assert.ok(fab.includes('right: 12px'), 'the desktop sits 12px in');
+  assert.ok(fab.includes('right: 18px'), 'the desktop sits 18px in, clear of the pane bar (Issue #1314)');
   assert.match(flat, /\.wv-bug\{[^}]*right:3px[^}]*width:44px/,
     'the applet sits 3px in with a 44pt box — the same face, back on the same margin');
   assert.match(src, /sharedGlobal\('LUCIDE_MOVING'\)\.bug/, 'the same vendored bug the desktop draws, and a missing icon set throws instead of drawing a blank box (Issue #1597)');
