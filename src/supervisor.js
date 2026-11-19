@@ -26,6 +26,34 @@ const GIT = { accept: 'application/x-git-upload-pack-advertisement', 'user-agent
 const UA = { 'user-agent': 'weave' };
 const REF_LINE = /([0-9a-f]{40}) ([^\0\n]+)/;
 const TOKEN_HEADER = 'x-weave-deploy-token';
+const BOOTING_RETRY_SECONDS = 2;
+const BOOTING_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>weave is starting</title>
+<meta http-equiv="refresh" content="${BOOTING_RETRY_SECONDS}">
+<style>
+:root{--ground:#eceff3; --surface:#ffffff; --line:#d9dee6; --ink:#24292e; --body:#374151; --muted:#6b7280;
+  --app:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif}
+@media (prefers-color-scheme: dark){:root{--ground:#0f1115; --surface:#181b21; --line:#2a2f38; --ink:#e0dcd4; --body:#cfd3dd; --muted:#9099ad}}
+body{margin:0;background:var(--ground);color:var(--body);font-family:var(--app);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+main{max-width:440px;margin:10vh auto 0;padding:0 20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px 22px}
+h1{font-size:20px;margin:0 0 8px;color:var(--ink);letter-spacing:-.01em}
+p{margin:0}
+p.sub{margin-top:10px;color:var(--muted);font-size:13.5px}
+</style></head>
+<body><main><div class="card">
+<h1>weave is starting</h1>
+<p>This server is booting. The page reloads itself every couple of seconds.</p>
+<p class="sub">Your workspace file is untouched.</p>
+</div></main>
+</body></html>
+`;
+function bootingAnswer(accept) {
+  return String(accept ?? '').includes('text/html')
+    ? { type: 'text/html; charset=utf-8', body: BOOTING_PAGE }
+    : { type: 'application/json', body: JSON.stringify({ error: 'weave is starting', code: 'unavailable' }) };
+}
 
 export function shaFromRefs(advertisement, ref) {
   for (const line of String(advertisement).split('\n')) {
@@ -322,6 +350,12 @@ export async function startSupervisor({
       : send(502, { error: err.message })));
   }
 
+  function booting(req, res) {
+    const { type, body } = bootingAnswer(req.headers.accept);
+    res.writeHead(503, { 'content-type': type, 'content-length': Buffer.byteLength(body), 'retry-after': String(BOOTING_RETRY_SECONDS), 'cache-control': 'no-store' });
+    res.end(req.method === 'HEAD' ? undefined : body);
+  }
+
   function route(req, res) {
     const w = current;
     if (w.settling && (!READS.has(req.method) || req.url.startsWith('/api/auth/'))) w.queue.push([req, res]);
@@ -329,6 +363,7 @@ export async function startSupervisor({
   }
 
   const server = createServer((req, res) => {
+    if (!current) return booting(req, res);
     if (deployToken && req.url === '/_supervisor/check') return deployHook(req, res);
     route(req, res);
   });
@@ -600,28 +635,34 @@ export async function startSupervisor({
     return swapping;
   }
 
+  await new Promise((r, j) => { server.once('error', j); server.listen(port, host, r); });
   let boot = bootRelease({ releasesDir, imageDir, failed: state.failed, tracking: !!track, commit: state.commit, imageCommit: env.RAILWAY_GIT_COMMIT_SHA });
   let first;
-  for (;;) {
-    first = spawnWorker(boot, { defer: false });
-    try {
-      await waitHealthy(first);
-      break;
-    } catch (err) {
-      first.child.kill('SIGKILL');
-      await first.exited;
-      if (boot.release === 'image') throw err;
-      state.failed[keyOf(boot)] = { at: new Date().toISOString(), reason: `failed at boot: ${err.message}` };
-      save();
-      const next = goodReleases(releasesDir, state.failed)[0] ?? imageRelease(imageDir, env.RAILWAY_GIT_COMMIT_SHA);
-      log.warn(`weave supervise: ${boot.release} failed at boot (${err.message}); serving ${next.release}`);
-      boot = next;
+  try {
+    for (;;) {
+      first = spawnWorker(boot, { defer: false });
+      try {
+        await waitHealthy(first);
+        break;
+      } catch (err) {
+        first.child.kill('SIGKILL');
+        await first.exited;
+        if (boot.release === 'image') throw err;
+        state.failed[keyOf(boot)] = { at: new Date().toISOString(), reason: `failed at boot: ${err.message}` };
+        save();
+        const next = goodReleases(releasesDir, state.failed)[0] ?? imageRelease(imageDir, env.RAILWAY_GIT_COMMIT_SHA);
+        log.warn(`weave supervise: ${boot.release} failed at boot (${err.message}); serving ${next.release}`);
+        boot = next;
+      }
     }
+  } catch (err) {
+    server.close();
+    server.closeAllConnections?.();
+    throw err;
   }
   first.since = new Date().toISOString();
   current = first;
   prune(current.dir);
-  await new Promise((r, j) => { server.once('error', j); server.listen(port, host, r); });
   const timer = interval > 0 ? setInterval(() => check().catch((err) => log.warn(`weave supervise: check failed: ${err.message}`)), interval) : null;
   if (timer) check().catch(() => {});
 

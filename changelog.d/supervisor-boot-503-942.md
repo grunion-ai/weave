@@ -1,0 +1,1 @@
+- **A boot window answers with weave's own 503** (Issue #942): the supervisor opens its port before it spawns the first worker, so a request that arrives while weave is still booting gets a 503 with `Retry-After` from weave, a downtime page for a browser and `{"code":"unavailable"}` for an API client, in place of the host's generic error page on a refused connection.

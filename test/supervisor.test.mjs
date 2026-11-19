@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer as createSocketServer } from 'node:net';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, existsSync, statSync, copyFileSync, writeFileSync, chmodSync, openSync, writeSync, closeSync, createReadStream, createWriteStream } from 'node:fs';
 import { join, relative } from 'node:path';
 import { gzipSync, createGzip } from 'node:zlib';
@@ -1032,6 +1033,68 @@ test('a boot that fails falls back to the newest good release folder before the 
     assert.deepEqual(s.failed, ['9.9.9']);
   } finally {
     await b.sup.close();
+  }
+});
+
+const gatedBin = (version, gate) => `import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
+const s = createServer((q, r) => {
+  r.setHeader('content-type', 'application/json');
+  r.statusCode = 200;
+  r.end(JSON.stringify({ ok: true, name: 'weave', version: ${JSON.stringify(version)} }));
+});
+const open = () => s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: ${JSON.stringify(version)} }));
+const waitForGate = () => (existsSync(${JSON.stringify(gate)}) ? open() : setTimeout(waitForGate, 20));
+waitForGate();
+`;
+
+async function freePort() {
+  const probe = createSocketServer();
+  await new Promise((r) => probe.listen(0, '127.0.0.1', r));
+  const { port } = probe.address();
+  await new Promise((r) => probe.close(r));
+  return port;
+}
+
+test("a request that lands while the first worker boots gets weave's own 503, never a closed port (Issue #942)", async () => {
+  const dataPath = dataDir('boot-window');
+  const releases = join(dataPath, '..', 'releases');
+  const gate = join(dataPath, '..', 'boot-gate');
+  plantRunnable(releases, `v${NEXT}`, NEXT, '2026-10-02T00:00:00.000Z', gatedBin(NEXT, gate));
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const starting = startSupervisor({
+    port, host: '127.0.0.1', dataPath, env: ENV, fetch: fakeGitHub().fetch,
+    interval: 0, healthTimeoutMs: 15_000, watchMs: 0, log: { log() {}, warn() {}, error() {} },
+    onWorkerDied: () => { throw new Error('a worker died under the supervisor'); },
+  });
+  starting.catch(() => {});
+  let sup = null;
+  try {
+    let last = null;
+    const answer = await waitFor(async () => {
+      try { return await fetch(`${base}/api/health`); } catch (err) { last = err; return null; }
+    }, 8000).catch(() => { throw new Error(`nothing answered on the supervisor port while the worker booted: ${last?.message}`); });
+    assert.equal(answer.status, 503);
+    assert.equal(answer.headers.get('retry-after'), '2');
+    assert.match(answer.headers.get('content-type'), /application\/json/);
+    assert.deepEqual(await answer.json(), { error: 'weave is starting', code: 'unavailable' });
+    const page = await fetch(base, { headers: { accept: 'text/html,*/*' } });
+    assert.equal(page.status, 503);
+    assert.match(page.headers.get('content-type'), /text\/html/);
+    assert.equal(page.headers.get('retry-after'), '2');
+    const html = await page.text();
+    assert.match(html, /weave is starting/);
+    assert.match(html, /prefers-color-scheme: dark/);
+    writeFileSync(gate, 'go');
+    sup = await starting;
+    assert.equal(sup.status().release, `v${NEXT}`);
+    const served = await fetch(`${base}/api/health`);
+    assert.equal(served.status, 200);
+    assert.equal((await served.json()).ok, true);
+  } finally {
+    if (sup) await sup.close();
+    else await starting.then((s) => s.close(), () => {});
   }
 });
 
