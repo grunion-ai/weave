@@ -1,3 +1,4 @@
+import { sharedGlobal } from './public-globals.js';
 import '../public/bug-core.js';
 
 export const BUG_CATEGORIES = [
@@ -51,7 +52,7 @@ export function resolveCategories(ids = []) {
 
 export const MAX_EVENTS = 200;
 
-const { redact, shapeEvent } = globalThis.bugCore;
+const { redact, shapeEvent } = sharedGlobal('bugCore');
 export { redact };
 
 const scrubEvent = (ev) => Object.fromEntries(Object.entries(shapeEvent(ev)).map(([k, v]) => [k, typeof v === 'string' ? redact(v) : v]));

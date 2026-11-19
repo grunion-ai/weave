@@ -21,6 +21,7 @@ import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
 import { stripEmptyEmbeds } from './markdown.js';
+import { sharedGlobal } from './public-globals.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
 import { notSaved } from './errors.js';
@@ -39,18 +40,20 @@ import { INTEGRATIONS_DESCRIPTION, INTEGRATION_KEPT, ensureIntegrationColumns, i
 function iconValue(v) {
   const s = String(v ?? '').trim();
   if (!s) return '';
-  const reg = globalThis.weaveIconRegistry, marks = globalThis.weaveMarkIcons;
-  if (reg?.resolve(s) || marks?.has(s)) return s;
+  if (IconRegistry.resolve(s) || MarkIcons.has(s)) return s;
   const near = nearestIcons(s).map((m) => `lucide:${m.name} (${m.category})`);
   throw new WeaveError(`Icon '${s}' is not in the inventory${near.length ? `; nearest: ${near.join(', ')}` : ''}. Search it with weave_vocabulary {section:"icons", query:"<word>"} (CLI: weave vocabulary icons <word>), or use a mark character`, 'invalid');
 }
 
-const Term = globalThis.WeaveTerm;
-const ListCore = globalThis.weaveListCore;
-const ViewPane = globalThis.weaveViewPane;
-const BoardCore = globalThis.weaveBoardCore;
+const IconRegistry = sharedGlobal('weaveIconRegistry');
+const MarkIcons = sharedGlobal('weaveMarkIcons');
+const ChipCore = sharedGlobal('chipCore');
+const Term = sharedGlobal('WeaveTerm');
+const ListCore = sharedGlobal('weaveListCore');
+const ViewPane = sharedGlobal('weaveViewPane');
+const BoardCore = sharedGlobal('weaveBoardCore');
 const LAYOUTS = ['table', 'board'];
-const PhoneRow = globalThis.weavePhoneRow;
+const PhoneRow = sharedGlobal('weavePhoneRow');
 const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workflows: 'workflow', forms: 'form' };
 
 const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
@@ -242,8 +245,9 @@ const ATTACHMENT_LOOK_KEYS = ['preview', 'size', 'fit', 'displayInline'];
 const isBoolType = (t) => t === 'checkbox' || t === 'toggle';
 const COMPUTED_TYPES = ['lookup', 'rollup', 'formula', 'view'];
 const DERIVED_CACHE_CAP = 32;
-export const { STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES } = globalThis.fieldDialogCore;
-export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(globalThis.fieldDialogCore.SYSTEM_SORT).map((s) => [s.name, s.key]));
+const FieldDialogCore = sharedGlobal('fieldDialogCore');
+export const { STATE_CATEGORIES, DEFAULT_WORKFLOW_STATES } = FieldDialogCore;
+export const SYSTEM_SORT_KEYS = Object.fromEntries(Object.values(FieldDialogCore.SYSTEM_SORT).map((s) => [s.name, s.key]));
 const TEXT_OPS = new Set(['contains', 'is-empty', 'not-empty']);
 export const VIEW_SHAPES = ['chip', 'card'];
 export const QUERY_SHAPES = ['full', 'row'];
@@ -339,7 +343,7 @@ const VIEW_DEFAULTS = {
 const VIEW_NAMES = { chip: 'Chip', card: 'Card' };
 const VIEW_EXCLUDED_TYPES = ['document', 'attachments', 'avatar', 'key', 'field', 'view'];
 function plainLines(md, budget = 12) {
-  const { kind, lines, label } = globalThis.WeaveEditorLib.docPreview(md, { lines: budget });
+  const { kind, lines, label } = sharedGlobal('WeaveEditorLib').docPreview(md, { lines: budget });
   if (!kind) return [];
   if (!lines.length) return label ? [label] : [];
   return lines.map((l) => l
@@ -387,7 +391,7 @@ const NUMBER_COSTUME_KEYS = ['format', 'unit', 'currency', 'decimals', 'separato
 const ROLLUP_COSTUME_KEYS = NUMBER_COSTUME_KEYS.filter((k) => k !== 'separator');
 export const NUMBER_DISPLAYS = ['text', 'bar', 'ring', 'heat'];
 const isGraphicDisplay = (d) => d === 'bar' || d === 'ring' || d === 'heat';
-export const CELL_COLORS = globalThis.weaveCellGraphics.COLORS;
+export const CELL_COLORS = sharedGlobal('weaveCellGraphics').COLORS;
 function cellColorValue(color) {
   if (color == null) return 'ink';
   if (!CELL_COLORS.includes(color)) throw new WeaveError(`Invalid color '${color}' (${CELL_COLORS.join(', ')})`, 'invalid');
@@ -401,7 +405,7 @@ const RATING_SCALE_AGGS = ['avg', 'min', 'max', 'median'];
 const ratingValue = (n, max) => Math.min(max, Math.max(0, Math.round(n)));
 const DATE_COSTUME_KEYS = ['grain', 'format', 'time', 'clock', 'zone', 'zoneName', 'pad', 'elapsed'];
 const FORMULA_COSTUME_KEYS = [...new Set([...NUMBER_COSTUME_KEYS, 'style', ...DATE_COSTUME_KEYS.filter((k) => k !== 'elapsed')])];
-const DG = globalThis.weaveDateGrain;
+const DG = sharedGlobal('weaveDateGrain');
 const DEFAULTABLE_TYPES = ['text', 'number', 'rating', 'date', 'daterange', 'checkbox', 'toggle', 'url', 'email', 'select', 'multiselect'];
 export const FIELD_TYPES = [...VALUE_TYPES, ...COMPUTED_TYPES, 'document'];
 const DOC_REVISION_WINDOW_MS = 10 * 60 * 1000;
@@ -521,7 +525,7 @@ export function sourcePath(source, path) {
   return at;
 }
 
-const { HUE_HEX, HUES, hueName } = globalThis.chipCore;
+const { HUE_HEX, HUES, hueName } = ChipCore;
 function hueOf(o, { strict = false, fallback = 'slate' } = {}) {
   for (const authored of [o?.hue, o?.color]) {
     if (authored === undefined || authored === null || String(authored).trim() === '') continue;
@@ -706,7 +710,7 @@ export const ONTOLOGY = {
   ],
 };
 
-const { dressNumber } = globalThis.weaveNumberCore;
+const { dressNumber } = sharedGlobal('weaveNumberCore');
 
 function dressDate(c, iso) { return DG.formatDate(iso, c); }
 
@@ -1903,7 +1907,7 @@ export class Weave {
     const field = Object.values(db.fields).find((f) => f.type === 'avatar' && !f.deletedAt);
     if (!field) return null;
     const name = this.entityName(e);
-    const core = globalThis.chipCore;
+    const core = ChipCore;
     const id = (Array.isArray(e.values[field.id]) ? e.values[field.id] : []).find((x) => e.files.some((m) => m.id === x)) ?? null;
     const kind = db.system === 'users' ? this.#displayValue(db, this.findField(db, 'Kind'), this.#resolve(e, db, this.findField(db, 'Kind'), 0), e) : null;
     return {

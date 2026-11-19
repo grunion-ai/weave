@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
+import '../public/starter-core.js';
+import { sharedGlobal } from './public-globals.js';
 import { WeaveError } from './store.js';
 import { nonNegativeInteger, errorBody } from './errors.js';
 import { Weave, ONTOLOGY, inviteUrl, SYSTEM_SORT_KEYS } from './engine.js';
 import { guided } from './field-hints.js';
 import { leaveWorkspace } from './forms.js';
 import { vocabularyView, FIELD_TYPE_VOCABULARY } from './vocabulary.js';
+
+const Starters = sharedGlobal('WeaveStarters');
+
 
 const truthy = (v) => v === true || ['1', 'true'].includes(String(v ?? ''));
 const list = (v) => (v == null ? undefined : Array.isArray(v) ? v : String(v).split(',').map((s) => s.trim()).filter(Boolean));
@@ -1768,7 +1773,7 @@ export const COMMANDS = [
     http: { method: 'GET', path: '/api/templates' },
     run: (w, a, ctx) => {
       if (ctx?.door !== 'mcp') return w.listTemplates();
-      return a.starter != null ? globalThis.WeaveStarters.forAgent(a.starter) : { templates: w.listTemplates(), starters: globalThis.WeaveStarters.catalog() };
+      return a.starter != null ? Starters.forAgent(a.starter) : { templates: w.listTemplates(), starters: Starters.catalog() };
     },
   },
   {

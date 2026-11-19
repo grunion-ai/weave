@@ -1,3 +1,8 @@
+import '../public/chip-core.js';
+import '../public/icon-registry.js';
+import '../public/field-dialog-core.js';
+import '../public/mark-icons.js';
+import { sharedGlobal } from './public-globals.js';
 export const FIELD_TYPE_VOCABULARY = [
   { type: 'text', renders: 'inline text input', config: ['default'] },
   { type: 'number', renders: 'right-aligned, tabular figures; with a `display` of bar, ring or heat, a small graphic filled to the value\'s share of the `scale` (the column max, or a fixed number) beside the text, drawn in the field\'s `color` (ink, icon or accent)', config: ['format', 'unit', 'currency', 'decimals', 'separator', 'accounting', 'display', 'scale', 'color', 'default'] },
@@ -23,18 +28,16 @@ export const FIELD_TYPE_VOCABULARY = [
   { type: 'view', renders: 'the record as its chip (inline: name, then the state and a few fields behind a caret) or its card (a tile: the #id link, name, state, description preview, a few fields); every table has one of each, minted and hidden', config: ['shape', 'link', 'state', 'description', 'fields'] },
 ];
 
-await import('../public/chip-core.js');
-const RAMP = globalThis.chipCore;
+const RAMP = sharedGlobal('chipCore');
 export const OPTION_COLORS = Object.entries(RAMP.HUE_HEX).map(([name, value]) => {
   const aliases = Object.entries(RAMP.HUE_ALIAS).filter(([, hue]) => hue === name).map(([a]) => a);
   return { value, name, ...(aliases.length ? { aliases } : {}) };
 });
 
-await import('../public/icon-registry.js');
-await import('../public/field-dialog-core.js');
-const REGISTRY = globalThis.weaveIconRegistry;
+const REGISTRY = sharedGlobal('weaveIconRegistry');
 export const ICON_FORM = 'lucide:<name>';
-export const ICONS = globalThis.fieldDialogCore.ICON_INVENTORY;
+const FIELD_DIALOG_CORE = sharedGlobal('fieldDialogCore');
+export const ICONS = FIELD_DIALOG_CORE.ICON_INVENTORY;
 
 const ICON_SYNONYMS = [
   ['building buildings office company factory warehouse city', 'landmark house'],
@@ -48,7 +51,7 @@ const ICON_SYNONYMS = [
   ['graph analytics', 'chart-bar chart-column chart-pie'],
   ['task todo', 'square-check list-checks'],
 ].flatMap(([keys, names]) => keys.split(' ').map((k) => [k, names.split(' ')]));
-const iconCategory = (name) => globalThis.fieldDialogCore.categoryOf(`lucide:${name}`);
+const iconCategory = (name) => FIELD_DIALOG_CORE.categoryOf(`lucide:${name}`);
 const iconWords = (s) => s.split('-').filter((t) => t && !/^\d+$/.test(t));
 const iconQuery = (v) => String(v ?? '').trim().toLowerCase().replace(/^(lucide|iconly):/, '').replace(/[\s_]+/g, '-');
 function editDistance(a, b) {
@@ -104,11 +107,10 @@ export function vocabularyView(section, query) {
   return names.length === 1 ? one(names[0]) : Object.fromEntries(names.map((n) => [n, one(n)]));
 }
 
-export const FORMULA_FUNCTIONS = globalThis.fieldDialogCore.FORMULA_FUNCTIONS;
-export const FORMULA_GROUPS = globalThis.fieldDialogCore.FORMULA_GROUPS;
+export const FORMULA_FUNCTIONS = FIELD_DIALOG_CORE.FORMULA_FUNCTIONS;
+export const FORMULA_GROUPS = FIELD_DIALOG_CORE.FORMULA_GROUPS;
 
-await import('../public/mark-icons.js');
-const MARK_CHARS = Object.keys(globalThis.weaveMarkIcons.MARKS);
+const MARK_CHARS = Object.keys(sharedGlobal('weaveMarkIcons').MARKS);
 
 export const VOCABULARY = {
   fieldTypes: FIELD_TYPE_VOCABULARY,

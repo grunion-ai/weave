@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/grunion-ai/weave",
-      "revision": "44ba838d71a3783a3aa9c385b12fe549ec0484c6"
+      "revision": "9f9b00c10f88b555774ef7acdc8277652c74466b"
     },
     "views": [
       {
@@ -394,6 +394,7 @@
         "src/errors.js: one error contract, each code's HTTP status, MCP code and CLI exit",
         "src/commands.js: one command registry the CLI, MCP tools/list and HTTP routes dispatch from",
         "src/ids.js, src/mark.js, src/workspace-name.js: ids, mark, names",
+        "src/public-globals.js: the one name for each global a public/ classic script sets, and the loud read server modules bind it through",
         "src/applet.js, src/bugreport.js, src/legal.js, src/mail.js, src/mail-send.js: routes, legal pages, invite and trial mail",
         "src/trial-mail.js: the hourly sweep that mails a workspace's architects before its free trial ends",
         "src/billing.js: paid seats read from Clerk Billing, Editors and Architects mirrored into a Clerk organization",

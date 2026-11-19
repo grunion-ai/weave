@@ -680,7 +680,7 @@ test('applet: the bug reporter is the desktop one, parts and all', async () => {
   assert.ok(fab.includes('right: 12px'), 'the desktop sits 12px in');
   assert.match(flat, /\.wv-bug\{[^}]*right:3px[^}]*width:44px/,
     'the applet sits 3px in with a 44pt box — the same face, back on the same margin');
-  assert.match(src, /LUCIDE_MOVING\?\.bug/, 'the same vendored bug the desktop draws — the traced ant retired with the Iconly set');
+  assert.match(src, /sharedGlobal\('LUCIDE_MOVING'\)\.bug/, 'the same vendored bug the desktop draws, and a missing icon set throws instead of drawing a blank box (Issue #1597)');
 });
 
 test('applet: the keyboard is armed on touchend, which iOS always fires', async () => {
