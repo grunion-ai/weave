@@ -26,8 +26,10 @@ const manifest = (over = {}) => ({
 test('a shipped status lands on the matching row by name', () => {
   const w = seedWeaver(new Weave());
   const target = 'No filter-builder UI (filters are API/CLI/MCP only)';
+  const first = syncDevelopment(w, manifest({ issues: [{ name: target, status: 'Open', severity: 'Medium' }] }));
+  assert.equal(first.created, 1);
   assert.equal(findIssue(w, target).fields.Status, 'Open');
-  const r = syncDevelopment(w, manifest({ issues: [{ name: target, status: 'Fixed', severity: 'Low' }] }));
+  const r = syncDevelopment(w, manifest({ generatedAt: '2026-09-01T00:00:00.000Z', issues: [{ name: target, status: 'Fixed', severity: 'Low' }] }));
   assert.equal(r.applied, true);
   assert.equal(r.updated, 1);
   const after = findIssue(w, target);

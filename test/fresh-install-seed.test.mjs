@@ -89,6 +89,8 @@ test('a first serve on an empty data directory seeds no Quality rows, starts no 
     assert.deepEqual(qualityOf(w), { space: false, suite: false, kase: false }, 'a fresh install carries no mirror of weave\'s own test suite');
     assert.equal(w.state.meta.developmentSync, undefined, 'nor a copy of weave\'s own tracker');
     assert.equal(w.listEntities(w.getTable('Development/Release').id).length, 0, 'no release row arrived from the manifest');
+    assert.equal(w.listEntities(w.getTable('Development/Issue').id).length, 0, 'no issue row of weave\'s own history (Issue #1828)');
+    assert.equal(w.listEntities(w.getTable('Development/Feature').id).length, 0, 'nor a roadmap row that stops at v0.3 (Issue #1828)');
     assert.ok(w.findTable('Development/Issue'), 'the Issue table stays, so a bug report on this instance still files');
     assert.ok(w.findTable('Handbook/Guide'), 'the product handbook still ships');
   } finally { close(); }
@@ -129,6 +131,18 @@ test('weave quality sync still builds the mirror on a docs workspace that has no
     const engine = w.query('Suite', { where: [['Name', '=', 'Engine']] }).items[0];
     assert.ok(engine.fields['Case Count'] >= 17, 'the Case Count rollup reads the built mirror');
   } finally { close(); }
+});
+
+test('the seed writes no Issue, Feature or Release row, so a fresh install shows no roadmap of weave\'s own history (Issue #1828)', () => {
+  const w = seedWeaver(new Weave());
+  try {
+    const rows = (qualified) => w.listEntities(w.getTable(qualified).id).map((e) => w.entityName(e));
+    assert.deepEqual(rows('Development/Issue'), [], 'no seeded issue');
+    assert.deepEqual(rows('Development/Feature'), [], 'no seeded feature');
+    assert.deepEqual(rows('Development/Release'), [], 'no seeded release');
+    const milestone = Object.values(w.getTable('Development/Feature').fields).find((f) => f.name === 'Milestone');
+    assert.deepEqual(milestone.config.options.map((o) => o.name ?? o), ['v0.1', 'v0.2', 'v0.3'], 'the Milestone select keeps its options for the sync to widen');
+  } finally { w.store.close?.(); }
 });
 
 function trackerCopy(dir) {
