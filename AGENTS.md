@@ -246,6 +246,15 @@ CLI prints `weave: error [<code>]: <message>` and exits with the code's number.
 `src/errors.js` holds the table; `test/error-contract.test.mjs` holds the three
 doors to it.
 
+**Some codes answer the web door only.** Thirteen more codes name states that
+belong to HTTP, so no MCP tool and no CLI command ever returns one:
+`access-removed`, `bad-gateway`, `billing-off`, `billing-unavailable`,
+`incomplete-upload`, `method-not-allowed`, `plan-required`, `seat-required`,
+`signup_closed`, `signup_limit`, `unauthorized`, `unavailable` and
+`unsupported`. Each one carries the status of the answer that sets it.
+`src/errors.js` lists them as `HTTP_ONLY_CODES`, and every HTTP answer of 400
+or above names one code from one of the two lists (Issue #1640).
+
 **Figures.** `weave_stats` summarises every column of a table in one read:
 sum, avg, median, min, max, p25/p75, stdev and a histogram for numbers; a
 ranked distribution for chips; earliest, latest and span for dates; the space
