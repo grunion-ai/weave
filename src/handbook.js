@@ -1,3 +1,6 @@
+import '../public/icon-registry.js';
+import '../public/field-dialog-core.js';
+import { sharedGlobal } from './public-globals.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { TOOLS, CORE_TOOLS } from './mcp.js';
@@ -331,15 +334,14 @@ function formattingPage() {
   ].join('\n');
 }
 
-await import('../public/icon-registry.js');
-await import('../public/field-dialog-core.js');
-const ICON_REGISTRY = globalThis.weaveIconRegistry;
+const ICON_REGISTRY = sharedGlobal('weaveIconRegistry');
+const FIELD_DIALOG_CORE = sharedGlobal('fieldDialogCore');
 export const ICON_LIBRARY_PAGE = 'Icon library';
 export function iconLibraryPage() {
   const R = ICON_REGISTRY;
   const moving = R.NAMES.filter((n) => R.MOTION[n] > 0);
   const runs = moving.map((n) => R.MOTION[n]);
-  const core = globalThis.fieldDialogCore;
+  const core = FIELD_DIALOG_CORE;
   const groups = core.ICON_CATEGORIES.filter((g) => g.flat.length || g.marks.length);
   const twins = Object.entries(R.MARK_TWINS).map(([ch, n]) => `| \`${ch}\` | \`lucide:${n}\` | :${n}: | ${R.MOTION[n] ? `${R.MOTION[n]} ms` : 'still'} |`);
   const gallery = groups.flatMap((g) => [

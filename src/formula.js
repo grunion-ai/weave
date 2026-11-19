@@ -1,3 +1,6 @@
+import '../public/date-grain.js';
+import { sharedGlobal } from './public-globals.js';
+const DG = sharedGlobal('weaveDateGrain');
 export const MAX_RESULT_CHARS = 65536;
 export const MAX_EXPRESSION_CHARS = 8192;
 export const MAX_EXPRESSION_DEPTH = 100;
@@ -57,9 +60,9 @@ const FUNCS = {
     if (!per) throw new Error(`Unknown date unit '${unit}'`);
     return Math.round(ms / per);
   },
-  year: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.y : d ? new Date(d).getUTCFullYear() : null; },
-  month: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.m : d ? new Date(d).getUTCMonth() + 1 : null; },
-  day: (d) => { const p = d && globalThis.weaveDateGrain?.partsOf(d); return p ? p.d : d ? new Date(d).getUTCDate() : null; },
+  year: (d) => { const p = d && DG.partsOf(d); return p ? p.y : d ? new Date(d).getUTCFullYear() : null; },
+  month: (d) => { const p = d && DG.partsOf(d); return p ? p.m : d ? new Date(d).getUTCMonth() + 1 : null; },
+  day: (d) => { const p = d && DG.partsOf(d); return p ? p.d : d ? new Date(d).getUTCDate() : null; },
   number: (x) => Number(x),
   text: (x) => (x == null ? '' : String(x)),
   sortby: (values, keys) => {

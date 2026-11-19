@@ -114,10 +114,10 @@ test('one stylesheet gives every kind its glyph', () => {
   assert.match(MARKDOWN, /href="\/chip\.css"/, 'the document page links the same sheet');
 });
 
-test('a document still renders when public/ is not in the bundle', () => {
-  const at = MARKDOWN.indexOf('CHIP');
-  assert.ok(at > 0, 'markdown.js reaches the renderer through a nullable binding');
-  assert.match(MARKDOWN, /CHIP\s*\?/, 'and tests it before use, so the Worker bundle still renders');
+test('a document renders through the renderer or not at all', () => {
+  assert.match(MARKDOWN, /^import '\.\.\/public\/chip-view\.js';$/m, 'markdown.js imports the renderer statically, so every bundle carries it');
+  assert.match(MARKDOWN, /const CHIP = sharedGlobal\('weaveChipView'\);/, 'and binds it loudly');
+  assert.ok(!/CHIP\s*\?/.test(MARKDOWN), 'no nullable fallback: the edge adapter that wanted one is gone (Issue #231), and a plain anchor passed every chip assertion while the chip was missing (Issue #1597)');
 });
 
 test('the client builds its chips from the one renderer', () => {

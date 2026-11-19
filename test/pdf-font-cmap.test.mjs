@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tempDir } from './lib/temp.mjs';
@@ -31,7 +31,8 @@ function reorderedFont(original) {
 async function fontPair() {
   const dir = tempDir('weave-pdf-cmap-');
   mkdirSync(join(dir, 'src', 'vendor', 'fonts'), { recursive: true });
-  for (const f of ['pdf.js', 'markdown.js']) cpSync(join(SRC, f), join(dir, 'src', f));
+  for (const f of ['pdf.js', 'markdown.js', 'public-globals.js']) cpSync(join(SRC, f), join(dir, 'src', f));
+  symlinkSync(join(SRC, '..', 'public'), join(dir, 'public'));
   const fontPath = join(dir, 'src', 'vendor', 'fonts', 'DejaVuSans.ttf');
   const original = readFileSync(join(SRC, 'vendor', 'fonts', 'DejaVuSans.ttf'));
   writeFileSync(fontPath, original);

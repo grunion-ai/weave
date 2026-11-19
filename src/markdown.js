@@ -1,17 +1,17 @@
-let ICONS = null, ICON_SVG = null, MARKS = null, CHIP = null;
-try {
-  const here = new URL('.', import.meta.url);
-  for (const f of ['icon-registry.js', 'vendor/lucide-moving.js', 'mark-icons.js', 'chip-core.js', 'view-core.js', 'cell-graphics.js', 'chip-view.js']) {
-    await import(new URL(`../public/${f}`, here).href);
-  }
-  ICONS = globalThis.weaveIconRegistry ?? null;
-  ICON_SVG = globalThis.LUCIDE_MOVING ?? null;
-  MARKS = globalThis.weaveMarkIcons ?? null;
-  CHIP = globalThis.weaveChipView ?? null;
-} catch {}
+import '../public/icon-registry.js';
+import '../public/vendor/lucide-moving.js';
+import '../public/mark-icons.js';
+import '../public/chip-core.js';
+import '../public/view-core.js';
+import '../public/cell-graphics.js';
+import '../public/chip-view.js';
+import { sharedGlobal } from './public-globals.js';
+const ICONS = sharedGlobal('weaveIconRegistry');
+const ICON_SVG = sharedGlobal('LUCIDE_MOVING');
+const MARKS = sharedGlobal('weaveMarkIcons');
+const CHIP = sharedGlobal('weaveChipView');
 const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
 export function inlineIconHtml(token) {
-  if (!ICONS || !ICON_SVG || !MARKS) return null;
   const hit = ICONS.inline(token);
   if (!hit) return null;
   if (hit.name) {
@@ -93,9 +93,7 @@ function renderInline(text, resolveMention) {
               fields: (resolved.fields ?? []).filter((f) => f && f.value != null && f.value !== '').slice(0, 3),
             };
             const title = label ?? (resolved.view ? resolved.name : resolved.label);
-            out += CHIP
-              ? CHIP.chipHtml(v, { kind, href: resolved.href, home: resolved.home, label: title })
-              : `<a class="mention mention-${kind}" href="${escapeHtml(resolved.href)}">${escapeHtml(title)}</a>`;
+            out += CHIP.chipHtml(v, { kind, href: resolved.href, home: resolved.home, label: title });
             i = end + 2;
             continue;
           }

@@ -1,4 +1,5 @@
 import '../public/vendor/lucide-moving.js';
+import { sharedGlobal } from './public-globals.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { renderMarkdown } from './markdown.js';
@@ -510,7 +511,7 @@ const GATE_CSS = `
 .wv-key.flat{background:none; border-color:transparent; font-size:15px; color:var(--muted)}
 `;
 
-const BUG_GLYPH = (globalThis.LUCIDE_MOVING?.bug ?? '<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"></svg>').replace(/ data-mi="[^"]*"/g, '');
+const BUG_GLYPH = sharedGlobal('LUCIDE_MOVING').bug.replace(/ data-mi="[^"]*"/g, '');
 
 const inlineMark = (cls, id, c2, size) => {
   const { defs, body } = markParts({ c1: PALETTE.blue, c2, id });
