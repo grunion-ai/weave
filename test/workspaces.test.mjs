@@ -40,16 +40,16 @@ test('markdown: mermaid fences and raw HTML blocks', () => {
   assert.match(renderMarkdown('```mmd\npie\n```'), /class="mermaid"/);
 });
 
-test('weaver seed: docs, wiki, issues + roadmap, and no mirror of the test suite (Issue #1595)', () => {
+test('weaver seed: docs, wiki, empty Development tables, and no mirror of the test suite (Issues #1595, #1828)', () => {
   const w = seedWeaver(new Weave());
   assert.equal(w.state.meta.name, 'weave');
   const spaces = w.listSpaces().filter((s) => !s.system).map((s) => s.name).sort();
   assert.deepEqual(spaces, ['Development', 'Handbook', 'Showcase', 'Wiki']);
 
-  const shipped = w.query('Feature', { where: [['Status', '=', 'Shipped']] });
-  assert.ok(shipped.total >= 10);
-  const open = w.query('Issue', { where: [['Status', '=', 'Open']] });
-  assert.ok(open.total >= 3);
+  assert.equal(w.query('Feature', {}).total, 0, 'the seed writes no roadmap of weave\'s own history');
+  assert.equal(w.query('Issue', {}).total, 0, 'nor an issue of its own');
+  const status = Object.values(w.getTable('Development/Feature').fields).find((f) => f.name === 'Status');
+  assert.deepEqual(status.config.states.map((st) => st.name), ['Planned', 'Building', 'Shipped'], 'the Feature workflow ships so the sync and a local filing have somewhere to land');
 
   assert.ok(w.search('quickstart').length >= 1);
 });
