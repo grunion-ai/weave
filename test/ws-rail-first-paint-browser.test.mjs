@@ -51,7 +51,7 @@ if (s) {
       const answered = page.waitForResponse(WORKSPACES);
       await hold.release();
       await answered;
-      await page.waitForFunction(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true)))));
       assert.deepEqual(await railOf(page), before, 'the answered rail names the same chips in the same order, so nothing moves');
       assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
       await page.close();
