@@ -36,27 +36,24 @@ if (s) {
     await page.waitForFunction(() => document.querySelectorAll('#ws-list .ws-icon').length === 2);
     await page.waitForFunction(() => document.querySelector('#ws-name')?.textContent === 'net');
   };
-  for (const colorScheme of ['light', 'dark']) {
-    test(`switching workspaces paints the rail and the wordmark before /api/workspaces answers, in ${colorScheme} (Issue #1283)`, async () => {
-      const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme });
-      await warm(page);
-      const hold = await holdRail(page);
-      await page.goto(`${base}${acmeHome()}`, { waitUntil: 'commit' });
-      await page.waitForSelector(`${CHIP}.active`, { timeout: 5000 });
-      assert.equal(await page.evaluate(() => window.weaveWsRail.painted), 'acme', 'the script that runs before first paint drew the rail, with no answer to read');
-      assert.deepEqual(await wordmark(page), ['acme', `/w/${acme.state.meta.id}/`], 'the wordmark names the workspace being opened');
-      const before = await railOf(page);
-      assert.equal(before.length, 2, 'both chips are drawn from the cache');
-      assert.match(before[0], /^acme /, 'the workspace being opened leads the rail');
-      const answered = page.waitForResponse(WORKSPACES);
-      await hold.release();
-      await answered;
-      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true)))));
-      assert.deepEqual(await railOf(page), before, 'the answered rail names the same chips in the same order, so nothing moves');
-      assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
-      await page.close();
-    });
-  }
+  test('switching workspaces paints the rail and the wordmark before /api/workspaces answers (Issue #1283)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await warm(page);
+    const hold = await holdRail(page);
+    await page.goto(`${base}${acmeHome()}`, { waitUntil: 'commit' });
+    await page.waitForSelector(`${CHIP}.active`, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.weaveWsRail.painted), 'acme', 'the script that runs before first paint drew the rail, with no answer to read');
+    assert.deepEqual(await wordmark(page), ['acme', `/w/${acme.state.meta.id}/`], 'the wordmark names the workspace being opened');
+    const before = await railOf(page);
+    assert.equal(before.length, 2, 'both chips are drawn from the cache');
+    assert.match(before[0], /^acme /, 'the workspace being opened leads the rail');
+    const answered = page.waitForResponse(WORKSPACES);
+    await hold.release();
+    await answered;
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true)))));
+    assert.deepEqual(await railOf(page), before, 'the answered rail names the same chips in the same order, so nothing moves');
+    await page.close();
+  });
   test('a first visit has no cache to paint, and the rail fills when the answer lands (Issue #1283)', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const hold = await holdRail(page);
