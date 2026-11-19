@@ -294,45 +294,6 @@ Workspace → spaces → tables → entities. Multiple workspaces share one web 
   });
   w.addField(features, { name: 'Milestone', type: 'select', config: { options: ['v0.1', 'v0.2', 'v0.3'] } });
 
-  const shipped = [
-    ['Core engine: tables, relations, workflows, lookups, rollups, formulas', 'v0.1'],
-    ['Per-entity documents as native MD / HTML / PDF', 'v0.1'],
-    ['Web UI: table, board, list + entity pages', 'v0.1'],
-    ['CLI + MCP server + REST API', 'v0.1'],
-    ['Automations incl. outgoing webhooks; CSV import/export; file attachments', 'v0.1'],
-    ['Rename: databases → tables', 'v0.2'],
-    ['Multiple document fields per entity', 'v0.2'],
-    ['Inline editing of all fields + docs in every view', 'v0.2'],
-    ['Relation map visualizing relations and automations', 'v0.2'],
-    ['Universal ⌘K search with permalinks', 'v0.2'],
-    ['Multi-workspace: uno + weaver with switcher', 'v0.2'],
-  ];
-  for (const [name, ms] of shipped) {
-    const e = w.createEntity(features, { name, values: { Milestone: ms } });
-    w.setState(e.id, 'Status', 'Shipped');
-  }
-  const planned = [
-    ['Hierarchical meta-model: spaces & workspace as tables (agent-native)', 'v0.3'],
-    ['Auto-composed bidirectional schema docs (edit schema as JSON/YAML)', 'v0.3'],
-    ['Workspace-level audit log + agent user accounts & permissions', 'v0.3'],
-    ['Permalink-based [[...]] entity links in markdown', 'v0.3'],
-    ['Attachments field type', 'v0.3'],
-    ['Saved multi-table views with public share links', 'v0.3'],
-    ['UI design system adoption (decision pending)', 'v0.3'],
-  ];
-  for (const [name, ms] of planned) w.createEntity(features, { name, values: { Milestone: ms } });
-
-  const knownIssues = [
-    ['Single-writer: CLI and server must not write one workspace file concurrently', 'Medium', 'Open'],
-    ['No filter-builder UI (filters are API/CLI/MCP only)', 'Medium', 'Open'],
-    ['Board drag-and-drop does not scroll columns horizontally while dragging', 'Low', 'Open'],
-    ['PDF renders non-WinAnsi glyphs (e.g. emoji) as "?"', 'Low', 'Open'],
-  ];
-  for (const [name, sev, st] of knownIssues) {
-    const e = w.createEntity(issues, { name, values: { Severity: sev } });
-    if (st !== 'Open') w.setState(e.id, 'Status', st);
-  }
-
   ensureReleaseTable(w);
 
   seedFieldShowcase(w);
