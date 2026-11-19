@@ -294,7 +294,7 @@ async function buildPagePreviews(c, fromRequest) {
   {
     const shareM = path.match(/^\/view\/([A-Za-z0-9_-]+)$/);
     if (shareM && rx.method === 'GET') {
-      if (!weave.shareByToken(shareM[1])) return { hit: out(404, 'This share link is not (or no longer) valid.') };
+      if (!weave.shareByToken(shareM[1])) return { hit: notFound({ error: 'This share link is not (or no longer) valid', code: 'not-found' }) };
       return { hit: { status: 302, headers: { Location: `${wsPrefix}/s/${shareM[1]}`, 'Cache-Control': 'no-store' }, body: '' } };
     }
   }
@@ -313,7 +313,7 @@ async function buildPagePreviews(c, fromRequest) {
       });
       if (hit) return { hit: hit };
     } catch (err) {
-      const json = errorBody(err, 'error');
+      const json = errorBody(err);
       return { hit: err instanceof WeaveError && err.code === 'not-found' ? notFound(json) : out(statusFor(err), json) };
     }
   }
@@ -1400,7 +1400,7 @@ async function workspaceRoutes(c, fromRequest) {
     return out(200, { name: w.state.meta.name, deletedAt: null });
   }
   if ((m = path.match(/^\/api\/workspaces\/([^/]+)$/)) && rx.method === 'DELETE') {
-    if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces' });
+    if (!hub.remove) return out(400, { error: 'This deployment cannot delete workspaces', code: 'unsupported' });
     const hard = ['1', 'true'].includes(rx.searchParams.get('hard') ?? '');
     if (hard) return out(200, hub.remove(m[1], { hard: true, actor: actorOn(hub.get(m[1])) }));
     const w = hub.remove(m[1], { actor: actorOn(hub.get(m[1])) });
@@ -2251,17 +2251,17 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
 
 
-        return out(404, { error: `No route: ${route}` });
+        return out(404, { error: `No route: ${route}`, code: 'not-found' });
       }
 
       if (serveStatic) {
         const hit = serveStatic(path, rx);
         if (hit) return path === '/' ? stampRecent(hit) : hit;
       }
-      return notFound('Not found');
+      return notFound({ error: 'Not found', code: 'not-found' });
     } catch (err) {
       const status = statusFor(err);
-      const json = errorBody(err, 'internal');
+      const json = errorBody(err);
       if (json.code === 'too-large' && ATTACH_ROUTE.test(path)) json.limit = FILE_MAX_BYTES;
       return status === 404 ? notFound(json) : out(status, json, status === 429 ? { 'Retry-After': '60' } : {});
     }

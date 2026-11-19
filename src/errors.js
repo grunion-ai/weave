@@ -19,6 +19,22 @@ export const ERROR_CONTRACT = Object.freeze({
   internal: { http: 500, mcp: -32603, exit: 70 },
 });
 
+export const HTTP_ONLY_CODES = Object.freeze([
+  'access-removed',
+  'bad-gateway',
+  'billing-off',
+  'billing-unavailable',
+  'incomplete-upload',
+  'method-not-allowed',
+  'plan-required',
+  'seat-required',
+  'signup_closed',
+  'signup_limit',
+  'unauthorized',
+  'unavailable',
+  'unsupported',
+]);
+export const ERROR_CODES = Object.freeze([...Object.keys(ERROR_CONTRACT), ...HTTP_ONLY_CODES].sort());
 export const storageFull = (err) => err?.code === 'ENOSPC' || err?.code === 'SQLITE_FULL' || err?.errcode === 13 || /database or disk is full/.test(String(err?.message ?? ''));
 
 const storageFailure = (err) => err?.code === 'ERR_SQLITE_ERROR' || typeof err?.syscall === 'string';
@@ -32,7 +48,9 @@ const codeOf = (err) => {
 
 export function contractFor(err) {
   const code = codeOf(err);
-  return { code, ...ERROR_CONTRACT[code] };
+  const row = ERROR_CONTRACT[code] ?? {};
+  const fallback = ERROR_CONTRACT['weave-error'];
+  return { code, http: row.http ?? fallback.http, mcp: row.mcp ?? fallback.mcp, exit: row.exit ?? fallback.exit };
 }
 
 export const statusFor = (err) => contractFor(err).http;

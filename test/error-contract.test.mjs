@@ -5,12 +5,27 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError } from '../src/engine.js';
 import { handleMcpMessage } from '../src/mcp.js';
-import { ERROR_CONTRACT, contractFor, errorBody } from '../src/errors.js';
+import { ERROR_CONTRACT, ERROR_CODES, HTTP_ONLY_CODES, contractFor, errorBody } from '../src/errors.js';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
+const SRC = join(ROOT, 'src');
+const srcFiles = () => readdirSync(SRC).filter((n) => n.endsWith('.js'));
+const srcOf = (name) => readFileSync(join(SRC, name), 'utf8');
+
+function argsAfter(src, at) {
+  let i = at, depth = 1;
+  while (i < src.length && depth > 0) {
+    const c = src[i];
+    if ('([{'.includes(c)) depth += 1;
+    else if (')]}'.includes(c)) depth -= 1;
+    i += 1;
+  }
+  return src.slice(at, i - 1);
+}
 
 function seed(w) {
   w.createSpace({ name: 'Ops' });
@@ -90,4 +105,70 @@ test('one failure answers the same message and code on CLI, MCP and HTTP (Featur
       assert.equal(res.result.structuredContent.error, hb.error, `MCP and HTTP agree on the message for ${c.code}`);
     }
   });
+});
+
+test('every code a response body names is in the contract or the HTTP-only list (Issue #1640)', () => {
+  const unlisted = [];
+  const emitted = new Set();
+  for (const file of srcFiles()) {
+    const src = srcOf(file);
+    for (const line of src.split('\n')) {
+      if (!/\berror\b/.test(line)) continue;
+      for (const [, expr] of line.matchAll(/(?<![\w_])code: ([^,}\n]+)/g)) {
+        for (const [, code] of expr.matchAll(/'([\w-]+)'/g)) {
+          emitted.add(code);
+          if (!ERROR_CODES.includes(code)) unlisted.push(`src/${file} answers code '${code}'`);
+        }
+      }
+    }
+  }
+  assert.deepEqual([...new Set(unlisted)].sort(), [], 'add the code to ERROR_CONTRACT when all three doors reach it, else to HTTP_ONLY_CODES');
+  assert.deepEqual(HTTP_ONLY_CODES.filter((c) => !emitted.has(c)), [], 'HTTP_ONLY_CODES names a code no src module answers');
+  assert.deepEqual(HTTP_ONLY_CODES.filter((c) => Object.hasOwn(ERROR_CONTRACT, c)), [], 'a code belongs to one list');
+});
+
+test('an HTTP-only code still answers the MCP and CLI doors (Issue #1640)', () => {
+  const fallback = ERROR_CONTRACT['weave-error'];
+  const c = contractFor(new WeaveError('no', 'method-not-allowed'));
+  assert.equal(c.mcp, fallback.mcp, 'the MCP door never answers rpc undefined');
+  assert.equal(c.exit, fallback.exit, 'the CLI never exits undefined');
+});
+
+test('every 4xx and 5xx JSON body names a code (Issue #1640)', () => {
+  const routes = srcOf('routes.js');
+  const bare = [];
+  for (const m of routes.matchAll(/out\((\d{3}),/g)) {
+    if (Number(m[1]) < 400) continue;
+    const args = argsAfter(routes, m.index + m[0].length);
+    if (!args.trimStart().startsWith('{')) continue;
+    if (/\bcode: /.test(args)) continue;
+    bare.push(`routes.js:${routes.slice(0, m.index).split('\n').length} out(${m[1]}, ...)`);
+  }
+  assert.deepEqual(bare, [], 'an agent branching on code reads undefined from a body that carries none');
+});
+
+test('notFound answers a coded body, so an /api/ path never gets text (Issue #1640)', () => {
+  const routes = srcOf('routes.js');
+  const strings = [...routes.matchAll(/notFound\((['"`])/g)]
+    .map((m) => `routes.js:${routes.slice(0, m.index).split('\n').length}`);
+  assert.deepEqual(strings, [], 'notFound(json) is the body for an /api/ path; a bare string reaches it as text/plain');
+});
+
+test('errorBody takes the error and nothing else (Issue #1640)', () => {
+  const extra = [];
+  for (const file of srcFiles()) {
+    const src = srcOf(file);
+    for (const m of src.matchAll(/errorBody\(/g)) {
+      const args = argsAfter(src, m.index + m[0].length);
+      if (args.includes(',')) extra.push(`src/${file}:${src.slice(0, m.index).split('\n').length} errorBody(${args.trim()})`);
+    }
+  }
+  assert.deepEqual(extra, [], 'errorBody reads one argument; a second is dropped on the floor');
+  assert.equal(errorBody.length, 1);
+});
+
+test('AGENTS.md names every HTTP-only code (Issue #1640)', () => {
+  const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
+  const missing = HTTP_ONLY_CODES.filter((c) => !agents.includes(`\`${c}\``));
+  assert.deepEqual(missing, [], 'an agent reading AGENTS.md must find every code a weave answer can carry');
 });
