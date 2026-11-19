@@ -80,9 +80,11 @@ test('versions are cached per mtime and follow a content change', () => {
 test('every classic boot script is deferred; the file on disk keeps plain URLs', () => {
   const live = INDEX.replace(/<template\b[\s\S]*?<\/template>/g, '');
   const tags = [...live.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
-  const classic = tags.filter((a) => /\bsrc=/.test(a) && !/\/theme-boot\.js/.test(a));
+  const PRE_PAINT = /\/(?:theme-boot|ws-boot)\.js/;
+  const classic = tags.filter((a) => /\bsrc=/.test(a) && !PRE_PAINT.test(a));
   assert.ok(classic.length >= 24, `expected the boot list, saw ${classic.length}`);
   for (const a of classic) assert.match(a, /\bdefer\b/, `<script${a}> blocks the parser`);
-  assert.equal(tags.filter((a) => /\/theme-boot\.js/.test(a)).length, 1, 'the theme is the one script that runs before first paint (Issue #1714)');
+  assert.deepEqual(tags.filter((a) => PRE_PAINT.test(a)).map((a) => /src="([^"?]+)"/.exec(a)[1]), ['/theme-boot.js', '/ws-boot.js'],
+    'the theme (Issue #1714) and the workspace rail (Issue #1283) are the two scripts that run before first paint, each holding state the shell cannot ship');
   assert.doesNotMatch(INDEX, /\?v=/);
 });

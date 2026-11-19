@@ -1561,7 +1561,8 @@ test('workspace links and rename use the workspace id permalink', () => {
   assert.match(home, /\/w\/\$\{updated\.id\}\//, 'a rename lands on the id URL, which the rename cannot break');
   assert.doesNotMatch(home, /\/w\/\$\{updated\.name\}\//, 'never the name URL');
   const rail = fnBody('buildWsRail');
-  assert.match(rail, /wsHref\(w\)/, 'the rail links workspaces through wsHref');
+  const spec = APP.slice(APP.indexOf('const wsSpec = (w) => ({'), APP.indexOf('const servesBareRoot'));
+  assert.match(spec, /wsHref\(w\)/, 'the rail links workspaces through wsHref, for a cached chip and an answered one alike (Issue #1283)');
   assert.match(APP, /const wsHref = \(w\) => \(servesBareRoot\(w\) \? '\/' : w\.host \? `\/api\/auth\/open\/\$\{encodeURIComponent\(w\.name\.toLowerCase\(\)\)\}` : \(w\.url \?\? `\/w\/\$\{w\.id\}\/`\)\)/, 'wsHref hops to a workspace host when it has one, else links by id, unless the workspace serves this host\'s bare root (Issue #1263)');
   assert.match(rail, /w\.id === seg|seg === w\.id|\.id === seg/, 'the current workspace matches by id or name segment');
 });

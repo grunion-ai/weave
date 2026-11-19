@@ -1819,9 +1819,12 @@ async function personalMenu(btn) {
   });
 }
 
-const postLogout = (url) => fetch(url, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
-});
+const postLogout = (url) => {
+  weaveWsRail.forget();
+  return fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin',
+  });
+};
 
 async function signOutOf(prefixes) {
   await Promise.allSettled([...new Set(prefixes)].map((p) => postLogout(`${p}/api/auth/logout`)));
@@ -11507,24 +11510,15 @@ async function buildWsRail() {
       if (weaveWs) pinned.href = wsHref(weaveWs);
       pinned.classList.toggle('active', current === 'weave');
     }
-    const railed = list.filter((w) => w.name !== 'weave');
+    const specs = list.map(wsSpec);
+    const curSpec = cur ? specs.find((sp) => sp.id === cur.id) ?? null : null;
+    const drawn = weaveWsRail.order(specs, curSpec);
+    weaveWsRail.write(drawn);
     listBox.replaceChildren(
-      ...[...railed.filter((w) => w === cur), ...railed.filter((w) => w !== cur)].map((w) => {
-        const expired = `${w.name}: session expired, click to sign in`;
-        const chip = el('a', {
-          class: 'ws-icon' + (w.held ? ' ws-held' : w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`) + (w.name === current ? ' active' : ''),
-          href: w.held ? w.open : wsHref(w),
-          title: w.held ? expired : `${w.name} — ${w.tables} tables, ${w.entities} entities` + (w.name === current ? ' (click for the menu)' : ' (right-click for the menu)'),
-          ...(w.held ? { 'aria-label': expired } : {}),
-        }, w.logo && !w.held
-          ? el('img', { src: `${wsApiPrefix(w)}/workspace/logo`, alt: w.name, onerror: (e) => {
-            const host = e.currentTarget.parentElement;
-            host.classList.add('ws-letter', `hue-${chipCore.hueForName(w.id)}`);
-            host.replaceChildren(w.name.slice(0, 1).toUpperCase());
-            refreshWsMarks();
-          } })
-          : w.name.slice(0, 1).toUpperCase());
-        if (w.held) return chip;
+      ...drawn.filter((sp) => !sp.pinned).map((sp) => {
+        const w = list.find((x) => x.id === sp.id);
+        const chip = weaveWsRail.chipEl(sp, { current: sp === curSpec, afterFallback: refreshWsMarks });
+        if (sp.held) return chip;
         const wsMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -11535,7 +11529,7 @@ async function buildWsRail() {
           menu(items, { ...at, trigger: chip, className: 'ws-ctx', head: kindHead('workspace', w), label: `${w.name} workspace` });
         };
         chip.addEventListener('contextmenu', wsMenu);
-        if (w.name === current) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
+        if (sp === curSpec) chip.addEventListener('click', (e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) wsMenu(e); });
         return chip;
       }));
     refreshWsMarks();
@@ -11543,6 +11537,19 @@ async function buildWsRail() {
   refreshAccountChip();
 }
 
+const wsSpec = (w) => ({
+  id: w.id,
+  name: w.name,
+  held: !!w.held,
+  pinned: w.name === 'weave',
+  bare: servesBareRoot(w),
+  href: w.held ? w.open : wsHref(w),
+  cls: `ws-icon${w.held ? ' ws-held' : w.logo ? '' : ` ws-letter hue-${chipCore.hueForName(w.id)}`}`,
+  fallback: `ws-letter hue-${chipCore.hueForName(w.id)}`,
+  title: w.held ? `${w.name}: session expired, click to sign in` : `${w.name} — ${w.tables} tables, ${w.entities} entities`,
+  logo: w.logo && !w.held ? `${wsApiPrefix(w)}/workspace/logo` : null,
+  letter: w.name.slice(0, 1).toUpperCase(),
+});
 const servesBareRoot = (w) => (w.host ? new URL(w.host).hostname === location.hostname : !!w.default);
 const bareRootWs = (list) => list.find(servesBareRoot);
 const wsHref = (w) => (servesBareRoot(w) ? '/' : w.host ? `/api/auth/open/${encodeURIComponent(w.name.toLowerCase())}` : (w.url ?? `/w/${w.id}/`));

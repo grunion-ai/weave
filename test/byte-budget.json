@@ -311,6 +311,10 @@
     "/workflows-cells.js": {
       "gzip": 807,
       "br": 673
+    },
+    "/ws-boot.js": {
+      "gzip": 1040,
+      "br": 891
     }
   },
   "raised": {
