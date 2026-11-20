@@ -395,4 +395,20 @@ if (s) {
       assert.equal(await page.locator('.row-docked').count(), 1, 'docked beside the table, one click');
     } finally { await ctx.close(); }
   });
+
+  test('the fill handle sits whole inside the rounded corner of the resting cell', async () => {
+    const { ctx, page } = await grid();
+    try {
+      await page.focus(sel(1, 'Note'));
+      const fit = await page.locator(sel(1, 'Note')).evaluate((td) => {
+        const h = td.querySelector('.wv-fill-handle').getBoundingClientRect();
+        const c = td.getBoundingClientRect();
+        const r = parseFloat(getComputedStyle(td).borderBottomRightRadius) || 0;
+        const dx = Math.max(0, h.right - (c.right - r));
+        const dy = Math.max(0, h.bottom - (c.bottom - r));
+        return { inside: h.right <= c.right && h.bottom <= c.bottom && Math.hypot(dx, dy) <= r, r, h: [h.right, h.bottom], c: [c.right, c.bottom] };
+      });
+      assert.ok(fit.inside, `the corner arc clips none of the handle: ${JSON.stringify(fit)}`);
+    } finally { await ctx.close(); }
+  });
 }
