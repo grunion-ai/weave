@@ -61,4 +61,18 @@ if (s) {
       assert.ok(apart(m.fab, m.panel), `the bug button sits outside the Share panel: ${JSON.stringify(m)}`);
     } finally { await page.close(); }
   });
+
+  test('with the View panel open on a desktop, Your menu offers Report a problem and it opens the report panel (Issue #1877)', async () => {
+    const page = await open(1440);
+    try {
+      await page.click('#sidebar .nav-identity-more');
+      assert.equal(await page.locator('.nav-personal-menu .nav-bug-row').count(), 0, 'with the bug button drawn, Your menu does not repeat it');
+      await page.keyboard.press('Escape');
+      await openPane(page);
+      await settle(page);
+      await page.click('#sidebar .nav-identity-more');
+      await page.locator('.nav-personal-menu .nav-bug-row').click();
+      await page.waitForSelector('#bug-panel .bug-note');
+    } finally { await page.close(); }
+  });
 }
