@@ -115,6 +115,10 @@ export const ENV = [
     doc: 'Other origins allowed to frame weave pages, comma separated, each scheme and host: `https://intranet.example.com`. They join `frame-ancestors \'self\'` in the Content Security Policy of every page. Unset, a weave page embedded in another site stays blank; wrong, the browser console names the refused ancestor.',
   },
   {
+    name: 'WEAVE_WORKSPACE_FILE_MAX_MB', section: 'deploy', readBy: '`weave serve`', default: 'unset (no workspace limit)',
+    doc: 'How many megabytes of attachments one workspace may hold on the data volume: `200`. Every workspace in a data directory writes its file blobs to the same `files/` folder, so without a limit one workspace can fill the volume and every other workspace then fails its uploads and its writes. Set, an attach that would take a workspace past the figure is refused with `507` and a message naming what the workspace holds and what it may hold, and `/api/health` carries `fileBytes` and `fileLimitBytes` for the workspace in the request. Unset, weave counts the bytes and refuses nothing. Set it under the size of the volume, with room for the other workspaces and for the databases themselves.',
+  },
+  {
     name: 'WEAVE_INLINE_FILE_TYPES', section: 'deploy', readBy: '`weave serve`', default: 'unset',
     doc: 'Attachment types served in place beside images, PDF and plain text, comma separated: `audio/mpeg,video/mp4`. Every other type downloads. A type listed here still arrives under `nosniff` and a sandbox policy, so a listed HTML type cannot run on the application origin.',
   },

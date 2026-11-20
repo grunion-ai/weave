@@ -37,6 +37,7 @@ COPY . .
 #   WEAVE_ALERT_URL            URL each operator alert is POSTed to as one line   (unset = log only)
 #   WEAVE_ALERT_TOKEN          bearer token for that URL, when the sink needs one   (unset = none)
 #   WEAVE_MAX_ROWS             most rows one API call returns for a named limit   (500)
+#   WEAVE_WORKSPACE_FILE_MAX_MB  megabytes of attachments one workspace may hold on the volume (unset)
 ENV PORT=4400 \
     WEAVE_HOST=0.0.0.0 \
     WEAVE_DATA=/data/workspace.db \
