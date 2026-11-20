@@ -9055,7 +9055,17 @@ const docCodeAuto = new Set();
 
 const docCodeRaw = new Set();
 
-window.addEventListener('scroll', () => {
+const scrollRest = new WeakMap();
+function scrollMoved(target) {
+  const box = target instanceof Element ? target : document.scrollingElement;
+  if (!box) return true;
+  const top = box.scrollTop;
+  if (scrollRest.get(box) === top) return false;
+  scrollRest.set(box, top);
+  return true;
+}
+window.addEventListener('scroll', (e) => {
+  if (!scrollMoved(e.target)) return;
   for (const st of refChipLayers) st.schedule();
   for (const st of docRails) st.schedule();
 }, true);

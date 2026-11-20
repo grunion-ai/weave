@@ -1,0 +1,1 @@
+- **Outline rail at the top of a record** (Issue #1539): an upward gesture on a record page that is already at the top rubber-bands in Safari and fires scroll events that leave the box exactly where it was. The rail now refreshes only when the box moved, so the gesture no longer rewrites the rail's height and scroll position under the reader.
