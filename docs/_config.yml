@@ -1,10 +1,10 @@
 # GitHub Pages configuration for the docs/ site.
 # Only this folder is published; the repo root is not.
-title: "weave: self-hosted work database for people and AI agents"
-tagline: Tables, relations, boards, forms and documents in one SQLite file
+title: "weave: portable work system for people and their agents"
+tagline: Your work system, developed in the open
 description: >-
-  Open-source, self-hosted work database for people and AI agents: connected
-  tables, kanban boards, forms and markdown documents in one SQLite file. MIT.
+  A portable work system you own, developed in the open. Connected records,
+  documents and automations with native MCP, REST and CLI access. MIT.
 theme: jekyll-theme-primer
 plugins:
   - jekyll-seo-tag       # <title>, meta description, Open Graph, JSON-LD

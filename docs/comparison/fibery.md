@@ -1,93 +1,91 @@
-# weave vs Fibery — a self-hosted, open-source alternative
+# weave and Fibery
 
-Of the tools weave is compared to, [Fibery](https://fibery.io) is the closest
-model: connected databases across spaces, documents attached to entities,
-workflow states, lookups and rollups, automations, and a relation graph over the
-whole thing. [weave](https://github.com/grunion-ai/weave) implements that model
-as an MIT-licensed program you run yourself, against a single SQLite file.
+weave is a portable work system you own, developed in the open. Fibery is a
+managed workspace for connected databases, collaborative documents and visual
+planning. Both organize related records and expose programmatic interfaces.
+Their differences concern ownership, operating model and how much work the
+application handles directly on screen.
 
-The [feature parity matrix](../PARITY.md) scores weave against Fibery's core
-work-platform feature set, feature by feature: **85.5%** at last count. Most of
-the gap sits in collaboration (live co-editing, fine-grained permissions,
-connectors) and secondary view types. This page is the narrative version.
+Reviewed November 20, 2026 against weave v0.4.165 source and the linked Fibery
+documentation. This is a capability review, not a comparative performance test.
+The historical [feature checklist](../PARITY.md) yields **85.5%** under its
+own equal-weight scoring rule. That number does not establish current parity,
+compatibility, reliability or fit.
 
-*Fibery's product as described here reflects August 2026, and weave's reflects
-v0.4.109 (2026-10-25). Check fibery.io for current details.*
+## Capability comparison
 
-## Concept mapping
-
-| Fibery | weave | Notes |
+| Area | weave | Fibery |
 | --- | --- | --- |
-| Workspace | Workspace | One `.db` file; a server can host several, switched from the icon rail. |
-| Space | Space | Same idea: a named grouping of databases. |
-| Database (type) | Table | Addressed as `Space/Table`. |
-| Entity | Entity | Per-table public ids — `Task#12` — usable as refs everywhere. |
-| Public id / `Db#n` refs | Same, everywhere | In the UI, API, CLI, documents, and agent tool calls. |
-| Rich-text field | Document field | Markdown is the source of truth, and an entity may carry several. |
-| Entity mentions `[[…]]` | `[[Table#12]]` | Resolved to live links when documents render. |
-| Relations (all four cardinalities) | Relations | Bidirectional, with the inverse field created in one call. |
-| Lookups | Lookups | Through any relation, including onto computed fields. |
-| Formulas | Formulas | Arithmetic, logic, 23 functions, safe parser; no sandboxed scripting. |
-| Workflow / multistate | Workflow field | Categories, default state, transition log. |
-| Rules / automations | Automations | created / field changed / state changed → set field, append doc, comment, webhook. |
-| Comments & activity | Comments & activity | Per entity, including automation-driven changes. |
-| Table / board / list views | Table view with Table and Board layouts | Board draws kanban columns, a picture gallery and swimlanes. |
-| Relation diagram | Relation map | Tables, cardinalities, and the automation layer in one picture. |
-| Whiteboards, Timeline, Calendar, Reports | — | Not built. |
-| Forms | Forms | Public links at `/f/<id>` add one record to one table, with prefill links. |
-| Portals | — | Not built. |
-| Users, permissions, guest access | Accounts and roles | Three roles per workspace and read-only share links for saved views; no per-space permissions or guest seats. |
-| Integrations (Jira, GitHub, Slack…) | Webhooks + REST | Outbound webhooks and a full REST API; no connector catalog. |
-| AI assistant | MCP server | Agent-accessibility instead of built-in AI features. |
+| Ownership | MIT source; local, self-hosted or weave cloud | Proprietary managed service |
+| Agent workflow | Native MCP, REST and CLI; use the agent you already have | Built-in AI and external MCP access |
+| Record structure | Spaces, tables and fields exposed as system records | Connected databases configured through visual and programmatic interfaces |
+| Relations | Ordinary bidirectional relations; multi-target relations can include structure records | Connected database relations; check current documentation for polymorphic support |
+| Documents | Markdown fields on records, addressable as Markdown, HTML or PDF | Collaborative rich text on entities and standalone documents |
+| Planning | Table, list and board layouts, gallery-style cards and relation map | Also timelines, calendars, whiteboards and reports |
+| Automation | Native polling and inbound hooks, schedules, HTTP actions, persisted outbound retries | Rules, buttons, scripts and managed integrations |
+| Capture | Forms with stable keys, URL drafts, HTTP/CLI/MCP submission and retry receipts | Forms and URL prefilling |
+| Custom interfaces | HTML documents, API clients and modification of the source | Supported Custom Apps, including external-agent development |
+| Permissions | Workspace and space roles, private spaces, scoped tokens, share links and credential grants | Richer sharing and access templates for differentiated team access |
+| Search | Text retrieval; semantic retrieval remains proposed | Full-text and semantic search |
+| Recovery | SQLite storage, JSON interchange, backup/restore, undo and document revisions | Managed infrastructure and in-app history |
+| Development | Public source and tests; roadmap and issues in weave | Public roadmap, changelog and community; proprietary implementation |
 
-## Where weave wins
+## weave's fit
 
-- **Self-hosted and yours.** The workspace is a SQLite file on disk. No vendor
-  holds the export button, and there is no per-user bill.
-- **An official CLI.** Fibery has no first-party CLI; weave's covers the whole
-  surface — schema, entities, documents, search, import/export.
-- **An MCP server in the box.** 66 tools including schema design, so an agent
-  can create spaces, tables, relations, and automations, not just records.
-- **Documents as plain URLs.** `/e/Task#12/doc.md`, `.html`, `.pdf` render
-  directly, with Mermaid diagrams in place and a whole-entity export that
-  paginates one page per document.
-- **Runs anywhere, offline, with nothing to install.** No Docker, no database
-  server, no npm install, no build step. Node ≥ 22.16 and `git clone`.
+You already have an agent. weave works natively with it. Its engine serves the
+browser, MCP, REST and CLI, so an existing agent can operate records, documents,
+structure and automation. Fibery also supports external agents; MCP itself is
+not an exclusive capability.
 
-## Where Fibery wins
+A document has a structured home in a record. Multi-target relations extend
+that model to different allowed record types, including tables and spaces.
+They do not have inverse fields, and lookups and rollups do not support them.
+Relationships with properties still need a junction record. See
+[polymorphic relations](../../src/handbook/guides/polymorphic-relations.md).
 
-- **Collaboration.** Per-space permissions, guest access and real-time
-  co-editing. weave has accounts with three roles per workspace, nothing finer,
-  and no live updates on an open page.
-- **View types.** Whiteboards, timeline/Gantt, calendar, and reports/charts —
-  none of which weave has.
-- **Portals** for outside users to browse and work in the tool.
-- **Integrations.** A catalog of two-way syncs versus outbound webhooks you wire
-  yourself.
-- **Scale and support.** A hosted service with an SLA, backups, and a team
-  behind it, versus a young project and your own systemd unit.
+Native listening connects external changes to the same record system, with
+visible rules and failure recovery. The first poll establishes a baseline and
+missing source items do not generate deletion events. Incoming webhooks and
+polling are established patterns, not unique to weave. See
+[automations](../../src/handbook/guides/automations.md).
 
-## Who should switch
+Ownership extends to the runtime. A workspace uses SQLite storage, with
+attachments and secrets handled separately. Source, backup and restore let an
+operator run it independently. The small runtime does not prove faster queries
+or greater scale. HTML documents offer programmable content, but their scripts
+execute on the application origin and require trusted authors.
 
-weave is a reasonable move if you are one person or a small trusted group, your
-Fibery use is mostly connected databases with documents and automations, and you
-want the data local — especially if agents do a meaningful share of the reading
-and writing.
+## Fibery's fit
 
-It is the wrong move if you depend on fine-grained permissions, whiteboards, timelines,
-reports, portals, or two-way integrations. Those are non-goals of a local-first
-tool, not near-term roadmap items.
+Fibery supports more collaborative authoring and visual planning within the
+application. Timelines, reports and whiteboards matter when the team performs
+that work directly on screen. Its Custom Apps provide a supported route to
+custom interfaces, and its managed integrations reduce operator work.
 
-## Migrating
+Standalone documents are optional: a team can use document fields on entities
+in either product. Avoid treating sidebar clutter as an unavoidable Fibery
+property. Access design also deserves a workflow-specific review; credential
+grants in weave are not ordinary field-level permissions.
 
-Fibery exports to CSV per database. Recreate the spaces and tables in weave
-(UI, CLI, or by handing an agent the MCP server and the exported headers), load
-records with `import` / `weave_import_csv`, then rebuild relations, lookups,
-rollups, and formulas on top. Rich-text fields come across as markdown into
-document fields.
+## Choosing and migrating
 
-## See also
+Start with one representative workflow. Test its relations, document formats,
+formula outputs, attachments, access boundaries and automation failures. A CSV
+export does not recreate permissions, formulas, documents or automation.
+Rebuild and verify those deliberately before moving the authoritative workflow.
 
-- [Feature parity matrix](../PARITY.md) — the scored, feature-by-feature version
-- [weave vs Airtable](airtable.md)
-- [weave vs other open-source alternatives](alternatives.md)
+The [product principles](../../PRODUCT.md) describe weave on its own terms,
+including the maintenance commitment and proposed capabilities. The
+[README matrix](../../README.md#how-weave-compares) summarizes current choices.
+
+## Sources
+
+- [weave agent interfaces](../../AGENTS.md#using-weave)
+- [weave forms and retry contract](../../src/handbook/guides/forms.md)
+- [weave access implementation](../../src/access.js)
+- [Fibery documents](https://the.fibery.io/@public/User_Guide/Guide/Documents-85)
+- [Fibery views](https://the.fibery.io/@public/User_Guide/Guide/Views-8)
+- [Fibery AI and external agents](https://the.fibery.io/@public/User_Guide/Guide/AI-in-Fibery-What's-possible-and-where-to-start-489)
+- [Fibery Custom Apps](https://fibery.com/features/custom-apps)
+- [Fibery form prefilling](https://community.fibery.io/t/dec-21-2023-show-rich-text-field-snippet-in-views-all-comments-in-one-right-panel-experimental-set-initial-field-values-via-url-parameter-on-form-view/5571)
+- [Fibery November 19 connector release](https://community.fibery.io/t/november-19-2026-tons-of-mcp-improvements-some-whiteboard-improvements-open-fibery-links-in-the-desktop-app/11667)
