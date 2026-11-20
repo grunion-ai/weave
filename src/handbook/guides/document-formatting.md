@@ -75,7 +75,7 @@ Click into a block and you edit the code itself; the fences and the language sta
 
 ## Diagrams
 
-A `mermaid` or `mmd` fence renders as a diagram — in the editor, and in every export. `.mmd` is a first-class download format beside `.md`, `.html` and `.pdf`.
+A `mermaid` or `mmd` fence renders as a diagram in the editor, and in an export that can reach a weave server for the renderer. `.mmd` is a first-class download format beside `.md`, `.html` and `.pdf`.
 
 Clicking a diagram keeps the drawing on screen. Its source sits behind the same **</>** button, and typing into the block opens the source first, so you never edit text you cannot see.
 
@@ -118,7 +118,10 @@ weave doc get Task#5 --field Spec
 weave doc export Task#5 --format md   --out spec.md
 weave doc export Task#5 --format html --out spec.html
 weave doc export Task#5 --format pdf  --out spec.pdf
+weave doc export Task#5 --format html --origin https://weave.example --out spec.html
 ```
+
+An HTML export carries its own chip stylesheet and favicon, so chips keep their outline in a file emailed to someone outside weave. The diagram and highlighting bundles are 4.6 MB, so they stay on the server: `--origin` points the export at a weave that serves them, and an export without one prints its diagram sources and names the flag in a closing line (Issue #1600).
 
 Or by URL: `/e/<id>/doc/<Field>.md`, `.html`, `.mmd`, `.pdf`. The whole entity downloads as one file from the entity page.
 

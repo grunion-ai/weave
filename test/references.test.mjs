@@ -328,5 +328,6 @@ test('one stylesheet gives every kind its glyph, and both surfaces link it', asy
   }
   assert.ok(!/mention-\w+::before/.test(readFileSync(join(root, 'public/style.css'), 'utf8')),
     'the app stylesheet no longer keeps a second copy');
-  for (const src of [page, app]) assert.match(src, /href="\/chip\.css"/);
+  assert.match(app, /href="\/chip\.css"/);
+  assert.match(page, /CHIP_CSS = readFileSync\(new URL\('\.\.\/public\/chip\.css'/, 'the document page inlines it instead, so an export off the origin keeps its glyphs (Issue #1600)');
 });

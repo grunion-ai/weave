@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import '../public/icon-registry.js';
 import '../public/vendor/lucide-moving.js';
 import '../public/mark-icons.js';
@@ -11,6 +12,9 @@ const ICON_SVG = sharedGlobal('LUCIDE_MOVING');
 const MARKS = sharedGlobal('weaveMarkIcons');
 const CHIP = sharedGlobal('weaveChipView');
 const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
+const CHIP_CSS = readFileSync(new URL('../public/chip.css', import.meta.url), 'utf8');
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(readFileSync(new URL('../public/brand/weave-favicon.svg', import.meta.url), 'utf8'))}`;
+const EXPORT_NOTE = '<p class="wv-export-note">Diagrams and code highlighting are not in this file. Re-export with <code>--origin &lt;weave url&gt;</code> to link them.</p>';
 export function inlineIconHtml(token) {
   const hit = ICONS.inline(token);
   if (!hit) return null;
@@ -337,16 +341,19 @@ export function isHtmlDocument(text) {
   return typeof text === 'string' && /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(text);
 }
 
-export function renderDocumentPage({ title, subtitle = '', markdown, resolveMention = null }) {
+export function renderDocumentPage({ title, subtitle = '', markdown, resolveMention = null, origin = null }) {
   const body = renderMarkdown(markdown, { resolveMention });
+  const diagrams = body.includes('class="mermaid"');
+  const highlighting = body.includes('<pre><code');
+  const asset = (path) => `${origin ?? ''}${path}`;
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<link rel="icon" type="image/svg+xml" href="/brand/weave-favicon.svg">
-<link rel="stylesheet" href="/chip.css">
+<link rel="icon" type="image/svg+xml" href="${FAVICON}">
+<style>${CHIP_CSS}</style>
 <style>
 :root { --fg: #1a1d23; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --bg: #ffffff; --soft: #f6f7f9; --code-bg: #ffffff; }
 @media (prefers-color-scheme: dark) {
@@ -394,6 +401,7 @@ img { display: block; margin: 8px auto; max-width: 60%; }
 iframe.wv-file { display: block; margin: 8px auto; width: 60%; max-width: 60%; aspect-ratio: 4 / 3;
   border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align: center; }
+.wv-export-note { margin: 2.5em 0 0; padding-top: 1em; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 @media print { .pagebreak { page-break-after: always; break-after: page; } .code-copy { display: none; } }
 </style>
 </head>
@@ -402,6 +410,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 <div class="wv-prose">
 ${body}
 </div>
+${!origin && (diagrams || highlighting) ? EXPORT_NOTE : ''}
 <script>
 for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
   const btn = document.createElement('button');
@@ -424,13 +433,13 @@ document.addEventListener('click', (ev) => {
   caret.setAttribute('aria-expanded', String(open));
 });
 </script>
-${body.includes('class="mermaid"') ? `<script src="/vendor/mermaid.min.js" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
+${diagrams && origin ? `<script src="${asset('/vendor/mermaid.min.js')}" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
 ${
-  body.includes('<pre><code') ? `<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github.min.css" media="(prefers-color-scheme: light)">
-<link rel="stylesheet" href="/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
-<script src="/vendor/vditor/dist/js/highlight.js/highlight.min.js"></script>
-<script src="/editor-lib.js"></script>
+  highlighting && origin ? `<link rel="stylesheet" href="${asset('/vendor/vditor/dist/js/highlight.js/styles/github.min.css')}" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="${asset('/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css')}" media="(prefers-color-scheme: dark)">
+<script src="${asset('/vendor/vditor/dist/js/highlight.js/highlight.min.js')}"></script>
+<script src="${asset('/editor-lib.js')}"></script>
 <script>
 const OWNED = /language-(mermaid|mmd|math|graphviz|plantuml|echarts|mindmap|abc|flowchart)\\b/;
 if (window.hljs) for (const code of document.querySelectorAll('pre > code')) {
