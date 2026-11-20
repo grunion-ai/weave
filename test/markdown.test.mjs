@@ -135,6 +135,7 @@ test('with no origin an exported page drops the bundles that would 404 and says 
   assert.doesNotMatch(page, /highlight\.min\.js/);
   assert.doesNotMatch(page, /editor-lib\.js/);
   assert.match(page, /class="wv-export-note"/, 'one line names what is missing and how to get it');
+  assert.match(page, /pre\.mermaid \{ text-align: left; \}/, 'an undrawn diagram reads as the source it is, left aligned, the way the dropped onerror handler left it');
   assert.match(page, /--origin/, 'and names the flag that links them');
 });
 

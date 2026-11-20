@@ -14,7 +14,8 @@ const CHIP = sharedGlobal('weaveChipView');
 const ICON_TOKEN = /^:([a-z0-9][a-z0-9-]*):/;
 const CHIP_CSS = readFileSync(new URL('../public/chip.css', import.meta.url), 'utf8');
 const FAVICON = `data:image/svg+xml,${encodeURIComponent(readFileSync(new URL('../public/brand/weave-favicon.svg', import.meta.url), 'utf8'))}`;
-const EXPORT_NOTE = '<p class="wv-export-note">Diagrams and code highlighting are not in this file. Re-export with <code>--origin &lt;weave url&gt;</code> to link them.</p>';
+const EXPORT_NOTE = `<style>pre.mermaid { text-align: left; }</style>
+<p class="wv-export-note">Diagrams and code highlighting are not in this file. Re-export with <code>--origin &lt;weave url&gt;</code> to link them.</p>`;
 export function inlineIconHtml(token) {
   const hit = ICONS.inline(token);
   if (!hit) return null;
