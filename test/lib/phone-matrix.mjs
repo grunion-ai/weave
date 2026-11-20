@@ -48,6 +48,18 @@ export const topBar = (page, scope) => page.evaluate((scope) => {
   return seen;
 }, scope);
 
+export const relationChipSpacing = (page, sel) => page.evaluate((sel) => {
+  const chip = document.querySelector(sel);
+  if (!chip) return [];
+  const controls = [...chip.querySelectorAll('button, a')].map((n) => ({ n, r: n.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && r.height > 0).sort((a, b) => a.r.left - b.r.left);
+  return controls.slice(1).map(({ n, r }, k) => {
+    const p = controls[k];
+    const d = Math.hypot(r.left + r.width / 2 - (p.r.left + p.r.width / 2), r.top + r.height / 2 - (p.r.top + p.r.height / 2));
+    return { between: `${p.n.title || p.n.textContent.trim() || p.n.className} and ${n.title || n.textContent.trim() || n.className}`, d: Math.round(d) };
+  });
+}, sel);
+
 export function stubKeyboard() {
   const real = window.visualViewport;
   if (!real) return;
