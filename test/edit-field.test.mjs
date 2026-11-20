@@ -70,7 +70,7 @@ test('.wv-edit paints rest, hover and one focus ring, and beats the global focus
   assert.equal(decl(base.body, 'padding'), 'var(--wv-edit-pad)');
   assert.equal(decl(base.body, 'font-size'), 'var(--wv-edit-fs)');
   assert.equal(decl(base.body, 'border'), '1px solid transparent');
-  assert.equal(decl(base.body, 'border-radius'), '8px');
+  assert.equal(decl(base.body, 'border-radius'), 'var(--wv-radius-control)');
   assert.equal(decl(base.body, 'background-color'), 'transparent');
   const hover = all.find((r) => split(r.selector).some((s) => s.startsWith('.wv-edit') && s.endsWith(':hover')));
   assert.ok(hover, 'a .wv-edit hover rule');
@@ -125,7 +125,7 @@ test('one ring token paints the editor and the selected cell, opaque and at leas
   assert.ok(ratio(dark, '#181b21') >= 3, `dark ring ${ratio(dark, '#181b21').toFixed(2)}:1`);
   const cell = all.find((r) => r.selector === '.wv-grid tbody td[tabindex]:focus');
   assert.equal(decl(cell.body, 'box-shadow'), 'inset 0 0 0 2px var(--wv-edit-ring)');
-  assert.equal(decl(cell.body, 'border-radius'), '8px');
+  assert.equal(decl(cell.body, 'border-radius'), 'var(--wv-radius-control)');
 });
 
 test('the view title pulls left only when it leads its row, and the row keeps an 8px gap in both modes (Issue #1030)', () => {

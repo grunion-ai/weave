@@ -241,7 +241,7 @@ by name instead of holding its shard to the job cap (Issue #1817).
 
 ### Ledgers
 
-Fourteen JSON files in `test/` hold what a gate tolerates or expects today, and
+Fifteen JSON files in `test/` hold what a gate tolerates or expects today, and
 each one moves only in the change that earns the move.
 
 | Ledger | Gate | Rule |
@@ -255,6 +255,7 @@ each one moves only in the change that earns the move.
 | `test/feedback-budget.json` | `test/feedback-budget-browser.test.mjs` | Time to the first visible answer, read on the trend lane (Feedback budget) |
 | `test/flicker-fixed.json` | `test/flicker-gate-browser.test.mjs` | Fixed flicker fingerprints that must stay gone (Flicker loop) |
 | `test/onboarding-steps.json` | `test/onboarding-gate-browser.test.mjs` | Pages, sign-ins, consents and clicks per profile. It never goes up, and a run that got shorter lowers it in the same change |
+| `test/radius-baseline.json` | `test/radius-scale.test.mjs` | Raw `border-radius` values per stylesheet that are not a `--wv-radius-*` step, `0`, `inherit` or `50%` (DESIGN.md, Corners). A count above its entry fails, and so does one below it until the entry is lowered (Feature #385) |
 | `test/render-budget.json` | `test/render-budget-browser.test.mjs` | Renders per journey, read on the trend lane (Render budget) |
 | `test/touch-baseline.json` | `test/phone-touch-baseline-browser.test.mjs` | Phone hit areas under 44 px per platform. A recorded one may not shrink, and a new one is held to 44 px (Issue #1712) |
 | `test/touch-held.json` | `test/phone-touch-targets-browser.test.mjs` | Offenders of the held touch states, one entry per hold in `test/lib/states.mjs` (State catalog) |

@@ -45,7 +45,7 @@ if (s) {
           assert.ok(seen.chips.length + (await page.locator(`${scope} .crumb-row .crumb-more`).count()) >= (scope === '#dock' ? 1 : 2), `every crumb shows as a chip or folds into the "…" chip (Feature #377): ${JSON.stringify(seen.chips)}`);
           for (const c of seen.chips) {
             assert.equal(c.height, 36, `${c.text} is ${c.height}px tall`);
-            assert.equal(c.radius, '18px', `${c.text} has an 18px radius`);
+            assert.equal(c.radius, '999px', `${c.text} is a pill (Feature #385)`);
             assert.ok(!transparent(c.fill), `${c.text} has a surface fill`);
             assert.ok(c.icon && c.label, `${c.text} carries an icon and a label`);
           }

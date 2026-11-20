@@ -267,7 +267,7 @@ if (s) {
         }
         for (const q of ['#main', '#dock']) {
           const { radius } = await barOf(page, q);
-          assert.equal(radius, 16, `${q} is the 16px card`);
+          assert.equal(radius, 12, `${q} is the 12px panel (Feature #385)`);
           await scrollPane(page, q, 0);
           const top = await thumbGaps(page, q, 'v');
           assert.ok(top && top.length > 10, `${q} paints a thumb at the top: ${JSON.stringify(top)}`);

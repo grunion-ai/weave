@@ -49,7 +49,7 @@ if (s) {
     near(edit.top, rest.top - 4, `${label} box grows 4px upward`);
     near(edit.height, rest.height + 8, `${label} box gains 8px of height`);
     assert.equal(edit.ring, 2, `${label} draws a 2px ring`);
-    assert.equal(edit.radius, '8px', `${label} is rounded 8px`);
+    assert.equal(edit.radius, '6px', `${label} takes the 6px control radius (Feature #385)`);
     assert.equal(edit.unclipped, true, `${label} shows its whole ring`);
   };
 
