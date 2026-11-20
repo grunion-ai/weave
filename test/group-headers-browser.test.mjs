@@ -33,6 +33,11 @@ if (s) {
     summary: t.querySelector('.group-summary')?.textContent ?? null,
     text: t.textContent,
   })));
+  const firstGroupHead = (page, key) => page.waitForFunction(
+    (want) => document.querySelector('#main tr.group-head')?.dataset.key === want,
+    key,
+    { timeout: 15000 },
+  );
   const statusOf = (key) => {
     const [sev, area] = key.split(' › ');
     const rows = weave.query(issue.id, {}).items.filter((it) => it.fields.Severity === sev && (area == null || it.fields.Area === area));
@@ -98,6 +103,25 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('the reversed view is read only once its own group order is on screen (Issue #1489)', async () => {
+    weave.tableView(`${issue.id}/Standard`, { collapsed: null });
+    const a = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null });
+    const c = view('Reversed', { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], layout: null });
+    const page = await open(a, { height: 3000 });
+    try {
+      await page.click('#main tr.group-head[data-key="Medium"] .group-fold');
+      await page.waitForSelector('#main tr.group-head[data-key="Medium"].shut');
+      await page.route('**/api/tables/**/query', async (route) => {
+        await new Promise((done) => setTimeout(done, 1200));
+        await route.continue();
+      });
+      await page.evaluate((h) => { location.hash = h; }, `#/table/${issue.id}/view/${c.id}`);
+      await page.waitForSelector('#main tr.group-head[data-key="Medium"]');
+      await firstGroupHead(page, 'High');
+      assert.equal(await page.locator('#main tr.group-head.shut').count(), 0, 'no group is collapsed under the reversed order');
+    } finally { await page.close(); }
+  });
+
   test('collapsed groups follow the grouping across views; a different order starts expanded', async () => {
     weave.tableView(`${issue.id}/Standard`, { collapsed: null });
     const a = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null });
@@ -112,7 +136,7 @@ if (s) {
       assert.equal(await page.locator('#main tr.group-head.shut').count(), 1);
       assert.deepEqual(await eventually(() => weave.tableView(`${issue.id}/Triage`).collapsed ?? [], ['Medium']), ['Medium'], 'and the server remembers it for Triage');
       await page.goto(`${base}/#/table/${issue.id}/view/${c.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main tr.group-head[data-key="Medium"]');
+      await firstGroupHead(page, 'High');
       assert.equal(await page.locator('#main tr.group-head.shut').count(), 0, 'a different order starts expanded');
     } finally { await page.close(); }
   });
