@@ -120,6 +120,42 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  test('a scroll that leaves the box where it was reschedules nothing', async () => {
+    const page = await open();
+    try {
+      await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 400, behavior: 'instant' }));
+      await page.waitForFunction(() => document.querySelector('#main').scrollTop >= 395, null, { timeout: 20000 });
+      await page.evaluate(() => document.querySelector('#main').scrollTo({ top: 0, behavior: 'instant' }));
+      await page.waitForFunction(() => document.querySelector('#main').scrollTop === 0, null, { timeout: 20000 });
+      const calls = await page.evaluate(async () => {
+        const real = window.setTimeout;
+        let n = 0;
+        window.setTimeout = (fn, ms, ...rest) => { if (ms === 250 && /refreshDashRail/.test(String(fn))) n++; return real(fn, ms, ...rest); };
+        const frames = (k) => new Promise((done) => {
+          let left = k;
+          const step = () => (--left > 0 ? requestAnimationFrame(step) : done());
+          requestAnimationFrame(step);
+        });
+        try {
+          const main = document.querySelector('#main');
+          main.dispatchEvent(new Event('scroll'));
+          await frames(3);
+          n = 0;
+          for (let i = 0; i < 20; i++) main.dispatchEvent(new Event('scroll'));
+          await frames(3);
+          const held = n;
+          n = 0;
+          main.scrollTo({ top: 400, behavior: 'instant' });
+          for (let i = 0; i < 60 && n === 0; i++) await frames(1);
+          return { held, moved: n, rails: document.querySelectorAll('.doc-rail').length };
+        } finally { window.setTimeout = real; }
+      });
+      assert.ok(calls.rails >= 1, 'the page has a rail to reschedule');
+      assert.equal(calls.held, 0, `a gesture at the top leaves the box where it was, so the rail reads nothing (saw ${calls.held})`);
+      assert.ok(calls.moved >= 1, `a scroll that does move the box still reschedules the rail (saw ${calls.moved})`);
+    } finally { await page.close(); }
+  });
+
   test('a burst of resize events reschedules the rails once per frame', async () => {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1280, height: 700 });
