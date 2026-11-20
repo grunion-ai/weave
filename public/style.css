@@ -420,7 +420,8 @@ a.wv-menu-row, a.wv-menu-row:hover { text-decoration: none; color: var(--tblr-bo
 .wv-grid .wv-cb > .doc-preview { padding-top: 0; padding-bottom: 0; }
 .wv-grid .wv-cb > :is(.doc-preview, .url-dressed) { padding-inline-start: var(--wv-cell-text-x); }
 .wv-grid .wv-cb > .doc-preview { padding-inline-end: var(--wv-cell-text-x); }
-.wv-grid tbody .wv-cb > input.inline-edit { --wv-edit-pad: var(--wv-nudge) var(--wv-cell-text-x); }
+.wv-grid tbody .wv-cb :is(input.inline-edit:not(:focus), input.date-text) { --wv-edit-pad: var(--wv-nudge) var(--wv-cell-text-x); }
+.wv-grid tbody td:not(.sel-cell) > .wv-cb > input.form-check-input { margin-inline-start: var(--wv-space-8); }
 .wv-grid thead th.col-head .col-label { padding-inline-start: var(--wv-space-8); }
 .wv-grid .wv-cb > .text-dressed { padding: var(--wv-nudge) var(--wv-cell-text-x); }
 .wv-grid .wv-cb .k { line-height: var(--wv-grid-chip-line); }

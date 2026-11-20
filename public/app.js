@@ -7109,7 +7109,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       document.body.append(measure);
       const cs = getComputedStyle(td);
       const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
-      valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box));
+      valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box) + 1);
       measure.remove();
     }
     for (const c of cols) {
@@ -8495,7 +8495,10 @@ function dateControl({ value = '', title = '', time = false, format = 'iso', cos
   });
   const fit = () => {
     const w = textWidth(text.value || text.placeholder, text);
-    if (w) text.style.setProperty('--date-fit', `${Math.ceil(w) + 22}px`);
+    if (!w) return;
+    const box = getComputedStyle(text);
+    const inset = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(box[k]) || 0), 0);
+    text.style.setProperty('--date-fit', `${Math.ceil(w + inset) + 12}px`);
   };
   requestAnimationFrame(fit);
   const set = (iso) => { current = iso ?? ''; text.value = show(current); fit(); onChange(current || null); };

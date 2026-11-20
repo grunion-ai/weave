@@ -9,7 +9,9 @@ const s = await launch('grid cell inset', (weave) => {
   weave.addField(issues, { name: 'Summary', type: 'text' });
   weave.addField(issues, { name: 'Link', type: 'url' });
   weave.addField(issues, { name: 'Status', type: 'select', config: { options: ['Open', 'Fixed'] } });
-  weave.createEntity(issues, { name: 'The header shows the id twice', values: { Description: 'Row 1 and row 2 both name it.', Summary: 'Twice', Link: 'https://example.com', Status: 'Open' } });
+  weave.addField(issues, { name: 'Due', type: 'date' });
+  weave.addField(issues, { name: 'Done', type: 'checkbox' });
+  weave.createEntity(issues, { name: 'The header shows the id twice', values: { Description: 'Row 1 and row 2 both name it.', Summary: 'Twice', Link: 'https://example.com', Status: 'Open', Due: '2026-12-01', Done: true } });
 });
 
 if (s) {
@@ -28,7 +30,10 @@ if (s) {
     return heads.map((th) => {
       const name = th.querySelector('.col-label')?.firstChild?.textContent.trim();
       const td = [...row.children].find((c) => c.cellIndex === th.cellIndex);
-      return { name, head: firstText(th) - th.getBoundingClientRect().left, cell: td && firstText(td) - td.getBoundingClientRect().left };
+      const box = td?.querySelector('.wv-cb > input.form-check-input');
+      const date = td?.querySelector('input.date-text');
+      const start = box ? box.getBoundingClientRect().left : date ? date.getBoundingClientRect().left + parseFloat(getComputedStyle(date).paddingLeft) + parseFloat(getComputedStyle(date).borderLeftWidth) : td && firstText(td);
+      return { name, head: firstText(th) - th.getBoundingClientRect().left, cell: start == null ? null : start - td.getBoundingClientRect().left };
     });
   });
 
@@ -41,7 +46,7 @@ if (s) {
         await page.evaluate((d) => document.querySelector('.wv-grid').setAttribute('data-density', d), density);
         const cols = await insets(page);
         const by = Object.fromEntries(cols.map((c) => [c.name, c]));
-        for (const name of ['Name', 'Description', 'Summary', 'Link', 'Status']) {
+        for (const name of ['Name', 'Description', 'Summary', 'Link', 'Status', 'Due', 'Done']) {
           const c = by[name];
           assert.ok(c && c.cell != null, `${name} has a header and a cell: ${JSON.stringify(cols)}`);
           assert.ok(Math.abs(c.cell - c.head) <= 1, `${name}: the cell text starts ${c.cell}px in and its header ${c.head}px in`);
