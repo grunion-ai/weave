@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.163 (2026-11-19)
+
+- **Stranded architecture map citations fail on the pull request that stranded them** (Issue #1548): `test/architecture-map.test.mjs` now reads every `{path, line}` citation in `docs/architecture/weave.architecture.json` against the working tree and names each line that sits past the end of its file by its JSON pointer. Until now only `node scripts/architecture.mjs` read those line numbers, and it runs at release, so a commit that shrank a file stopped the next release instead of reddening its own gate.
+- An HTML document export carries its chip stylesheet and favicon, so a file opened from disk or another host keeps its chips; `weave doc export --format html` now renders chips at all and takes `--origin <url>` for the diagram and highlighting bundles, naming the flag in the page when no origin is known (Issue #1600).
+- A document page served by weave links those bundles exactly as before, and an export that cannot reach them prints its diagram sources left aligned rather than centring them under a drawing that never arrives (Issue #1600).
+- **The phone relation chip spacing read is held by its own case** (Issue #1424): the read that measures the gaps between a chip's controls moved out of the `#1404` case into `relationChipSpacing` in `test/lib/phone-matrix.mjs`, and a case removes the chip between the count and the read and asserts the read answers no pairs. The guard landed with Issue #1425 on 9 November; nothing failed when it was absent, so the intermittent throw under `--test-concurrency=2` could come back unnoticed.
+
 ## v0.4.162 (2026-11-19)
 
 - **A gate catches overlapping text, a control pushed off the screen and a page wider than the viewport** (Issue #1458): `test/lib/collision.mjs` compares the glyph and control boxes that share a stacking layer, clipped to their scroll containers, and reports an element cut by the viewport edge or a page whose `scrollWidth` runs past it. The gate walks the state catalog on desktop and phone at zero tolerance: there is no baseline, and `test/collision-held.json` takes an entry only for a finding an Issue row already tracks. `test/collision-probe-browser.test.mjs` proves the probe on the defects the 25 October audit injected, so a quiet gate means a clean page rather than a blind probe. Gates: `test/collision-gate-browser.test.mjs`, `test/collision-core.test.mjs`.

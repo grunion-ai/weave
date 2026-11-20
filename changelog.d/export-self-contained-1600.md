@@ -1,2 +1,0 @@
-- An HTML document export carries its chip stylesheet and favicon, so a file opened from disk or another host keeps its chips; `weave doc export --format html` now renders chips at all and takes `--origin <url>` for the diagram and highlighting bundles, naming the flag in the page when no origin is known (Issue #1600).
-- A document page served by weave links those bundles exactly as before, and an export that cannot reach them prints its diagram sources left aligned rather than centring them under a drawing that never arrives (Issue #1600).
