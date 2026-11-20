@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
@@ -123,4 +124,70 @@ test('the REST field-upload route sets the avatar', async () => {
     const read = await (await fetch(`${base}/api/entities/${e.id}`)).json();
     assert.ok(read.avatar.file, 'the read names the photo');
   });
+});
+
+test('a streamed avatar lands and its type is sniffed from the bytes on disk (Issue #1857)', async () => {
+  const dir = tempDir('weave-avatar-stream-');
+  const w = new Weave({ path: join(dir, 'ws.db') });
+  w.createSpace({ name: 'CRM' });
+  w.createTable({ space: 'CRM', name: 'Contact' });
+  w.addField('Contact', { name: 'Face', type: 'avatar' });
+  const e = w.createEntity('Contact', { name: 'Ada' });
+  const { Readable } = await import('node:stream');
+  const staged = await w.streamBlob(Readable.from([PNG]), PNG.length);
+  try {
+    w.attachToField(e.id, 'Face', { name: 'face.png', staged });
+    const file = w.getEntity(e.id).files.at(-1);
+    assert.equal(file.size, PNG.length, 'the whole file landed');
+    assert.equal(file.mime, 'image/png', 'the type came from the staged bytes, not from the caller');
+    assert.deepEqual(w.readFile(file.id).bytes, PNG, 'and the blob is the bytes that were streamed');
+  } finally { w.dropStagedBlob(staged.id); }
+});
+
+test('a streamed avatar that is not an image is refused by type (Issue #1857)', async () => {
+  const dir = tempDir('weave-avatar-stream-bad-');
+  const w = new Weave({ path: join(dir, 'ws.db') });
+  w.createSpace({ name: 'CRM' });
+  w.createTable({ space: 'CRM', name: 'Contact' });
+  w.addField('Contact', { name: 'Face', type: 'avatar' });
+  const e = w.createEntity('Contact', { name: 'Ada' });
+  const { Readable } = await import('node:stream');
+  const text = Buffer.from('not a picture');
+  const staged = await w.streamBlob(Readable.from([text]), text.length);
+  try {
+    assert.throws(
+      () => w.attachToField(e.id, 'Face', { name: 'notes.txt', staged }),
+      (err) => err.code === 'unsupported-type' && /PNG, JPEG, GIF or WebP/.test(err.message),
+    );
+    assert.deepEqual(w.getEntity(e.id).files, [], 'nothing landed');
+  } finally { w.dropStagedBlob(staged.id); }
+});
+
+test('an upload grant takes an avatar field and still refuses any other field (Issue #1857)', async () => {
+  const w = fresh();
+  w.addField('Contact', { name: 'Notes', type: 'text' });
+  const e = w.createEntity('Contact', { name: 'Ada' });
+  await withServer(w, async ({ base }) => {
+    const prepare = (field) => fetch(`${base}/api/uploads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity: e.id, field, name: 'face.png', mime: 'image/png', size: PNG.length }),
+    });
+    const ok = await prepare('Face');
+    assert.equal(ok.status, 201, 'the avatar picker can prepare a raw upload');
+    const grant = await ok.json();
+    assert.equal(grant.method, 'PUT');
+    assert.equal(grant.headers['Content-Type'], 'application/octet-stream');
+    const no = await prepare('Notes');
+    assert.equal(no.status, 400);
+    assert.equal((await no.json()).error, 'The destination must be an attachments or avatar field');
+  });
+});
+
+test('the avatar picker in the browser sends no base64 body (Issue #1857)', () => {
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const picker = app.slice(app.indexOf('function avatarUpload('), app.indexOf('function avatarPicker('));
+  assert.match(picker, /streamUpload\(/, 'avatarUpload prepares a grant and PUTs the bytes');
+  assert.doesNotMatch(picker, /fileBase64/, 'and encodes nothing');
+  assert.match(picker, /preview: false/, 'an avatar asks for no preview, so nothing extra is encoded or stored');
 });

@@ -83,13 +83,22 @@ test('a prepared upload carries a preview, and the size limit counts the file it
   } finally { s.stop(); }
 });
 
-test('an avatar field takes its bytes, not a streamed upload (Issue #1428)', async () => {
+test('an avatar field takes a streamed upload too, and only a file field does (Issue #1857, reversing Issue #1428)', async () => {
   const s = await serve();
   try {
-    const refused = await s.prepare({ entity: s.row.id, field: 'Face', name: 'me.png', mime: 'image/png', size: PNG.length });
+    s.w.addField('Task', { name: 'Notes', type: 'text' });
+    const res = await s.prepare({ entity: s.row.id, field: 'Face', name: 'me.png', mime: 'image/png', size: PNG.length });
+    assert.equal(res.status, 201, await res.clone().text());
+    const landed = await s.put(await res.json(), PNG);
+    assert.equal(landed.status, 201, await landed.clone().text());
+    const file = await landed.json();
+    assert.equal(file.size, PNG.length);
+    assert.equal(file.mime, 'image/png', 'the type is sniffed from the staged bytes, not taken from the caller');
+    assert.deepEqual(readFileSync(join(s.dir, 'files', file.id)), PNG);
+    assert.deepEqual(s.w.getEntity(s.row.id).values[s.w.getField('Task', 'Face').id], [file.id], 'the field points at the photo');
+    const refused = await s.prepare({ entity: s.row.id, field: 'Notes', name: 'me.png', mime: 'image/png', size: PNG.length });
     assert.equal(refused.status, 400);
-    assert.match((await refused.json()).error, /attachments field/);
-    assert.throws(() => s.w.attachToField(s.row.id, 'Face', { name: 'me.png', mime: 'image/png', staged: { id: 'x', size: 1 } }), /not through a streamed upload/);
+    assert.match((await refused.json()).error, /attachments or avatar field/);
   } finally { s.stop(); }
 });
 
