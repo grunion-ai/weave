@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, phoneMatrix, eachPhone, atRest, settled } from './lib/browser.mjs';
-import { seedDemo, openRecord, recordCoversScreen, topBar, WIDE } from './lib/phone-matrix.mjs';
+import { seedDemo, openRecord, recordCoversScreen, relationChipSpacing, topBar, WIDE } from './lib/phone-matrix.mjs';
 
 const s = await launch('phone matrix record page', (weave) => seedDemo(weave, { unlinkRows: 12 }));
 
@@ -176,17 +176,7 @@ if (s) {
       await openRecord(page, base, tasks, unlink[i]);
       if (!(await recordCoversScreen(page))) return WIDE;
       const sel = '#dock .fieldrow[data-field="Project"] .k-rel';
-      const spacing = () => page.evaluate((sel) => {
-        const chip = document.querySelector(sel);
-        if (!chip) return [];
-        const controls = [...chip.querySelectorAll('button, a')].map((n) => ({ n, r: n.getBoundingClientRect() }))
-          .filter(({ r }) => r.width > 0 && r.height > 0).sort((a, b) => a.r.left - b.r.left);
-        return controls.slice(1).map(({ n, r }, k) => {
-          const p = controls[k];
-          const d = Math.hypot(r.left + r.width / 2 - (p.r.left + p.r.width / 2), r.top + r.height / 2 - (p.r.top + p.r.height / 2));
-          return { between: `${p.n.title || p.n.textContent.trim() || p.n.className} and ${n.title || n.textContent.trim() || n.className}`, d: Math.round(d) };
-        });
-      }, sel);
+      const spacing = () => relationChipSpacing(page, sel);
       const tight = (await spacing()).filter((g) => g.d < 44);
       if (await page.locator(`${sel} .mention-caret`).count()) {
         await page.tap(`${sel} .mention-caret`);
@@ -200,6 +190,22 @@ if (s) {
       const undo = await page.waitForFunction(() => [...document.querySelectorAll('#wv-toasts .wv-toast-action')].some((b) => /undo/i.test(b.textContent)), null, { timeout: 3000 })
         .then(() => true, () => false);
       assert.ok(undo, 'one tap on the chip x unlinked the project with no Undo toast');
+    });
+  });
+
+  test('the relation chip spacing read answers no pairs when the caret tap has taken the chip out of the dock (Issue #1424)', async (t) => {
+    await eachPhone(t, matrix, async (page, run, i) => {
+      await openRecord(page, base, tasks, unlink[i]);
+      if (!(await recordCoversScreen(page))) return WIDE;
+      const sel = '#dock .fieldrow[data-field="Project"] .k-rel';
+      assert.equal(await page.locator(sel).count(), 1, 'the record opens with one Project chip to measure');
+      assert.ok((await relationChipSpacing(page, sel)).length > 0, 'the read reports the gaps between the chip controls while the chip is there');
+      await page.evaluate((sel) => document.querySelector(sel).remove(), sel);
+      assert.deepEqual(
+        await relationChipSpacing(page, sel),
+        [],
+        'the read threw instead of answering no pairs when the chip left the dock between the count and the read (Issue #1424)',
+      );
     });
   });
 
