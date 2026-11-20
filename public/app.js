@@ -1824,7 +1824,7 @@ async function personalMenu(btn) {
     { label: 'Keyboard shortcuts', hint: '?', icon: 'lucide:circle-question-mark', section: 'settings', run: openKeySheet },
     { label: 'Settings', icon: 'lucide:sliders-horizontal', section: 'settings', className: 'nav-settings-row', run: () => { location.hash = '#/settings'; } },
     ...(globalThis.WeaveConsent ? [{ label: 'Cookies', icon: 'lucide:shield-check', section: 'settings', className: 'nav-cookies-row', run: () => globalThis.WeaveConsent.ask() }] : []),
-    ...(dockCoversScreen.matches ? [{ label: 'Report a problem', icon: 'lucide:bug', section: 'settings', className: 'nav-bug-row', run: () => { $('#app').classList.remove('nav-peek'); openBugPanel(btn); } }] : []),
+    ...(dockCoversScreen.matches || (bugRecorder && !document.querySelector('.bug-fab')?.getClientRects().length) ? [{ label: 'Report a problem', icon: 'lucide:bug', section: 'settings', className: 'nav-bug-row', run: () => { $('#app').classList.remove('nav-peek'); openBugPanel(btn); } }] : []),
     ...(signedIn ? [
       { label: 'Sign out', hint: version, icon: 'lucide:log-out', section: 'organize', title: `Sign out of ${ws}`, run: () => signOutOf([WS_PREFIX]) },
       { label: 'Sign out everywhere', icon: 'lucide:log-out', section: 'organize', run: () => signOutEverywhere(everywhere) },
