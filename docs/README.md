@@ -1,10 +1,12 @@
 # weave documentation
 
-[weave](https://github.com/grunion-ai/weave) is an open-source, self-hosted
-work database for people and AI agents, and an alternative to Airtable, Fibery,
-Notion databases and ClickUp. Start at the
-[project README](https://github.com/grunion-ai/weave#readme), which covers what
-weave is, the quickstart, self-hosting and the FAQ.
+[weave](https://github.com/grunion-ai/weave) is a portable work system you own,
+developed in the open. Connected records, documents and automations share one
+model, with a browser interface and native MCP, REST and CLI access for the
+agent you already use. Start at the [project README](https://github.com/grunion-ai/weave#readme)
+for setup, the feature comparison matrix, deployment choices and limits.
+The [product principles](https://github.com/grunion-ai/weave/blob/main/PRODUCT.md)
+explain its design and continuous-improvement commitment.
 
 ## In this directory
 
@@ -12,9 +14,9 @@ weave is, the quickstart, self-hosting and the FAQ.
 | --- | --- |
 | [Ontology & glossary](ONTOLOGY.md) | The one core kind — workspaces, spaces, tables and rows are all entities — how the levels nest, and the glossary; plus why an entity type is not a field type |
 | [Architecture map](architecture/) | Interactive map of the runtime: adapters, request core, engine, stores, renderers, agent surfaces; every node links to its code at a pinned commit |
-| [Feature parity matrix](PARITY.md) | weave scored against Fibery's core work-platform feature set, feature by feature |
+| [Feature parity matrix](PARITY.md) | Historical feature checklist and its arithmetic score; not a current compatibility or quality rating |
 | [weave vs Airtable](comparison/airtable.md) | Concept mapping, field types, what wins where, how to migrate |
-| [weave vs Fibery](comparison/fibery.md) | The closest model to weave's, and the honest gaps |
+| [weave vs Fibery](comparison/fibery.md) | Dated capability comparison, operating tradeoffs and migration checks |
 | [Open-source alternatives compared](comparison/alternatives.md) | weave against NocoDB, Baserow, Grist, and Teable |
 | [Screenshots](screenshots/) | Table, board, phone, entity documents, docked entity, relation map, search. Regenerate with `node scripts/screenshots.mjs` |
 | [The grid](grid.md) | Which function owns each visible grid behaviour, which pure core holds its logic, and where a change goes |

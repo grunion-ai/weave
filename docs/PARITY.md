@@ -2,6 +2,11 @@
 
 Scope: Fibery's core work-platform feature set, the features a team uses to model and run work. Billing and hosted infrastructure are out of scope and not counted. Re-scored against v0.4.109 on 2026-10-25; `test/docs-drift.test.mjs` recomputes the score from the table, so a row that changes moves the total with it.
 
+This is a dated inventory with equal-weight arithmetic, not a measure of
+current product equivalence, reliability or fitness. Use the
+[README capability matrix](../README.md#how-weave-compares) and
+[product principles](../PRODUCT.md) for current positioning.
+
 Legend: ✅ implemented & tested · 🟡 partial · ❌ not built
 
 ## Structure & schema

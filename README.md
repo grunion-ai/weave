@@ -8,14 +8,14 @@
 <h1 align="center">weave</h1>
 
 <p align="center">
-  <strong>weave is an open-source, self-hosted work database and Airtable alternative. People use the web UI and AI agents use the built-in MCP server, REST API or CLI, on the same tables.</strong>
+  <strong>weave is a portable work system you own, developed in the open. Connected records, documents and automations share one model, with native MCP, REST and CLI access.</strong>
 </p>
 
 <p align="center">
-  It replaces Airtable, Fibery, Notion databases and ClickUp with connected
-  tables, relations, workflows, formulas, rollups, kanban boards, forms and
-  markdown documents on every row. One SQLite file. Zero dependencies. No build
-  step. MIT.
+  You already have an agent. weave works natively with it.
+  Use your agent and the browser on the same work, locally, on your server,
+  or on weave cloud. One Node process, SQLite workspace storage, zero runtime
+  dependencies, no build step. MIT.
 </p>
 
 <p align="center">
@@ -72,15 +72,16 @@ rows (the API calls them entities), and rows link to each other through
 bidirectional relations, with lookups, rollups, formulas, workflow states,
 automations and any number of markdown documents on each row.
 
-It replaces the SaaS your work already lives in: Airtable bases and grids,
-ClickUp tasks and boards, Fibery's connected databases with documents and
-automations, and Notion databases. It runs on your laptop or your own server,
-with no per-seat bill and no vendor holding the export button.
+Documents have a structured home: a record with typed properties and relations.
+Spaces, tables and fields are inspectable system records too. A relation can
+connect different allowed record types, including the spaces and tables that
+organize the work. [The product principles](PRODUCT.md#product-principles)
+explain that model, its limits, and the choices behind it.
 
-weave is built for **people and AI agents as equals**: everything the web UI can
-do, the REST API, the CLI and the built-in **MCP server** can do too, on the
-same engine and the same data file on your disk. A local install needs no
-account and sends no telemetry.
+weave is built for **people and AI agents as equals**. The browser, REST API, CLI
+and built-in **MCP server** share an engine and workspace data. Keep using your
+chosen agent without managing a separate assistant inside each productivity
+tool. A local install needs no account and sends no telemetry.
 
 - **One file per workspace**: a workspace is one SQLite file next to your
   project, served by one Node process on a laptop or a small VPS behind your
@@ -102,6 +103,21 @@ account and sends no telemetry.
   per editing session), browsable and restorable from the page, `weave
   doc-revisions` / `weave doc-restore`, or the `weave_doc_revisions` /
   `weave_doc_restore` MCP tools.
+
+## Developed in the open
+
+Open source. Open tests. Open roadmap. Inspect the [implementation](src/),
+[test suites](test/) and [CI results](https://github.com/grunion-ai/weave/actions).
+The [development workspace](https://weave.grunion.ai/w/weave) holds the roadmap,
+issues and a generated Quality mirror; every weave cloud account can read it.
+
+The project allocates up to **US$15,000 in monthly token budget for continuous
+improvement**. Its maintenance commitment includes multiple daily fixes and
+roadmap developments, token usage reporting for each release, and a full-codebase
+review and refactoring cycle with every new frontier-model release. The budget
+is an allocation ceiling, not measured spend. The
+[maintenance model](PRODUCT.md#continuous-improvement) separates those
+commitments from release evidence and describes the reporting still to establish.
 
 ## Quickstart
 
@@ -196,17 +212,32 @@ Open any record and it docks beside its table, so the entity and the records aro
 
 ## How weave compares
 
-### Against the SaaS it replaces
+### Feature comparison
 
-| | **weave** | Airtable | ClickUp | Fibery |
-| --- | --- | --- | --- | --- |
-| License | MIT, open source | Proprietary | Proprietary | Proprietary |
-| Where the data lives | A `.db` file you own | Vendor cloud | Vendor cloud | Vendor cloud |
-| Pricing | Free to self-host | Per seat, per month | Per seat, per month | Per seat, per month |
-| Row / record caps | Your disk | Plan-tiered | Plan-tiered | Plan-tiered |
-| Agent access | MCP server, REST and CLI, against a file you own | Set by the vendor | Set by the vendor | Set by the vendor |
-| Runs offline | Yes | No | No | No |
-| Telemetry | None | Vendor-defined | Vendor-defined | Vendor-defined |
+Compare the work you need to do and the system you want to operate. These are
+weave's current capabilities and boundaries, not a claim of exclusive features
+or a percentage of another product.
+
+| Capability | What weave provides | What to compare |
+| --- | --- | --- |
+| Your existing agent | Native MCP, REST and CLI over the browser's engine | Agent setup, schema access, permissions and recovery, not just whether a product has a chatbot |
+| Documents with a home | Markdown document fields on typed, related records | Keep a brief, its status and its related work together; live co-editing is not provided |
+| Structure as records | Inspectable system records for spaces, tables and fields | Work with both content and the structure that organizes it |
+| Flexible relations | One field can target several allowed record types, including tables and spaces | Multi-target relations have no inverse fields or lookup/rollup support; relationship properties still need a junction record |
+| Integrated listening | Incoming webhooks, API polling, persisted outbound retries and inspectable failures | Turn external changes into records and actions; first-poll baselines and missing deletion events limit synchronization |
+| Stable capture | Forms with stable keys, aliases, server-filled fields and retry receipts | Submit through browser, HTTP, CLI or MCP without general write access; anonymous intake requires operator enablement |
+| Portable operation | SQLite storage, JSON interchange, backup/restore and MIT source | Operate independently; preserve attachments and keystore material with the appropriate backup |
+| Addressable content | ID-based permalinks; document URLs for Markdown, HTML and PDF | Renames preserve ID-based references; moving hosts needs routing or redirects |
+| Customization | Render HTML documents, build against APIs, or modify the source | HTML-document scripts execute on the application origin; trust their authors |
+| Access control | Workspace roles, private spaces, member roles, space-scoped tokens, share links and separate credential grants | No general field-level account permissions; hidden columns are not access controls |
+| Small runtime | One Node process, no separate database server or build step | Simple deployment shape; comparative speed and large-scale performance remain unmeasured |
+| Open development | Public source and tests, plus a roadmap and issue tracker in weave | Inspect implementation, checks and direction; test code is not a passing test result |
+
+Details: [relations](src/handbook/guides/polymorphic-relations.md),
+[listening and automation](src/handbook/guides/automations.md),
+[forms](src/handbook/guides/forms.md), and [product principles](PRODUCT.md).
+Named-product comparisons remain in the [comparison guides](docs/README.md).
+Semantic search is a proposed capability, not a shipped feature.
 
 ### Against the open-source alternatives
 
@@ -221,7 +252,7 @@ more mature than weave. They differ mainly in what they optimize for:
 | [Grist](https://github.com/gristlabs/grist-core) | Apache-2.0 | Docker or Node | Spreadsheet-grade formulas and data analysis |
 | [Teable](https://github.com/teableio/teable) | AGPL-3.0 (core) | Docker + Postgres | Postgres-native scale with an Airtable UI |
 
-*Licenses and packaging as of August 2026; check each project for current terms.* Pick weave if you want **connected tables plus markdown documents plus an MCP server, with no container, no database server, and no dependency tree**, and one of the others if you need permissions narrower than a workspace role or a mature plugin ecosystem (see [what weave is not](#what-weave-is-not)).
+*Licenses and packaging as of August 2026; check each project for current terms.* Pick weave if you want **connected tables plus markdown documents plus an MCP server, with no container, no database server, and no dependency tree**, and evaluate the others if you need richer access policies or a mature plugin ecosystem (see [what weave is not](#what-weave-is-not)).
 
 ## What's inside
 
@@ -231,10 +262,10 @@ more mature than weave. They differ mainly in what they optimize for:
 | Statistics | `weave stats <table>` (also `weave_stats` and `GET /api/tables/:ref/stats`): every column summarised (five-number summary, stdev and a histogram for numbers, ranked distributions for chips, earliest/latest/span for dates), grouped with `--by`, narrowed with `--where`, cut to one column and its rollups with `--field`. |
 | Views | Every table view takes a layout: table, list or board. Board draws kanban columns or a picture gallery with small, medium or large covers and adds swimlanes from a second group level; drag a card to another column or lane to change its field, with Undo. Pick two to four cards to Compare them side by side, or drop a picture on a card to set its cover. The View pane beside the table holds filters, sort (three keys), group (five levels, with subtotals) and saved views, and `weave_query` can name a saved view. Entity pages dock beside the table or open full page, and the relation map draws the schema with its automations. Inline editing everywhere. |
 | Documents | Every doc is a native URL: `.md`, `.mmd`, `.html`, `.pdf`. Mermaid diagrams, raw HTML and math render in place; `[[Table#12]]` mentions resolve to links. Whole-entity export paginates one page per document. Math is KaTeX only (`$…$` / `$$…$$`, vendored + offline); the other fence engines Vditor knows (graphviz, echarts, plantuml, mindmap, abc, flowchart) are deliberately not vendored, so those fences stay plain code blocks. |
-| Automations | Triggers (created / field changed / state changed) → set field, append doc, add comment, outgoing webhook. |
+| Automations | Record creation, field/state changes, schedules, polled-source changes and inbound webhooks trigger field/document/comment writes, row upserts, HTTP calls and external runs. Outbound retries persist across restarts; failures are inspectable and replayable. See the [automation guide](src/handbook/guides/automations.md). |
 | Search | Universal ⌘K across workspaces with copyable permalinks, matching names, text values, documents and comments. |
 | Storage | One workspace = one `.db` file (WAL, row-level writes, crash-safe). Legacy JSON workspaces migrate automatically; `exportJSON`/`importJSON` remain the human-readable interchange. CLI, server, and MCP can run concurrently. |
-| Forms | A form lets someone without write access add one row to one table, as themselves, from a page at `/f/<id>` that takes prefilled values from its URL. Build it in the form editor or with `weave form create`, `update` and `config`; submissions arrive through the page, `weave form submit` or `weave_form_submit` over MCP. Submitting needs an observer account unless the operator sets `WEAVE_ANONYMOUS_FORMS=1`. Prefill links (`/t/<table>/new?Field=value`) open a table's New row form with fields set. |
+| Forms | Constrained intake through `/f/<id>`, HTTP JSON or standard form bodies, CLI and MCP. Stable input keys and aliases survive label changes; hidden fields are server-filled. Persisted idempotency receipts protect retries for 24 hours. URL prefilling opens a draft; a POST or Send creates the record. Anonymous intake needs `WEAVE_ANONYMOUS_FORMS=1`. See [forms](src/handbook/guides/forms.md) for admission, rate limits and receipt capacity. |
 | Sharing | A share link (a `wvs_` token) opens one row, table, space, saved view or the whole workspace at read, edit or manage access, public or for signed-in accounts only. Architects mint, renew and revoke links. Each lasts thirty days unless renewed, and none reaches the schema or anything outside its scope. |
 | Templates | Forty-two starter templates in thirteen categories at setup, searchable by the tool they resemble ("asana", "jira"). **Use template** copies a template space, such as the CRM or Money space in the docs workspace, into your workspace. |
 | Phone | Below 720 px, menus, pickers and the Group popover open as bottom sheets and touch targets are 44 px. Search and + float at the bottom, and the New row sheet stays open for the next row. Board columns snap at 85% of the screen width, and a 250 ms hold lifts a card. |
@@ -350,7 +381,8 @@ Stated plainly, so you can rule it out fast:
   three roles in a workspace: an observer reads and comments, an editor writes
   records, an architect also changes structure, accounts and keys. An architect can
   mint a share link that opens one record, table, space or saved view to whoever
-  holds it, but no rule narrows an account's own role to one space, record or field.
+  holds it. Private spaces, member roles and space-scoped tokens narrow access
+  by space. Ordinary fields do not have separate read permissions.
 - **Auth is off until you turn it on.** Agents carry `wv_` tokens and people
   sign in through one OpenID Connect provider, but only after
   `weave workspace require-auth`. Until then, anyone who reaches the port can do
@@ -461,8 +493,10 @@ anyone else can reach a hosted install, put a door in front of it (see
 [Self-hosting](#self-hosting)) and run `require-auth`. Every page and API route
 then refuses a caller without a `wv_` token or a signed-in session.
 
-Roles stop at the workspace. An observer reads and comments, an editor writes
-records, and an architect changes structure, accounts and keys.
+Workspace roles set the starting access: an observer reads and comments, an
+editor writes records, and an architect changes structure, accounts and keys.
+Private spaces, per-space member roles and space-scoped tokens further control
+access. Credential grants protect secret values separately from ordinary fields.
 
 A document of kind `html` renders on the application's origin, so script an
 editor places in one runs for whoever opens it. We are reviewing that

@@ -1,37 +1,51 @@
 # weave soul
 
-Read this before writing copy about weave: the README, docs pages, release notes, the website, posts, decks or UI strings. Every line below is copied or closely paraphrased from the file named after it.
+Read this before writing copy about weave. PRODUCT.md owns the purpose and
+principles; README.md presents them to new users. This file guides the voice.
 
 ## Purpose
 
-"Weave provides connected tables, documents, workflows, and an MCP interface over the same workspace data." (`PRODUCT.md`)
+"weave is a portable work system you own, developed in the open." (`PRODUCT.md`)
 
 ## Audience
 
-Two readers, as equals: "People and agents use Weave to organize related records in workspaces" (`PRODUCT.md`), and weave is built "for people and AI agents as equals" (`README.md`).
+"weave serves individuals and small teams who organize related work and already use an agent." (`PRODUCT.md`)
 
-- People whose work lives in Airtable, ClickUp or Fibery and who want to run the tool themselves. They already know linked records, rollups, formulas and views; the comparison pages map those concepts onto weave's (`README.md` FAQ, `docs/comparison/`).
-- Agents that connect over MCP, REST or the CLI. They start at AGENTS.md › Using weave (`README.md` "For agents").
-- Operators who host it: a workspace is "one SQLite file next to your project, served by one Node process on a laptop or a small VPS behind your own TLS and login" (`README.md`).
+People and their agents share the same work. Operators choose local execution,
+their own server or weave cloud. Lead with the work they can do and the control
+they retain. Named-product comparisons belong on the comparison pages.
 
 ## Voice
 
-- Plain enough to rule weave out: "Stated plainly, so you can rule it out fast" (`README.md`, "What weave is not")
-- Honest about gaps: the Airtable page "is honest about what is missing" (`docs/comparison/airtable.md`); the Fibery page covers "the honest gaps" (`docs/README.md`); the alternatives page shows where weave fits among them and where it does not (`docs/comparison/alternatives.md`).
-- Generous to peers: "The open-source options in this space are all worth a look, and several are far more mature than weave." When a limit is a dealbreaker, name Baserow, NocoDB and Grist. (`README.md`)
-- Concrete: counts, commands and file names stand in for adjectives. "One SQLite file. Zero dependencies. No build step. MIT." "Do I need Docker, Postgres, or npm install? No, no, and no." (`README.md`)
-- Dated claims about other products: "Licenses and packaging as of August 2026. Every project here moves; check each repository for current terms." (`docs/comparison/alternatives.md`)
-- The name is lowercase in prose, as in the wordmark: "weave" lowercase, Outfit 600 (`brand/README.md`, decision 4).
+- Plain: "You already have an agent. weave works natively with it." (`PRODUCT.md`)
+- Concrete: "Zero runtime dependencies and no build step" names an operating property, not a speed benchmark. (`PRODUCT.md`)
+- Inspectable: "Open source. Open tests. Open roadmap." (`PRODUCT.md`)
+- Honest: "Product claims distinguish current behavior, proposed capabilities, maintenance commitments and measured results." (`PRODUCT.md`)
+- Generous to peers. State dated, sourced differences without asserting that an established pattern is unique.
+- Use weave lowercase in prose, as in the wordmark (`brand/README.md`).
 
 ## Positioning
 
-weave is "an open-source, self-hosted work database and Airtable alternative", where "People use the web UI and AI agents use the built-in MCP server, REST API or CLI, on the same tables" (`README.md`). It "replaces the SaaS your work already lives in", running on your laptop or your own server "with no per-seat bill and no vendor holding the export button" (`README.md`). Against the SaaS tools, the second audience is the difference: "everything the web UI can do, the REST API, the CLI and the built-in MCP server can do too, on the same engine and the same data file on your disk" (`README.md`). Fibery is the closest model, and weave implements it "as an MIT-licensed program you run yourself, against a single SQLite file" (`docs/comparison/fibery.md`). Against the open-source alternatives: "Pick weave if you want connected tables plus markdown documents plus an MCP server, with no container, no database server, and no dependency tree" (`README.md`). The badge ring reads DATA · AGENTS over SYSTEMS (`brand/kit/labels.json`, `brand/kit/README.md`).
+"Connected records, documents and automations share one model." (`PRODUCT.md`)
+People and their existing agents can inspect and operate both the records and
+the structure containing them. Lead with native agent access, documents with a
+structured home, integrated listening, portable operation and open development.
+
+Runtime simplicity means one process, SQLite storage and no build step. It does
+not establish superior usability, speed or scale. Customization includes HTML
+content and source ownership, with the documented trust boundary. Credential
+grants must never be described as general field permissions. Optional semantic
+retrieval remains a proposal until implemented and verified.
+
+The maintenance budget is an allocation ceiling. Describe daily development,
+release token reporting and frontier-model refactoring as commitments, and link
+actual evidence when available. The evidence requirements live in PRODUCT.md.
 
 ## Refusals
 
 Refused by the product, from `README.md` "What weave is not" unless noted:
 
-- No fine-grained permissions: three roles per workspace (observer, editor, architect). A share link opens one record, table, space or saved view to whoever holds it, but "no rule narrows an account's own role to one space, record or field."
+- No general field-level read permissions for accounts: workspace roles, private spaces, member roles, space-scoped tokens and share links establish access. "Ordinary fields do not have separate read permissions."
 - Auth stays off until an architect runs `weave workspace require-auth`.
 - No plugin API: "weave has no third-party app store inside it." The repository is also a Claude Code plugin marketplace, which installs weave's own MCP connection into Claude Code and "adds nothing to weave."
 - Not battle-tested at scale: "a young project backed by a test suite, not by years of production mileage across thousands of installs."
