@@ -1,0 +1,1 @@
+- **Report a problem steps aside for panels** (Issue #1861): the floating bug button hides while the View or Share panel is open, so it no longer covers Clear all at the foot of the View panel. Report a problem stays in Your menu.
