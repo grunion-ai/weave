@@ -18,11 +18,12 @@ if (s) {
       try {
         await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
         await page.goto(`${base}/#/settings`);
-        const card = page.locator('#main .settings-link-preview');
+        await page.locator('#main .settings-tab', { hasText: 'Workspace' }).click();
+        const card = page.locator('#main .settings-sec', { hasText: 'Link preview' });
         await card.waitFor();
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-        assert.equal((await card.locator('.card-title').textContent()).trim(), 'Link preview');
-        const sw = card.getByRole('switch', { name: 'Link preview before sign-in' });
+        assert.equal((await card.locator('.settings-sec-label > span').textContent()).trim(), 'Link preview');
+        const sw = card.getByRole('switch', { name: 'Show before sign-in' });
         assert.equal(await sw.isChecked(), false, 'off by default');
         await card.locator('.wv-toggle').click();
         await page.locator('.wv-toast', { hasText: 'Link preview before sign-in is on' }).waitFor();

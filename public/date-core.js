@@ -22,9 +22,11 @@
   const isoOf = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
   const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
-  function calendarMonth(y, m) {
+  const weekdays = (weekStart = 0) => [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
+
+  function calendarMonth(y, m, weekStart = 0) {
     const first = new Date(Date.UTC(y, m - 1, 1));
-    const lead = first.getUTCDay();
+    const lead = (first.getUTCDay() - weekStart + 7) % 7;
     const total = daysIn(y, m);
     const cells = [];
     const [py, pm] = shiftMonth(y, m, -1);
@@ -93,7 +95,7 @@
 
   root.weaveDateCore = {
     MONTHS, MONTHS_LONG, WEEKDAYS, DYNAMIC_DATE_DEFAULTS,
-    formatDate, formatDateRange, relativeOrShort, stamp, calendarMonth, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
+    formatDate, formatDateRange, relativeOrShort, stamp, calendarMonth, weekdays, shiftMonth, decade, splitIso, joinIso, todayIso, defaultKind,
     legalFormats, toInstant, fromInstant, partsOf, storeOf, coerce, grainOf, parseClock, DATE_FORMATS, CLOCKS, ZONES,
     get DEFAULT_FORMAT() { return DG().DEFAULT_FORMAT; }, get DEFAULT_CLOCK() { return DG().DEFAULT_CLOCK; },
   };

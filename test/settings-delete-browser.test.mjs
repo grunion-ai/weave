@@ -37,29 +37,33 @@ if (s) {
     await page.waitForSelector('.hold-btn.holding', { state: 'detached' }).catch(() => {});
     await page.mouse.up();
   }
+  async function workspaceTab(page) {
+    await page.locator('#main .settings-tab', { hasText: 'Workspace' }).click();
+    return page.locator('#main .settings-sec', { hasText: 'Delete a workspace' });
+  }
 
   {
     const theme = 'light';
-    test(`${theme}: the Trash page restores and offers no Delete forever (Feature #295)`, async () => {
+    test(`${theme}: each Trash row restores, and its Delete forever waits behind a typed name and a hold (Feature #295, Feature #382)`, async () => {
       trashed(`Kept ${theme}`);
       const page = await open('#/trash', theme);
       try {
         const row = page.locator('#main tr', { hasText: `Kept ${theme}` });
         await row.locator('button', { hasText: 'Restore' }).waitFor();
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-        assert.equal(await page.locator('#main .hold-btn').count(), 0, 'no hold on the Trash page');
-        assert.doesNotMatch(await page.textContent('#main'), /Delete forever/, 'permanent delete left the Trash page');
+        assert.equal(await page.locator('#main .hold-btn').count(), 0, 'no hold until a row asks for one');
+        assert.equal((await row.locator('.purge-open').textContent()).trim(), 'Delete forever…');
       } finally { await page.close(); }
     });
 
-    test(`${theme}: Settings purges a trashed row only after its name is typed and the hold runs out (Feature #295)`, async () => {
+    test(`${theme}: the Trash page purges a row only after its name is typed and the hold runs out (Feature #295, Feature #382)`, async () => {
       const id = trashed(`Purge ${theme}`);
-      const page = await open('#/settings', theme);
+      const page = await open('#/trash', theme);
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
-        const row = page.locator('#main .settings-purge tr.purge-row', { hasText: `Purge ${theme}` });
+        const row = page.locator('#main .trash-list tr.purge-row', { hasText: `Purge ${theme}` });
         await row.locator('.purge-open').click();
-        const confirm = page.locator('#main .settings-purge .purge-confirm');
+        const confirm = page.locator('#main .trash-list .purge-confirm');
         const hold = confirm.locator('.hold-btn');
         await hold.waitFor();
         assert.equal((await hold.textContent()).trim(), 'Delete forever');
@@ -75,7 +79,7 @@ if (s) {
         assert.ok(await hold.isEnabled(), 'the exact name arms the hold');
         await holdToEnd(page, hold);
         assert.equal(await eventually(() => exists(id), false), false, 'the row is gone for good');
-        await page.locator('#main .settings-purge tr.purge-row', { hasText: `Purge ${theme}` }).waitFor({ state: 'detached' });
+        await page.locator('#main .trash-list tr.purge-row', { hasText: `Purge ${theme}` }).waitFor({ state: 'detached' });
       } finally { await page.close(); }
     });
   }
@@ -86,11 +90,11 @@ if (s) {
       const page = await open('#/settings', theme);
       try {
         await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
-        const card = page.locator('#main .settings-workspaces');
+        const card = await workspaceTab(page);
         const names = (await card.locator('.list-row-name').allTextContents()).map((t) => t.trim());
         assert.deepEqual(names, ['main', 'scratch'], 'the initial mount has no deletion privilege; the docs workspace stays protected');
         const openDialog = async () => {
-          await card.locator('.list-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
+          await card.locator('.settings-ws-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
           await page.locator('#modal').waitFor();
         };
         const live = () => fetch(`${base}/api/workspaces`).then((r) => r.json()).then((l) => l.some((w) => w.name === 'scratch'));
@@ -148,12 +152,12 @@ if (s) {
     const page = await open('#/settings', 'dark');
     try {
       await page.waitForSelector('#ws-list .ws-icon[title^="scratch "]');
-      await page.locator('#main .settings-workspaces .list-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
+      await (await workspaceTab(page)).locator('.settings-ws-row', { hasText: 'scratch' }).locator('.ws-delete-open').click();
       await page.locator('#modal input[name="confirm"]').fill('scratch');
       await hold(page.locator('#modal .ws-delete-go'));
       await page.locator('#ws-list .ws-icon[title^="scratch "]').waitFor({ state: 'detached' });
       await page.click('#sidebar .nav-system a[href="#/trash"]');
-      await page.waitForFunction(() => location.hash === '#/trash' && document.querySelector('#main .view-header')?.textContent.includes('Trash') && !document.querySelector('#main .settings-workspaces'));
+      await page.waitForFunction(() => location.hash === '#/trash' && document.querySelector('#main .view-header')?.textContent.includes('Trash') && !document.querySelector('#main .settings-shell'));
       assert.equal(await page.locator('#main .trash-workspaces').count(), 0, 'Trash lists no workspaces');
       assert.doesNotMatch(await page.textContent('#main'), /scratch/);
     } finally {
@@ -163,7 +167,7 @@ if (s) {
     }
   });
 
-  test('a caller the server refuses sees no purge and no workspace delete in Settings (Features #295, #297)', async () => {
+  test('a caller the server refuses sees no purge on Trash and no workspace delete in Settings (Features #295, #297)', async () => {
     trashed('Guarded');
     const page = await browser.newPage();
     try {
@@ -175,11 +179,15 @@ if (s) {
         const res = await route.fetch();
         await route.fulfill({ response: res, json: (await res.json()).map((w) => ({ ...w, deletable: false })) });
       });
-      await page.goto(`${base}/#/settings`);
-      await page.waitForSelector('#main .settings-purge');
-      assert.match(await page.textContent('#main .settings-purge'), /Guarded/, 'the trashed rows still list');
+      await page.goto(`${base}/#/trash`);
+      await page.waitForSelector('#main .trash-list');
+      assert.match(await page.textContent('#main .trash-list'), /Guarded/, 'the trashed rows still list');
       assert.equal(await page.locator('#main .purge-open').count(), 0, 'no Delete forever for an observer');
-      assert.equal(await page.locator('#main .settings-workspaces').count(), 0, 'no workspace delete without the hub right');
+      await page.goto(`${base}/#/settings`);
+      await page.waitForSelector('#main .settings-shell');
+      await workspaceTab(page);
+      await page.locator('#main .settings-page-title', { hasText: 'Workspace' }).waitFor();
+      assert.equal(await page.locator('#main .settings-ws-row').count(), 0, 'no workspace delete without the hub right');
     } finally { await page.close(); }
   });
 
@@ -189,7 +197,7 @@ if (s) {
       assert.equal(await page.locator('#sidebar .nav-system a[href="#/settings"]').count(), 0, 'Settings is not a System row');
       await page.click('#sidebar .nav-identity .nav-identity-more');
       await page.locator('.nav-personal-menu [role="menuitem"]', { hasText: 'Settings' }).click();
-      await page.waitForSelector('#main .settings-purge');
+      await page.waitForSelector('#main .settings-shell');
       assert.equal(await page.evaluate(() => location.hash), '#/settings');
     } finally { await page.close(); }
   });

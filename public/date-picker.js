@@ -1,4 +1,5 @@
 'use strict';
+const weekStart = () => globalThis.WeavePrefs?.personal().weekStart ?? 0;
 
 function orderRange(r) {
   return String(r.start) > String(r.end) ? { start: r.end, end: r.start } : r;
@@ -7,7 +8,7 @@ function orderRange(r) {
 function readTypedDate(typed, c, current) {
   const dc = weaveDateCore;
   const grain = dc.grainOf(c);
-  const format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
+  const format = weaveDateGrain.formatFor(c);
   const pad = (n) => String(n).padStart(2, '0');
   const clock = c.time ? dc.parseClock(typed) : null;
   if (!grain.length) {
@@ -42,7 +43,7 @@ function datePopover({ anchor, title = '', value, time, format, costume = null, 
   const dc = weaveDateCore;
   const c = costume ?? { time, format };
   time = !!c.time;
-  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
+  format = weaveDateGrain.formatFor(c);
   const grain = dc.grainOf(c);
   const hasY = grain.includes('year'), hasM = grain.includes('month'), hasD = grain.includes('day');
   const pad = (n) => String(n).padStart(2, '0');
@@ -158,8 +159,8 @@ function datePopover({ anchor, title = '', value, time, format, costume = null, 
         el('span', { class: 'date-pop-spacer' }),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Previous month', onclick: () => { [y, m] = dc.shiftMonth(y, m, -1); draw(); } }, '‹'),
         el('button', { type: 'button', class: 'date-pop-arrow', 'aria-label': 'Next month', onclick: () => { [y, m] = dc.shiftMonth(y, m, 1); draw(); } }, '›')));
-      const grid = el('div', { class: 'date-grid' }, ...dc.WEEKDAYS.map((d) => el('span', { class: 'date-wd' }, d)));
-      for (const week of dc.calendarMonth(y, m)) {
+      const grid = el('div', { class: 'date-grid' }, ...dc.weekdays(weekStart()).map((d) => el('span', { class: 'date-wd' }, d)));
+      for (const week of dc.calendarMonth(y, m, weekStart())) {
         for (const cell of week) {
           grid.append(el('button', {
             type: 'button',

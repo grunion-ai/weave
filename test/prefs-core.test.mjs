@@ -86,3 +86,49 @@ test('prefs: the app reads its preferences through the adapter, never straight f
   const index = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   assert.ok(index.indexOf('/prefs-core.js') < index.indexOf('/app.js'), 'the adapter loads before the app that boots on it');
 });
+
+const memory = () => {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+};
+const { personal, setPersonal, remember, startHash } = globalThis.WeavePrefs;
+
+test('personal: an empty store gives the defaults, and a stored value outside its choices reads as the default (Feature #382)', () => {
+  const s = memory();
+  assert.deepEqual(personal(s), { theme: 'auto', weekStart: 0, dateFormat: 'long', clock: '12h', startPage: 'last' });
+  for (const [k, v] of [['weave-theme', 'dark'], ['weave-week-start', '1'], ['weave-date-format', 'eu'], ['weave-clock', '24h'], ['weave-start-page', 'home']]) s.setItem(k, v);
+  assert.deepEqual(personal(s), { theme: 'dark', weekStart: 1, dateFormat: 'eu', clock: '24h', startPage: 'home' });
+  s.setItem('weave-week-start', '4');
+  s.setItem('weave-date-format', 'quarter');
+  assert.equal(personal(s).weekStart, 0);
+  assert.equal(personal(s).dateFormat, 'long');
+});
+
+test('setPersonal: stores a valid choice under its key and refuses anything else (Feature #382)', () => {
+  const s = memory();
+  assert.equal(setPersonal('weekStart', 1, s), true);
+  assert.equal(s.getItem('weave-week-start'), '1');
+  assert.equal(setPersonal('clock', '24h', s), true);
+  assert.equal(setPersonal('clock', '36h', s), false);
+  assert.equal(setPersonal('density', 'compact', s), false, 'density belongs to the view, never a personal preference');
+  assert.equal(s.getItem('weave-clock'), '24h');
+  const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  assert.equal(setPersonal('clock', '24h', blocked), false);
+  assert.equal(personal(blocked).clock, '12h');
+});
+
+test('start page: a bare workspace load reopens the last route when the choice is Last visited, never over a link (Feature #382)', () => {
+  const s = memory();
+  assert.equal(startHash('net', '', s), null, 'nothing remembered yet');
+  remember('net', '#/table/abc', s);
+  remember('docs', '#/e/xyz', s);
+  assert.equal(startHash('net', '', s), '#/table/abc');
+  assert.equal(startHash('net', '#/', s), '#/table/abc');
+  assert.equal(startHash('docs', '#', s), '#/e/xyz', 'each workspace keeps its own place');
+  assert.equal(startHash('net', '#/settings', s), null, 'a link to a page always wins');
+  remember('net', '#/', s);
+  remember('net', 'not-a-route', s);
+  assert.equal(startHash('net', '', s), '#/table/abc', 'home and junk are not remembered');
+  setPersonal('startPage', 'home', s);
+  assert.equal(startHash('net', '', s), null);
+});

@@ -109,3 +109,16 @@ test('a half-written range says what it has rather than painting an object', () 
   assert.equal(core.formatDateRange({ start: '2026-08-01', end: '' }, { format: 'iso' }), '2026-08-01 –');
   assert.equal(core.formatDateRange({ start: '', end: '2026-09-15' }, { format: 'iso' }), '– 2026-09-15');
 });
+
+test('calendarMonth and weekdays start the week on Sunday by default and on Monday when asked (Feature #382)', () => {
+  const sunday = core.calendarMonth(2026, 11);
+  assert.equal(sunday[0][0].iso, '2026-11-01');
+  const monday = core.calendarMonth(2026, 11, 1);
+  assert.equal(monday[0][0].iso, '2026-10-26');
+  assert.equal(monday[0][6].iso, '2026-11-01');
+  assert.ok(monday.every((week) => week.length === 7));
+  assert.equal(monday.flat().filter((c) => c.inMonth).length, 30);
+  assert.deepEqual(core.weekdays(0), ['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+  assert.deepEqual(core.weekdays(1), ['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+  assert.equal(core.calendarMonth(2026, 3, 1)[0][0].iso, '2026-02-23', 'March 2026 opens on a Sunday, so a Monday week reaches back six days');
+});

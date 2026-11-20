@@ -8454,7 +8454,7 @@ function textWidth(str, node) {
 function dateControl({ value = '', title = '', time = false, format = 'iso', costume = null, placeholder = 'type a date…', onChange, compact = true }) {
   const dc = weaveDateCore;
   const c = costume ? { ...costume } : { time, format };
-  format = c.format ?? weaveDateGrain.DEFAULT_FORMAT;
+  format = weaveDateGrain.formatFor(c);
   time = !!c.time;
   const view = { ...c, viewerZone: LOCAL_ZONE };
   const grain = dc.grainOf(c);
@@ -11914,6 +11914,20 @@ function cycleTheme() {
   applyTheme();
 }
 
+function applyPersonalPrefs() {
+  const p = WeavePrefs.personal();
+  weaveDateGrain.setViewerDefaults({ format: p.dateFormat, clock: p.clock });
+}
+
+function wireStartPage() {
+  const ws = WS_PREFIX || '/';
+  const inApp = (() => { try { return new URL(document.referrer).origin === location.origin; } catch { return false; } })();
+  const back = inApp ? null : WeavePrefs.startHash(ws, location.hash);
+  if (back) history.replaceState(null, '', back);
+  addEventListener('hashchange', () => WeavePrefs.remember(ws, location.hash));
+  WeavePrefs.remember(ws, location.hash);
+}
+
 function wireTheme() {
   THEME_MEDIA.addEventListener('change', () => { if (themePref() === 'auto') applyTheme(); });
   applyTheme();
@@ -12140,8 +12154,10 @@ installBugReporter();
 installPhoneBar();
 toastLayer();
 wireTheme();
+applyPersonalPrefs();
 wireSkipLink();
 healthNow().catch(() => {});
+wireStartPage();
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
 withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => {
   closeBootReads();

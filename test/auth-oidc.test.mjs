@@ -178,7 +178,7 @@ test('page: the sign-in page offers the provider door only when one is configure
   assert.doesNotMatch(html, /Clerk/);
 });
 
-async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 }, billing = null } = {}) {
+async function serve({ idpOptions, link = 'user_kyle', configured = true, limits = { options: 1000, failed: 1000 }, billing = null, clerk = false } = {}) {
   const idp = await startIdp(idpOptions);
   try {
     const w = new Weave();
@@ -189,7 +189,7 @@ async function serve({ idpOptions, link = 'user_kyle', configured = true, limits
     w.createAccount({ name: 'kyle', role: 'writer' });
     if (link) w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: idp.issuer }).code, { issuer: idp.issuer, subject: link });
     w.setRequireAuth(true);
-    return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits, billing }) };
+    return { w, idp, admin, reader, ...await serveOidc(w, idp, { configured, limits, billing, ...(clerk ? { clerkKey: idp.publishableKey } : {}) }) };
   } catch (err) { idp.stop(); throw err; }
 }
 
@@ -716,5 +716,25 @@ test('routes: unlink takes the subject', async () => {
     assert.equal(gone.status, 200);
     assert.deepEqual(await gone.json(), { unlinked: 1, remaining: 0 });
     assert.equal((await s.signIn(KYLE)).res.status, 403);
+  } finally { s.stop(); }
+});
+
+test('routes: /api/auth/me hands the Clerk pane to a person signed in through Clerk, so Settings can mount the account profile', async () => {
+  const s = await serve({ clerk: true });
+  try {
+    const { cookie } = await s.signIn(KYLE);
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.deepEqual(me.clerk, { publishableKey: s.idp.publishableKey, script: `${s.idp.issuer}/npm/@clerk/clerk-js@6/dist/clerk.browser.js` });
+    const byToken = await (await s.call('GET', '/api/auth/me', { token: s.admin })).json();
+    assert.equal(byToken.clerk, undefined, 'a token holder has no Clerk account to manage');
+  } finally { s.stop(); }
+});
+
+test('routes: /api/auth/me names no Clerk pane when the deployment has no Clerk key', async () => {
+  const s = await serve();
+  try {
+    const { cookie } = await s.signIn(KYLE);
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.equal(me.clerk, undefined);
   } finally { s.stop(); }
 });
