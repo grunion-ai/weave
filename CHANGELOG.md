@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.164 (2026-11-20)
+
+- **One boot read per endpoint** (Issue #1705): a cold home load asked the server for `/workspace` four times and `/workspaces` twice, because `loadSchema`, the form-permission read, the account chip, the home reads and the workspace rail each opened their own request. The boot GETs now share one in-flight read per path until the first route settles, so each of them is read once, and `test/boot-requests-browser.test.mjs` counts a cold boot's calls so the next duplicate fails by name.
+- **The collapsed-groups case waits for the reversed view's own group order** (Issue #1489): `test/group-headers-browser.test.mjs` counted collapsed group heads as soon as a `Medium` head existed, which the previous view's render already satisfied, so a slow re-render read `1` instead of `0` and took main CI red. The count now waits until the first top-level head is the reversed order's own `High`, and a new case holds the view's query response to reproduce the stale read.
+- **States for the record add button and the reference chip state mark** (Issue #1847): `test/lib/states.mjs` gains the `related-new-row` overlay, which opens the tray behind the add button in a related block, and the `chip state picker` overlay, which opens the state picker from the state mark of a reference chip in a relation cell. Both entries leave `test/ui-surface-baseline.json`, so every overlay trigger the UI catalog harvests now has a state a probe walks.
+
 ## v0.4.163 (2026-11-19)
 
 - **Stranded architecture map citations fail on the pull request that stranded them** (Issue #1548): `test/architecture-map.test.mjs` now reads every `{path, line}` citation in `docs/architecture/weave.architecture.json` against the working tree and names each line that sits past the end of its file by its JSON pointer. Until now only `node scripts/architecture.mjs` read those line numbers, and it runs at release, so a commit that shrank a file stopped the next release instead of reddening its own gate.
