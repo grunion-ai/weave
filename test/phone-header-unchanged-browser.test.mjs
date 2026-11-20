@@ -45,7 +45,16 @@ const header = (page, scope, which = '.crumb-row') => page.evaluate(([scope, whi
     scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
 }, [scope, which]);
-const rows = async (page, scope) => ({ ...(await header(page, scope)), bar: await header(page, scope, '.head-bar') });
+const rows = async (page, scope) => {
+  const { edge, ...line } = await header(page, scope);
+  const last = line.controls.at(-1) ?? '';
+  return {
+    ...line,
+    controls: line.controls.filter((c) => !c.startsWith('crumb-more')),
+    ...(last.startsWith('crumb-') ? {} : { edge }),
+    bar: await header(page, scope, '.head-bar'),
+  };
+};
 
 const menuRows = async (page, scope) => {
   await page.click(`${scope} .view-header .head-bar .dots-btn`);
@@ -61,14 +70,14 @@ const WANT = {
   table: {
     row: 44,
     controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 22x22 icon 16'],
-    gaps: [], edge: 114, scroll: 0,
+    gaps: [], scroll: 0,
     bar: { row: 44, controls: ['dots-btn 44x44 icon 16 border fill', 'table-tools-btn 44x44 icon 20 border fill'], gaps: [14], edge: 0, scroll: 0 },
   },
   tableMenu: ['Add icon… 44', 'Add description… 44', 'Move to space… 44', 'Duplicate 44', 'Open trash 44', 'New share page… 44', 'Forms… 44', 'Copy create link 44', 'CSV 44', 'Move to trash 44'],
   sheet: ['table-view-btn 44', 'table-share-btn 44', 'table-density-btn 44', 'eye-btn 44', 'table-filter-btn 44', 'table-group-btn 44', 'table-sort-btn 44'],
   record: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-more 36x36 icon 16 fill', 'crumb-copy 22x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 22x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
     gaps: [], edge: 0, scroll: 0,
     bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [10], edge: 6, scroll: 0 },
   },

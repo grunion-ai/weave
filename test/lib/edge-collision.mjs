@@ -175,9 +175,9 @@ const tap = (page, sel, phone) => {
   return phone ? target.tap() : target.click();
 };
 const tools = async (page, phone) => {
-  if (!phone || await page.locator('#main .crumb-row.tools-open > .crumb-actions').count()) return;
+  if (!phone || await page.locator('#main .head-bar.tools-open > .crumb-actions').count()) return;
   await tap(page, '#main .table-tools-btn', phone);
-  await page.waitForSelector('#main .crumb-row.tools-open > .crumb-actions');
+  await page.waitForSelector('#main .head-bar.tools-open > .crumb-actions');
 };
 const table = { url: (c) => ROUTES.table.url(c), ready: () => ROW };
 

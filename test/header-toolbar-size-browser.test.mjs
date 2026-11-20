@@ -78,7 +78,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a tight table bar folds search to an icon at its left end and keeps View, Share, the menu and New in place', async () => {
+  test('a tight table bar folds search and New to their icons and keeps View, Share, the menu and New in order', async () => {
     const wide = await table();
     const page = await tightSplit();
     try {
@@ -90,8 +90,11 @@ if (s) {
       assert.deepEqual(m.items['table-search'].icon, [16, 16]);
       assert.ok(m.items['table-search'].reachable, 'the folded icon answers a click');
       assert.deepEqual(m.gaps, [4, 4, 4, 8]);
-      for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn', 'new-record-btn']) {
-        assert.equal(m.fromRight[name], rest.fromRight[name], `${name} keeps its place from the right end`);
+      assert.equal(m.fromRight['new-record-btn'], 0, 'New still ends row 2');
+      assert.deepEqual([m.items['new-record-btn'].w, m.items['new-record-btn'].h], [28, 28], 'and folds to its + icon');
+      assert.equal(await page.locator('#main .new-record-btn').getAttribute('title'), 'New record', 'its hover text keeps the name');
+      for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn']) {
+        assert.equal(m.fromRight[name] - m.fromRight['dots-btn'], rest.fromRight[name] - rest.fromRight['dots-btn'], `${name} keeps its place beside the menu`);
       }
       const labels = await menuLabels(page, '#main');
       assert.ok(!labels.some((l) => /^Search/.test(l)), `the menu repeats no visible search: ${labels}`);
