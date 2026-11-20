@@ -79,8 +79,8 @@ Every corner in the app takes its radius from the element's size class, never fr
 | --- | --- | --- |
 | `--wv-radius-chip` | 4 px | Inline elements 24 px tall or less: chips, tags, kbd, checkboxes, text badges, small text buttons |
 | `--wv-radius-control` | 6 px | Controls 24 to 40 px tall: buttons, icon buttons, inputs, selects, nav rows, segmented controls |
-| `--wv-radius-surface` | 8 px | Floating surfaces and in-page cards: menus, popovers, pickers, toasts, tooltips, board tiles, code blocks |
-| `--wv-radius-panel` | 12 px | The main, dock, side, View and Share panels, dialogs, the command menu and bottom sheets |
+| `--wv-radius-surface` | 8 px | Floating surfaces and in-page cards: menus, popovers, pickers, toasts, tooltips, board tiles, code blocks, the 36 px workspace tiles in the rail |
+| `--wv-radius-panel` | 12 px | The main, dock, side, View and Share panels, dialogs, the command menu, bottom sheets and icon tiles over 40 px, such as the 46 px weave mark |
 | `--wv-radius-pill` | 999 px | Toggles, number pills and wide pill buttons |
 
 Round things (avatars, dots, the 44 px phone buttons) take `50%`. Four rules sit on top of the table:

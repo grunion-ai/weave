@@ -168,7 +168,7 @@ button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline
 #ws-rail { width: 52px; flex-shrink: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: calc(14px + 22px / 2 - 46px / 2) 0 12px; position: relative; height: 100%; z-index: 60;
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 #ws-rail::-webkit-scrollbar { display: none; }
-.ws-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--wv-radius-control); background: transparent; border: 1px solid transparent; color: var(--wv-canvas-muted); font-weight: 700; font-size: var(--fs-body); text-decoration: none; cursor: pointer; padding: 0; }
+.ws-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--wv-radius-surface); background: transparent; border: 1px solid transparent; color: var(--wv-canvas-muted); font-weight: 700; font-size: var(--fs-body); text-decoration: none; cursor: pointer; padding: 0; }
 .ws-icon.active { background: var(--tblr-bg-surface); color: var(--tblr-body-color); box-shadow: var(--wv-panel-shadow); }
 .ws-icon.ws-held, .ws-icon.ws-held:hover { background: var(--wv-held-bg); color: var(--wv-held-ink); border: 1px dashed var(--wv-held-dash); font-weight: 600; }
 .ws-icon.ws-held:hover { border-color: var(--wv-held-dash-hover); }
@@ -178,7 +178,7 @@ button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline
 .ws-icon.ws-letter { transition: filter .12s ease; }
 .ws-icon.ws-letter:hover { filter: brightness(1.12); }
 .ws-logo { position: relative; display: inline-flex; flex: none; }
-.ws-logo-pick { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 1px solid var(--tblr-border-color); border-radius: var(--wv-radius-control); overflow: hidden; cursor: pointer; font-weight: 600; font-size: var(--fs-body); color: var(--tblr-body-color); background: var(--tblr-bg-surface); }
+.ws-logo-pick { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 1px solid var(--tblr-border-color); border-radius: var(--wv-radius-surface); overflow: hidden; cursor: pointer; font-weight: 600; font-size: var(--fs-body); color: var(--tblr-body-color); background: var(--tblr-bg-surface); }
 .ws-logo-pick.ws-letter { border-color: transparent; }
 .ws-logo-pick img { width: 100%; height: 100%; object-fit: cover; }
 .ws-logo-pick:hover, .ws-logo-pick:focus-visible { box-shadow: 0 0 0 2px var(--tblr-primary); }
@@ -188,7 +188,7 @@ button.nav-space:focus-visible { outline: 2px solid var(--tblr-primary); outline
 @media (hover: hover) { .ws-logo:hover .ws-logo-clear { opacity: 1; } }
 @media (hover: none) { .ws-logo-clear { opacity: 1; } }
 .deck-btn { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: inherit; text-decoration: none; cursor: pointer; }
-.ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; box-shadow: none; width: 46px; height: 46px; }
+.ws-icon.ws-weave, .ws-icon.ws-weave.active { background: none; border: none; border-radius: var(--wv-radius-panel); box-shadow: none; width: 46px; height: 46px; }
 .ws-weave img, .ws-weave svg { width: 42px; height: 42px; object-fit: contain; }
 @media (hover: hover) { .ws-weave:hover img, .ws-weave:hover svg { transform: scale(1.08); } }
 .ws-weave img, .ws-weave svg { transition: transform .12s ease; }
