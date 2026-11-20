@@ -41,6 +41,8 @@ const INTERNAL = {
   stageBlob: 'upload plumbing (Issue #1428): names a staging file in files/ for a body the server has not read yet; an agent attaches bytes through attachFile',
   streamBlob: 'upload plumbing (Issue #1428): writes a request body to that staging file chunk by chunk and fsyncs it, so PUT /api/uploads never holds the whole file; an agent prepares the upload and sends the body',
   dropStagedBlob: 'upload plumbing (Issue #1428): removes a staging file a refused upload left behind; nothing an agent decides',
+  stagedSize: 'upload plumbing (Feature #383): reports how many bytes a resumable upload holds, for HEAD /api/uploads; an agent reads the offset over HTTP',
+  appendStagedBlob: 'upload plumbing (Feature #383): appends a resumed request body to its staging file; an agent sends the body with Upload-Offset',
   billing: 'read helper (Feature #256): the workspace\'s name, creation date and Clerk organization for src/billing.js; GET /api/billing is the door',
   linkBillingOrg: 'billing plumbing (Feature #256): POST /api/billing/organization links the Clerk organization it creates; an agent never links one by hand',
   fieldChangeSince: 'read helper (Feature #241): the field-config Activity entry a field update just wrote; PATCH /api/tables/:id/fields/:id, weave field update and weave_update_field answer with its activity and the formulas a repoint breaks',

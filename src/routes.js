@@ -45,6 +45,7 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
 
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+const UPLOAD_GRANT_MS = 10 * 60 * 1000;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
 const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
 const SAME_ORIGIN = '';
@@ -554,6 +555,8 @@ async function resolveUploadAndMcpDoors(c, fromRequest) {
   let { oauth, upload } = c;
   const { hostOrigin, path, weave, wsPrefix } = fromRequest;
   if (uploadToken) {
+    const now = Date.now();
+    for (const held of uploads.values()) if (held.staged && held.expiresAt <= now) held.weave.dropStagedBlob(held.staged);
     prune(uploads);
     prune(spentUploads);
     upload = uploads.get(uploadToken);
@@ -561,9 +564,13 @@ async function resolveUploadAndMcpDoors(c, fromRequest) {
     if (spent?.incomplete && path === '/api/uploads' && rx.method === 'PUT') {
       return { hit: out(400, { error: 'The upload ended before all of its bytes arrived; prepare it again and send the whole file', code: 'incomplete-upload' }, { 'Cache-Control': 'no-store' }) };
     }
-    if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || rx.method !== 'PUT') return { hit: deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP') };
-    uploads.delete(uploadToken);
-    spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
+    const resuming = upload?.resumable && (rx.method === 'HEAD' || rx.header('upload-offset') != null);
+    if (!upload || upload.weave !== weave || upload.mount !== wsPrefix || upload.host !== String(rx.header('host')).toLowerCase() || path !== '/api/uploads' || !(rx.method === 'PUT' || (rx.method === 'HEAD' && resuming))) return { hit: deny(401, 'Invalid or expired upload grant; prepare the upload again over MCP') };
+    if (resuming) upload.expiresAt = Date.now() + UPLOAD_GRANT_MS;
+    else {
+      uploads.delete(uploadToken);
+      spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
+    }
     upload.engine.maybeRefresh();
     if (upload.accountId == null) {
       if (upload.engine.listAccounts().length) return { hit: deny(401, 'This workspace now has accounts; prepare the upload again') };
@@ -963,7 +970,7 @@ async function formAndStatusRoutes(c, fromRequest) {
   return NEXT;
 }
 async function backupAndUploadRoutes(c, fromRequest) {
-  const { actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploadToken } = c;
+  const { actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploads, uploadToken } = c;
   const { path, role, weave } = fromRequest;
   let m;
   if (path === '/api/backups' || (m = path.match(/^\/api\/backups\/([^/]+)$/))) {
@@ -998,13 +1005,28 @@ async function backupAndUploadRoutes(c, fromRequest) {
     if (entity.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
     if (role === 'editor' && weave.state.tables[entity.dbId]?.system) return deny(403, 'This token cannot change the schema');
     if (!rx.readBytes && !(rx.bodyStream && weave.filesOnDisk())) throw new WeaveError('This server cannot receive raw uploads', 'invalid');
-    if (Number(rx.header('content-length')) > upload.size) throw new WeaveError(`Body too large: ${upload.size} bytes at most`, 'too-large');
+    const resuming = upload.resumable && (rx.method === 'HEAD' || rx.header('upload-offset') != null);
+    const held = () => (upload.staged ? weave.stagedSize(upload.staged) : 0);
+    const offsetHeaders = () => ({ 'Upload-Offset': String(held()), 'Upload-Length': String(upload.size), 'Cache-Control': 'no-store' });
+    if (resuming && rx.method === 'HEAD') return { status: 204, headers: offsetHeaders(), body: '' };
+    if (resuming) {
+      const offset = Number(rx.header('upload-offset'));
+      if (!Number.isSafeInteger(offset) || offset !== held()) return out(409, { error: `This upload holds ${held()} bytes; send the rest from there`, code: 'offset-mismatch' }, offsetHeaders());
+      if (Number(rx.header('content-length')) > upload.size - offset) throw new WeaveError(`Body too large: ${upload.size - offset} bytes at most`, 'too-large');
+      upload.staged ??= weave.stageBlob().id;
+      await weave.appendStagedBlob(upload.staged, rx.bodyStream(), upload.size - offset).catch((err) => {
+        if (err instanceof WeaveError && err.code === 'too-large') throw err;
+      });
+      if (held() !== upload.size) return out(400, { error: 'The upload ended before all of its bytes arrived; resume it from Upload-Offset', code: 'incomplete-upload' }, offsetHeaders());
+      uploads.delete(uploadToken);
+      spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
+    } else if (Number(rx.header('content-length')) > upload.size) throw new WeaveError(`Body too large: ${upload.size} bytes at most`, 'too-large');
     const attempt = spentUploads.get(uploadToken);
     const cutShort = (err) => {
       if (!(err instanceof WeaveError) || !['too-large', 'invalid'].includes(err.code)) attempt.incomplete = true;
       return err;
     };
-    const streamed = rx.bodyStream && weave.filesOnDisk()
+    const streamed = resuming ? { id: upload.staged, size: held() } : rx.bodyStream && weave.filesOnDisk()
       ? await weave.streamBlob(rx.bodyStream(), upload.size).catch((err) => { throw cutShort(err); })
       : null;
     try {
@@ -2087,7 +2109,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }
 
       {
-        const hit = await backupAndUploadRoutes({ actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploadToken }, { path, role, weave });
+        const hit = await backupAndUploadRoutes({ actorForRequest, authz, cloudBackups, deny, guarded, out, rx, spentUploads, upload, uploads, uploadToken }, { path, role, weave });
         if (hit !== NEXT) return hit;
       }
 
@@ -2121,11 +2143,11 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           prune(uploads);
           if (uploads.size >= 1000) throw new WeaveError('Too many pending uploads; finish one or wait ten minutes', 'rate-limited');
           const token = `wvu_${newChallenge()}`;
-          const expiresAt = Date.now() + 10 * 60 * 1000;
+          const expiresAt = Date.now() + UPLOAD_GRANT_MS;
           const url = sameOrigin ? `${wsPrefix}/api/uploads` : `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/api/uploads`;
           const host = sameOrigin ? String(rx.header('host') ?? '').toLowerCase() : new URL(url).host.toLowerCase();
-          uploads.set(token, { weave, engine, accountId: account ? account.accountId ?? account.id : null, preview: small, identity: oauth?.identity ?? null, mount: wsPrefix, host, entity: row.id, field: target?.id ?? null, name, mime, size, expiresAt });
-          return { url, method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, maxBytes: size, expiresAt: new Date(expiresAt).toISOString() };
+          uploads.set(token, { resumable: weave.filesOnDisk(), weave, engine, accountId: account ? account.accountId ?? account.id : null, preview: small, identity: oauth?.identity ?? null, mount: wsPrefix, host, entity: row.id, field: target?.id ?? null, name, mime, size, expiresAt });
+          return { url, method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, maxBytes: size, resumable: weave.filesOnDisk(), expiresAt: new Date(expiresAt).toISOString() };
         };
         const route = `${rx.method} ${path}`;
         if (share) {
