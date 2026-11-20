@@ -1260,14 +1260,27 @@ function navIconEl(icon, kind) {
   return iconEl(icon, 'wv-icon nav-icon') ?? iconEl(CRUMB_ICON_FALLBACK[kind], 'wv-icon nav-icon');
 }
 function crumbInner(c) {
+  const numbered = c.kind === 'row' && c.current && c.publicId != null;
   return [
-    crumbIconEl(c),
+    numbered ? iconEl(c.icon, 'wv-icon crumb-ic') ?? iconEl(CRUMB_ICON_FALLBACK.row, 'wv-icon crumb-ic') : crumbIconEl(c),
     c.kind === 'row' && c.current && c.table ? el('span', { class: 'crumb-tbl' }, c.table) : null,
     c.publicId != null ? el('span', { class: 'crumb-pid' }, `#${c.publicId}`) : null,
-    el('span', { class: 'crumb-nm' }, c.label ?? ''),
+    numbered ? null : el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
 }
 const watchCrumbPath = sharedResize((path) => fitCrumbs(path, path.wvFoldFrom ?? 1));
+const watchHeadBar = sharedResize((bar) => {
+  if (!bar.isConnected) return;
+  bar.classList.remove('head-bar-tight');
+  bar.classList.add('head-bar-measure');
+  const over = bar.scrollWidth > bar.clientWidth + 1;
+  bar.classList.remove('head-bar-measure');
+  bar.classList.toggle('head-bar-tight', over);
+});
+function fitHeadBar(bar) {
+  watchHeadBar(bar);
+  return bar;
+}
 function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
   const path = el('span', { class: 'crumb-path' });
   crumbs.forEach((c, i) => {
@@ -1307,12 +1320,6 @@ function fitCrumbs(path, foldFrom) {
   const box = getComputedStyle(path);
   const spent = fit ? parseFloat(box.paddingLeft) + parseFloat(box.paddingRight) + (parseFloat(box.columnGap) || 0) * slots.length : 0;
   const plan = fit ? widths.map((w, i) => (i === widths.length - 1 && Number.isFinite(mins[i]) ? mins[i] : w)) : widths;
-  if (fit) {
-    row.classList.remove('crumb-row-tight');
-    const acts = row.querySelector(':scope > .crumb-actions');
-    const shown = acts ? getComputedStyle(acts) : null;
-    row.classList.toggle('crumb-row-tight', !!shown && shown.display !== 'none' && shown.position !== 'fixed' && plan.reduce((sum, w) => sum + w, 0) > path.clientWidth - spent);
-  }
   const room = path.clientWidth - spent;
   const n = slots.length;
   let fold = weaveBreadcrumbs.foldPlan(plan, room, { from: foldFrom, more: CRUMB_MORE_PX, mins });
@@ -1463,7 +1470,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
         run: () => copyText(typeof permalink === 'function' ? permalink() : permalink, 'Permalink copied'),
       },
     }),
-    el('span', { class: 'crumb-actions wv-toolbar' }, ...tools), dots, saveMarkFor(false)));
+    saveMarkFor(false)));
 
   syncDocTitle(title);
   const titleInput = titleEdit('input', 'view-title', title, { 'aria-label': 'Title', title: onRename ? 'Click to rename' : '', readonly: onRename ? undefined : '' });
@@ -1474,9 +1481,10 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       try { await onRename(name); syncDocTitle(name); toast('Renamed'); } catch (err) { titleInput.value = title; toast(err.message, true); }
     });
   }
-  box.append(el('div', { class: 'wv-toolbar view-title-row' },
+  box.append(fitHeadBar(el('div', { class: 'wv-toolbar view-title-row head-bar' },
     lead ?? (onSetIcon ? iconButton(icon, onSetIcon) : (icon ? iconEl(icon) : null)),
-    el('h1', { class: 'view-title-h' }, titleInput)));
+    el('h1', { class: 'view-title-h' }, titleInput),
+    el('span', { class: 'crumb-actions wv-toolbar' }, ...tools), dots)));
 
   if (onSaveDescription) {
     const descBox = el('div', { class: 'view-desc' });
@@ -1486,7 +1494,7 @@ function viewHeader({ crumbs = [], permalink, title, onRename = null, descriptio
       if (!descriptionKey) return;
       box.classList.toggle('view-description-toggle', !!md.trim());
       if (!md.trim()) { toggle?.remove(); toggle = null; descBox.hidden = true; }
-      else if (!toggle) { toggle = descToggle(title, descBox, descriptionKey); titleRow.append(toggle); }
+      else if (!toggle) { toggle = descToggle(title, descBox, descriptionKey); titleRow.querySelector(':scope > .view-title-h').after(toggle); }
     };
     const showRendered = async (md) => {
       descBox.classList.remove('editing');
@@ -5954,7 +5962,7 @@ function tableChrome(db, trashCount) {
   });
   kindContext(chrome.header, 'table', () => ref.db, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a, .table-tools-btn` });
   const tools = tableToolsButton(chrome.header, ref);
-  chrome.header.querySelector('.crumb-row').append(tools);
+  chrome.header.querySelector('.head-bar').append(tools, newRecordButton(ref));
   return chrome;
 }
 
@@ -5964,8 +5972,8 @@ function tableToolsButton(header, ref) {
     class: 'btn table-tools-btn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
     'aria-label': 'View, filters, fields and row height', title: 'View, filters, fields and row height',
   }, lucideEl('sliders-horizontal'), count);
-  const row = () => header.querySelector('.crumb-row');
-  const sheet = () => header.querySelector('.crumb-row > .crumb-actions');
+  const row = () => header.querySelector('.head-bar');
+  const sheet = () => header.querySelector('.head-bar > .crumb-actions');
   btn.label = () => {
     const n = Object.values(tableFilters(ref.db)).filter((v) => v?.length).length;
     count.textContent = n ? String(n) : '';
@@ -5998,6 +6006,26 @@ function tableToolsButton(header, ref) {
     });
     addEventListener('keydown', esc, true);
   });
+  return btn;
+}
+
+function newRecordButton(ref) {
+  const label = el('span', { class: 'new-record-label' });
+  const btn = el('button', {
+    class: 'btn btn-sm btn-primary new-record-btn', type: 'button',
+    onclick: () => {
+      const db = ref.db;
+      if (!isBoardLayout(db) && state.inlineAdd) return state.inlineAdd();
+      if (!db.system) newRowTray(db);
+    },
+  }, lucideEl('plus'), label);
+  btn.label = () => {
+    const text = `New ${ref.db.term?.singular ?? rowNoun(ref.db)}`;
+    label.textContent = text;
+    btn.title = text;
+    btn.hidden = ref.db.system === 'runs';
+  };
+  btn.label();
   return btn;
 }
 
@@ -9559,7 +9587,12 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
           copy: { title: 'Copy permalink', run: () => copyText(`${location.origin}/e/${id}`, 'Permalink copied') },
           foldFrom: 1,
         }),
-        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn, ...poseControls), saveMarkFor(inPeek)),
+        poseControls.length ? el('span', { class: 'crumb-pane wv-toolbar' }, ...poseControls) : null, saveMarkFor(inPeek)),
+      fitHeadBar(el('div', { class: 'wv-toolbar record-bar head-bar' },
+        el('span', { class: 'record-kind', title: db?.name ?? entity.db ?? '' },
+          iconEl(db?.icon, 'wv-icon record-kind-ic') ?? iconEl('lucide:table', 'wv-icon record-kind-ic'),
+          entity.publicId != null ? el('span', { class: 'record-pid' }, `#${entity.publicId}`) : null),
+        el('span', { class: 'crumb-actions wv-toolbar' }, activityBtn, eye, shareBtn, dlBtn))),
       el('div', { class: 'wv-toolbar entity-head' }, entityAvatarEl(entity, db, refresh), nameInput))), 'record', entity, recordCtx, { skip: `${OWN_CONTEXT}, .crumb-path a` }),
   );
   let nextFab = null;

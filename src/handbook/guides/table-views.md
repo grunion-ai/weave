@@ -4,12 +4,13 @@ A table can be read several ways. Each **view** keeps which columns show, their 
 
 ## The toolbar
 
-The controls sit beside the breadcrumb: **Search → View → Table actions (⋮)**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row; add records from the grid.
+The header has two rows. Row 1 is the breadcrumb and **Copy permalink**. Row 2 starts with the table's icon, its title and the description toggle, and ends with the controls: **Search → View → Share → Table actions (⋮) → New**. The three-dot menu is the table menu, the same one the table's sidebar row opens from its ⋮ or a right-click: **Move to space…** and **Duplicate**, **New share page…**, **Forms…** and **Copy create link**, an **Export** section with **CSV**, then **Move to trash**. Rename the table by editing its title, or by double-clicking its sidebar row. **New**, named for the table's record (**New bug**), adds a record: in Table layout it adds a row to the grid, as **+ New bug** under the grid does, and in Board layout it opens the new-record tray.
 
 | Control | What it does |
 | --- | --- |
 | **Search** | Narrows this table by name, public id or text. Click the visible search box or press **/** when not editing. When the header runs short of room, beside a docked record for example, the box folds to its magnifier; click the magnifier to open the box again. A box that holds a query stays open. It searches all pages, combines with filters and preserves sorting. **Escape** clears the search. **⌘K / Ctrl+K** remains workspace search. |
 | **View** | Opens the View pane beside the table, and closes it again. Its badge counts the active filters, deleted records included. Closing the pane gives the table the full width. |
+| **New** | Adds a record to this table. On a phone the round **+** button at the foot of the screen does the same. |
 
 ## The View pane
 

@@ -62,7 +62,7 @@ if (s) {
     {
       kind: 'table', hash: `#/table/${tableId}`, ready: '#main .wv-grid',
       triggers: {
-        'header ⋮': via('#main .crumb-row .dots-btn[title="Table actions"]'),
+        'header ⋮': via('#main .head-bar .dots-btn[title="Table actions"]'),
         'header right-click': via('#main .view-header', 'corner'),
         'nav row ⋮': via(`#nav .nav-db[data-db="${tableId}"] .nav-db-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-db[data-db="${tableId}"]`, 'right'),
@@ -78,14 +78,14 @@ if (s) {
     {
       kind: 'record', hash: `#/entity/${entityId}`, ready: '#main textarea.name-edit', rows: ['Dock beside table', ...ROWS.record],
       triggers: {
-        'header ⋮': via('#main .view-header .crumb-row .dots-btn'),
+        'header ⋮': via('#main .view-header .head-bar .dots-btn'),
         'header right-click': via('#main .view-header .crumb-actions > .eye-btn', 'right'),
       },
     },
     {
       kind: 'record', label: 'record in peek', hash: `#/table/${tableId}?e=${entityId}`, ready: '#dock:not([hidden]) textarea.name-edit',
       triggers: {
-        'peek ⋮': via('#dock .view-header .crumb-row .dots-btn'),
+        'peek ⋮': via('#dock .view-header .head-bar .dots-btn'),
         'peek right-click': via('#dock .view-header .crumb-actions > .eye-btn', 'right'),
       },
     },
@@ -99,7 +99,7 @@ if (s) {
     {
       kind: 'space', hash: `#/space/${spaceId}`, ready: '#main .view-header .dots-btn',
       triggers: {
-        'header ⋮': via('#main .view-header .crumb-row .dots-btn'),
+        'header ⋮': via('#main .view-header .head-bar .dots-btn'),
         'header right-click': via('#main .view-header .view-desc', 'right'),
         'nav row ⋮': via(`#nav .nav-space-row:has(a.nav-space[href="#/space/${spaceId}"]) .nav-space-menu .dots-btn`),
         'nav row right-click': via(`#nav .nav-space-row a.nav-space[href="#/space/${spaceId}"]`, 'right'),
@@ -144,8 +144,8 @@ if (s) {
   }
 
   const EXPORTS = [
-    { kind: 'table', hash: `#/table/${tableId}`, trigger: '#main .crumb-row .dots-btn[title="Table actions"]', rows: [['CSV', '.csv']] },
-    { kind: 'record', hash: `#/entity/${entityId}`, trigger: '#main .view-header .crumb-row .dots-btn', rows: [['Markdown', '.md'], ['HTML', '.html'], ['PDF', '.pdf']] },
+    { kind: 'table', hash: `#/table/${tableId}`, trigger: '#main .head-bar .dots-btn[title="Table actions"]', rows: [['CSV', '.csv']] },
+    { kind: 'record', hash: `#/entity/${entityId}`, trigger: '#main .view-header .head-bar .dots-btn', rows: [['Markdown', '.md'], ['HTML', '.html'], ['PDF', '.pdf']] },
     { kind: 'doc', hash: `#/entity/${entityId}`, trigger: '#main .doc-section[data-doc-field="Notes"] .doc-dl .dots-btn', rows: [['Markdown', '.md'], ['Mermaid', '.mmd'], ['HTML', '.html'], ['PDF', '.pdf']] },
   ];
   for (const x of EXPORTS) {
@@ -184,7 +184,7 @@ if (s) {
       assert.deepEqual(order.filter((t) => /stat/i.test(t)), [], `no toolbar control names stats: ${order.join(' | ')}`);
       const eye = order.findIndex((c) => /eye-btn/.test(c));
       assert.match(order[eye + 1], /table-filter-btn/, 'Filters sits right after Fields');
-      const { rows } = await via('#main .crumb-row .dots-btn[title="Table actions"]')(page);
+      const { rows } = await via('#main .head-bar .dots-btn[title="Table actions"]')(page);
       assert.deepEqual(rows.filter((r) => /stat/i.test(r)), [], `no table menu row names stats: ${rows.join(' | ')}`);
       assert.equal(await page.locator('#modal.wv-stats').count(), 0);
     } finally { await page.close(); }

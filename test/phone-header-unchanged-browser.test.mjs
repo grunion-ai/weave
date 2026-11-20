@@ -47,7 +47,7 @@ const header = (page, scope) => page.evaluate((scope) => {
 }, scope);
 
 const menuRows = async (page, scope) => {
-  await page.click(`${scope} .view-header .crumb-row .dots-btn`);
+  await page.click(`${scope} .view-header .head-bar .dots-btn`);
   await page.waitForSelector('.chip-pop.wv-menu.wv-menu-sheet [role^="menuitem"]');
   await settled(page.locator('.chip-pop.wv-menu'));
   const rows = await page.locator('.chip-pop.wv-menu [role^="menuitem"]').evaluateAll((list) => list.map((r) => `${(r.querySelector('.wv-menu-label, .hold-label')?.textContent ?? r.textContent).trim()} ${Math.round(r.getBoundingClientRect().height)}`));
@@ -97,7 +97,7 @@ if (s) {
       assert.deepEqual(await menuRows(page, '#main'), WANT.tableMenu);
       await page.click('#main .table-tools-btn');
       await settled(page.locator('#main .crumb-actions'));
-      const sheet = await page.locator('#main .crumb-row.tools-open > .crumb-actions > *').evaluateAll((list) => list
+      const sheet = await page.locator('#main .head-bar.tools-open > .crumb-actions > *').evaluateAll((list) => list
         .filter((n) => n.getClientRects().length)
         .map((n) => `${[...n.classList].find((c) => /^(table-.*-btn|eye-btn|table-search)$/.test(c))} ${Math.round(n.getBoundingClientRect().height)}`));
       assert.deepEqual(sheet, WANT.sheet);
@@ -110,7 +110,7 @@ if (s) {
     try {
       assert.deepEqual(await header(page, '#main'), WANT.record);
       assert.deepEqual(await menuRows(page, '#main'), WANT.recordMenu);
-      await page.click('#main .view-header .crumb-row .dots-btn');
+      await page.click('#main .view-header .head-bar .dots-btn');
       await page.locator('.chip-pop.wv-menu .wv-menu-label', { hasText: 'Show / hide fields' }).click();
       await page.waitForSelector('.table-fields-popover .eye-row');
       const sections = await page.locator('.table-fields-popover').evaluate((n) => [...n.children].map((c) => c.querySelector('.eye-head')?.textContent

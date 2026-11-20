@@ -9,8 +9,8 @@ const MIN_SIZE = ['min-height', 'min-width', 'min-block-size', 'min-inline-size'
 const SHELL = [
   '#sidebar .brand',
   '#sidebar #nav-collapse',
-  '#dock .crumb-row :is(.dl-wrap > .dots-btn, .dock-close, .activity-btn, .eye-btn, .table-share-btn)',
-  '.crumb-row > .dl-wrap > .dots-btn, .crumb-row:not(:has(> .table-tools-btn)) > .crumb-actions > .table-share-btn',
+  '#dock :is(.crumb-row, .head-bar) :is(.dl-wrap > .dots-btn, .dock-close, .activity-btn, .eye-btn, .table-share-btn)',
+  '.head-bar > .dl-wrap > .dots-btn, .head-bar > .crumb-actions > .dl-wrap > .dots-btn, .head-bar:not(:has(> .table-tools-btn)) > .crumb-actions > .table-share-btn',
   '.wv-board[data-lanes] .board-col-head',
   '.wv-board[data-groups="side"] .board-group-head',
 ];

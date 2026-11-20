@@ -47,7 +47,7 @@ if (s) {
       assert.equal(shown.length, 3, `Search, View and Share show beside the crumbs: ${shown}`);
       assert.match(shown[0], /table-search/);
       assert.match(shown[1], /table-view-btn/);
-      assert.equal(await page.locator('#main .crumb-row .dots-btn[title="Table actions"]').isVisible(), true, 'and the table menu');
+      assert.equal(await page.locator('#main .head-bar .dots-btn[title="Table actions"]').isVisible(), true, 'and the table menu');
       for (const gone of ['table-density-btn', 'eye-btn', 'table-filter-btn', 'table-sort-btn', 'table-group-btn']) assert.ok(!shown.some((c) => c.includes(gone)), gone);
       assert.equal(await page.textContent('#main .table-view-btn .view-count'), '4', 'three filter values and Include deleted');
       assert.equal(await page.locator('#main .filter-pill, #main .view-pills').count(), 0, 'no filter pills under the title');

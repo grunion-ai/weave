@@ -664,14 +664,14 @@ test('an idle inline-edit cell casts no shadow', () => {
     'and the focus rule draws the one ring over that reset (Issue #1030)');
 });
 
-test('the entity ⋮ sits at the right end of the title row, like every other view', () => {
+test('the entity ⋮ sits at the right end of row 2, like every other view (Feature #384)', () => {
   assert.doesNotMatch(APP, /entity-dl-corner/, 'no absolutely-positioned corner menu remains');
   assert.doesNotMatch(CSS, /entity-dl-corner/, 'and its stylesheet block is gone with it');
   assert.doesNotMatch(APP, /crumb-offset/, 'the crumb no longer indents around a corner control');
   assert.doesNotMatch(CSS, /crumb-offset/);
 
-  assert.match(APP, /class: 'crumb crumb-row crumb-row-fit' \},\s*\n\s*\.\.\.\(inPeek \? \(dockControls\?\.nav \?\? \[\]\) : \[navMenuButton\(\), \.\.\.navArrows\(pageGo\)\]\),\s*\n\s*crumbPath\([\s\S]{0,900}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn, \.\.\.poseControls\)/,
-    'the Activity clock-arrow, the eye, Share (Issue #765), ⋮ and the pose controls trail the crumb line (one entity surface)');
+  assert.match(APP, /class: 'wv-toolbar record-bar head-bar' \},[\s\S]{0,500}?el\('span', \{ class: 'crumb-actions wv-toolbar' \}, activityBtn, eye, shareBtn, dlBtn\)/,
+    'the Activity clock-arrow, the eye, Share (Issue #765) and ⋮ trail row 2, after the table icon and #id (Feature #384)');
   const body = fnBody('renderEntityView');
   assert.match(body, /grid\.classList\.toggle\('side-open', shown\.length > 0\);\s*\n\s*grid\.classList\.toggle\('side-folded', shown\.length > 0 && shown\.every\(\(key\) => docSectionCollapse\(db\.id, key\)\)\);/,
     'the column opens when a shown panel has references (Issue #1479), never on comments (Feature #323) or an Activity switch (Feature #315), and hands its width back once every shown panel is folded (Issue #1211)');
@@ -1313,10 +1313,10 @@ test('lookup / rollup pick their relation and target field from what exists; no 
   assert.doesNotMatch(fnBody('drawDatabase'), /🗑/, 'the eyeball shows deleted rows; the toolbar badge is gone');
 });
 
-test('the view controls sit on the crumb line; Fields has a bundled eye icon and visibility checkboxes', () => {
+test('the view controls sit on row 2 under the crumb line; Fields has a bundled eye icon and visibility checkboxes', () => {
   const vh = fnBody('viewHeader');
-  assert.match(vh, /class: 'crumb-actions wv-toolbar' \}, \.\.\.tools\), dots, saveMarkFor\(false\)\)/, 'actions render beside the crumb, the trailing ⋮ pinned to the crumb row (Issue #853)');
-  assert.doesNotMatch(vh, /titleInput, \.\.\.actions/, 'and no longer on the title row');
+  assert.match(vh, /el\('h1', \{ class: 'view-title-h' \}, titleInput\),\s*\n\s*el\('span', \{ class: 'crumb-actions wv-toolbar' \}, \.\.\.tools\), dots\)/, 'actions render on row 2 after the title, the trailing ⋮ after them (Feature #384, Issue #853)');
+  assert.match(vh, /saveMarkFor\(false\)\)\);/, 'row 1 keeps only the crumbs and the save mark');
   assert.match(fnBody('fieldVisibilityPopover'), /el\('input', \{ type: 'checkbox', class: 'form-check-input'/, 'rows are the shared checkbox (Issue #915)');
   assert.match(fnBody('tableChrome'), /tableControlButton\('eye-btn', 'Fields', 'eye'\)/, 'the Fields label carries the bundled eye icon');
   assert.match(fnBody('tableControlButton'), /lucideEl\(icon\)/, 'toolbar controls use the bundled icon renderer');

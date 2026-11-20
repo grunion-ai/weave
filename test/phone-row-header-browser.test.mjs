@@ -59,7 +59,7 @@ if (s) {
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
           assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
-          await page.click('#dock .crumb-row .dots-btn');
+          await page.click('#dock .head-bar .dots-btn');
           const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
           assert.deepEqual(items, ['Activity', 'Show / hide fields', ...(shed ? ['Share (Beta)'] : []), 'Duplicate', 'Report a problem', 'Markdown', 'HTML', 'PDF', 'Move to trash'],
             'the record definition, the actions a phone header sheds, and the report row a phone has no other route to (Issue #1023, Issue #1382)');
@@ -77,7 +77,7 @@ if (s) {
       assert.equal(h.expand, true);
       assert.equal(h.eye, true);
       assert.equal(h.copy, true);
-      await page.click('#dock .crumb-row .dots-btn');
+      await page.click('#dock .head-bar .dots-btn');
       const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));
       assert.deepEqual(items, ['Duplicate', 'Markdown', 'HTML', 'PDF', 'Move to trash'], 'the same record definition as on a phone');
     } finally { await page.close(); }

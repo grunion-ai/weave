@@ -52,7 +52,7 @@ if (s) {
       controls: Object.fromEntries(controls.map((q) => { const n = head.querySelector(`.crumb-actions ${q}`); return [q, shown(n) ? box(n) : null]; })),
       marked: head.querySelector('.crumb-actions .table-filter-btn')?.dataset.mark ?? null,
       sheet: shown(sheet) ? box(sheet) : null,
-      kebab: (() => { const k = head.querySelector('.crumb-row > .dl-wrap .dots-btn'); return shown(k) ? { ...box(k), text: k.innerText.trim(), expanded: k.getAttribute('aria-expanded') } : null; })(),
+      kebab: (() => { const k = head.querySelector('.head-bar > .dl-wrap .dots-btn'); return shown(k) ? { ...box(k), text: k.innerText.trim(), expanded: k.getAttribute('aria-expanded') } : null; })(),
       menu: shown(menu) ? {
         box: box(menu),
         sheet: menu.classList.contains('wv-menu-sheet'),
@@ -114,7 +114,7 @@ if (s) {
           assert.ok(seen.kebab.height >= 44, `a ${seen.kebab.height}px target`);
           assert.equal(seen.menus, 0, 'no menu opens until it is tapped');
           await page.keyboard.press('Escape');
-          await page.click('#main .crumb-row > .dl-wrap .dots-btn');
+          await page.click('#main .head-bar > .dl-wrap .dots-btn');
           await page.waitForSelector('.chip-pop.wv-menu[role="menu"]');
           await settled(page.locator('.chip-pop.wv-menu'));
           seen = await read(page, [...SHEET, ...FOLDED]);
@@ -160,7 +160,7 @@ if (s) {
             const btn = document.querySelector('#main .table-tools-btn');
             const b = btn.getBoundingClientRect();
             const i = btn.querySelector('svg').getBoundingClientRect();
-            const s = document.querySelector('#main .crumb-row.tools-open > .crumb-actions').getBoundingClientRect();
+            const s = document.querySelector('#main .head-bar.tools-open > .crumb-actions').getBoundingClientRect();
             return { dx: (i.left + i.right) / 2 - (b.left + b.right) / 2, dy: (i.top + i.bottom) / 2 - (b.top + b.bottom) / 2, gap: s.top - b.bottom, right: s.right - b.right, theme: document.documentElement.dataset.bsTheme };
           });
           assert.equal(m.theme, theme);

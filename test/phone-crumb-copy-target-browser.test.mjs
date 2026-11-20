@@ -33,7 +33,7 @@ if (s) {
           const name = WORDS.slice(0, n).trim();
           await rename(name);
           await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
-          await page.waitForSelector('#main .crumb-row > .dl-wrap .dots-btn');
+          await page.waitForSelector('#main .head-bar > .dl-wrap .dots-btn');
           const got = await page.evaluate(() => {
             const copy = document.querySelector('#main .crumb-copy');
             const r = copy.getBoundingClientRect();
