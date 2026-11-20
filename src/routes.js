@@ -141,7 +141,7 @@ const previewPageHtml = (head, authHref) => `<!doctype html><html lang="en"><hea
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const HANDOFF_TTL_MS = 60 * 1000;
 const digest = async (s) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('');
-const LIMITS = { options: 10, failed: 5, slugs: 60, paint: 6, paintAll: 600 };
+const LIMITS = { options: 10, failed: 5, slugs: 60, paint: 6, paintAll: 600, uploads: 2 };
 const START_TTL_MS = 30 * 60 * 1000;
 const RECENT_CAP = 50;
 const RECENT_NAME = /^[a-z0-9_.-]+$/;
@@ -1784,6 +1784,20 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   const hostSuffix = `.${baseDomain}${origin && new URL(origin).port ? `:${new URL(origin).port}` : ''}`;
   const rates = { options: new Map(), failed: new Map(), slugs: new Map(), paint: new Map(), paintAll: new Map() };
   limits = { ...LIMITS, ...limits };
+  const uploadsInFlight = new Map();
+  const holdUpload = (key) => {
+    const held = uploadsInFlight.get(key) ?? 0;
+    if (held >= limits.uploads) throw new WeaveError(`Only ${limits.uploads} uploads can run at once; finish one and send this again`, 'rate-limited');
+    uploadsInFlight.set(key, held + 1);
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const left = (uploadsInFlight.get(key) ?? 1) - 1;
+      if (left > 0) uploadsInFlight.set(key, left);
+      else uploadsInFlight.delete(key);
+    };
+  };
   const starts = new Map();
   const formRates = new Map();
   const formLimited = (keys) => {
@@ -2079,6 +2093,9 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
 
       if (path.startsWith('/api/')) {
         const attaching = ATTACH_ROUTE.test(path);
+        if (attaching && ['POST', 'PUT', 'PATCH'].includes(rx.method)) {
+          viewers.releaseUpload = holdUpload(requestAccount ? requestAccount.accountId ?? requestAccount.id : clientIp(rx));
+        }
         const body = ['POST', 'PUT', 'PATCH'].includes(rx.method)
           ? await rx.readBody(attaching ? MAX_ATTACH_BODY_BYTES : undefined).catch((err) => {
             if (!attaching || err?.code !== 'too-large') throw err;
@@ -2276,7 +2293,12 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
   return async function handle(rx) {
     const jar = [];
     const viewers = { of: null };
-    const res = await withViewers(viewers, () => respond(rx, jar, viewers));
+    let res;
+    try {
+      res = await withViewers(viewers, () => respond(rx, jar, viewers));
+    } finally {
+      viewers.releaseUpload?.();
+    }
     const wrote = viewers.tokenWrite;
     const reads = rx.method === 'POST' && (/^\/(api\/)?mcp$/.test(rx.path) || /\/query$/.test(rx.path) || rx.path === '/api/markdown');
     if (wrote && !reads && !['GET', 'HEAD', 'OPTIONS'].includes(rx.method) && res.status < 400) wrote.engine.noteTokenWrite(wrote.accountId, { method: rx.method, path: rx.path, status: res.status });
