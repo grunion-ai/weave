@@ -148,6 +148,10 @@ const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
 export const PREVIEW_MAX_BYTES = 256 * 1024;
 export const FILE_MAX_BYTES = 10 * 1024 * 1024;
 export const mbText = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+export const workspaceFileMaxBytes = (env = process.env) => {
+  const mb = Number(env.WEAVE_WORKSPACE_FILE_MAX_MB);
+  return Number.isFinite(mb) && mb > 0 ? Math.floor(mb * 1024 * 1024) : 0;
+};
 const PREVIEW_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export function logoType(bytes) {
@@ -11357,14 +11361,19 @@ export class Weave {
       .concat([...far.values()]);
   }
 
+  #fileBytes() {
+    let bytes = 0;
+    for (const e of Object.values(this.state.entities)) {
+      for (const f of e.files ?? []) bytes += (f.size ?? 0) + (f.preview?.size ?? 0);
+    }
+    return bytes;
+  }
+
   storageStats() {
     let entities = 0;
-    let fileBytes = 0;
-    for (const e of Object.values(this.state.entities)) {
-      if (!e.deletedAt) entities += 1;
-      for (const f of e.files ?? []) fileBytes += (f.size ?? 0) + (f.preview?.size ?? 0);
-    }
-    return { entities, sizeBytes: (this.store.sizeBytes?.() ?? 0) + fileBytes };
+    for (const e of Object.values(this.state.entities)) if (!e.deletedAt) entities += 1;
+    const fileBytes = this.#fileBytes();
+    return { entities, fileBytes, fileLimitBytes: workspaceFileMaxBytes(), sizeBytes: (this.store.sizeBytes?.() ?? 0) + fileBytes };
   }
 
   #blobPath(id) {
@@ -11464,6 +11473,14 @@ export class Weave {
       throw new WeaveError('A preview is a PNG, JPEG or WebP image, and only an image upload takes one', 'unsupported-type');
     }
     if (small && small.length > PREVIEW_MAX_BYTES) throw new WeaveError(`A preview is at most ${PREVIEW_MAX_BYTES} bytes; this one is ${small.length}`, 'invalid');
+    const limit = workspaceFileMaxBytes();
+    if (limit) {
+      const held = this.#fileBytes();
+      const adding = size + (small?.length ?? 0);
+      if (held + adding > limit) {
+        throw new WeaveError(`This workspace holds ${mbText(held)} of files and can hold ${mbText(limit)}, so ${name} (${mbText(adding)}) was not attached. Delete files here, or ask whoever runs your weave to raise the workspace file limit`, 'storage-full');
+      }
+    }
     const file = { id: staged ? staged.id : uuid(), name: String(name), size, mime, createdAt: nowISO() };
     if (staged) this.#adoptBlob(file.id);
     else this.#writeBlob(file.id, buf);

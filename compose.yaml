@@ -70,6 +70,7 @@ services:
       # WEAVE_AUTO_UPDATE: "1"
       # The most rows one API call returns when it names a limit (Handbook → "Environment reference").
       # WEAVE_MAX_ROWS: "500"
+      # WEAVE_WORKSPACE_FILE_MAX_MB: "200"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s
