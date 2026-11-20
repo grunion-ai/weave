@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Weave } from '../src/engine.js';
-import { fresh } from './lib/fixtures.mjs';
+import { fresh, withServer } from './lib/fixtures.mjs';
 
 const wfTable = (w) => w.getTable('System/Workflows');
 const f = (db, name) => Object.values(db.fields).find((x) => x.name === name);
@@ -194,4 +194,30 @@ test('a workspace from before the switch grows it on load, once, and a later mov
   assert.equal(f(t3, 'On').id, id, 'the same field, not a second one');
   assert.equal(Object.values(t3.fields).filter((x) => x.name === 'On').length, 1);
   assert.equal(names(t3, t3.tableViews[0].fields).at(-1), 'On', 'the reader\'s order survives a re-sync');
+});
+
+test('the REST entity update refuses When, Then and Last Run with one error contract (Issue #1505)', async () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Workflow Demo' });
+  const t = w.createTable({ space: 'Workflow Demo', name: 'Request' });
+  w.addField(t.id, { name: 'Resolved', type: 'checkbox' });
+  const auto = w.createAutomation(t.id, {
+    name: 'Close out', trigger: { type: 'entity-created' }, actions: [{ type: 'set-field', field: 'Resolved', value: true }],
+  });
+  const was = w.readEntity(auto.id).fields;
+  await withServer(w, async ({ fetch: call }) => {
+    for (const field of ['When', 'Then', 'Last Run']) {
+      const value = field === 'Last Run' ? '2020-01-01T00:00:00Z' : 'caller wrote this';
+      const res = await call(`/api/entities/${auto.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ values: { [field]: value } }),
+      });
+      assert.equal(res.status, 400, `${field} is refused over REST, not accepted`);
+      const body = await res.json();
+      assert.equal(body.code, 'invalid');
+      assert.match(body.error, new RegExp(field), 'the message names the field');
+    }
+  });
+  assert.deepEqual(w.readEntity(auto.id).fields, was, 'no caller value landed through REST either');
 });

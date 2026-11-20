@@ -473,6 +473,7 @@ const ACTION_TEXT_MAX = 200;
 const boundedText = (v) => (typeof v === 'string' && v.length > ACTION_TEXT_MAX ? `${v.slice(0, ACTION_TEXT_MAX)}…` : v);
 const workflowScript = (spec) => `${JSON.stringify(spec, null, 2)}\n`;
 const WORKFLOW_PANEL = ['On', 'Name', 'When', 'Then', 'Health', 'Last Run'];
+const WORKFLOW_STAMPED = ['When', 'Then', 'Last Run'];
 function whenWords({ table, trigger: t }, hookPath = null) {
   if (t.type === 'webhook-inbound') return `A POST arrives at ${hookPath}`;
   if (t.type === 'entity-created') return `A record is created in ${table}`;
@@ -10058,14 +10059,23 @@ export class Weave {
     const scriptF = this.#sysField(db, 'Script');
     if (!onF || !scriptF) return;
     const keyOf = (f) => Object.keys(values ?? {}).find((k) => this.findField(db, k)?.id === f.id);
+    const stamped = WORKFLOW_STAMPED.filter((n) => {
+      const f = this.#sysField(db, n);
+      return f && keyOf(f) !== undefined;
+    });
     const onKey = keyOf(onF);
-    if (onKey === undefined || this.#validateValue(onF, values[onKey]) !== true) return;
-    if (e?.values[onF.id] === true) return;
+    const settingOn = onKey !== undefined && this.#validateValue(onF, values[onKey]) === true && e?.values[onF.id] !== true;
+    if (!stamped.length && !settingOn) return;
     const scriptKey = keyOf(scriptF);
     const text = scriptKey !== undefined ? values[scriptKey] : docs?.Script ?? e?.docs?.[scriptF.id] ?? '';
     const reg = this.#reg;
     const probe = e ?? { dbId: db.id, values: {}, docs: {} };
     const rule = reg.#workflowRule(probe, text ?? '');
+    if (stamped.length && rule && !rule.problem) {
+      const names = stamped.join(', ');
+      throw new WeaveError(`${names} on a workflow ${stamped.length > 1 ? 'are' : 'is'} written by weave itself, when the rule settles or fires, and cannot be set directly`, 'invalid');
+    }
+    if (!settingOn) return;
     if (rule?.problem) {
       const name = values.Name ?? (e ? this.entityName(e) : '') ?? '';
       throw new WeaveError(`Workflow '${name}' cannot be switched On until its setup is complete. ${rule.problem}`, 'invalid');
