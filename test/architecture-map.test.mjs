@@ -10,7 +10,15 @@ const DIR = join(ROOT, 'docs', 'architecture');
 
 const spec = JSON.parse(readFileSync(join(DIR, 'weave.architecture.json'), 'utf8'));
 const html = readFileSync(join(DIR, 'weave.architecture.html'), 'utf8');
-const sources = spec.components.flatMap((c) => (c.sources ?? []).map((s) => ({ id: c.id, ...s })));
+const sources = spec.components.flatMap((c, i) =>
+  (c.sources ?? []).map((s, j) => ({ id: c.id, pointer: `/components/${i}/sources/${j}`, ...s })),
+);
+
+const lineCount = (path) => {
+  const lines = readFileSync(join(ROOT, path), 'utf8').split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines.length;
+};
 
 const embedded = (id) => {
   const m = html.match(new RegExp(`<script id="${id}" type="application/json">([\\s\\S]*?)</script>`));
@@ -34,6 +42,15 @@ test('every cited source file still exists', () => {
   assert.ok(sources.length > 0);
   const missing = sources.filter((s) => !existsSync(join(ROOT, s.path))).map((s) => `${s.id}: ${s.path}`);
   assert.deepEqual(missing, [], 'the map cites files that moved or were deleted: update the map and re-pin');
+});
+
+test('every cited line is inside its file', () => {
+  const cited = sources.filter((s) => s.line !== undefined);
+  assert.ok(cited.length > 0);
+  const stranded = cited
+    .filter((s) => existsSync(join(ROOT, s.path)) && s.line > lineCount(s.path))
+    .map((s) => `${s.pointer} ${s.path}:${s.line} past line ${lineCount(s.path)} (${s.label})`);
+  assert.deepEqual(stranded, [], 'the map cites lines past the end of their files: move each citation to the line the code sits on now and re-pin');
 });
 
 test('every runtime module is named in the map', () => {
