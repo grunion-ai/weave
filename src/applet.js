@@ -450,7 +450,7 @@ ${HUE_CSS}
 .wv-bug{position:fixed; right:3px; bottom:calc(70px + var(--safe-b)); z-index:50; width:44px; height:44px;
   border:0; background:none; padding:0; display:grid; place-items:center; opacity:.62; color:var(--ink)}
 .wv-bug:active{opacity:1}
-.wv-bug .face{width:26px; height:26px; border-radius:7px; background:var(--surface);
+.wv-bug .face{width:26px; height:26px; border-radius:6px; background:var(--surface);
   border:1px solid var(--line); box-shadow:var(--shadow); display:grid; place-items:center}
 .wv-bug[aria-expanded="true"]{opacity:1}
 .bug-fab-icon{display:flex; width:16px; height:16px; color:var(--ink)}

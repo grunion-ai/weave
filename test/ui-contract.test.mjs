@@ -980,7 +980,7 @@ test('navigation schedules a skeleton of the destination (Feature #49, Issue #63
   assert.ok(route.includes('scheduleSkeleton('), 'renderRoute schedules the destination skeleton before it dispatches');
   assert.ok(!route.includes('paintSkeleton('), 'and never paints it inline, which flashed on a fast load');
   const sk = rulesFor('.sk');
-  assert.equal(sk['border-radius'], '4px');
+  assert.equal(sk['border-radius'], 'var(--wv-radius-chip)');
   assert.ok(readFileSync(join(ROOT, 'public/style.css'), 'utf8').includes('prefers-reduced-motion'), 'shimmer respects reduced motion');
 });
 
@@ -1642,7 +1642,7 @@ test('opening a record warms only the reads the record view makes: the entity an
 test('dock: the panel is styled as the table\'s twin, its own scroller, and lights its row in both themes', () => {
   const rule = CSS.match(/^#dock \{[^}]+\}/m)?.[0];
   assert.ok(rule, '#dock has a rule');
-  for (const decl of ['background: var(--tblr-bg-surface)', 'box-shadow: var(--wv-panel-shadow)', 'border-radius: 16px', 'overflow-y: auto', 'position: relative'])
+  for (const decl of ['background: var(--tblr-bg-surface)', 'box-shadow: var(--wv-panel-shadow)', 'border-radius: var(--wv-radius-panel)', 'overflow-y: auto', 'position: relative'])
     assert.ok(rule.includes(decl), `#dock lacks ${decl}`);
   assert.doesNotMatch(rule, /position: sticky/, 'the dock is a plain column of the shell');
   assert.doesNotMatch(rule, /display:/, 'no display of its own, so the hidden attribute keeps working');

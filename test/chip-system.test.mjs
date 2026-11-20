@@ -196,7 +196,7 @@ test('canceled reads as ended, not as finished', () => {
 });
 
 test('the value tier is 4px and square-ish — set E, not the pill', () => {
-  assert.equal(rulesFor('.k')['border-radius'], '4px',
+  assert.equal(rulesFor('.k')['border-radius'], 'var(--wv-radius-chip, 4px)',
     'Kyle chose 4px over the pill on 2026-08-24');
 });
 

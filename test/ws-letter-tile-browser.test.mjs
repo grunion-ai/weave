@@ -50,7 +50,7 @@ if (s) {
           assert.equal(t.color, 'rgb(255, 255, 255)', `${t.name}: a white initial`);
           assert.ok(contrast(t.bg, t.color) >= 4.5, `${t.name}: the initial reads on its tile (${contrast(t.bg, t.color).toFixed(2)})`);
           assert.equal(t.w, 36, `${t.name}: the same 36px as a logo`);
-          assert.equal(t.radius, '10px', `${t.name}: the same radius as a logo`);
+          assert.equal(t.radius, '6px', `${t.name}: the same control radius as a logo (Feature #385)`);
         }
         const active = tiles.find((t) => t.active);
         assert.ok(active && active.shadow !== 'none', 'the current workspace still reads as active');

@@ -673,10 +673,12 @@ test('applet: the bug reporter is the desktop one, parts and all', async () => {
   const css = readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   const fab = css.slice(css.indexOf('.bug-fab {'), css.indexOf('.bug-fab {') + 400);
   const flat = src.replace(/\s+/g, ' ');
-  for (const prop of ['width: 26px', 'height: 26px', 'border-radius: 7px', 'opacity: .62']) {
+  for (const prop of ['width: 26px', 'height: 26px', 'opacity: .62']) {
     assert.ok(fab.includes(prop), `the desktop FAB is ${prop}`);
     assert.ok(flat.includes(prop.replace(': ', ':')), `and the applet's face matches on ${prop}`);
   }
+  assert.ok(fab.includes('border-radius: var(--wv-radius-control)'), 'the desktop FAB takes the control radius step (Feature #385)');
+  assert.match(flat, /\.wv-bug \.face\{[^}]*border-radius:6px/, "and the applet's face draws the same 6 px, since it loads no style.css");
   assert.ok(fab.includes('right: 18px'), 'the desktop sits 18px in, clear of the pane bar (Issue #1314)');
   assert.match(flat, /\.wv-bug\{[^}]*right:3px[^}]*width:44px/,
     'the applet sits 3px in with a 44pt box — the same face, back on the same margin');
