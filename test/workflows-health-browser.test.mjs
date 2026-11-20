@@ -11,8 +11,8 @@ const s = await launch('workflows health', (w) => {
   const healthy = mk('Runs fine');
   const failed = mk('Ping the hook');
   const quiet = mk('Never fired');
-  w.updateEntity(healthy.id, { Health: 'Healthy', 'Last Run': '2026-11-09T09:00:00.000Z' });
-  w.updateEntity(failed.id, { Health: 'Failed', 'Health Reason': REASON, 'Last Run': '2026-11-09T09:05:00.000Z' });
+  w.updateEntity(healthy.id, { Health: 'Healthy' });
+  w.updateEntity(failed.id, { Health: 'Failed', 'Health Reason': REASON });
   const workflows = Object.values(w.state.tables).find((x) => x.system === 'workflows');
   return { workflows, healthy, failed, quiet };
 });

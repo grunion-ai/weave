@@ -375,3 +375,49 @@ test('a webhook action keeps the credential it signs with through the Script rou
     /signWith names a credential/,
   );
 });
+
+test('When, Then and Last Run refuse a caller\'s write on create and on update, and the engine still stamps them (Issue #1505)', async () => {
+  const { w, t } = demo();
+  const auto = w.createAutomation(t.id, closeOut);
+  const script = JSON.parse(read(w, auto.id).docs.Script);
+  const before = read(w, auto.id).fields;
+  assert.equal(before.When, 'Status moves to Done in Workflow Demo/Request', 'the engine stamped When on the settle');
+  assert.equal(before.Then, 'Set Resolved to true, then Append to the document', 'and Then beside it');
+  for (const field of ['When', 'Then', 'Last Run']) {
+    const value = field === 'Last Run' ? '2020-01-01T00:00:00Z' : 'caller wrote this';
+    assert.throws(
+      () => w.updateEntity(auto.id, { [field]: value }),
+      (err) => err.code === 'invalid' && err.message.includes(field),
+      `${field} is engine-written and must be refused by name`,
+    );
+    assert.throws(
+      () => w.createEntity(wf(w).id, { Name: `Born with ${field}`, [field]: value, Script: JSON.stringify(script) }),
+      (err) => err.code === 'invalid' && err.message.includes(field),
+      `${field} is refused on a create that carries a rule too`,
+    );
+    const plain = w.createEntity(wf(w).id, { Name: `Ordinary ${field}`, [field]: value });
+    assert.equal(read(w, plain.id).fields.State, 'Setup incomplete', 'a row with no rule is ordinary data (Feature #249)');
+  }
+  assert.deepEqual(read(w, auto.id).fields, before, 'nothing the caller sent landed');
+  w.undo();
+  assert.equal(read(w, auto.id).fields.When, before.When, 'a refused write left no undo step of its own');
+  assert.throws(
+    () => w.updateEntity(auto.id, { Name: 'Renamed', When: 'caller wrote this' }),
+    (err) => err.code === 'invalid' && err.message.includes('When'),
+    'one refused field refuses the whole write',
+  );
+  assert.equal(read(w, auto.id).name, 'Close out on Done', 'so the Name beside it did not land either');
+  assert.throws(
+    () => dispatchTool(w, 'weave_update_entity', { entity: auto.id, values: { 'Last Run': '2020-01-01T00:00:00Z' } }),
+    (err) => err.code === 'invalid' && err.message.includes('Last Run'),
+    'MCP gets the same refusal, not a silent success',
+  );
+  const r1 = w.createEntity(t.id, { Name: 'R1' });
+  w.setState(r1.id, 'Status', 'Done');
+  await w.automationsSettled();
+  const after = read(w, auto.id).fields;
+  assert.equal(after.When, before.When, 'the engine still owns When');
+  assert.equal(after.Then, before.Then);
+  assert.ok(after['Last Run'], 'and the fire still stamped Last Run');
+  assert.equal(read(w, r1.id).fields.Resolved, true, 'the rule itself still ran');
+});
