@@ -15,9 +15,9 @@ const s = await launch('phone header unchanged', (weave) => {
   return { table: `#/table/${deals.id}`, record: `#/entity/${acme.id}`, dock: `#/table/${deals.id}?e=${acme.id}` };
 });
 
-const header = (page, scope) => page.evaluate((scope) => {
+const header = (page, scope, which = '.crumb-row') => page.evaluate(([scope, which]) => {
   const half = (v) => Math.round(v * 2) / 2;
-  const row = document.querySelector(`${scope} .view-header .crumb-row`);
+  const row = document.querySelector(`${scope} .view-header ${which}`);
   const seen = (n) => {
     if (!n.getClientRects().length || getComputedStyle(n).visibility === 'hidden') return false;
     for (let x = n; x && x !== row; x = x.parentElement) if (getComputedStyle(x).opacity === '0') return false;
@@ -44,7 +44,8 @@ const header = (page, scope) => page.evaluate((scope) => {
     edge: half(row.getBoundingClientRect().right - (controls.at(-1)?.right ?? 0)),
     scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
-}, scope);
+}, [scope, which]);
+const rows = async (page, scope) => ({ ...(await header(page, scope)), bar: await header(page, scope, '.head-bar') });
 
 const menuRows = async (page, scope) => {
   await page.click(`${scope} .view-header .head-bar .dots-btn`);
@@ -59,22 +60,25 @@ const menuRows = async (page, scope) => {
 const WANT = {
   table: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'dots-btn 44x44 icon 16 border fill', 'table-tools-btn 44x44 icon 20 border fill'],
-    gaps: [12], edge: 0, scroll: 0,
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 22x22 icon 16'],
+    gaps: [], edge: 114, scroll: 0,
+    bar: { row: 44, controls: ['dots-btn 44x44 icon 16 border fill', 'table-tools-btn 44x44 icon 20 border fill'], gaps: [14], edge: 0, scroll: 0 },
   },
   tableMenu: ['Add icon… 44', 'Add description… 44', 'Move to space… 44', 'Duplicate 44', 'Open trash 44', 'New share page… 44', 'Forms… 44', 'Copy create link 44', 'CSV 44', 'Move to trash 44'],
   sheet: ['table-view-btn 44', 'table-share-btn 44', 'table-density-btn 44', 'eye-btn 44', 'table-filter-btn 44', 'table-group-btn 44', 'table-sort-btn 44'],
   record: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-more 36x36 icon 16 fill', 'crumb-copy 22x22 icon 16', 'dots-btn 28x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
-    gaps: [12], edge: 0, scroll: 0,
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-more 36x36 icon 16 fill', 'crumb-copy 22x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
+    gaps: [], edge: 0, scroll: 0,
+    bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [10], edge: 6, scroll: 0 },
   },
-  recordMenu: ['Activity 44', 'Show / hide fields 44', 'Share (Beta) 44', 'Collapse beside the table 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
+  recordMenu: ['Activity 44', 'Show / hide fields 44', 'Collapse beside the table 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
   recordEye: ['table-control-head', 'field-visibility-actions', 'table-field-legend', 'table-field-list', 'hr', 'fields-add', 'Reference panels'],
   dock: {
     row: 44,
-    controls: ['crumb-copy 22x22 icon 16', 'table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill', 'dock-close 44x44 icon 16 border fill'],
-    gaps: [3, 3], edge: 0, scroll: 0,
+    controls: ['crumb-copy 22x22 icon 16', 'dock-close 44x44 icon 16 border fill'],
+    gaps: [], edge: 0, scroll: 0,
+    bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [3], edge: 0, scroll: 0 },
   },
   dockMenu: ['Activity 44', 'Show / hide fields 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
 };
@@ -93,7 +97,7 @@ if (s) {
   test('a phone table header keeps its three 44 px buttons, its tools sheet and its menu rows', async () => {
     const page = await open(s.table, '#main .table-tools-btn');
     try {
-      assert.deepEqual(await header(page, '#main'), WANT.table);
+      assert.deepEqual(await rows(page, '#main'), WANT.table);
       assert.deepEqual(await menuRows(page, '#main'), WANT.tableMenu);
       await page.click('#main .table-tools-btn');
       await settled(page.locator('#main .crumb-actions'));
@@ -108,7 +112,7 @@ if (s) {
   test('a phone record page keeps its header controls, their sizes and its menu rows', async () => {
     const page = await open(s.record, '#main .view-header .crumb-cur');
     try {
-      assert.deepEqual(await header(page, '#main'), WANT.record);
+      assert.deepEqual(await rows(page, '#main'), WANT.record);
       assert.deepEqual(await menuRows(page, '#main'), WANT.recordMenu);
       await page.click('#main .view-header .head-bar .dots-btn');
       await page.locator('.chip-pop.wv-menu .wv-menu-label', { hasText: 'Show / hide fields' }).click();
@@ -122,7 +126,7 @@ if (s) {
   test('a phone record over its table keeps its 44 px header controls and its menu rows', async () => {
     const page = await open(s.dock, '#dock:not([hidden]) .view-header .crumb-cur');
     try {
-      assert.deepEqual(await header(page, '#dock'), WANT.dock);
+      assert.deepEqual(await rows(page, '#dock'), WANT.dock);
       assert.deepEqual(await menuRows(page, '#dock'), WANT.dockMenu);
     } finally { await page.close(); }
   });

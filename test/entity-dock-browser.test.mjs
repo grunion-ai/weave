@@ -108,7 +108,7 @@ if (s) {
   });
 
   const dockedName = (page, n) => page.waitForFunction((name) => document.querySelector('#dock:not([hidden]) .name-edit')?.value === name, n);
-  const crumbLabels = (page) => page.$$eval('#dock .crumb-path .crumb-nm', (as) => as.map((x) => x.textContent));
+  const crumbLabels = (page) => page.$$eval('#dock .crumb-path .crumb-item', (as) => as.map((x) => (x.querySelector('.crumb-nm') ?? x.querySelector('.crumb-pid')).textContent));
   async function hopToJane(page) {
     await page.click(`tr[data-eid="${a.id}"] .open-link`);
     await dockedName(page, 'Acme Working Capital');
@@ -130,11 +130,11 @@ if (s) {
   test('the dock crumb reads as one path across the tables, and the back arrow walks it', async () => {
     const page = await freshTablePage();
     await hopToJane(page);
-    assert.deepEqual(await crumbLabels(page), ['Acme Working Capital', 'Jane Rivera'], 'Acme › Jane: the row crumbs, their table icons carrying Deals and Contacts (Issue #673)');
+    assert.deepEqual(await crumbLabels(page), ['Acme Working Capital', `#${jane.publicId}`], 'Acme › #id: the row crumbs, their table icons carrying Deals and Contacts (Issues #673, #1862)');
     assert.equal(await page.locator(`tr[data-eid="${a.id}"].row-docked`).count(), 1, 'the root row keeps its light while a foreign row is on top');
     await page.click('#dock .dock-back');
     await dockedName(page, 'Acme Working Capital');
-    assert.deepEqual(await crumbLabels(page), ['Acme Working Capital']);
+    assert.deepEqual(await crumbLabels(page), [`#${a.publicId}`]);
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${a.id}`);
     assert.ok(await page.locator('#dock .dock-back').isDisabled(), 'nothing behind the root: Back is disabled');
     assert.ok(await page.locator('#dock .dock-forward').isEnabled(), 'and Forward can undo the step back (Issue #671)');
@@ -147,7 +147,7 @@ if (s) {
     await page.reload({ waitUntil: 'networkidle' });
     await dockedName(page, 'Jane Rivera');
     assert.equal(await page.locator(`#main .wv-grid tr[data-eid="${a.id}"]`).count(), 1, 'still the Deals grid');
-    assert.deepEqual(await crumbLabels(page), ['Jane Rivera'], 'the row is rendered from its own table');
+    assert.deepEqual(await crumbLabels(page), [`#${jane.publicId}`], 'the row is rendered from its own table');
     assert.equal(await page.evaluate(() => location.hash), `#/table/${deals.id}?e=${jane.id}`);
     await page.close();
   });

@@ -20,7 +20,7 @@ const measure = (page) => page.evaluate(() => {
   const controls = [...h.querySelectorAll('.crumb-actions > *')].filter((n) => !n.contains(dots)).map(box).filter(Boolean);
   return {
     theme: document.documentElement.dataset.bsTheme,
-    row: box(row), path: box(h.querySelector('.crumb-path')), dots: box(dots), tools: box(h.querySelector('.table-tools-btn')),
+    row: box(row), bar: box(h.querySelector('.head-bar')), add: box(h.querySelector('.new-record-btn')), path: box(h.querySelector('.crumb-path')), dots: box(dots), tools: box(h.querySelector('.table-tools-btn')),
     inSheet: !!dots?.closest('.crumb-actions'),
     controls,
     toolbarTop: Math.min(...controls.map((c) => c.top)),
@@ -34,7 +34,7 @@ if (s) {
   {
     const theme = 'light';
     for (const dock of [0, 500, 700, 900]) {
-      test(`on a desktop the table ⋮ stays at the right end of the breadcrumb row with the dock ${dock ? `${dock}px wide` : 'shut'} (${theme}, Issue #853)`, async () => {
+      test(`on a desktop the table ⋮ ends the toolbar in row 2, just before New, with the dock ${dock ? `${dock}px wide` : 'shut'} (${theme}, Issue #853, Feature #384)`, async () => {
         const page = await browser.newPage({ viewport: { width: 1470, height: 794 } });
         try {
           await page.addInitScript(([t, w]) => { localStorage.setItem('weave-theme', t); if (w) localStorage.setItem('wv-dock-width', String(w)); }, [theme, dock]);
@@ -44,10 +44,12 @@ if (s) {
           const m = await measure(page);
           assert.equal(m.theme, theme);
           assert.ok(m.dots, 'the ⋮ shows');
-          assert.ok(Math.abs(m.dots.cy - m.path.cy) <= 1, `on the breadcrumb line: ⋮ centre ${m.dots.cy}, path centre ${m.path.cy}`);
-          assert.ok(Math.abs(m.dots.right - m.row.right) <= 8, `at the right end of the row: ⋮ ${m.dots.right}, row ${m.row.right}`);
+          assert.ok(Math.abs(m.dots.cy - m.bar.cy) <= 1, `on row 2: ⋮ centre ${m.dots.cy}, row 2 centre ${m.bar.cy}`);
+          assert.ok(m.dots.top >= m.row.bottom, `under the breadcrumb row: ⋮ ${m.dots.top}, row ${m.row.bottom}`);
+          assert.ok(m.add && m.dots.right <= m.add.left && m.add.left - m.dots.right <= 12, `just before New: ⋮ ${m.dots.right}, New ${m.add?.left}`);
+          assert.ok(Math.abs(m.add.right - m.bar.right) <= 1, `New ends row 2: ${m.add.right} vs ${m.bar.right}`);
           for (const c of m.controls) assert.ok(!overlaps(m.dots, c), `the ⋮ covers no toolbar control: ${JSON.stringify(c)}`);
-          if (m.toolbarTop != null) assert.ok(m.toolbarTop < m.path.bottom, `the toolbar stays on the breadcrumb line beside the ⋮ (Feature #377): ${m.toolbarTop} vs ${m.path.bottom}`);
+          if (m.toolbarTop != null) assert.ok(m.toolbarTop >= m.path.bottom, `the toolbar sits under the breadcrumb line, beside the ⋮ (Feature #384): ${m.toolbarTop} vs ${m.path.bottom}`);
           await page.click('#main .view-header .dots-btn[title="Table actions"]');
           await page.waitForSelector('.chip-pop.wv-menu[role="menu"] .wv-menu-row');
         } finally { await page.close(); }

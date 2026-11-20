@@ -11,18 +11,19 @@ const s = await launch('phone row page header', (weave) => {
 });
 
 const header = (page) => page.evaluate(() => {
-  const row = document.querySelector('#dock .dock-entity > .view-header .crumb-row');
+  const head = document.querySelector('#dock .dock-entity > .view-header');
+  const row = head.querySelector(':scope > .crumb-row');
   const shown = (n) => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden';
-  const controls = [...row.querySelectorAll('button, a[href]')].filter(shown).map((n) => {
+  const controls = [...head.querySelectorAll(':scope > :is(.crumb-row, .head-bar) :is(button, a[href])')].filter(shown).map((n) => {
     const r = n.getBoundingClientRect();
-    return { label: n.getAttribute('aria-label') || n.title || n.textContent.trim().slice(0, 30), w: r.width, h: r.height, top: r.top, kind: n.closest('.crumb-path') ? 'crumb' : 'control' };
+    return { label: n.getAttribute('aria-label') || n.title || n.textContent.trim().slice(0, 30), w: r.width, h: r.height, top: r.top, line: row.contains(n) ? 1 : 2, kind: n.closest('.crumb-path') ? 'crumb' : 'control' };
   });
   return {
     theme: document.documentElement.dataset.bsTheme,
     controls,
     expand: [...row.querySelectorAll('.pose-btn')].some(shown),
     copy: [...row.querySelectorAll('.crumb-copy')].some(shown),
-    eye: [...row.querySelectorAll('.eye-btn')].some(shown),
+    eye: [...head.querySelectorAll('.eye-btn')].some(shown),
     scrollWidth: document.documentElement.scrollWidth - innerWidth,
   };
 });
@@ -54,10 +55,10 @@ if (s) {
           const controls = h.controls.filter((c) => c.kind === 'control');
           const shed = !controls.some((c) => c.label === 'Share (Beta)');
           assert.deepEqual(controls.map((c) => c.label), shed
-            ? ['Record actions', 'Close']
-            : ['Share (Beta)', 'Record actions', 'Close'], 'the row keeps Share where it fits, and always the menu and Close');
+            ? ['Close', 'Record actions']
+            : ['Close', 'Share (Beta)', 'Record actions'], 'row 1 keeps Close, row 2 keeps Share where it fits and always the menu (Feature #384)');
           for (const c of controls) assert.ok(c.w >= 44 && c.h >= 44, `${c.label} is ${c.w}x${c.h}`);
-          assert.equal(new Set(h.controls.map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, 'the header keeps one line');
+          for (const line of [1, 2]) assert.equal(new Set(h.controls.filter((c) => c.line === line).map((c) => Math.round(c.top + c.h / 2))).size <= 2, true, `row ${line} keeps one line`);
           assert.equal(h.scrollWidth, 0, 'no sideways scroll');
           await page.click('#dock .head-bar .dots-btn');
           const items = await page.locator('.wv-menu .wv-menu-label, .wv-menu .hold-label').evaluateAll((ns) => ns.filter((n) => n.getClientRects().length).map((n) => n.textContent.trim()));

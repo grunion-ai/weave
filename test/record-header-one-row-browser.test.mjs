@@ -29,7 +29,7 @@ if (s) {
     const kids = [...row1.children].filter(seen).map((e) => ({ ...box(e), name: e.className }));
     return {
       row1: box(row1), row2: box(row2), path: box(path), kids, controls,
-      tools: row2.querySelector(':scope > .crumb-actions') ? box(row2.querySelector(':scope > .crumb-actions')) : null,
+      tools: [row2.querySelector(':scope > .crumb-actions'), row2.querySelector(':scope > .table-tools-btn')].filter(seen).map(box)[0] ?? null,
       slots: [...path.querySelectorAll(':scope > .crumb-slot')].filter(seen).map(box),
       pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
@@ -100,12 +100,12 @@ if (s) {
       await settle(page);
       const names = (scope, sel) => page.locator(`${scope} .view-header ${sel} >> visible=true`).evaluateAll((list) => list.map((n) => n.getAttribute('aria-label') ?? n.getAttribute('title')));
       assert.deepEqual(await names('#dock', '.crumb-row button:not(.crumb-copy, .nav-menu)'), ['Expand to the full page', 'Close'], 'the pane keeps Expand and Close on row 1');
-      assert.deepEqual(await names('#dock', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Task actions'], 'and its tools on row 2');
+      assert.deepEqual(await names('#dock', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Record actions'], 'and its tools on row 2');
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main .view-header .crumb-cur');
       await settle(page);
       assert.deepEqual(await names('#main', '.crumb-row button:not(.crumb-copy, .nav-menu, .crumb-more)'), ['Close — back to the table'], 'the record page keeps Close on row 1');
-      assert.deepEqual(await names('#main', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Task actions'], 'and its tools on row 2');
+      assert.deepEqual(await names('#main', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Record actions'], 'and its tools on row 2');
       await page.click('#main .view-header .head-bar .dots-btn');
       const labels = await page.locator('.wv-menu-label').allTextContents();
       assert.ok(labels.includes('Dock beside table'), `the menu docks the record: ${labels}`);

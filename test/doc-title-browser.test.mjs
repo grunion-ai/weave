@@ -29,7 +29,7 @@ if (s) {
       const h1 = getComputedStyle(document.querySelector('#main h1'));
       return { size: cs.fontSize, weight: cs.fontWeight, h1Margin: h1.marginBottom };
     });
-    assert.deepEqual(look, { size: '20px', weight: '700', h1Margin: '0px' }, 'the <h1> sits on the type scale (Issue #383)');
+    assert.deepEqual(look, { size: '16px', weight: '600', h1Margin: '0px' }, 'the <h1> sits on the type scale (Issue #383, Feature #384)');
     await page.close();
   });
 

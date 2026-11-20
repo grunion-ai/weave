@@ -35,7 +35,7 @@ if (s) {
       cur: seen(path.querySelector('.crumb-cur')) ? box(path.querySelector('.crumb-cur')) : null,
       folded: !!path.querySelector('.crumb-more'),
       tight: barEl.classList.contains('head-bar-tight'),
-      search: Math.round(rowEl.querySelector('.table-search')?.getBoundingClientRect().width ?? 0),
+      search: Math.round(barEl.querySelector('.table-search')?.getBoundingClientRect().width ?? 0),
       pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });

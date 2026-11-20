@@ -5183,7 +5183,7 @@ function tableControlPopover(anchor, db, className, rows, { selector = `.${[...a
   const trigger = () => (home ?? document.querySelector('#main'))?.querySelector(selector) || anchor;
   const position = () => {
     const r = trigger().getBoundingClientRect();
-    if (['table-fields-popover', 'table-filter-popover', 'subtable-popover'].includes(className)) pop.style.maxHeight = `${Math.max(220, innerHeight - r.bottom - 22)}px`;
+    if (['table-fields-popover', 'table-filter-popover', 'subtable-popover'].includes(className)) pop.style.maxHeight = `${dockCoversScreen.matches && className === 'table-filter-popover' ? innerHeight - 16 : Math.max(220, innerHeight - r.bottom - 22)}px`;
     pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
     pop.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
   };

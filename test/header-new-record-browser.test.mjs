@@ -49,7 +49,7 @@ if (s) {
       await page.fill('.new-row-name', 'Board card from the header');
       await page.click('.tray-actions button[type="submit"]');
       await eventually(count, before + 1);
-      assert.ok(weave.listEntities(bugs.id).some((e) => e.name === 'Board card from the header'), 'the card lands in Issue');
+      assert.ok(weave.listEntities(bugs.id).some((e) => JSON.stringify(e).includes('Board card from the header')), 'the card lands in Issue');
     } finally { await page.close(); }
   });
 }

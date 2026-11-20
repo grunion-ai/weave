@@ -1827,9 +1827,9 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-path { flex: 1 1 0; min-width: 0; max-width: none; }
 #app .view-header .crumb-row.crumb-row-fit > .crumb-pane { flex: none; flex-wrap: nowrap; gap: 4px; margin: 0 0 0 auto; }
 #app .view-header .head-bar { flex-wrap: nowrap; min-width: 0; min-height: 28px; gap: 8px; }
-#app .view-header .head-bar > .crumb-actions { flex: none; flex-wrap: nowrap; }
+#app .view-header .head-bar > .crumb-actions { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; }
 #app .view-header .head-bar.head-bar-measure > *, #app .view-header .head-bar.head-bar-measure .view-title { flex-shrink: 0; }
-#main .view-header .crumb-row > .crumb-pane > .pose-btn { display: none; }
+#app #main .view-header .crumb-row > .crumb-pane > .pose-btn { display: none; }
 .view-header > .view-title-row { margin-bottom: 0; }
 .view-header > .record-bar { margin-bottom: 8px; color: var(--tblr-secondary); }
 .record-kind { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-grid); white-space: nowrap; }
@@ -1911,7 +1911,8 @@ a.crumb-item:hover { background: var(--wv-pill-hover); }
   #app .view-header .head-bar > .crumb-actions > .table-view-btn { width: auto; min-width: 28px; padding: 0 5px; gap: 6px; }
   #app .view-header .crumb-actions > .table-search { height: 28px; }
   #app .view-header .crumb-actions > .table-search > .table-search-btn { margin: -1px; }
-  #app .view-header .crumb-actions > .table-search > input { width: 132px; height: 26px; min-height: 0; padding: 0 8px 0 2px; }
+  #app .view-header .crumb-actions > .table-search { min-width: 28px; }
+  #app .view-header .crumb-actions > .table-search > input { flex: 0 1 132px; width: 132px; min-width: 0; height: 26px; min-height: 0; padding: 0 8px 0 2px; }
   #app .head-bar.head-bar-tight > .crumb-actions > .table-search:has(:placeholder-shown):not(:has(input:focus)) { border-color: transparent; background: none; }
   #app .head-bar.head-bar-tight > .crumb-actions > .table-search:has(:placeholder-shown):not(:has(input:focus)) > input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
   #app .head-bar.head-bar-tight > .crumb-actions > .table-search:has(:placeholder-shown):not(:has(input:focus)) > .table-search-btn:hover { background: var(--wv-hover-wash); color: var(--tblr-body-color); }
@@ -2642,7 +2643,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 @media (pointer: coarse) {
   :root { --wv-hit: 44px; }
   :where(
-    .wv-menu-row, .slash-item, .wv-more, .new-row-opt, .icon-btn, .wv-invite-btn, .ws-logo-pick, .view-title, .desc-info, .save-glyph, .compare-close,
+    .wv-menu-row, .slash-item, .wv-more, .new-row-opt, .icon-btn, .wv-invite-btn, .ws-logo-pick, .view-title, textarea.name-edit, .desc-info, .save-glyph, .compare-close,
     .wv-act-row, button.wv-act-subject, .wv-act-icon, .wv-act-filters button, .tray-close, .tray-actions .btn, .tray-body :is(.form-control, .form-select),
     .picker-search, .picker-pop :is(.picker-box, .picker-row), .date-pop .form-control-sm, .date-pop-arrow, .date-pop-title, .date-day, .date-pop-link,
     .opt-row :is(.opt-grip, .opt-name, .opt-del, .opt-color), .opt-list .opt-add, .entity-body > .attach-block .opt-grip, .related-head .opt-grip,
@@ -2745,7 +2746,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .fieldrow-note { grid-column: 2 / -1; max-width: 60ch; font-size: var(--fs-grid); line-height: 1.55; color: var(--tblr-secondary); padding: 2px 0 10px; }
 .view-description-toggle .view-title-h { flex: 0 1 auto; margin-right: 0; }
 .view-description-toggle .view-title { field-sizing: content; }
-.view-title-row > .desc-info { --wv-hit-pull: calc((24px - var(--wv-hit)) / 2); flex-shrink: 0; width: var(--wv-hit); height: var(--wv-hit); padding: 0; margin: var(--wv-hit-pull) var(--wv-hit-pull) var(--wv-hit-pull) calc(var(--wv-hit-pull) - 6px); }
+.view-title-row > .desc-info { flex-shrink: 0; width: var(--wv-hit); height: var(--wv-hit); padding: 0; margin: calc((24px - var(--wv-hit)) / 2) calc((24px - var(--wv-hit)) / 2) calc((24px - var(--wv-hit)) / 2) -6px; }
 .view-title-row > .desc-info .wv-icon, .view-title-row > .desc-info svg { width: 14px; height: 14px; }
 .view-description-toggle .view-desc { max-width: 68ch; padding-bottom: 8px; }
 @media (pointer: coarse) { .fieldrow-note { grid-column: 1 / -1; } }

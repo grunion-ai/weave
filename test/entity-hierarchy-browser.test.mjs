@@ -42,7 +42,7 @@ if (s) {
       });
       assert.equal(r.name, 'Design onboarding wizard');
       assert.deepEqual(r.visibleH1, [], 'the echoing H1 is not on screen');
-      assert.equal(r.title, '24px', 'the page title leads the scale');
+      assert.equal(r.title, '20px', 'the page title is the 20 px record title (Feature #384)');
       assert.equal(r.h2, '18px', 'a document heading sits below the page title');
       assert.match(r.value, /^# Design onboarding wizard/, 'the markdown keeps the heading');
     } finally { await page.close(); }

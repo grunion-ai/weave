@@ -31,9 +31,17 @@ if (s) {
     await frames(page);
     return page;
   };
-  const TIGHT = 1000;
   const table = (opts) => open(`#/table/${deals.id}`, '#main .wv-grid tbody tr.entity-row', opts);
   const split = (opts) => open(`#/table/${deals.id}?e=${acme.id}`, '#dock:not([hidden]) .name-edit', opts);
+  const tightSplit = async () => {
+    const page = await split({ width: 1200 });
+    for (let width = 1200; width >= 900; width -= 20) {
+      await page.setViewportSize({ width, height: 900 });
+      await frames(page);
+      if ((await bar(page, '#main')).tight) return page;
+    }
+    return page;
+  };
   const record = (id, opts) => open(`#/entity/${id}`, '#main .name-edit', opts);
   const box28 = (m, names, where) => {
     for (const name of names) {
@@ -72,7 +80,7 @@ if (s) {
 
   test('a tight table bar folds search to an icon at its left end and keeps View, Share, the menu and New in place', async () => {
     const wide = await table();
-    const page = await split({ width: TIGHT });
+    const page = await tightSplit();
     try {
       const rest = await bar(wide, '#main');
       const m = await bar(page, '#main');
@@ -92,14 +100,14 @@ if (s) {
   });
 
   test('the folded search icon opens the bar and focuses it, folds when empty and blurred, and stays open on a query', async () => {
-    const page = await split({ width: TIGHT });
+    const page = await tightSplit();
     try {
       const folded = await bar(page, '#main');
       await page.click('#main .table-search-btn');
       await frames(page);
       let m = await bar(page, '#main');
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the icon focuses the input');
-      assert.ok(Math.abs(m.items['table-search'].w - 160) <= 4, `the bar opens: ${m.items['table-search'].w}`);
+      assert.ok(m.items['table-search'].w >= 96 && m.items['table-search'].w <= 164, `the bar opens into the room the title gives up (Feature #384): ${m.items['table-search'].w}`);
       assert.equal(m.items['table-search'].h, 28);
       for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn', 'new-record-btn']) {
         assert.equal(m.items[name].left, folded.items[name].left, `${name} holds still while the bar opens`);
