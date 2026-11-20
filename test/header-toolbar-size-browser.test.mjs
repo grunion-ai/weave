@@ -166,7 +166,7 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a tight 400 px dock keeps the current crumb, the permalink and every button whole', async () => {
+  test('a tight 400 px dock keeps the table crumb, the permalink and every button whole (Issue #1878)', async () => {
     const page = await split({ width: 1100, dock: 400 });
     try {
       await page.click(`#dock a[href="#/entity/${jane.id}"]`);
@@ -180,7 +180,7 @@ if (s) {
       assert.deepEqual(m.paneGaps, [4]);
       for (const it of Object.values(m.items)) assert.ok(it.inside && it.reachable, `${it.name} is whole and answers a click: ${JSON.stringify(it)}`);
       assert.ok(m.copy?.inside, `the permalink sits fully inside the dock header: ${JSON.stringify(m.copy)}`);
-      assert.equal(await page.locator('#dock .crumb-row .crumb-cur').isVisible(), true, 'the current crumb still shows');
+      assert.equal(await page.locator('#dock .crumb-row .crumb-path > .crumb-slot:last-child > .crumb-k-table').isVisible(), true, 'the table crumb still shows');
       assert.equal(await page.locator('#dock .crumb-row .dock-back').isVisible(), true, 'Back stays in the row');
       assert.equal(m.scroll, 0);
       const labels = await menuLabels(page, '#dock');

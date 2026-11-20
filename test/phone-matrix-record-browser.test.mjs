@@ -60,18 +60,6 @@ if (s) {
     });
   });
 
-  test('the phone record chip sets #4 at the size of its table name (Issue #1391)', { todo: 'Issue #1391' }, async (t) => {
-    await eachPhone(t, matrix, async (page) => {
-      await openRecord(page, base, tasks, t4);
-      const f = await page.evaluate(() => {
-        const read = (q) => { const c = getComputedStyle(document.querySelector(q)); return { size: c.fontSize, spacing: c.letterSpacing }; };
-        return { id: read('#dock .crumb-cur .crumb-pid'), table: read('#dock .crumb-cur .crumb-tbl') };
-      });
-      assert.equal(f.id.size, f.table.size, `#4 is set at ${f.id.size} beside Task at ${f.table.size}`);
-      assert.ok(['normal', '0px'].includes(f.id.spacing), `#4 is tracked at ${f.id.spacing}`);
-    });
-  });
-
   test('a phone relation chip spaces its state, name, open and remove parts with one gap (Issue #1392)', { todo: 'Issue #1392' }, async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t4);

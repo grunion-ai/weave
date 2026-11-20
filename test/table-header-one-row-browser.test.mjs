@@ -72,7 +72,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${tasks.id}?e=${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#dock .view-header .crumb-cur');
+      await page.waitForSelector('#dock .view-header .record-kind');
       let tight = null;
       for (let width = 1500; width >= 1008; width -= 12) {
         await page.setViewportSize({ width, height: 900 });

@@ -14,17 +14,21 @@ const s = await launch('phone record crumb', (weave) => {
 
 const crumb = (page, scope) => page.evaluate((sc) => {
   const root = document.querySelector(sc);
-  const cur = root.querySelector('.crumb-row .crumb-cur');
-  const cut = [cur, ...cur.querySelectorAll('*')].filter((n) => n.getClientRects().length && n.scrollWidth > n.clientWidth + 1).map((n) => n.className);
+  const slots = [...root.querySelectorAll('.crumb-row .crumb-path > .crumb-slot:not([hidden])')].filter((n) => n.getClientRects().length);
+  const last = slots.at(-1).querySelector('.crumb-item');
+  const cut = [last, ...last.querySelectorAll('*')].filter((n) => n.getClientRects().length && n.scrollWidth > n.clientWidth + 1).map((n) => n.className);
   return {
-    text: cur.innerText.replace(/\s+/g, ''),
-    title: cur.getAttribute('title'),
+    text: last.innerText.replace(/\s+/g, ''),
+    kind: [...last.classList].find((k) => k.startsWith('crumb-k-')),
     cut,
     folds: !!root.querySelector('.crumb-row .crumb-more'),
-    trail: [...root.querySelectorAll('.crumb-row .crumb-slot:not([hidden]) .crumb-item')].filter((n) => n.getClientRects().length).map((n) => n.innerText.replace(/\s+/g, ' ').trim()),
+    trail: slots.map((n) => n.querySelector('.crumb-item').innerText.replace(/\s+/g, ' ').trim()),
+    row2: root.querySelector('.head-bar .record-kind').innerText.trim(),
+    header: root.querySelector('.view-header').innerText,
     heading: root.querySelector('textarea.name-edit').value,
   };
 }, scope);
+const once = (text, id) => text.match(new RegExp(`${id}(?!\\d)`, 'g'))?.length ?? 0;
 
 if (s) {
   const { base, browser, peek, page: full, longPeek } = s;
@@ -39,44 +43,26 @@ if (s) {
   };
 
   for (const [engine, make] of engines) {
-    test(`a record on a phone shows its table and number in the crumb and leaves the name to the title (${engine}, Issue #982)`, async () => {
+    test(`a record on a phone shows its table in the crumb and its #id once, in row 2, and leaves the name to the title (${engine}, Issues #982, #1878)`, async () => {
       const page = await open(make, peek, '#dock:not([hidden]) textarea.name-edit');
       try {
         const c = await crumb(page, '#dock');
-        assert.equal(c.text, 'Deal#1', 'the crumb carries the table and the number');
+        assert.equal(c.text, 'Deal', 'the crumb is the table');
+        assert.equal(c.kind, 'crumb-k-table');
+        assert.equal(c.row2, '#1', 'row 2 carries the #id');
+        assert.equal(once(c.header, '#1'), 1, `the header names the #id once: ${JSON.stringify(c.header)}`);
         assert.deepEqual(c.cut, [], 'nothing in the crumb is cut off');
         assert.equal(c.heading, NAME, 'the title carries the name');
-        assert.match(c.title, /Acme renewal/, 'the crumb still names the record for a hover or a screen reader');
       } finally { await page.close(); }
     });
 
-    test(`the phone record chip sets its number in the table name's face, size, tracking and baseline (${engine}, Issue #1391)`, async () => {
-      const page = await open(make, peek, '#dock:not([hidden]) textarea.name-edit');
-      try {
-        const m = await page.evaluate(() => {
-          const cur = document.querySelector('#dock .crumb-row .crumb-cur');
-          const read = (sel) => {
-            const node = cur.querySelector(sel);
-            const css = getComputedStyle(node);
-            const box = node.getBoundingClientRect();
-            return { family: css.fontFamily, size: css.fontSize, tracking: css.letterSpacing, top: box.top, bottom: box.bottom };
-          };
-          return { tbl: read('.crumb-tbl'), pid: read('.crumb-pid') };
-        });
-        assert.equal(m.pid.family, m.tbl.family, `the number draws in the chip's own face: ${JSON.stringify(m)}`);
-        assert.equal(m.pid.size, m.tbl.size, `the number draws at the chip's own size: ${JSON.stringify(m)}`);
-        assert.equal(m.pid.tracking, m.tbl.tracking, `the number keeps the chip's tracking: ${JSON.stringify(m)}`);
-        assert.ok(Math.abs(m.pid.top - m.tbl.top) <= 1, `the number's box top meets the table name's: ${JSON.stringify(m)}`);
-        assert.ok(Math.abs(m.pid.bottom - m.tbl.bottom) <= 1, `the number sits on the table name's baseline: ${JSON.stringify(m)}`);
-      } finally { await page.close(); }
-    });
-
-    test(`the full record page on a phone shows only the number after its table crumb (${engine}, Issue #982)`, async () => {
+    test(`the full record page on a phone ends its crumbs at the table (${engine}, Issues #982, #1878)`, async () => {
       const page = await open(make, full, '#main textarea.name-edit');
       try {
         const c = await crumb(page, '#main');
-        assert.equal(c.text, '#1');
-        assert.ok(c.trail.at(-2) === 'Deal' || c.folds, `the table crumb comes first, or folds into the "…" menu when the one-row header has no room (Feature #377): ${c.trail.join(' › ')}`);
+        assert.equal(c.text, 'Deal');
+        assert.equal(c.row2, '#1');
+        assert.equal(once(c.header, '#1'), 1, `the header names the #id once: ${JSON.stringify(c.header)}`);
         assert.deepEqual(c.cut, []);
       } finally { await page.close(); }
     });
@@ -84,29 +70,28 @@ if (s) {
 
   for (const [table, hash] of [['a short table', peek], ['a long table', longPeek]]) {
     for (const width of [360, 375, 390]) {
-      test(`at ${width}px the docked crumb of ${table} keeps its number whole and clear of Copy permalink (Issue #765)`, async () => {
+      test(`at ${width}px the docked table crumb of ${table} stays clear of Copy permalink (Issues #765, #1878)`, async () => {
         const page = await open(() => browser.newPage({ viewport: { width, height: 844 } }), hash, '#dock:not([hidden]) textarea.name-edit');
         try {
           const m = await page.evaluate(() => {
             const row = document.querySelector('#dock .crumb-row');
-            const box = (sel) => row.querySelector(sel).getBoundingClientRect();
-            const pid = row.querySelector('.crumb-cur .crumb-pid');
-            return { chip: box('.crumb-cur').right, pid: box('.crumb-cur .crumb-pid').right, copy: box('.crumb-copy').left, pidCut: pid.scrollWidth > pid.clientWidth + 1 };
+            const box = (n) => n.getBoundingClientRect();
+            const chip = row.querySelector('.crumb-path > .crumb-slot:last-child > .crumb-k-table');
+            return { chip: box(chip).right, path: box(row.querySelector('.crumb-path')).right, copy: box(row.querySelector('.crumb-copy')).left, copyRight: box(row.querySelector('.crumb-copy')).right };
           });
-          assert.equal(m.pidCut, false, 'the number is whole');
-          assert.ok(m.pid <= m.chip + 0.5, `the number stays inside its chip: ${JSON.stringify(m)}`);
-          assert.ok(m.chip <= m.copy + 0.5, `the chip stops before Copy permalink: ${JSON.stringify(m)}`);
+          assert.ok(m.chip <= m.copy + 0.5, `the table chip stops before Copy permalink: ${JSON.stringify(m)}`);
+          assert.ok(m.copyRight <= m.path + 0.5, `Copy permalink stays inside the path: ${JSON.stringify(m)}`);
         } finally { await page.close(); }
       });
     }
   }
 
-  test('on a desktop the record crumb is its #id, with the name left to the title and the hover text (Issues #982, #1862)', async () => {
+  test('on a desktop the docked record crumb is its table, with the #id in row 2 (Issues #982, #1862, #1878)', async () => {
     const page = await open(() => browser.newPage({ viewport: { width: 1440, height: 900 } }), peek, '#dock:not([hidden]) textarea.name-edit');
     try {
       const c = await crumb(page, '#dock');
-      assert.equal(c.text, '#1');
-      assert.match(c.title, /Acme renewal/);
+      assert.equal(c.text, 'Deal');
+      assert.equal(c.row2, '#1');
     } finally { await page.close(); }
   });
 }

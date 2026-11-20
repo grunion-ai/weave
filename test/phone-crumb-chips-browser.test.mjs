@@ -15,7 +15,7 @@ if (s) {
     const page = width ? await browser.newPage({ viewport: { width, height: 844 } }) : await phonePage(await phoneBrowser());
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
     await page.goto(`${base}/${hash}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.crumb-row .crumb-cur');
+    await page.waitForSelector('.crumb-row .crumb-copy');
     return page;
   };
   const crumbs = (page, scope) => page.evaluate((scope) => {
@@ -36,7 +36,7 @@ if (s) {
 
   for (const theme of ['light', 'dark']) {
     for (const [where, hash, scope] of [['table page', table, '#main'], ['row page', docked, '#dock']]) {
-      test(`on a phone every crumb on the ${where} is a 36px filled chip with an icon and a label, the current one bold (${theme}, Feature #270)`, async () => {
+      test(`on a phone every crumb on the ${where} is a 36px filled chip with an icon and a label, the current one bold (${theme}, Feature #270, Issue #1878)`, async () => {
         const page = await open(hash, { theme });
         try {
           if (scope === '#dock') await page.waitForSelector('#dock:not([hidden]) .crumb-row .crumb-item');
@@ -50,9 +50,14 @@ if (s) {
             assert.ok(c.icon && c.label, `${c.text} carries an icon and a label`);
           }
           const cur = seen.chips.filter((c) => c.current);
-          assert.equal(cur.length, 1, 'one current crumb');
-          assert.ok(cur[0].weight >= 700, `the current crumb is bold (${cur[0].weight})`);
-          assert.ok(seen.chips.filter((c) => !c.current).every((c) => c.weight < cur[0].weight), 'and bolder than the rest');
+          if (scope === '#dock') {
+            assert.equal(cur.length, 0, 'a record has no current crumb: its #id lives in row 2');
+            assert.equal(seen.chips.at(-1).text, 'Issue', 'the record pane shows its table crumb');
+          } else {
+            assert.equal(cur.length, 1, 'one current crumb');
+            assert.ok(cur[0].weight >= 700, `the current crumb is bold (${cur[0].weight})`);
+            assert.ok(seen.chips.filter((c) => !c.current).every((c) => c.weight < cur[0].weight), 'and bolder than the rest');
+          }
           if (scope === '#main') assert.deepEqual(seen.menu, [44, 44], 'the menu button is a 44px circle');
           assert.ok(seen.scrollWidth <= seen.vw, `the page does not scroll sideways (${seen.scrollWidth})`);
         } finally { await page.close(); }

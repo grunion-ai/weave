@@ -95,48 +95,39 @@ const adaH = { ...ada, publicId: 7, tableIcon: 'lucide:user', spaceIcon: 'lucide
 const boardH = { ...board, publicId: 3, tableIcon: 'lucide:cpu', spaceIcon: 'lucide:briefcase' };
 const leoH = { ...leo, publicId: 9, tableIcon: 'lucide:user', spaceIcon: 'lucide:briefcase' };
 
-test('entityCrumbs: the head and the current row when there is no trail', () => {
+test('entityCrumbs: with no trail the crumbs end at the table, which leaves the #id to row 2 (Issue #1878)', () => {
   const c = entityCrumbs('weave', [], boardH);
-  assert.deepEqual(c.map((x) => [x.kind, x.label]), [['ws', 'weave'], ['space', 'Showcase'], ['table', 'Field Types'], ['row', 'Sensor board']]);
+  assert.deepEqual(c.map((x) => [x.kind, x.label]), [['ws', 'weave'], ['space', 'Showcase'], ['table', 'Field Types']]);
   assert.equal(c[1].icon, 'lucide:briefcase', 'the space crumb wears the space icon');
   assert.equal(c[2].icon, 'lucide:cpu', 'the table crumb wears the table icon');
-  const cur = c[3];
-  assert.equal(cur.current, true, 'the last crumb is the row you are on');
-  assert.equal(cur.publicId, 3);
-  assert.equal(cur.icon, ROW_MARK, 'the row crumb behind its own table crumb wears the row mark, not the table icon again');
-  assert.equal(cur.href, '#/entity/b');
+  assert.equal(c[2].href, '#/table/t2');
+  assert.ok(c.every((x) => !x.current && x.publicId == null), 'no crumb is the record, and none carries its #id');
 });
 
-test('entityCrumbs: the head is where the path started; rows follow with their own icons', () => {
+test('entityCrumbs: the head is where the path started; trail rows follow, and the table of the record ends the path (Issue #1878)', () => {
   const c = entityCrumbs('weave', [adaH], boardH);
-  assert.deepEqual(c.map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Sensor board'], 'no Field Types crumb mid-trail');
+  assert.deepEqual(c.map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Field Types']);
   assert.equal(c[3].href, '#/entity/a');
   assert.equal(c[3].current, false);
   assert.equal(c[3].icon, ROW_MARK, 'the first row sits behind its own table crumb, so it wears the row mark');
   assert.equal(c[3].title, 'People \u00b7 Ada Chen', 'the tooltip names the table');
-  assert.equal(c[4].icon, 'lucide:cpu', 'the hop into Field Types shows in its icon');
-  assert.deepEqual(entityCrumbs('weave', [adaH], leoH).map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'Leo Marsh']);
+  assert.deepEqual([c[4].kind, c[4].icon, c[4].href], ['table', 'lucide:cpu', '#/table/t2'], 'the hop into Field Types ends on its table');
+  assert.deepEqual(entityCrumbs('weave', [adaH], leoH).map((x) => x.label), ['weave', 'Showcase', 'People', 'Ada Chen', 'People']);
 });
 
 test('entityCrumbs: no row crumb repeats the glyph of the crumb in front of it (Issue #746)', () => {
   const glyphs = (c) => c.map((x) => x.icon);
-  assert.deepEqual(glyphs(entityCrumbs('weave', [], boardH)).slice(2), ['lucide:cpu', ROW_MARK], 'table then its row');
-  assert.deepEqual(glyphs(entityCrumbs('weave', [adaH], leoH)).slice(2), ['lucide:user', ROW_MARK, ROW_MARK], 'two rows of the one table');
-  const hop = glyphs(entityCrumbs('weave', [adaH], boardH)).slice(2);
-  assert.deepEqual(hop, ['lucide:user', ROW_MARK, 'lucide:cpu'], 'a hop into another table keeps that table icon');
-  for (const c of [entityCrumbs('weave', [], boardH), entityCrumbs('weave', [adaH], leoH), entityCrumbs('weave', [adaH], boardH)]) {
-    assert.equal(c[2].kind, 'table');
-    assert.notEqual(c[3].icon, c[2].icon, 'the first row does not repeat the table crumb glyph');
-  }
+  assert.deepEqual(glyphs(entityCrumbs('weave', [adaH], leoH)).slice(2), ['lucide:user', ROW_MARK, 'lucide:user'], 'a row behind its own table wears the row mark');
+  assert.deepEqual(glyphs(entityCrumbs('weave', [adaH], boardH)).slice(2), ['lucide:user', ROW_MARK, 'lucide:cpu'], 'a hop into another table keeps that table icon');
 });
 
-test('dockCrumbs: the rows of the path, no table in front, the last one current', () => {
-  assert.deepEqual(dockCrumbs([adaH]).map((c) => [c.kind, c.label, c.current]), [['row', 'Ada Chen', true]], 'one docked row: just that row');
+test('dockCrumbs: the earlier rows of the path, then the table of the docked record, with no current row (Issue #1878)', () => {
+  assert.deepEqual(dockCrumbs([adaH]).map((c) => [c.kind, c.label, !!c.current]), [['table', 'People', false]], 'one docked row: its table');
   const hop = dockCrumbs([adaH, boardH, leoH]);
-  assert.deepEqual(hop.map((c) => c.label), ['Ada Chen', 'Sensor board', 'Leo Marsh']);
-  assert.deepEqual(hop.map((c) => c.publicId), [7, 3, 9]);
-  assert.deepEqual(hop.map((c) => c.current), [false, false, true]);
+  assert.deepEqual(hop.map((c) => [c.kind, c.label]), [['row', 'Ada Chen'], ['row', 'Sensor board'], ['table', 'People']]);
+  assert.deepEqual(hop.map((c) => c.publicId ?? null), [7, 3, null]);
   assert.equal(hop[1].icon, 'lucide:cpu', 'the hop into another table is its icon');
+  assert.equal(hop[2].icon, 'lucide:user');
   assert.deepEqual(dockCrumbs([]), []);
 });
 
@@ -209,12 +200,11 @@ test('nav: navUpdate fills a hop in wherever it sits (a name learnt after the fe
   assert.deepEqual(navPath(nav).map((x) => [x.id, x.name, x.publicId]), [['a', 'Ada', 7], ['b', undefined, undefined]]);
 });
 
-test('a row with an avatar wears it in the crumb in place of the row mark', () => {
+test('a trail row with an avatar wears it in the crumb in place of the row mark', () => {
   const face = { shape: 'round', initials: 'AC', hue: 'blue', file: null, badge: null };
-  const crumbs = entityCrumbs('weave', [], { ...ada, avatar: face });
-  const row = crumbs[crumbs.length - 1];
-  assert.deepEqual(row.avatar, face);
-  assert.equal(entityCrumbs('weave', [], ada).at(-1).avatar, null);
-  assert.equal(entityCrumbs('weave', [], ada).at(-1).icon, ROW_MARK);
-  assert.deepEqual(dockCrumbs([{ ...leo, avatar: face }])[0].avatar, face);
+  const crumbs = entityCrumbs('weave', [{ ...adaH, avatar: face }], leoH);
+  assert.deepEqual(crumbs[3].avatar, face);
+  assert.equal(entityCrumbs('weave', [adaH], leoH)[3].avatar, null);
+  assert.equal(entityCrumbs('weave', [adaH], leoH)[3].icon, ROW_MARK);
+  assert.deepEqual(dockCrumbs([{ ...leo, avatar: face }, ada])[0].avatar, face);
 });
