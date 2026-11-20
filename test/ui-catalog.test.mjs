@@ -269,3 +269,13 @@ test('one trigger planted beside the harvested ones fails the gate by name (Issu
   const gaps = surfaceGaps({ routes: [], triggers: [...harvestedTriggers(data), planted], states: stateRoutes(), names: catalogNames(STATES_SRC, STATES), allowed });
   assert.deepEqual(gaps.missing.triggers, [planted.sig], 'a surface added to the app enters the state catalogue or fails CI with its name');
 });
+
+test('the record add button and the reference chip state mark each have a state that opens them (Issue #1847)', () => {
+  const names = catalogNames(STATES_SRC, STATES);
+  for (const cls of ['add-entity-btn', 'wv-chip-mark']) {
+    assert.ok(names.classes.has(cls), `a state in test/lib/states.mjs names .${cls}, so a probe opens that overlay`);
+  }
+  for (const sig of ['add-entity-btn', 'cat-done.hue-green.k.k-state.wv-chip-mark']) {
+    assert.ok(!(sig in (allowed.triggers ?? {})), `test/ui-surface-baseline.json no longer records ${sig} as a gap`);
+  }
+});

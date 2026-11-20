@@ -118,6 +118,7 @@ function a11y(weave) {
   weave.createEntity(issue, { name: 'Old note', values: { Severity: 'Low' } });
   weave.deleteEntity(gone.id);
   weave.setDoc(i1.id, `Measured on [[Task#${t1.publicId}]].\n\n## Steps\n\nOpen the grid and scroll.\n`, 'Brief');
+  weave.updateField(task.id, 'Chip', { config: { state: true } });
   const handles = { task, issue, entityId: i1.id, table: task.id, ...views(weave, task) };
   const form = createForm(weave, { name: 'Report a task', table: task.id, fields: [{ field: 'Name', key: 'title', label: 'Title', required: true }, { field: 'Notes', key: 'notes', label: 'Notes' }] });
   return { ...handles, form };
@@ -631,6 +632,7 @@ const OVERLAY_STATES = [
     },
   },
   { name: 'new-row-sheet', route: 'table', cells: PHONE, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.phone-bar .phone-new', cell) },
+  { name: 'related-new-row', route: 'sink-row', cells: DESKTOP, root: '#tray-back', act: (page, ctx, cell) => tap(page, '.related-section .add-entity-btn', cell) },
   {
     name: 'select-all-field', route: 'table', cells: DESKTOP, root: '.picker-pop',
     async act(page, ctx, cell) {
@@ -682,6 +684,7 @@ const A11Y_STATES = [
     await tap(page, '#dock .crumb-actions .dots-btn');
   } },
   { name: 'Issue table', route: 'issue-table', open: 'rest', layout: 'table' },
+  { name: 'chip state picker', route: 'issue-table', open: 'overlay', layout: 'table', root: '.picker-pop', act: (page) => tap(page, `${ROW} td[data-field="Task"] .k-rel .wv-chip-mark`) },
   { name: 'entity page', route: 'entity-page', open: 'rest', layout: null },
   { name: 'editor open', route: 'entity-page', open: 'overlay', layout: null, root: '.vditor', act: (page) => page.locator('.vditor-ir [contenteditable="true"] >> visible=true').first().click() },
   { name: 'map', route: 'map', open: 'rest', layout: null },

@@ -132,11 +132,11 @@ test('each probe keeps the surfaces it walked before the catalog, and adds the b
   const journeys = (probe) => unique(plan(probe).filter((p) => p.state.open === 'journey').map((p) => p.state.name)).sort();
   assert.equal(JOURNEYS.length, 15);
   assert.equal(SWEEP_JOURNEYS.length, 16);
-  assert.equal(OVERLAYS.length, 41);
+  assert.equal(OVERLAYS.length, 42);
   assert.deepEqual(rests('cutoff'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('flicker'), ['board-view', 'sink-board', 'sink-row', 'sink-table']);
   assert.deepEqual(rests('a11y'), ['Issue table', 'Task table', 'activity', 'billing', 'board-view', 'entity page', 'forms builder', 'map', 'published form', 'settings', 'sink-board', 'sink-row', 'sink-table', 'start', 'trash']);
-  assert.deepEqual(overlays('a11y'), ['command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
+  assert.deepEqual(overlays('a11y'), ['chip state picker', 'command palette', 'editor open', 'field dialog', 'filter popover', 'row menu', 'share pane', 'sort popover']);
   assert.deepEqual(rests('touch'), ['board-view', 'prose-home', 'prose-row', 'prose-space', 'prose-table', 'row page', 'sink-board', 'sink-row', 'sink-table', 'table list', 'workspace home']);
   assert.deepEqual(overlays('touch'), ['bug panel', 'bug-report', 'date picker', 'date-picker', 'density', 'doc-downloads', 'entity-field-editor', 'entity-status', 'field editor tray', 'filters', 'group', 'icon picker', 'menu', 'multi picker', 'nav', 'new-row-sheet', 'phone-row', 'picker sheet', 'prose-table-description', 'range picker', 'range-picker', 'row-actions', 'search', 'search sheet', 'share-page', 'share-row', 'share-table', 'sort', 'table-icon', 'table-tools', 'view']);
   assert.deepEqual(journeys('touch'), ['activity-panel', 'html-intro-row', 'load-home', 'open-table', 'phone-menu', 'phone-open-row', 'phone-picker', 'phone-search', 'phone-table-sheet', 'scroll-grid', 'type-doc']);

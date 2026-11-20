@@ -2,9 +2,7 @@
   "_": "Surfaces the `tools/ui-catalog` harvest finds that no state in test/lib/states.mjs names, so no probe opens them (Issue #1466). test/ui-catalog.test.mjs crawls the catalog's own route list and reads the overlay triggers out of the committed docs/ui-catalog/index.html. A route is listed when a state's route resolves to the same hash shape; an overlay trigger is listed when one of its classes appears as a selector in test/lib/states.mjs, or its label appears there as a string or the tail of a text= selector. A trigger the harvest recorded without an element, as the keyboard lane does, is named by the `catalog` labels a state declares. A surface with no entry here fails the gate by name. The file only shrinks: once a state covers the surface, the gate fails on the entry until it is dropped in the same change.",
   "routes": {},
   "triggers": {
-    "add-entity-btn": { "issue": 1847, "why": "the new-record button in the grid footer and in a related block, where the related block opens a tray and the footer adds a row inline" },
     "btn.btn-sm.share-btn": { "issue": 1846, "why": "a class the 0.4.89 harvest recorded that the app no longer renders, so the entry goes when docs/ui-catalog/index.html is harvested again" },
-    "cat-done.hue-green.k.k-state.wv-chip-mark": { "issue": 1847, "why": "the state segment of a reference chip, which no seed renders where a probe would click it" },
     "doc-anchor.doc-history-btn": { "issue": 1846, "why": "a class the 0.4.89 harvest recorded that the app no longer renders, so the entry goes when docs/ui-catalog/index.html is harvested again" }
   }
 }
