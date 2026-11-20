@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.165 (2026-11-20)
+
+- **Outline rail at the top of a record** (Issue #1539): an upward gesture on a record page that is already at the top rubber-bands in Safari and fires scroll events that leave the box exactly where it was. The rail now refreshes only when the box moved, so the gesture no longer rewrites the rail's height and scroll position under the reader.
+- **Concurrent uploads per account** (Issue #1429): a JSON upload holds its body buffer, the parsed string and the decoded bytes in memory at once, and nothing counted how many ran together, so a handful of 10 MiB attachments sent at the same time could push a small container into swap. The attach route now admits two uploads at a time per account and answers 429 with `Retry-After: 60` past that; the cap is `uploads` in the route limit table.
+
 ## v0.4.164 (2026-11-20)
 
 - **One boot read per endpoint** (Issue #1705): a cold home load asked the server for `/workspace` four times and `/workspaces` twice, because `loadSchema`, the form-permission read, the account chip, the home reads and the workspace rail each opened their own request. The boot GETs now share one in-flight read per path until the first route settles, so each of them is read once, and `test/boot-requests-browser.test.mjs` counts a cold boot's calls so the next duplicate fails by name.

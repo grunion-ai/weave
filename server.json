@@ -8,11 +8,11 @@
     "source": "github"
   },
   "websiteUrl": "https://weave.grunion.ai",
-  "version": "0.4.164",
+  "version": "0.4.165",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/grunion-ai/weave:0.4.164",
+      "identifier": "ghcr.io/grunion-ai/weave:0.4.165",
       "transport": {
         "type": "stdio"
       },
