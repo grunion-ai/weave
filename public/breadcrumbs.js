@@ -17,23 +17,29 @@
     };
   }
 
+  function tableCrumb(h) {
+    return { kind: 'table', label: h.table ?? '', href: `#/table/${h.tableId}`, icon: h.tableIcon ?? null };
+  }
+
   function entityCrumbs(wsName, trail, entity) {
     const first = trail[0] ?? entity;
     const crumbs = [
       { kind: 'ws', label: wsName, href: '#/' },
       { kind: 'space', label: first.space, href: `#/space/${first.spaceId}`, icon: first.spaceIcon ?? null },
-      { kind: 'table', label: first.table, href: `#/table/${first.tableId}`, icon: first.tableIcon ?? null },
+      tableCrumb(first),
     ];
     let shown = first.tableId;
-    for (const [h, current] of [...trail.map((t) => [t, false]), [entity, true]]) {
-      crumbs.push(rowCrumb(h, current, h.tableId === shown ? ROW_MARK : (h.tableIcon ?? null)));
+    for (const h of trail) {
+      crumbs.push(rowCrumb(h, false, h.tableId === shown ? ROW_MARK : (h.tableIcon ?? null)));
       shown = h.tableId;
     }
+    if (trail.length) crumbs.push(tableCrumb(entity));
     return crumbs;
   }
 
   function dockCrumbs(hops) {
-    return hops.map((h, i) => rowCrumb(h, i === hops.length - 1));
+    if (!hops.length) return [];
+    return [...hops.slice(0, -1).map((h) => rowCrumb(h)), tableCrumb(hops.at(-1))];
   }
 
   function foldPlan(widths, box, { from = 1, more = 0, mins = null } = {}) {

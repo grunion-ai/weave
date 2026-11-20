@@ -1260,12 +1260,10 @@ function navIconEl(icon, kind) {
   return iconEl(icon, 'wv-icon nav-icon') ?? iconEl(CRUMB_ICON_FALLBACK[kind], 'wv-icon nav-icon');
 }
 function crumbInner(c) {
-  const numbered = c.kind === 'row' && c.current && c.publicId != null;
   return [
-    numbered ? iconEl(c.icon, 'wv-icon crumb-ic') ?? iconEl(CRUMB_ICON_FALLBACK.row, 'wv-icon crumb-ic') : crumbIconEl(c),
-    c.kind === 'row' && c.current && c.table ? el('span', { class: 'crumb-tbl' }, c.table) : null,
+    crumbIconEl(c),
     c.publicId != null ? el('span', { class: 'crumb-pid' }, `#${c.publicId}`) : null,
-    numbered ? null : el('span', { class: 'crumb-nm' }, c.label ?? ''),
+    el('span', { class: 'crumb-nm' }, c.label ?? ''),
   ];
 }
 const watchCrumbPath = sharedResize((path) => fitCrumbs(path, path.wvFoldFrom ?? 1));
@@ -1284,19 +1282,20 @@ function fitHeadBar(bar) {
 function crumbPath(crumbs, { copy = null, foldFrom = 1 } = {}) {
   const path = el('span', { class: 'crumb-path' });
   crumbs.forEach((c, i) => {
+    const copyBtn = copy && i === crumbs.length - 1 ? el('button', {
+      type: 'button', class: 'btn btn-sm btn-ghost-secondary crumb-copy', title: copy.title, 'aria-label': copy.title,
+      onclick: copy.run,
+    }, lucideEl('link')) : null;
     const node = c.current
       ? el('span', { class: 'crumb-cur-wrap' },
         el('span', { class: `crumb-item crumb-cur crumb-k-${c.kind ?? 'page'}`, title: c.title ?? c.label, 'aria-current': 'page' }, ...crumbInner(c)),
-        copy ? el('button', {
-          type: 'button', class: 'btn btn-sm btn-ghost-secondary crumb-copy', title: copy.title, 'aria-label': copy.title,
-          onclick: copy.run,
-        }, lucideEl('link')) : null)
+        copyBtn)
       : el('a', {
         class: `crumb-item crumb-k-${c.kind ?? 'page'}`, href: c.kind === 'ws' ? wsHomeHref() : c.href,
         title: c.title ?? c.label,
       }, ...crumbInner(c));
     const slot = el('span', { class: 'crumb-slot' + (c.current ? ' crumb-slot-cur' : '') },
-      i ? el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›') : null, node);
+      i ? el('span', { class: 'crumb-sep', 'aria-hidden': 'true' }, '›') : null, node, c.current ? null : copyBtn);
     slot.crumb = c;
     path.append(slot);
   });

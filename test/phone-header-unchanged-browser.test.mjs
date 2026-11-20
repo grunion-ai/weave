@@ -119,7 +119,7 @@ if (s) {
   });
 
   test('a phone record page keeps its header controls, their sizes and its menu rows', async () => {
-    const page = await open(s.record, '#main .view-header .crumb-cur');
+    const page = await open(s.record, '#main .view-header .record-kind');
     try {
       assert.deepEqual(await rows(page, '#main'), WANT.record);
       assert.deepEqual(await menuRows(page, '#main'), WANT.recordMenu);
@@ -133,7 +133,7 @@ if (s) {
   });
 
   test('a phone record over its table keeps its 44 px header controls and its menu rows', async () => {
-    const page = await open(s.dock, '#dock:not([hidden]) .view-header .crumb-cur');
+    const page = await open(s.dock, '#dock:not([hidden]) .view-header .record-kind');
     try {
       assert.deepEqual(await rows(page, '#dock'), WANT.dock);
       assert.deepEqual(await menuRows(page, '#dock'), WANT.dockMenu);

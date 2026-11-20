@@ -22,7 +22,7 @@ if (s) {
       trayButton: seen(menu),
       trayButtonWidth: menu ? Math.round(menu.getBoundingClientRect().width) : 0,
       workspaceCrumb: seen(document.querySelector('#main .view-header .crumb-k-ws')),
-      crumbHeight: Math.round(document.querySelector('#main .view-header .crumb-cur').getBoundingClientRect().height),
+      crumbHeight: Math.round(document.querySelector('#main .view-header .crumb-path > .crumb-slot:last-child > .crumb-item').getBoundingClientRect().height),
       rowHeight: Math.round(document.querySelector('#main .view-header .crumb-row').getBoundingClientRect().height),
       pref: localStorage.getItem('weave-nav-collapsed'),
     };
@@ -30,7 +30,7 @@ if (s) {
   const open = async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .view-header .crumb-cur');
+    await page.waitForSelector('#main .view-header .crumb-path > .crumb-slot:last-child > .crumb-item');
     await settle(page);
     return page;
   };

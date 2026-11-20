@@ -63,7 +63,7 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1920, height: 900 } });
     try {
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .view-header .crumb-cur');
+      await page.waitForSelector('#main .view-header .record-kind');
       await sweep(page, '#main');
     } finally { await page.close(); }
   });
@@ -82,7 +82,7 @@ if (s) {
     try {
       await page.addInitScript(() => localStorage.setItem('wv-dock-width', '400'));
       await page.goto(`${base}/#/table/${tasks.id}?e=${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#dock .view-header .crumb-cur');
+      await page.waitForSelector('#dock .view-header .record-kind');
       for (const width of [1440, 1200, 1100, 1000, 960, 901]) {
         await page.setViewportSize({ width, height: 800 });
         await settle(page);
@@ -96,13 +96,13 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/table/${tasks.id}?e=${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#dock .view-header .crumb-cur');
+      await page.waitForSelector('#dock .view-header .record-kind');
       await settle(page);
       const names = (scope, sel) => page.locator(`${scope} .view-header ${sel} >> visible=true`).evaluateAll((list) => list.map((n) => n.getAttribute('aria-label') ?? n.getAttribute('title')));
       assert.deepEqual(await names('#dock', '.crumb-row button:not(.crumb-copy, .nav-menu)'), ['Expand to the full page', 'Close'], 'the pane keeps Expand and Close on row 1');
       assert.deepEqual(await names('#dock', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Record actions'], 'and its tools on row 2');
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .view-header .crumb-cur');
+      await page.waitForSelector('#main .view-header .record-kind');
       await settle(page);
       assert.deepEqual(await names('#main', '.crumb-row button:not(.crumb-copy, .nav-menu, .crumb-more)'), ['Close — back to the table'], 'the record page keeps Close on row 1');
       assert.deepEqual(await names('#main', '.head-bar .crumb-actions button'), ['Show or hide fields', 'Share (Beta)', 'Record actions'], 'and its tools on row 2');
@@ -112,23 +112,52 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a record names itself once: the crumbs end at the table and the #id, the title carries the name (Issue #1862)', async () => {
+  const named = (page, scope) => page.evaluate((scope) => {
+    const h = document.querySelector(`${scope} .view-header`);
+    const slots = [...h.querySelectorAll('.crumb-path > .crumb-slot:not([hidden])')].filter((n) => n.getClientRects().length);
+    const last = slots.at(-1);
+    return {
+      crumbs: slots.map((n) => n.querySelector('.crumb-item')?.innerText.trim()).filter(Boolean),
+      lastKind: [...(last?.querySelector('.crumb-item')?.classList ?? [])].find((k) => k.startsWith('crumb-k-')),
+      copyAfterLast: !!last?.querySelector('.crumb-item ~ .crumb-copy'),
+      bar: h.querySelector('.head-bar .record-kind').innerText.trim(),
+      text: h.innerText,
+    };
+  }, scope);
+  const once = (text, pid) => text.match(new RegExp(`#${pid}(?!\\d)`, 'g'))?.length ?? 0;
+
+  test('a record names itself once: row 1 ends at the table with Copy permalink, row 2 carries the #id (Issues #1862, #1878)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     try {
       await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main .view-header .crumb-cur');
-      const m = await page.evaluate(() => {
-        const h = document.querySelector('#main .view-header');
-        return {
-          crumbs: [...h.querySelectorAll('.crumb-path > .crumb-slot:not([hidden]) .crumb-item')].map((n) => n.innerText.trim()),
-          bar: h.querySelector('.head-bar .record-kind').innerText.trim(),
-          text: h.innerText,
-        };
-      });
-      assert.deepEqual(m.crumbs.slice(-2), ['Tasks', `#${row.publicId}`], `the trail ends at the table and the number: ${m.crumbs}`);
+      await page.waitForSelector('#main .view-header .record-kind');
+      await settle(page);
+      const m = await named(page, '#main');
+      assert.equal(m.crumbs.at(-1), 'Tasks', `the trail ends at the table: ${m.crumbs}`);
+      assert.equal(m.lastKind, 'crumb-k-table', 'the last crumb is the table');
+      assert.ok(m.copyAfterLast, 'Copy permalink follows the table crumb');
       assert.equal(m.bar, `#${row.publicId}`, 'row 2 leads with the table icon and the #id');
+      assert.equal(once(m.text, row.publicId), 1, `the header names the #id once: ${JSON.stringify(m.text)}`);
       assert.equal(m.text.split(NAME).length - 1, 0, 'the header text never repeats the name');
       assert.equal(await page.locator('#main .view-header .name-edit').inputValue(), NAME, 'the title carries it once');
+    } finally { await page.close(); }
+  });
+
+  test('a docked record shows the table crumb in row 1 and its #id once, at every pane width (Issue #1878)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await page.addInitScript(() => localStorage.setItem('wv-dock-width', '400'));
+      await page.goto(`${base}/#/table/${tasks.id}?e=${row.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#dock .view-header .record-kind');
+      for (const width of [1440, 1000, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await settle(page);
+        const m = await named(page, '#dock');
+        assert.equal(m.crumbs.at(-1), 'Tasks', `the pane's last crumb is the table at ${width}px: ${m.crumbs}`);
+        assert.equal(m.lastKind, 'crumb-k-table', `the last crumb is the table at ${width}px`);
+        assert.ok(m.copyAfterLast, `Copy permalink follows the table crumb at ${width}px`);
+        assert.equal(once(m.text, row.publicId), 1, `the pane header names the #id once at ${width}px: ${JSON.stringify(m.text)}`);
+      }
     } finally { await page.close(); }
   });
 

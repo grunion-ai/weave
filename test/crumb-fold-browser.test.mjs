@@ -39,17 +39,18 @@ if (s) {
     const p = path.getBoundingClientRect();
     const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, w: r.width }; };
     const slots = [...path.querySelectorAll(':scope > .crumb-slot:not(.crumb-more-slot)')];
-    const cur = path.querySelector('.crumb-cur');
+    const last = slots.filter((s) => !s.hidden).at(-1);
     return {
       path: { l: p.left, r: p.right, scroll: path.scrollWidth, client: path.clientWidth },
       shown: slots.filter((s) => !s.hidden).map((s) => (s.querySelector('.crumb-nm') ?? s.querySelector('.crumb-pid')).textContent.slice(0, 6)),
       count: slots.length,
       more: !!path.querySelector('.crumb-more'),
-      cur: { ...box(cur), pid: box(cur.querySelector('.crumb-pid')), nm: !!cur.querySelector('.crumb-nm') },
+      last: { ...box(last), kind: [...last.querySelector('.crumb-item').classList].find((k) => k.startsWith('crumb-k-')) },
+      copy: box(last.querySelector('.crumb-copy')),
     };
   });
 
-  test('a narrow dock keeps one row: the first crumb and whole current crumb stay in the box (Issues #765, #1513, Feature #377)', async () => {
+  test('a narrow dock keeps one row: the first crumb, the whole table crumb and Copy permalink stay in the box (Issues #765, #1513, #1878, Feature #377)', async () => {
     const page = await walk();
     await page.waitForSelector('#dock .crumb-more');
     assert.equal(await page.locator('#dock').evaluate((n) => Math.round(n.getBoundingClientRect().width)), 550, 'the dock holds its pinned 550 px');
@@ -57,10 +58,10 @@ if (s) {
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
     assert.equal(m.shown[0], 'Step 0', 'the first crumb stays');
-    assert.equal(m.shown.at(-1), `#${chain[5].publicId}`, 'the trail ends at the current #id (Issue #1862)');
-    assert.ok(m.cur.l >= m.path.l - 0.5 && m.cur.r <= m.path.r + 0.5, `the current crumb is inside the path box: ${JSON.stringify(m)}`);
-    assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows whole');
-    assert.equal(m.cur.nm, false, 'and its Name is left to the title (Issue #1862)');
+    assert.equal(m.shown.at(-1), 'Steps', 'the trail ends at the table of the docked record (Issue #1878)');
+    assert.equal(m.last.kind, 'crumb-k-table');
+    assert.ok(m.last.l >= m.path.l - 0.5 && m.last.r <= m.path.r + 0.5, `the table crumb is inside the path box: ${JSON.stringify(m)}`);
+    assert.ok(m.copy.r <= m.path.r + 0.5 && m.copy.w > 0, `Copy permalink shows whole after it: ${JSON.stringify(m)}`);
     assert.ok(m.path.scroll <= m.path.client + 1, `nothing runs past the box's right edge: ${m.path.scroll} > ${m.path.client}`);
     await page.close();
   });
@@ -102,23 +103,23 @@ if (s) {
     await page.setViewportSize({ width: 2400, height: 800 });
     await page.waitForFunction(() => !document.querySelector('#dock .crumb-more'));
     const m = await read(page);
-    assert.deepEqual(m.shown, ['Step 0', 'Step 1', 'Step 2', `#${chain[3].publicId}`], 'every crumb shows again');
+    assert.deepEqual(m.shown, ['Step 0', 'Step 1', 'Step 2', 'Steps'], 'every crumb shows again');
     await page.close();
   });
 }
 
 if (s) {
   const { base, browser } = s;
-  test('a long row name stays out of the crumbs: the workspace, space and table crumbs stay whole, the trail ends at the #id and the title shows the full name (Issues #1127, #1158, #1159, #1862)', async () => {
+  test('a long row name stays out of the crumbs: the workspace, space and table crumbs stay whole, the trail ends at the table and the title shows the full name (Issues #1127, #1158, #1159, #1862, #1878)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${long.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .crumb-path .crumb-cur');
+    await page.waitForSelector('#main .crumb-path .crumb-copy');
     const m = await page.evaluate(() => {
       const whole = (n) => n && { text: n.textContent, shown: n.getClientRects().length > 0, cut: n.scrollWidth - n.clientWidth };
       const path = document.querySelector('#main .crumb-path');
       return {
         trail: ['ws', 'space', 'table'].map((k) => whole(path.querySelector(`.crumb-slot:not(.crumb-slot-cur) > .crumb-k-${k} > .crumb-nm`))),
-        cur: whole(path.querySelector('.crumb-cur')),
+        text: path.textContent,
         title: document.querySelector('#main .name-edit')?.value,
         overflow: path.scrollWidth - path.clientWidth,
       };
@@ -128,7 +129,7 @@ if (s) {
       assert.ok(c.cut <= 0, `${JSON.stringify(c.text)} is cut by ${c.cut}px`);
     }
     assert.ok(m.trail[0].text.length > 14, `the workspace name is long enough to have been capped at 14ch: ${m.trail[0].text}`);
-    assert.ok(!m.cur.text.includes('Antidis') && m.cur.cut <= 0, `the current crumb is the whole #id, never the name: ${JSON.stringify(m.cur)}`);
+    assert.ok(!m.text.includes('Antidis'), `the crumbs never carry the name: ${m.text}`);
     assert.equal(m.title, UNBROKEN, 'and the title row under it shows the full name');
     assert.ok(m.overflow <= 1, `nothing runs past the path box: ${m.overflow}px`);
     await page.close();

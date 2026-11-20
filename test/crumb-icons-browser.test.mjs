@@ -43,20 +43,21 @@ if (s) {
     await page.close();
   });
 
-  test('the dock: the row crumb is the table icon and #id, no table crumb in front, the Name left to the title (Issue #1862)', async () => {
+  test('the dock: row 1 ends at the table crumb with Copy permalink, row 2 carries the #id (Issues #1862, #1878)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}?e=${acme.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     const c = await crumbs(page, '#dock');
-    assert.deepEqual(c.map((x) => [x.kind, x.pid, x.name, x.current]), [['row', `#${acme.publicId}`, '', true]]);
+    assert.deepEqual(c.map((x) => [x.kind, x.pid, x.name, x.current]), [['table', null, 'Deals', false]]);
     everyIcon(c, 'dock');
+    assert.equal((await page.locator('#dock .head-bar .record-kind').innerText()).trim(), `#${acme.publicId}`);
     const copy = page.locator('#dock .crumb-path .crumb-copy');
     assert.equal(await copy.getAttribute('title'), 'Copy permalink');
     assert.equal(await copy.locator('svg').count(), 1, 'the copy button is an icon');
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Jane Rivera');
     const hop = await crumbs(page, '#dock');
-    assert.deepEqual(hop.map((x) => [x.kind, x.name, x.current]), [['row', 'Acme Working Capital', false], ['row', '', true]]);
+    assert.deepEqual(hop.map((x) => [x.kind, x.name, x.current]), [['row', 'Acme Working Capital', false], ['table', 'Contacts', false]]);
     everyIcon(hop, 'dock after a hop');
     await page.close();
   });
@@ -75,19 +76,14 @@ if (s) {
     return { ink: ((bb.width + stroke) / vb.width) * box.width, box: box.width, cls: svg.getAttribute('class') };
   });
 
-  test('the full page: the row crumb does not draw its table glyph a second time (Issue #746)', async () => {
+  test('the full page: row 1 draws the table glyph once, on the table crumb, and row 2 leads with it (Issues #746, #1878)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .name-edit');
     const g = await glyphs(page, '#main');
-    assert.equal(g.length, 4, 'ws, space, table, row');
+    assert.equal(g.length, 3, 'ws, space, table');
     assert.ok(g[2], 'the table crumb wears the table icon');
-    assert.ok(g[3], 'the row crumb wears a glyph of its own');
-    assert.notEqual(g[3], g[2], 'and it is not the table glyph again');
-    await page.goto(`${base}/#/entity/${jane.id}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('#main .name-edit');
-    const h = await glyphs(page, '#main');
-    assert.notEqual(h[h.length - 1], h[2], 'a table with no icon of its own does not lend the row its fallback either');
+    assert.equal(await page.locator('#main .head-bar .record-kind svg').count(), 1, 'row 2 leads with the table icon');
     await page.close();
   });
 
@@ -114,15 +110,14 @@ if (s) {
     });
   }
 
-  test('the full page: workspace › space › table, then the row, every crumb with its icon', async () => {
+  test('the full page: workspace › space › table, every crumb with its icon, and no crumb for the record (Issue #1878)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${acme.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .name-edit');
     const c = await crumbs(page, '#main');
-    assert.deepEqual(c.map((x) => x.kind), ['ws', 'space', 'table', 'row']);
-    assert.deepEqual(c.map((x) => x.name).slice(1), ['Sales', 'Deals', '']);
-    assert.equal(c[3].pid, `#${acme.publicId}`);
-    assert.ok(c[3].current);
+    assert.deepEqual(c.map((x) => x.kind), ['ws', 'space', 'table']);
+    assert.deepEqual(c.map((x) => x.name).slice(1), ['Sales', 'Deals']);
+    assert.ok(c.every((x) => !x.current && x.pid == null), 'no crumb is current and none carries the #id');
     everyIcon(c, 'full page');
     await page.close();
   });
