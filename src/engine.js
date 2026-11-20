@@ -11502,12 +11502,13 @@ export class Weave {
     const field = this.getField(db.id, fieldRef);
     if (!isFileField(field)) throw new WeaveError(`Field '${field.name}' is not an attachments field`, 'invalid');
     if (field.type === 'avatar') {
-      if (fileInput?.staged) throw new WeaveError('An avatar is attached with its bytes, not through a streamed upload', 'invalid');
-      const bytes = fileInput?.bytes;
-      const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes ?? ''), 'base64');
-      const mime = sniffImage(buf);
+      const staged = fileInput?.staged ?? null;
+      const head = staged
+        ? this.#blobHead(this.#stagePath(staged.id))
+        : Buffer.isBuffer(fileInput?.bytes) ? fileInput.bytes : Buffer.from(String(fileInput?.bytes ?? ''), 'base64');
+      const mime = sniffImage(head);
       if (!mime) throw new WeaveError('An avatar must be a PNG, JPEG, GIF or WebP image', 'unsupported-type');
-      fileInput = { ...fileInput, bytes: buf, mime };
+      fileInput = { ...fileInput, mime, ...(staged ? {} : { bytes: head }) };
     }
     const file = this.attachFile(e.id, fileInput);
     const cur = Array.isArray(e.values[field.id]) ? e.values[field.id] : [];

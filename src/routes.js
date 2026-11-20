@@ -2115,7 +2115,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           if (row.deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
           if (role === 'editor' && weave.state.tables[row.dbId]?.system) throw new WeaveError('This token cannot change the schema', 'forbidden');
           const target = field == null ? null : weave.getField(row.dbId, field);
-          if (target && target.type !== 'attachments') throw new WeaveError('The destination must be an attachments field', 'invalid');
+          if (target && !['attachments', 'avatar'].includes(target.type)) throw new WeaveError('The destination must be an attachments or avatar field', 'invalid');
           const small = previewInput(preview);
           if (small && String(small.bytes).length > Math.ceil((PREVIEW_MAX_BYTES * 4) / 3) + 1024) throw new WeaveError(`A preview is at most ${PREVIEW_MAX_BYTES} bytes`, 'invalid');
           prune(uploads);

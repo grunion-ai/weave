@@ -3695,8 +3695,8 @@ function avatarUpload(entityId, fieldName, done) {
   return (file, choose = null) => {
     if (!file) return;
     uploadState(key).ctl = {
-      send: async (f, progress) => sendUpload(`/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
-        name: f.name, mime: f.type || 'application/octet-stream', bytes: await fileBase64(f),
+      send: (f, progress) => streamUpload(`/entities/${entityId}/fields/${encodeURIComponent(fieldName)}/files`, {
+        entity: entityId, field: fieldName, file: f, preview: false,
       }, progress),
       known: () => api('GET', `/entities/${entityId}`).then((e) => new Set((e.files ?? []).map((x) => x.id))),
       found: (f, before) => landedFile(entityId, f, before),
@@ -3847,10 +3847,10 @@ const HTML_FRAME_SANDBOX = 'allow-scripts allow-popups';
 const FILE_FRAME_SANDBOX = { html: HTML_FRAME_SANDBOX, pdf: null, text: '', image: '' };
 const fileUrl = (file) => `${WS_PREFIX}/api/files/${file.id}`;
 const previewUrl = (file) => WeavePreview.src(file, WS_PREFIX);
-async function streamUpload(path, { entity, field = null, file }, onProgress) {
+async function streamUpload(path, { entity, field = null, file, preview: wantsPreview = true }, onProgress) {
   const refusal = fileTooBig(file);
   if (refusal) throw new Error(refusal);
-  const preview = await WeavePreview.make(file);
+  const preview = wantsPreview ? await WeavePreview.make(file) : null;
   const grant = await api('POST', '/uploads', {
     entity, field, name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
     ...(preview ? { preview: { contentBase64: await fileBase64(preview) } } : {}),

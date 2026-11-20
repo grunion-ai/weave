@@ -52,7 +52,7 @@ A delete moves its target to the trash unless it passes `hard: true`, which purg
 
 ## Local file uploads
 
-Call `weave_call {name: "weave_attach_file", args: {entity, field, name, mime, prepare: true, size}}` over authenticated HTTP. The optional `field` names an attachments field. Supply the exact byte count, up to 10 MiB. The response contains `url`, `method`, `headers`, `maxBytes` and `expiresAt`. A local script sends raw file bytes using that URL, method and headers, without putting base64 in the model context or creating a separate editor token.
+Call `weave_call {name: "weave_attach_file", args: {entity, field, name, mime, prepare: true, size}}` over authenticated HTTP. The optional `field` names an attachments or avatar field. Supply the exact byte count, up to 10 MiB. The response contains `url`, `method`, `headers`, `maxBytes` and `expiresAt`. A local script sends raw file bytes using that URL, method and headers, without putting base64 in the model context or creating a separate editor token.
 
 The grant lasts ten minutes and allows one transfer to that destination. Every transfer attempt consumes it, including a failed transfer. Prepare again after failure or server restart; check the record first after an uncertain response to avoid duplicates. Keep its authorization header private. Account deletion, a role downgrade or unlinking the OAuth identity revokes the grant. Small inline files can still use `contentBase64`, with an optional attachments `field`.
 
