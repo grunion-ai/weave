@@ -37,6 +37,7 @@ if (s) {
     const pane = dock.getBoundingClientRect();
     const row = dock.querySelector('.dock-entity > .view-header .crumb-row');
     const path = row?.querySelector('.crumb-path');
+    const bar = dock.querySelector('.dock-entity > .view-header > .head-bar');
     const pick = (sel) => {
       const n = dock.querySelector(sel);
       if (!n) return null;
@@ -45,10 +46,11 @@ if (s) {
       return {
         top: r.top, bottom: r.bottom, left: r.left, rowTop: n.closest('.crumb-row')?.getBoundingClientRect().top ?? null,
         inRow: !!row && row.contains(n),
+        inBar: !!bar && bar.contains(n),
         reachable: !!hit && (hit === n || n.contains(hit)),
       };
     };
-    const actions = row ? [...row.querySelectorAll('.crumb-actions > *')] : [];
+    const actions = [...(bar ? bar.querySelectorAll('.crumb-actions > *') : []), ...(row ? row.querySelectorAll('.crumb-pane > *') : [])];
     return {
       scrollTop: dock.scrollTop,
       pane: { top: pane.top, bottom: dock.getBoundingClientRect().top + dock.clientHeight },
@@ -87,13 +89,16 @@ if (s) {
       assert.ok(await toBottom(page) > 400, 'the pane really scrolls');
       const r = await read(page);
       assert.ok(r.row, 'the dock has a crumb row');
+      for (const [name, ctl] of [['share', r.share], ['menu', r.menu]]) {
+        assert.ok(ctl?.inBar, `${name} sits in row 2 under the crumbs (Feature #384)`);
+        assert.ok(ctl.top >= r.path.bottom, `${name} sits below the breadcrumb line: ${JSON.stringify(ctl)}`);
+        assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1 && ctl.reachable, `${name} stays pinned and reachable: ${JSON.stringify(ctl)}`);
+      }
       near(r.header, r.pane.top, 'the header band is pinned to the top of the pane while the body scrolls');
       near(r.row.top, r0.row.top, 'the crumb row keeps the top it had at rest');
       visibleOneRow(r, 'expand', r.expand);
       visibleOneRow(r, 'close', r.close);
-      visibleOneRow(r, 'share', r.share);
-      assert.deepEqual(r.order.filter((x) => ['eye', 'share', 'menu', 'expand', 'close'].includes(x)), ['eye', 'share', 'menu', 'expand', 'close'], `share sits before the ⋮, expand and close follow the eye (Issue #765): ${r.order}`);
-      assert.ok(r.order.indexOf('expand') === r.order.length - 2 && r.order.indexOf('close') === r.order.length - 1, `expand and close end the row, after the ⋮: ${r.order}`);
+      assert.deepEqual(r.order.filter((x) => ['eye', 'share', 'menu', 'expand', 'close'].includes(x)), ['eye', 'share', 'menu', 'expand', 'close'], `share sits before the ⋮ in row 2, expand and close end row 1 (Issue #765, Feature #384): ${r.order}`);
       await page.close();
     });
   }
@@ -136,7 +141,7 @@ if (s) {
     assert.equal(r.dockHeads, 0);
     assert.equal(await page.locator('#dock .pose-btn').isVisible(), false, 'a full-screen dock has nothing to expand to');
     for (const [name, ctl] of [['close', r.close], ['menu', r.menu]]) {
-      assert.ok(ctl?.inRow, `${name} sits in the crumb row`);
+      assert.ok(name === 'close' ? ctl?.inRow : ctl?.inBar, `${name} sits in its header row`);
       assert.ok(ctl.top >= r.pane.top - 1 && ctl.bottom <= r.pane.bottom + 1, `${name} is on screen: ${JSON.stringify(ctl)}`);
       assert.ok(ctl.reachable, `${name} answers a tap`);
     }

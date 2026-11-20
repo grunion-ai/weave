@@ -47,7 +47,7 @@ if (s) {
     };
   });
   const headerParts = (page, pane) => page.evaluate((sel) => {
-    const names = ['crumb-row', 'entity-cover', 'entity-head', 'view-title-row'];
+    const names = ['crumb-row', 'record-bar', 'entity-cover', 'entity-head', 'view-title-row'];
     return [...document.querySelector(`${sel} > .view-header`).children]
       .map((n) => names.find((c) => n.classList.contains(c)))
       .filter(Boolean);
@@ -95,8 +95,8 @@ if (s) {
   }
 
   const inHeader = [
-    ['a record with an introduction', () => `#/entity/${ids.row}`, ['crumb-row', 'entity-cover', 'entity-head']],
-    ['a record without an introduction', () => `#/entity/${ids.note}`, ['crumb-row', 'entity-cover', 'entity-head']],
+    ['a record with an introduction', () => `#/entity/${ids.row}`, ['crumb-row', 'record-bar', 'entity-cover', 'entity-head']],
+    ['a record without an introduction', () => `#/entity/${ids.note}`, ['crumb-row', 'record-bar', 'entity-cover', 'entity-head']],
     ['a table landing', () => `#/table/${ids.table}`, ['crumb-row', 'entity-cover', 'view-title-row']],
   ];
   for (const [kind, route, order] of inHeader) {
@@ -117,7 +117,7 @@ if (s) {
       await page.click(`tr[data-eid="${ids.note}"] .open-link`);
       await page.waitForSelector('#dock:not([hidden]) .name-edit');
       await settledCover(page, '#dock .dock-entity');
-      assert.deepEqual(await headerParts(page, '#dock .dock-entity'), ['crumb-row', 'entity-cover', 'entity-head']);
+      assert.deepEqual(await headerParts(page, '#dock .dock-entity'), ['crumb-row', 'record-bar', 'entity-cover', 'entity-head']);
     } finally { await page.close(); }
   });
 }

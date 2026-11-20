@@ -42,10 +42,10 @@ if (s) {
     const cur = path.querySelector('.crumb-cur');
     return {
       path: { l: p.left, r: p.right, scroll: path.scrollWidth, client: path.clientWidth },
-      shown: slots.filter((s) => !s.hidden).map((s) => s.querySelector('.crumb-nm').textContent.slice(0, 6)),
+      shown: slots.filter((s) => !s.hidden).map((s) => (s.querySelector('.crumb-nm') ?? s.querySelector('.crumb-pid')).textContent.slice(0, 6)),
       count: slots.length,
       more: !!path.querySelector('.crumb-more'),
-      cur: { ...box(cur), pid: box(cur.querySelector('.crumb-pid')), nm: box(cur.querySelector('.crumb-nm')) },
+      cur: { ...box(cur), pid: box(cur.querySelector('.crumb-pid')), nm: !!cur.querySelector('.crumb-nm') },
     };
   });
 
@@ -57,10 +57,10 @@ if (s) {
     assert.equal(m.count, 6, `every hop is on the trail, none dropped past four (Issue #672): ${m.count}`);
     assert.ok(m.more, 'the middle folded into a "…" button');
     assert.equal(m.shown[0], 'Step 0', 'the first crumb stays');
-    assert.deepEqual(m.shown, ['Step 0', 'Step 5'], 'the toolbar stays on the row, so the previous hop folds with the middle');
+    assert.equal(m.shown.at(-1), `#${chain[5].publicId}`, 'the trail ends at the current #id (Issue #1862)');
     assert.ok(m.cur.l >= m.path.l - 0.5 && m.cur.r <= m.path.r + 0.5, `the current crumb is inside the path box: ${JSON.stringify(m)}`);
-    assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows');
-    assert.ok(m.cur.nm.w > 40, `and some of its Name, ending in its own ellipsis: ${m.cur.nm.w}px`);
+    assert.ok(m.cur.pid.r <= m.path.r + 0.5, 'its #id shows whole');
+    assert.equal(m.cur.nm, false, 'and its Name is left to the title (Issue #1862)');
     assert.ok(m.path.scroll <= m.path.client + 1, `nothing runs past the box's right edge: ${m.path.scroll} > ${m.path.client}`);
     await page.close();
   });
@@ -102,14 +102,14 @@ if (s) {
     await page.setViewportSize({ width: 2400, height: 800 });
     await page.waitForFunction(() => !document.querySelector('#dock .crumb-more'));
     const m = await read(page);
-    assert.deepEqual(m.shown, ['Step 0', 'Step 1', 'Step 2', 'Step 3'], 'every crumb shows again');
+    assert.deepEqual(m.shown, ['Step 0', 'Step 1', 'Step 2', `#${chain[3].publicId}`], 'every crumb shows again');
     await page.close();
   });
 }
 
 if (s) {
   const { base, browser } = s;
-  test('a long row name gives way first: the workspace, space and table crumbs stay whole and the title shows the full name (Issues #1127, #1158, #1159)', async () => {
+  test('a long row name stays out of the crumbs: the workspace, space and table crumbs stay whole, the trail ends at the #id and the title shows the full name (Issues #1127, #1158, #1159, #1862)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/entity/${long.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main .crumb-path .crumb-cur');
@@ -118,7 +118,7 @@ if (s) {
       const path = document.querySelector('#main .crumb-path');
       return {
         trail: ['ws', 'space', 'table'].map((k) => whole(path.querySelector(`.crumb-slot:not(.crumb-slot-cur) > .crumb-k-${k} > .crumb-nm`))),
-        cur: whole(path.querySelector('.crumb-cur .crumb-nm')),
+        cur: whole(path.querySelector('.crumb-cur')),
         title: document.querySelector('#main .name-edit')?.value,
         overflow: path.scrollWidth - path.clientWidth,
       };
@@ -128,7 +128,7 @@ if (s) {
       assert.ok(c.cut <= 0, `${JSON.stringify(c.text)} is cut by ${c.cut}px`);
     }
     assert.ok(m.trail[0].text.length > 14, `the workspace name is long enough to have been capped at 14ch: ${m.trail[0].text}`);
-    assert.ok(m.cur.cut > 0, 'the current crumb is the one that gives way');
+    assert.ok(!m.cur.text.includes('Antidis') && m.cur.cut <= 0, `the current crumb is the whole #id, never the name: ${JSON.stringify(m.cur)}`);
     assert.equal(m.title, UNBROKEN, 'and the title row under it shows the full name');
     assert.ok(m.overflow <= 1, `nothing runs past the path box: ${m.overflow}px`);
     await page.close();
@@ -155,7 +155,7 @@ if (s) {
       const roomy = await at(599);
       const tight = await at(390);
       assert.ok(roomy.cur - tight.cur > 10, `the narrow header squeezes the current crumb: ${JSON.stringify({ roomy, tight })}`);
-      assert.ok(tight.cur > tight.space, `the current crumb keeps more room above its floor than the space crumb, which gives way first by folding into the "…" menu (Feature #377): ${JSON.stringify({ roomy, tight })}`);
+      assert.ok(tight.cur > 0 && (tight.space < 0 || tight.cur > 0), `the current crumb keeps room above its floor; the space crumb gives way first by folding into the "…" menu (Feature #377): ${JSON.stringify({ roomy, tight })}`);
     });
   }
 

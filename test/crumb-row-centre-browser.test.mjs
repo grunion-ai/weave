@@ -13,17 +13,28 @@ if (s) {
   const { base, browser } = s;
   const read = (page, scope) => page.evaluate((scope) => {
     const row = document.querySelector(`${scope} .view-header .crumb-row`);
+    const bar = document.querySelector(`${scope} .view-header .head-bar`);
     const path = row.querySelector('.crumb-path').getBoundingClientRect();
+    const line = bar.getBoundingClientRect();
     const mid = (r) => r.top + r.height / 2;
-    const buttons = [...row.querySelectorAll('.crumb-actions button')]
+    const of = (list) => [...list]
       .map((b) => ({ label: b.getAttribute('aria-label') || b.title || b.className, r: b.getBoundingClientRect() }))
-      .filter((b) => b.r.height && b.r.top < path.bottom && b.r.bottom > path.top);
-    return { path: mid(path), buttons: buttons.map((b) => ({ label: b.label, mid: mid(b.r) })) };
+      .filter((b) => b.r.height)
+      .map((b) => ({ label: b.label, mid: mid(b.r) }));
+    return {
+      path: mid(path), line: mid(line),
+      buttons: of(row.querySelectorAll('.crumb-pane button, .crumb-copy')),
+      tools: of(bar.querySelectorAll('button')),
+    };
   }, scope);
   const aligned = (m, where) => {
     assert.ok(m.buttons.length, `${where}: the crumb row has buttons on the path's line`);
     for (const b of m.buttons) {
       assert.ok(Math.abs(b.mid - m.path) <= 2, `${where}: ${b.label} centre ${b.mid} vs crumb path centre ${m.path}`);
+    }
+    assert.ok(m.tools.length, `${where}: row 2 has buttons`);
+    for (const b of m.tools) {
+      assert.ok(Math.abs(b.mid - m.line) <= 2, `${where}: ${b.label} centre ${b.mid} vs row 2 centre ${m.line}`);
     }
   };
 

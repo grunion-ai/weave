@@ -33,6 +33,15 @@ if (s) {
   };
   const table = (opts) => open(`#/table/${deals.id}`, '#main .wv-grid tbody tr.entity-row', opts);
   const split = (opts) => open(`#/table/${deals.id}?e=${acme.id}`, '#dock:not([hidden]) .name-edit', opts);
+  const tightSplit = async () => {
+    const page = await split({ width: 1200 });
+    for (let width = 1200; width >= 900; width -= 20) {
+      await page.setViewportSize({ width, height: 900 });
+      await frames(page);
+      if ((await bar(page, '#main')).tight) return page;
+    }
+    return page;
+  };
   const record = (id, opts) => open(`#/entity/${id}`, '#main .name-edit', opts);
   const box28 = (m, names, where) => {
     for (const name of names) {
@@ -43,12 +52,12 @@ if (s) {
     }
   };
 
-  test('the table bar at 1440 px is one 28 px row of tools with 4 px gaps, the menu last', async () => {
+  test('the table bar at 1440 px is one 28 px row of tools with 4 px gaps, then New last (Feature #384)', async () => {
     const page = await table();
     try {
       const m = await bar(page, '#main');
       assert.equal(m.tight, false);
-      assert.deepEqual(m.order, ['table-search', 'table-view-btn', 'table-share-btn', 'dots-btn']);
+      assert.deepEqual(m.order, ['table-search', 'table-view-btn', 'table-share-btn', 'dots-btn', 'new-record-btn']);
       assert.equal(m.row.h, 28, 'the breadcrumb row is 28 px tall');
       assert.equal(m.row.padRight, 0, 'the row reserves no padding for the menu');
       box28(m, ['table-share-btn', 'dots-btn'], 'table');
@@ -61,26 +70,31 @@ if (s) {
       assert.deepEqual(m.items['table-view-btn'].icon, [16, 16]);
       assert.ok(m.items['table-view-btn'].w > 28, 'View grows sideways for its count');
       assert.equal(await page.locator('#main .table-view-btn .view-count').isVisible(), true, 'View keeps its count badge');
-      assert.deepEqual(m.gaps, [4, 4, 4]);
-      assert.equal(m.fromRight['dots-btn'], 0, 'the menu ends the row');
+      assert.deepEqual(m.gaps, [4, 4, 4, 8]);
+      assert.equal(m.items['new-record-btn'].h, 28, 'New is 28 px tall');
+      assert.equal(m.fromRight['new-record-btn'], 0, 'New ends row 2');
+      assert.equal(m.bar.h, 28, 'row 2 is 28 px tall');
       assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16], 'the permalink is a 24 px box with a 16 px icon');
     } finally { await page.close(); }
   });
 
-  test('a tight table bar folds search to an icon at its left end and keeps View, Share and the menu in place', async () => {
+  test('a tight table bar folds search and New to their icons and keeps View, Share, the menu and New in order', async () => {
     const wide = await table();
-    const page = await split();
+    const page = await tightSplit();
     try {
       const rest = await bar(wide, '#main');
       const m = await bar(page, '#main');
       assert.equal(m.tight, true, 'a docked record makes the table row tight');
-      assert.deepEqual(m.order, ['table-search', 'table-view-btn', 'table-share-btn', 'dots-btn']);
+      assert.deepEqual(m.order, ['table-search', 'table-view-btn', 'table-share-btn', 'dots-btn', 'new-record-btn']);
       assert.deepEqual([m.items['table-search'].w, m.items['table-search'].h], [28, 28], 'search folds to a 28 px icon button');
       assert.deepEqual(m.items['table-search'].icon, [16, 16]);
       assert.ok(m.items['table-search'].reachable, 'the folded icon answers a click');
-      assert.deepEqual(m.gaps, [4, 4, 4]);
+      assert.deepEqual(m.gaps, [4, 4, 4, 8]);
+      assert.equal(m.fromRight['new-record-btn'], 0, 'New still ends row 2');
+      assert.deepEqual([m.items['new-record-btn'].w, m.items['new-record-btn'].h], [28, 28], 'and folds to its + icon');
+      assert.equal(await page.locator('#main .new-record-btn').getAttribute('title'), 'New record', 'its hover text keeps the name');
       for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn']) {
-        assert.equal(m.fromRight[name], rest.fromRight[name], `${name} keeps its place from the right end`);
+        assert.equal(m.fromRight[name] - m.fromRight['dots-btn'], rest.fromRight[name] - rest.fromRight['dots-btn'], `${name} keeps its place beside the menu`);
       }
       const labels = await menuLabels(page, '#main');
       assert.ok(!labels.some((l) => /^Search/.test(l)), `the menu repeats no visible search: ${labels}`);
@@ -89,16 +103,16 @@ if (s) {
   });
 
   test('the folded search icon opens the bar and focuses it, folds when empty and blurred, and stays open on a query', async () => {
-    const page = await split();
+    const page = await tightSplit();
     try {
       const folded = await bar(page, '#main');
       await page.click('#main .table-search-btn');
       await frames(page);
       let m = await bar(page, '#main');
       assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('table-search-input')), true, 'the icon focuses the input');
-      assert.ok(Math.abs(m.items['table-search'].w - 160) <= 4, `the bar opens: ${m.items['table-search'].w}`);
+      assert.ok(m.items['table-search'].w >= 96 && m.items['table-search'].w <= 164, `the bar opens into the room the title gives up (Feature #384): ${m.items['table-search'].w}`);
       assert.equal(m.items['table-search'].h, 28);
-      for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn']) {
+      for (const name of ['table-view-btn', 'table-share-btn', 'dots-btn', 'new-record-btn']) {
         assert.equal(m.items[name].left, folded.items[name].left, `${name} holds still while the bar opens`);
       }
       assert.equal(m.items['table-search'].right, folded.items['table-search'].right, 'the bar grows leftwards');
@@ -118,14 +132,15 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('a table title and a record title start at the same height', async () => {
+  test('a table and a record start row 2 at the same height', async () => {
     const onTable = await table();
     const onRecord = await record(acme.id);
     try {
       const t = await bar(onTable, '#main');
       const r = await bar(onRecord, '#main');
       assert.equal(t.row.h, r.row.h, 'both breadcrumb rows share one height');
-      assert.equal(t.titleTop, r.titleTop, `table title ${t.titleTop} vs record title ${r.titleTop}`);
+      assert.equal(t.bar.top, r.bar.top, `table row 2 ${t.bar.top} vs record row 2 ${r.bar.top}`);
+      assert.equal(t.bar.h, r.bar.h, 'both second rows share one height');
     } finally { await onTable.close(); await onRecord.close(); }
   });
 
@@ -134,8 +149,9 @@ if (s) {
     try {
       assert.equal(await page.locator('#dock').evaluate((n) => Math.round(n.getBoundingClientRect().width)), 400);
       const m = await bar(page, '#dock');
-      assert.deepEqual(m.order, ['eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close'], 'the whole bar stays in a 400 px dock');
-      assert.equal(m.items['dock-close'].right - m.items['eye-btn'].left, 164, 'five 28 px buttons with gaps 4, 4, 12, 4');
+      assert.deepEqual(m.order, ['pose-btn', 'dock-close', 'eye-btn', 'table-share-btn', 'dots-btn'], 'the whole bar stays in a 400 px dock');
+      assert.equal(m.items['dots-btn'].right - m.items['eye-btn'].left, 92, 'three 28 px buttons with 4 px gaps in row 2');
+      assert.equal(m.items['dock-close'].right - m.items['pose-btn'].left, 60, 'two 28 px buttons with a 4 px gap in row 1');
       box28(m, m.order, '400 px dock');
       for (const it of Object.values(m.items)) {
         assert.ok(it.inside, `${it.name} sits fully inside the dock header: ${JSON.stringify(it)}`);
@@ -158,11 +174,10 @@ if (s) {
       await settled(page.locator('#dock .view-header .crumb-row'));
       await frames(page);
       const m = await bar(page, '#dock');
-      assert.equal(m.tight, true, 'a trail of two in a 400 px dock is tight');
-      assert.deepEqual(m.order, ['eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close']);
+      assert.deepEqual(m.order, ['pose-btn', 'dock-close', 'eye-btn', 'table-share-btn', 'dots-btn']);
       box28(m, m.order, 'tight dock');
-      assert.deepEqual(m.gaps, [4, 4, 12, 4]);
-      assert.equal(m.items['dock-close'].right - m.items['eye-btn'].left, 164, 'the tight bar measures 164 px');
+      assert.deepEqual(m.gaps, [4, 4]);
+      assert.deepEqual(m.paneGaps, [4]);
       for (const it of Object.values(m.items)) assert.ok(it.inside && it.reachable, `${it.name} is whole and answers a click: ${JSON.stringify(it)}`);
       assert.ok(m.copy?.inside, `the permalink sits fully inside the dock header: ${JSON.stringify(m.copy)}`);
       assert.equal(await page.locator('#dock .crumb-row .crumb-cur').isVisible(), true, 'the current crumb still shows');
@@ -217,12 +232,12 @@ if (s) {
       try {
         assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
         await page.mouse.move(2, 2);
-        for (const sel of ['.eye-btn', '.table-share-btn', '.dots-btn', 'button[aria-label^="Close"]']) {
-          const p = await paintOf(page.locator(`#main .view-header .crumb-actions ${sel}`));
+        for (const sel of ['.crumb-actions .eye-btn', '.crumb-actions .table-share-btn', '.crumb-actions .dots-btn', '.crumb-pane button[aria-label^="Close"]']) {
+          const p = await paintOf(page.locator(`#main .view-header ${sel}`));
           assert.deepEqual([p.border, p.fill, p.shadow], ['none', 'none', 'none'], `${sel} rests as a ghost`);
         }
         for (const sel of ['.table-search-btn', '.table-view-btn', '.table-share-btn', '.dots-btn']) {
-          const p = await paintOf(onTable.locator(`#main .view-header .crumb-row ${sel}`));
+          const p = await paintOf(onTable.locator(`#main .view-header .head-bar ${sel}`));
           assert.deepEqual([p.border, p.fill, p.shadow], ['none', 'none', 'none'], `the table's ${sel} rests as a ghost`);
         }
         const wash = await tokenPaint(page, 'background: var(--wv-hover-wash)');

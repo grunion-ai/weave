@@ -26,7 +26,7 @@ if (s) {
       return {
         text: n.textContent.trim(), current: n.classList.contains('crumb-cur'),
         height: Math.round(r.height), radius: cs.borderTopLeftRadius, fill: cs.backgroundColor,
-        weight: Number(cs.fontWeight), icon: !!n.querySelector('.crumb-ic, svg'), label: !!n.querySelector('.crumb-nm'),
+        weight: Number(cs.fontWeight), icon: !!n.querySelector('.crumb-ic, svg'), label: !!n.querySelector('.crumb-nm, .crumb-pid'),
       };
     });
     const menu = root.querySelector('.nav-menu')?.getBoundingClientRect();

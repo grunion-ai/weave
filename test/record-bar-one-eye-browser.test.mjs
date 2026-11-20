@@ -43,14 +43,16 @@ if (s) {
   };
   const activityRow = '.table-fields-popover [data-record-activity]';
 
-  test('the record page bar is the eye, Share, the menu and Close', async () => {
+  test('the record page bar is the eye, Share and the menu in row 2, and Close in row 1 (Feature #384)', async () => {
     const page = await record();
     try {
       const m = await bar(page, '#main');
-      assert.deepEqual(m.order, ['eye-btn', 'table-share-btn', 'dots-btn', 'close']);
+      assert.deepEqual(m.pane, ['close']);
+      assert.deepEqual(m.tools, ['eye-btn', 'table-share-btn', 'dots-btn']);
       boxes(m, 'record page');
-      assert.deepEqual(m.gaps, [4, 4, 12], '12 px before the window group');
-      assert.equal(m.fromRight.close, 0, 'Close ends the row');
+      assert.deepEqual(m.gaps, [4, 4]);
+      assert.equal(m.fromRight.close, 0, 'Close ends row 1');
+      assert.equal(m.fromRight['dots-btn'], 0, 'the menu ends row 2');
       assert.equal(m.row.h, 28);
       assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
       assert.equal(await page.locator('#main .view-header .activity-btn').isVisible(), false, 'no Activity button in the bar');
@@ -58,14 +60,16 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the dock bar is the eye, Share, the menu, Expand and Close, 164 px wide', async () => {
+  test('the dock bar is the eye, Share and the menu in row 2, and Expand and Close in row 1 (Feature #384)', async () => {
     const page = await split();
     try {
       const m = await bar(page, '#dock');
-      assert.deepEqual(m.order, ['eye-btn', 'table-share-btn', 'dots-btn', 'pose-btn', 'dock-close']);
+      assert.deepEqual(m.pane, ['pose-btn', 'dock-close']);
+      assert.deepEqual(m.tools, ['eye-btn', 'table-share-btn', 'dots-btn']);
       boxes(m, 'dock');
-      assert.deepEqual(m.gaps, [4, 4, 12, 4]);
-      assert.equal(m.items['dock-close'].right - m.items['eye-btn'].left, 164);
+      assert.deepEqual(m.gaps, [4, 4]);
+      assert.deepEqual(m.paneGaps, [4]);
+      assert.equal(m.items['dots-btn'].right - m.items['eye-btn'].left, 92);
       assert.equal(m.row.h, 28);
       assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
       assert.equal(await page.locator('#dock .view-header .activity-btn').isVisible(), false, 'no Activity button in the dock bar');
@@ -127,7 +131,7 @@ if (s) {
       assert.ok(labels.indexOf('Dock beside table') < labels.indexOf('Duplicate'), 'in the Organize section, ahead of Duplicate');
       assert.ok(!labels.some((l) => /^Activity$|field|^Share \(|^Collapse/i.test(l)), `no Activity, Fields, Share or Collapse row: ${labels}`);
       assert.deepEqual(await menuLabels(page, '#main', { on: '.crumb-actions > .eye-btn', button: 'right' }), labels, 'a right-click on the header opens the same rows');
-      await page.click('#main .view-header .crumb-row .dots-btn');
+      await page.click('#main .view-header .head-bar .dots-btn');
       const row = page.locator('.chip-pop.wv-menu [role="menuitem"]', { hasText: 'Dock beside table' });
       assert.equal((await row.locator('.wv-menu-hint').textContent()).trim(), '⌘⇧E', 'the row carries the shortcut');
       await row.click();

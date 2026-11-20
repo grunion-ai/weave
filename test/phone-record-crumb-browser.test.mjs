@@ -101,11 +101,12 @@ if (s) {
     }
   }
 
-  test('on a desktop the record crumb keeps its name (Issue #982)', async () => {
+  test('on a desktop the record crumb is its #id, with the name left to the title and the hover text (Issues #982, #1862)', async () => {
     const page = await open(() => browser.newPage({ viewport: { width: 1440, height: 900 } }), peek, '#dock:not([hidden]) textarea.name-edit');
     try {
       const c = await crumb(page, '#dock');
-      assert.match(c.text, /^#1Acmerenewal/);
+      assert.equal(c.text, '#1');
+      assert.match(c.title, /Acme renewal/);
     } finally { await page.close(); }
   });
 }

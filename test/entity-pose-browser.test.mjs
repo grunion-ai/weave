@@ -31,7 +31,7 @@ if (s) {
     await page.waitForSelector('#main .name-edit');
     assert.equal(await page.inputValue('#main .name-edit'), 'Acme Working Capital');
     assert.equal(await page.locator('#main .view-header .pose-btn').isVisible(), false, 'the page bar holds no collapse button');
-    await page.click('#main .view-header .crumb-row .dots-btn');
+    await page.click('#main .view-header .head-bar .dots-btn');
     const inward = await page.locator('.wv-menu [role="menuitem"]', { hasText: 'Dock beside table' }).locator('svg path').first().getAttribute('d');
     assert.equal(inward, 'M18 10h-4v-4', 'the menu row wears arrows-diagonal-minimize-2 (inward = collapse)');
     await page.close();

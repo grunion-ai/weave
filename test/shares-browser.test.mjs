@@ -133,7 +133,7 @@ if (s) {
         };
         const reach = await button.evaluate(reachOf);
         assert.ok(reach.w >= 43 && reach.h >= 43, `${kind}: the share button answers ${reach.w}x${reach.h}px of taps`);
-        const kebab = page.locator(`${header} .crumb-row .dots-btn`);
+        const kebab = page.locator(`${header} .head-bar .dots-btn`);
         if (!(await kebab.count())) { assert.equal(kind, 'workspace', 'only a workspace nobody here can delete has no ⋮ (Feature #347)'); continue; }
         const dots = await kebab.first().evaluate(reachOf);
         assert.ok(dots.w >= 43 && dots.h >= 43, `${kind}: the ⋮ beside it still answers ${dots.w}x${dots.h}px of taps`);

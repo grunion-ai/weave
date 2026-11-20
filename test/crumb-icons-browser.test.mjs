@@ -43,12 +43,12 @@ if (s) {
     await page.close();
   });
 
-  test('the dock: the row crumb is the table icon, #id and the full Name, no table crumb in front', async () => {
+  test('the dock: the row crumb is the table icon and #id, no table crumb in front, the Name left to the title (Issue #1862)', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${base}/#/table/${deals.id}?e=${acme.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#dock:not([hidden]) .name-edit');
     const c = await crumbs(page, '#dock');
-    assert.deepEqual(c.map((x) => [x.kind, x.pid, x.name, x.current]), [['row', `#${acme.publicId}`, 'Acme Working Capital', true]]);
+    assert.deepEqual(c.map((x) => [x.kind, x.pid, x.name, x.current]), [['row', `#${acme.publicId}`, '', true]]);
     everyIcon(c, 'dock');
     const copy = page.locator('#dock .crumb-path .crumb-copy');
     assert.equal(await copy.getAttribute('title'), 'Copy permalink');
@@ -56,7 +56,7 @@ if (s) {
     await page.click(`#dock a[href="#/entity/${jane.id}"]`);
     await page.waitForFunction(() => document.querySelector('#dock .name-edit')?.value === 'Jane Rivera');
     const hop = await crumbs(page, '#dock');
-    assert.deepEqual(hop.map((x) => [x.kind, x.name, x.current]), [['row', 'Acme Working Capital', false], ['row', 'Jane Rivera', true]]);
+    assert.deepEqual(hop.map((x) => [x.kind, x.name, x.current]), [['row', 'Acme Working Capital', false], ['row', '', true]]);
     everyIcon(hop, 'dock after a hop');
     await page.close();
   });
@@ -120,7 +120,7 @@ if (s) {
     await page.waitForSelector('#main .name-edit');
     const c = await crumbs(page, '#main');
     assert.deepEqual(c.map((x) => x.kind), ['ws', 'space', 'table', 'row']);
-    assert.deepEqual(c.map((x) => x.name).slice(1), ['Sales', 'Deals', 'Acme Working Capital']);
+    assert.deepEqual(c.map((x) => x.name).slice(1), ['Sales', 'Deals', '']);
     assert.equal(c[3].pid, `#${acme.publicId}`);
     assert.ok(c[3].current);
     everyIcon(c, 'full page');

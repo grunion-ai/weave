@@ -15,7 +15,7 @@ const s = await launch('crumb nav', (weave) => {
 
 if (s) {
   const { base, browser } = s;
-  const rows = (page, scope) => page.$$eval(`${scope} .view-header .crumb-path .crumb-k-row .crumb-nm`, (ns) => ns.map((n) => n.textContent));
+  const rows = (page, scope) => page.$$eval(`${scope} .view-header .crumb-path .crumb-k-row`, (ns) => ns.map((n) => (n.querySelector('.crumb-nm') ?? n.querySelector('.crumb-pid')).textContent));
   const named = (page, scope, name) => page.waitForFunction(([sc, n]) => document.querySelector(`${sc} .name-edit`)?.value === n, [scope, name]);
   const hop = async (page, to, name) => {
     await page.click(`#dock .entity-grid a[href="#/entity/${to.id}"]`);
@@ -32,16 +32,16 @@ if (s) {
   test('expanding a docked row keeps the path the dock took, and collapsing keeps it again', async () => {
     const page = await docked();
     await hop(page, jane, 'Jane Rivera');
-    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera']);
+    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', `#${jane.publicId}`]);
     await headerAction(page, '#dock', '.pose-btn', 'Expand to the full page');
     await named(page, '#main', 'Jane Rivera');
-    const full = await page.$$eval('#main .view-header .crumb-path .crumb-item', (cs) => cs.map((c) => [[...c.classList].find((k) => k.startsWith('crumb-k-')), c.querySelector('.crumb-nm').textContent]));
+    const full = await page.$$eval('#main .view-header .crumb-path .crumb-item', (cs) => cs.map((c) => [[...c.classList].find((k) => k.startsWith('crumb-k-')), (c.querySelector('.crumb-nm') ?? c.querySelector('.crumb-pid')).textContent]));
     assert.deepEqual(full.map(([k]) => k), ['crumb-k-ws', 'crumb-k-space', 'crumb-k-table', 'crumb-k-row', 'crumb-k-row']);
-    assert.deepEqual(full.slice(1).map(([, n]) => n), ['Sales', 'Deals', 'Acme Working Capital', 'Jane Rivera'],
+    assert.deepEqual(full.slice(1).map(([, n]) => n), ['Sales', 'Deals', 'Acme Working Capital', `#${jane.publicId}`],
       'the full page: workspace › space › table where the path started, then both hops');
     await headerAction(page, '#main', '.pose-btn', 'Dock beside table');
     await named(page, '#dock', 'Jane Rivera');
-    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera'], 'collapse keeps the path too');
+    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', `#${jane.publicId}`], 'collapse keeps the path too');
     await page.close();
   });
 
@@ -55,7 +55,7 @@ if (s) {
     assert.ok(await page.locator('#dock .dock-forward').isEnabled(), 'Forward can undo the step back');
     await page.click('#dock .dock-forward');
     await named(page, '#dock', 'Bluefin Renewal');
-    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera', 'Bluefin Renewal']);
+    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera', `#${bluefin.publicId}`]);
     await page.click('#dock .dock-back');
     await named(page, '#dock', 'Jane Rivera');
     await hop(page, acme, 'Acme Working Capital');
@@ -68,10 +68,10 @@ if (s) {
     await hop(page, jane, 'Jane Rivera');
     await hop(page, bluefin, 'Bluefin Renewal');
     await hop(page, jane, 'Jane Rivera');
-    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera'], 'crumbs show place: Jane was on the trail, so it cuts back');
+    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', `#${jane.publicId}`], 'crumbs show place: Jane was on the trail, so it cuts back');
     await page.click('#dock .dock-back');
     await named(page, '#dock', 'Bluefin Renewal');
-    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera', 'Bluefin Renewal'], 'arrows show time: Back is the row you came from');
+    assert.deepEqual(await rows(page, '#dock'), ['Acme Working Capital', 'Jane Rivera', `#${bluefin.publicId}`], 'arrows show time: Back is the row you came from');
     await page.click('#dock .dock-forward');
     await named(page, '#dock', 'Jane Rivera');
     await page.close();
@@ -92,7 +92,7 @@ if (s) {
     await fwd.click();
     await page.locator('#main .view-header .crumb-row .dock-forward').waitFor();
     await named(page, '#main', 'Jane Rivera');
-    assert.deepEqual(await rows(page, '#main'), ['Acme Working Capital', 'Jane Rivera']);
+    assert.deepEqual(await rows(page, '#main'), ['Acme Working Capital', `#${jane.publicId}`]);
     await page.close();
   });
 

@@ -49,7 +49,7 @@ if (s) {
     return page;
   };
   const OVERLAYS = [
-    { name: 'the table sheet', at: () => table, show: '#main .crumb-row.tools-open > .crumb-actions', open: async (p) => { await p.click('#main .table-tools-btn'); } },
+    { name: 'the table sheet', at: () => table, show: '#main .head-bar.tools-open > .crumb-actions', open: async (p) => { await p.click('#main .table-tools-btn'); } },
     { name: 'the filter popover', at: () => table, show: '.table-filter-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-filter-btn'); } },
     { name: 'the view popover', at: () => table, show: '.table-view-popover', open: async (p) => { await p.click('#main .table-tools-btn'); await p.click('#main .crumb-actions .table-view-btn'); } },
     { name: 'the bug panel', at: () => table, show: '#bug-panel', open: (p) => openBugReport(p) },
@@ -89,11 +89,11 @@ if (s) {
       assert.equal(await page.locator('#view-pane').isVisible(), true, 'the View pane is a panel: a click away leaves it open');
       await page.click('#main .table-view-btn');
       await page.waitForSelector('#view-pane', { state: 'hidden' });
-      await page.click('#main .crumb-row .dots-btn');
+      await page.click('#main .head-bar .dots-btn');
       assert.ok(await shown(page, '.wv-menu[role="menu"]'), 'the table menu opens');
-      await page.click('#main .crumb-row .dots-btn');
+      await page.click('#main .head-bar .dots-btn');
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'and its button shuts it');
-      await page.click('#main .crumb-row .dots-btn');
+      await page.click('#main .head-bar .dots-btn');
       await page.mouse.click(640, 800);
       assert.equal(await shown(page, '.wv-menu[role="menu"]'), false, 'a click away shuts it');
     } finally { await page.close(); }

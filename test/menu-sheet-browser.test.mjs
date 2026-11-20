@@ -71,8 +71,8 @@ if (s) {
             assert.deepEqual(seen.labels.filter((l) => !phoneOnly.includes(l)), desktop.labels.filter((l) => l !== 'Dock beside table'),
               'the desktop rows, in the desktop order; the desktop pose row reads Collapse beside the table on a phone');
             assert.deepEqual(seen.labels.filter((l) => phoneOnly.includes(l)),
-              what === 'record' ? ['Activity', 'Show / hide fields', 'Share (Beta)', 'Collapse beside the table', 'Report a problem'] : [],
-              'plus the rows a condensed phone header sheds (Feature #377) and the row a phone has no other route to (Issue #1023)');
+              what === 'record' ? ['Activity', 'Show / hide fields', 'Collapse beside the table', 'Report a problem'] : [],
+              'plus the rows a phone header sheds, Share staying in row 2 (Features #377, #384), and the row a phone has no other route to (Issue #1023)');
             assert.ok(seen.heights.every((h) => h >= 44), `every row is a 44px target: ${seen.heights}`);
             assert.ok(Math.abs(seen.box.bottom - seen.vh) <= 1, `pinned to the bottom edge (${seen.box.bottom} vs ${seen.vh})`);
             assert.ok(seen.box.left <= 0.5 && seen.box.right >= seen.vw - 0.5, 'full width');

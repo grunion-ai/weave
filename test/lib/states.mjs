@@ -222,7 +222,7 @@ export const SEEDS = Object.fromEntries(Object.entries({ grid, messy, a11y, touc
 
 const at = (sel) => () => sel;
 const openFromDots = async (page, scope, label) => {
-  await page.locator(`${scope} .view-header .crumb-row .dots-btn`).first().tap();
+  await page.locator(`${scope} .view-header .head-bar .dots-btn`).first().tap();
   await page.locator('.wv-menu >> visible=true').locator('.wv-menu-label', { hasText: label }).first().tap();
 };
 const eyeActivity = async (page) => {
@@ -452,7 +452,7 @@ const JOURNEY_STATES = [
     name: 'phone-table-sheet', layout: 'table', cells: PHONE,
     setup: table,
     async run(page) {
-      const sheet = '#main .crumb-row.tools-open > .crumb-actions';
+      const sheet = '#main .head-bar.tools-open > .crumb-actions';
       await page.tap('#main .table-tools-btn');
       await page.waitForSelector(sheet);
       await beat(page);
@@ -521,7 +521,7 @@ const ACTIVITY_STATE = {
   async setup(page, ctx) {
     const phone = phoneCell(page);
     await page.goto(phone ? `${ctx.base}/#/table/${ctx.notes.id}?e=${ctx.activity}` : `${ctx.base}/#/entity/${ctx.activity}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector(phone ? '#dock:not([hidden]) .crumb-row .dots-btn' : '#main .view-header .crumb-actions > .eye-btn');
+    await page.waitForSelector(phone ? '#dock:not([hidden]) .head-bar .dots-btn' : '#main .view-header .crumb-actions > .eye-btn');
   },
   async run(page) {
     const phone = phoneCell(page);
@@ -535,7 +535,7 @@ const ACTIVITY_STATE = {
 };
 
 const tools = async (page, cell) => {
-  const sheet = '#main .crumb-row.tools-open > .crumb-actions';
+  const sheet = '#main .head-bar.tools-open > .crumb-actions';
   if (cell !== 'phone' || await page.locator(sheet).count()) return;
   await tap(page, '#main .table-tools-btn', cell);
   await page.waitForSelector(sheet);
@@ -545,7 +545,7 @@ const toolsThen = (trigger) => async (page, ctx, cell) => {
   await tap(page, trigger, cell);
 };
 const tableMenu = (label) => async (page, ctx, cell) => {
-  if (await page.locator('#main .crumb-row.tools-open > .crumb-actions').count()) await tap(page, '#main .table-tools-btn', cell);
+  if (await page.locator('#main .head-bar.tools-open > .crumb-actions').count()) await tap(page, '#main .table-tools-btn', cell);
   await menu(page, cell, '#main .dots-btn[title="Table actions"]', label);
 };
 const scope = (cell) => (cell === 'phone' ? '#dock' : '#main');
@@ -588,7 +588,7 @@ const OVERLAY_STATES = [
     close: (page, ctx, cell) => tap(page, '#nav-collapse', cell),
   },
   {
-    name: 'table-tools', route: 'table', cells: PHONE, root: '#main .crumb-row.tools-open > .crumb-actions',
+    name: 'table-tools', route: 'table', cells: PHONE, root: '#main .head-bar.tools-open > .crumb-actions',
     act: (page, ctx, cell) => tools(page, cell),
     close: (page, ctx, cell) => tap(page, '#main .table-tools-btn', cell),
   },

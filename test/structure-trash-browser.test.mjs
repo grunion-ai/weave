@@ -100,8 +100,8 @@ if (s) {
   });
 
   for (const [what, hash, trigger] of [
-    ['the table header menu', () => `#/table/${weave.getTable('Task').id}`, '#main .crumb-row .dots-btn[title="Table actions"]'],
-    ['the space header menu', () => `#/space/${weave.getSpace('Product').id}`, '#main .view-header .crumb-row .dots-btn'],
+    ['the table header menu', () => `#/table/${weave.getTable('Task').id}`, '#main .head-bar .dots-btn[title="Table actions"]'],
+    ['the space header menu', () => `#/space/${weave.getSpace('Product').id}`, '#main .view-header .head-bar .dots-btn'],
     ['the sidebar space menu', () => '#/', () => `#nav .nav-space-row:has(a.nav-space[href="#/space/${weave.getSpace('Product').id}"]) .nav-space-menu .dots-btn`],
   ]) {
     test(`${what} opens Trash (Feature #160)`, async () => {
