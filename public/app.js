@@ -286,6 +286,22 @@ function warmGet(path, ready = null) {
   warmGets.set(path, { at: Date.now(), p });
   return p;
 }
+const bootReads = new Map();
+let bootOpen = true;
+function bootRead(path) {
+  if (!bootOpen) return api('GET', path);
+  if (!bootReads.has(path)) {
+    const p = api('GET', path);
+    p.catch(() => {});
+    bootReads.set(path, p);
+  }
+  return bootReads.get(path);
+}
+function closeBootReads() {
+  bootOpen = false;
+  bootReads.clear();
+}
+
 const rowRevisions = new Map();
 function noteRevisions(method, path, data) {
   const own = path.match(/^\/entities\/([^/?]+)/)?.[1];
@@ -302,7 +318,7 @@ async function api(method, path, body, { signal, quiet = false, gesture = null }
     warmGets.delete(path);
     if (Date.now() - hit.at < WARM_MS) return hit.p;
   }
-  if (method !== 'GET') warmGets.clear();
+  if (method !== 'GET') { warmGets.clear(); closeBootReads(); }
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const seen = method === 'PATCH' && rowRevisions.get(path.match(/^\/entities\/([^/?]+)$/)?.[1]);
   const sent = performance.now();
@@ -1088,8 +1104,8 @@ function registryWorkflows(dbId) {
 }
 
 async function loadSchema() {
-  const idRead = state.wsId ? null : api('GET', '/workspace').then((w) => w.id, () => null);
-  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), api('GET', '/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
+  const idRead = state.wsId ? null : bootRead('/workspace').then((w) => w.id, () => null);
+  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), bootRead('/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -1747,7 +1763,7 @@ async function refreshAccountChip() {
     slot.replaceChildren(accountChip(me));
     return;
   }
-  const walled = await api('GET', '/workspace').then((w) => !!w.requireAuth, (err) => err.status === 401);
+  const walled = await bootRead('/workspace').then((w) => !!w.requireAuth, (err) => err.status === 401);
   slot.dataset.state = walled ? 'signed-out' : 'none';
   slot.replaceChildren(walled ? el('a', {
     class: 'nav-account-chip nav-account-signin',
@@ -10490,7 +10506,7 @@ async function showView(id) {
   }
 }
 
-const homeReads = () => Promise.allSettled([api('GET', '/workspace'), api('GET', '/workspaces'), api('GET', '/invites')]);
+const homeReads = () => Promise.allSettled([bootRead('/workspace'), bootRead('/workspaces'), bootRead('/invites')]);
 let bootHomeReads = null;
 
 function workspaceSystemCard() {
@@ -11492,7 +11508,7 @@ async function buildWsRail() {
   const listBox = $('#ws-list');
   if (!listBox) return;
   try {
-    const list = await api('GET', '/workspaces');
+    const list = await bootRead('/workspaces');
     const seg = WS_PREFIX ? WS_PREFIX.slice(3) : null;
     const cur = seg ? list.find((w) => w.name === seg || w.id === seg) : bareRootWs(list);
     const current = cur?.name ?? seg;
@@ -12117,7 +12133,10 @@ wireTheme();
 wireSkipLink();
 healthNow().catch(() => {});
 if (!location.hash || location.hash === '#/') bootHomeReads = homeReads();
-withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => setTimeout(() => loadVditor().catch(() => {}), 1500));
+withPageLoader(() => loadSchema().then(renderRoute).catch(paintRouteError)).finally(() => {
+  closeBootReads();
+  setTimeout(() => loadVditor().catch(() => {}), 1500);
+});
 wireSearchButton();
 buildWsRail();
 wireWsNew();
