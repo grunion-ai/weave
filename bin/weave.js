@@ -13,6 +13,7 @@ import { startMcpServer } from '../src/mcp.js';
 import { cliFailure, nonNegativeInteger } from '../src/errors.js';
 import { cliCommand, cliRun, cliMiss, cliHelp } from '../src/commands.js';
 import { renderDocumentPage } from '../src/markdown.js';
+import { mentionResolver } from '../src/routes.js';
 import { markdownToPdf } from '../src/pdf.js';
 import { listForms, getForm, submitForm, createForm, updateForm, getFormDefinition } from '../src/forms.js';
 
@@ -95,7 +96,7 @@ Forms
   form submit <form> --values '{json}' [--idempotency-key key] [--note text --categories a,b]
 
 Documents
-  doc export <ref> --format md|html|pdf [--out path] [--field Name]
+  doc export <ref> --format md|html|pdf [--out path] [--field Name] [--origin url]
 
 Registry commands (the same operations the MCP tools and the REST API carry)
 `;
@@ -456,7 +457,10 @@ async function main() {
         const format = flags.format ?? 'md';
         let data;
         if (format === 'md') data = markdown;
-        else if (format === 'html') data = renderDocumentPage({ title: read.name, subtitle, markdown });
+        else if (format === 'html') {
+          const origin = typeof flags.origin === 'string' ? flags.origin.replace(/\/$/, '') : null;
+          data = renderDocumentPage({ title: read.name, subtitle, markdown, resolveMention: mentionResolver(w, origin ?? ''), origin });
+        }
         else if (format === 'pdf') data = markdownToPdf(markdown, { title: read.name, subtitle });
         else throw new WeaveError(`Unknown format '${format}'`);
         if (flags.out) {

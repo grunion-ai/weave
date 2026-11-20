@@ -111,7 +111,7 @@ test('one stylesheet gives every kind its glyph', () => {
     assert.match(sheet, new RegExp(`mention-${kind}[^{]*::before \\{ content: "${glyph}"`), kind);
   }
   assert.match(read('public/index.html'), /<link rel="stylesheet" href="\/chip\.css">/);
-  assert.match(MARKDOWN, /href="\/chip\.css"/, 'the document page links the same sheet');
+  assert.match(MARKDOWN, /CHIP_CSS = readFileSync\(new URL\('\.\.\/public\/chip\.css'/, 'the document page inlines the same sheet, so an export keeps its glyphs off the serving origin (Issue #1600)');
 });
 
 test('a document renders through the renderer or not at all', () => {

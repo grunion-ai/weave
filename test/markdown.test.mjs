@@ -112,3 +112,41 @@ test('a mention-free document page carries no mention class, so no wait may key 
   const waiter = readFileSync(join(import.meta.dirname, 'slash-commands.test.mjs'), 'utf8');
   assert.doesNotMatch(waiter, /includes\('mention'\)/, 'a doc.html wait on the bare word never waits, so the GET races the PUT');
 });
+
+test('an exported page carries its chip stylesheet and favicon, so neither needs the serving origin (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', subtitle: '', markdown: 'plain words' });
+  assert.doesNotMatch(page, /href="\/chip\.css"/, 'a root-relative stylesheet 404s from disk');
+  assert.match(page, /\.k-rel, \.k-doc/, 'chip.css is inlined, so a chip keeps its outline wherever the file is opened');
+  assert.doesNotMatch(page, /href="\/brand\/weave-favicon\.svg"/, 'the favicon travels with the page');
+  assert.match(page, /href="data:image\/svg\+xml,/, 'as a data URI');
+});
+
+test('with an origin an exported page links mermaid, highlighting and the editor library absolutely (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', markdown: '```mermaid\ngraph LR\n  A --> B\n```\n\n```js\nconst x = 1;\n```', origin: 'https://weave.example' });
+  assert.match(page, /src="https:\/\/weave\.example\/vendor\/mermaid\.min\.js"/);
+  assert.match(page, /href="https:\/\/weave\.example\/vendor\/vditor\/dist\/js\/highlight\.js\/styles\/github\.min\.css"/);
+  assert.match(page, /src="https:\/\/weave\.example\/editor-lib\.js"/);
+  assert.doesNotMatch(page, /class="wv-export-note"/, 'the bundles resolve, so the page says nothing');
+});
+
+test('a served page keeps its bundles root-relative, which is what same-origin means (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', markdown: '```mermaid\ngraph LR\n  A --> B\n```\n\n```js\nconst x = 1;\n```', origin: '' });
+  assert.match(page, /src="\/vendor\/mermaid\.min\.js"/, 'a page served from the origin that holds the bundles links them the way it always did');
+  assert.match(page, /src="\/editor-lib\.js"/);
+  assert.doesNotMatch(page, /class="wv-export-note"/, 'and says nothing, because nothing is missing');
+});
+
+test('with no origin an exported page drops the bundles that would 404 and says so once (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', markdown: '```mermaid\ngraph LR\n  A --> B\n```\n\n```js\nconst x = 1;\n```' });
+  assert.doesNotMatch(page, /mermaid\.min\.js/, 'a 404 leaves the diagram as source text with no word of why');
+  assert.doesNotMatch(page, /highlight\.min\.js/);
+  assert.doesNotMatch(page, /editor-lib\.js/);
+  assert.match(page, /class="wv-export-note"/, 'one line names what is missing and how to get it');
+  assert.match(page, /pre\.mermaid \{ text-align: left; \}/, 'an undrawn diagram reads as the source it is, left aligned, the way the dropped onerror handler left it');
+  assert.match(page, /--origin/, 'and names the flag that links them');
+});
+
+test('a page with neither a diagram nor a code block says nothing about bundles (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', markdown: '# Hi\n\nJust prose.' });
+  assert.doesNotMatch(page, /class="wv-export-note"/, 'a share page and a legal page carry no notice');
+});

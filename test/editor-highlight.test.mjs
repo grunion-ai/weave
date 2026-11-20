@@ -41,9 +41,10 @@ test('one detector serves the editor and the page', () => {
 });
 
 const JS_DOC = '# t\n\n```js\nconst x = 1;\n```\n';
+const ORIGIN = 'https://weave.example';
 
 test('a page with language-tagged code carries the vendored hljs assets', () => {
-  const page = renderDocumentPage({ title: 't', markdown: JS_DOC });
+  const page = renderDocumentPage({ title: 't', markdown: JS_DOC, origin: ORIGIN });
   assert.ok(page.includes('/vendor/vditor/dist/js/highlight.js/highlight.min.js'),
     'the page must load the same vendored highlight.js the editor uses');
   assert.match(page, /github\.min\.css"[^>]*media="\(prefers-color-scheme: light\)"/);
@@ -51,7 +52,7 @@ test('a page with language-tagged code carries the vendored hljs assets', () => 
 });
 
 test('the page highlights every code block, tagged or detected', () => {
-  const page = renderDocumentPage({ title: 't', markdown: JS_DOC });
+  const page = renderDocumentPage({ title: 't', markdown: JS_DOC, origin: ORIGIN });
   assert.ok(page.includes("querySelectorAll('pre > code')"),
     'every code block is considered');
   assert.ok(page.includes('WeaveEditorLib.detectCodeLanguage'),
@@ -67,7 +68,7 @@ test('a page without code blocks stays free of hljs', () => {
 });
 
 test('an unlabeled code block brings the highlighter with it', () => {
-  const page = renderDocumentPage({ title: 't', markdown: '```\nplain\n```\n' });
+  const page = renderDocumentPage({ title: 't', markdown: '```\nplain\n```\n', origin: ORIGIN });
   assert.ok(page.includes('highlight.min.js'),
     'an untagged block can still be JSON, markup or a shell session');
 });

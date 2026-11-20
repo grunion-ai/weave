@@ -47,6 +47,7 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
 const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
+const SAME_ORIGIN = '';
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
 
 const prefersHtml = (accept) => {
@@ -636,6 +637,52 @@ async function resolveSessionRole(c, fromRequest) {
   let unseated = null;
   return { next: { localAccount, viewerAs, viewer, unseated, accountName, actor, requestAccount, role, session } };
 }
+export function mentionResolver(weave, wsPrefix = '') {
+  return (kind, ref) => {
+    try {
+      if (kind === 'workspace') {
+        return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
+      }
+      if (kind === 'space') {
+        const sp = weave.findSpace(ref);
+        return sp ? { href: `${wsPrefix}/#/space/${sp.id}`, label: sp.name } : null;
+      }
+      if (kind === 'table') {
+        const db = weave.findTable(ref);
+        return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
+      }
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
+        const e = weave.state.entities[ref];
+        if (!e || e.deletedAt || !weave.canSee(e.id)) return null;
+        return {
+          href: `${wsPrefix}/e/${e.id}/doc.html`,
+          label: weave.entityName(e),
+          name: weave.entityName(e),
+          home: weave.state.tables[e.dbId]?.name,
+          view: weave.renderView(e.id, 'chip'),
+          fields: weave.previewFields(e.id),
+        };
+      }
+      const m = /^(.+)#(\d+)$/.exec(ref);
+      if (!m) return null;
+      const db = weave.findTable(m[1].trim());
+      if (!db) return null;
+      const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === m[2]);
+      if (!entity) return null;
+      return {
+        href: `${wsPrefix}/e/${entity.id}/doc.html`,
+        label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
+        name: weave.entityName(entity),
+        home: db.name,
+        view: weave.renderView(entity.id, 'chip'),
+        fields: weave.previewFields(entity.id),
+      };
+    } catch {
+      return null;
+    }
+  };
+}
+
 async function buildAccessHelpers(c, fromRequest) {
   const {
     actor, authz, deny, guarded, localAccount, oauth, out, requestAccount, rx, seatRequired, sessionOn, share, unseated, viewer, viewerAs, viewerOn,
@@ -705,49 +752,7 @@ async function buildAccessHelpers(c, fromRequest) {
   };
   const actorOn = (w) => w === weave ? actorForRequest : actorOf(accountOn(w)) ?? `from ${weave.state.meta.name}: ${weave.actorName(actorForRequest)}`;
 
-  const plainMention = (kind, ref) => {
-    try {
-      if (kind === 'workspace') {
-        return { href: `${wsPrefix}/`, label: weave.state.meta.name || 'workspace' };
-      }
-      if (kind === 'space') {
-        const sp = weave.findSpace(ref);
-        return sp ? { href: `${wsPrefix}/#/space/${sp.id}`, label: sp.name } : null;
-      }
-      if (kind === 'table') {
-        const db = weave.findTable(ref);
-        return db ? { href: `${wsPrefix}/#/table/${db.id}`, label: weave.qualifiedName(db) } : null;
-      }
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(ref)) {
-        const e = weave.state.entities[ref];
-        if (!e || e.deletedAt || !weave.canSee(e.id)) return null;
-        return {
-          href: `${wsPrefix}/e/${e.id}/doc.html`,
-          label: weave.entityName(e),
-          name: weave.entityName(e),
-          home: weave.state.tables[e.dbId]?.name,
-          view: weave.renderView(e.id, 'chip'),
-          fields: weave.previewFields(e.id),
-        };
-      }
-      const m = /^(.+)#(\d+)$/.exec(ref);
-      if (!m) return null;
-      const db = weave.findTable(m[1].trim());
-      if (!db) return null;
-      const entity = weave.listEntities(db.id).find((e) => String(e.publicId) === m[2]);
-      if (!entity) return null;
-      return {
-        href: `${wsPrefix}/e/${entity.id}/doc.html`,
-        label: `${db.name}#${m[2]} — ${weave.entityName(entity)}`,
-        name: weave.entityName(entity),
-        home: db.name,
-        view: weave.renderView(entity.id, 'chip'),
-        fields: weave.previewFields(entity.id),
-      };
-    } catch {
-      return null;
-    }
-  };
+  const plainMention = mentionResolver(weave, wsPrefix);
   const resolveMention = share ? scopedMention(weave, share, plainMention, `${wsPrefix}/s/${share.token}`) : plainMention;
 
   if (rx.method === 'OPTIONS') {
@@ -758,6 +763,7 @@ async function buildAccessHelpers(c, fromRequest) {
 async function entityExportRoutes(c, fromRequest) {
   const { out, resolveMention, rx, serveStatic, share } = c;
   const { linkPreview, path, shellMarker, stampRecent, weave, wsPrefix } = fromRequest;
+  const origin = SAME_ORIGIN;
   let m;
   if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
     const entity = sharedRead(weave, share, m[1]);
@@ -773,7 +779,7 @@ async function entityExportRoutes(c, fromRequest) {
     }
     if (m[3] === 'html') {
       if (isHtmlDocument(markdown)) return out(200, rx.searchParams.get('inline') === '1' ? viewHtml(Buffer.from(markdown), frameLinkBase(Buffer.from(markdown)) + FRAME_HEIGHT_SCRIPT) : markdown, sandboxedHtmlHeaders());
-      const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention });
+      const page = renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown, resolveMention, origin });
       return out(200, page, sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
     }
     const pdf = markdownToPdf(markdown, { title: entity.name || `#${entity.publicId}`, subtitle });
@@ -796,7 +802,7 @@ async function entityExportRoutes(c, fromRequest) {
     if (m[2] === 'md') return out(200, md, { 'Content-Type': 'text/markdown; charset=utf-8' });
     if (m[2] === 'mmd') return out(200, md, { 'Content-Type': 'text/vnd.mermaid; charset=utf-8' });
     if (m[2] === 'html') {
-      return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention }), sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
+      return out(200, renderDocumentPage({ title: entity.name || `#${entity.publicId}`, subtitle, markdown: md, resolveMention, origin }), sandboxedHtmlHeaders({}, HTML_PAGE_POLICY));
     }
     const pdf = markdownToPdf(md, { title: entity.name || `#${entity.publicId}`, subtitle });
     return out(200, pdf, fileHeaders({ name: `${entity.name || 'entity'}.pdf`, mime: 'application/pdf' }, pdf));
@@ -951,7 +957,7 @@ async function formAndStatusRoutes(c, fromRequest) {
       '/support': ['Support', SUPPORT],
       '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
     })).get(path);
-    const html = renderDocumentPage({ title, subtitle: 'weave', markdown });
+    const html = renderDocumentPage({ title, subtitle: 'weave', markdown, origin: SAME_ORIGIN });
     return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
   }
   return NEXT;
