@@ -1,0 +1,26 @@
+{
+  "darwin": [
+    {"screen": "table", "width": 1920, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1440, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1280, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1024, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 960, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 768, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Standard", "b": "Standard", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder All", "b": "All", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Compact", "b": "Compact", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Board", "b": "Board", "issue": 1876}
+  ],
+  "linux": [
+    {"screen": "table", "width": 1920, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1440, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1280, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 1024, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 960, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "table", "width": 768, "theme": "light", "kind": "overlap", "a": "+ New record", "b": "Report a problem", "issue": 1875},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Standard", "b": "Standard", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder All", "b": "All", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Compact", "b": "Compact", "issue": 1876},
+    {"screen": "view-panel", "width": 390, "theme": "light", "kind": "overlap", "a": "Reorder Board", "b": "Board", "issue": 1876}
+  ]
+}

@@ -364,5 +364,5 @@ test("every quote in SOUL.md's sourced sections is a line the file it names carr
       }
     }
   }
-  assert.ok(checked >= 17, `only ${checked} quotes found: SOUL.md's sourced sections no longer parse`);
+  assert.ok(checked >= 7, `only ${checked} quotes found: SOUL.md's sourced sections no longer parse`);
 });

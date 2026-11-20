@@ -241,7 +241,7 @@ by name instead of holding its shard to the job cap (Issue #1817).
 
 ### Ledgers
 
-Thirteen JSON files in `test/` hold what a gate tolerates or expects today, and
+Fourteen JSON files in `test/` hold what a gate tolerates or expects today, and
 each one moves only in the change that earns the move.
 
 | Ledger | Gate | Rule |
@@ -251,6 +251,7 @@ each one moves only in the change that earns the move.
 | `test/click-budget.json` | `test/click-budget-browser.test.mjs` | Clicks per journey, ratcheting down (Click budget) |
 | `test/cutoff-baseline.json` | `test/cutoff-gate-browser.test.mjs` | Cut-off counts per platform, a ceiling that only comes down (Cut-off loop) |
 | `test/collision-held.json` | `test/collision-gate-browser.test.mjs` | Overlap, protrusion and page-width findings held out of the gate today, each naming the Issue rows that track it. Zero tolerance: there is no count, a fingerprint no hold names fails, and a hold that no longer reproduces fails until it is dropped (Collision loop) |
+| `test/edge-collision-baseline.json` | `test/edge-collision-browser.test.mjs` | Controls that cover another control, are cut by their box or sit off the screen today, per platform, screen, width and theme, each naming the Issue that tracks it. An entry with no Issue is refused, a collision it does not name fails, and an entry that no longer reproduces fails until it is dropped (Edge collision ratchet) |
 | `test/feedback-budget.json` | `test/feedback-budget-browser.test.mjs` | Time to the first visible answer, read on the trend lane (Feedback budget) |
 | `test/flicker-fixed.json` | `test/flicker-gate-browser.test.mjs` | Fixed flicker fingerprints that must stay gone (Flicker loop) |
 | `test/onboarding-steps.json` | `test/onboarding-gate-browser.test.mjs` | Pages, sign-ins, consents and clicks per profile. It never goes up, and a run that got shorter lowers it in the same change |
@@ -1124,6 +1125,38 @@ probe that cannot run reports zero findings, which is not a pass (Issue #1675).
 October audit injected, a toolbar dropped onto a breadcrumb, tile fields pulled
 onto a tile title and a page wider than the phone, so a quiet gate means a clean
 page.
+
+### Edge collision ratchet
+
+The collision probe above reads atoms in one stacking layer, so a fixed control
+drawn over another one goes unseen. `test/lib/edge-collision.mjs` reads the
+controls themselves: every visible `button`, `a[href]`, `input`, `select`,
+`textarea`, `[role=button]` and focusable `[tabindex]` (Feature #388).
+
+| Kind | What it found |
+| --- | --- |
+| `overlap` | Two controls whose visible boxes meet by more than 2 x 2 px, neither inside the other, where `elementFromPoint` at the centre of the overlap returns one of them over the other, or neither |
+| `clipped` | A control cut by more than 2 px by an overflow hidden or clip box, or past the start of a scroll container scrolling cannot reach |
+| `off-screen` | A control past the left or right edge of the viewport, or past its bottom on a page that does not scroll |
+
+A control under a modal is inert and not measured. A control inside a dialog,
+menu, listbox or picker covering one outside it is the overlay doing its job,
+never an overlap. A hidden, transparent or click-through control is not a hit
+area. When the record, the View panel and the table cannot fit, the table
+yields (`table-yield`) by design; a hidden table has no controls to collide.
+
+`test/edge-collision-browser.test.mjs` opens ten screens on the messy seed:
+workspace home, a space, the table, the board, the table with the View panel,
+the table with the Share panel, a record beside the table, a record page, a
+document and the command menu. It measures each in Chromium at 1920, 1440,
+1280, 1024, 960 and 768 px wide and 900 tall, and in WebKit as the phone format
+at 390 x 844, in light only, since a theme moves no box (Theme loops, above).
+`test/edge-collision-baseline.json` holds today's findings per platform, each
+naming its Issue row. A finding no entry names fails, and so does an entry that
+no longer reproduces. **Holding one:** file the Issue row first, then add the
+entry with its number; `test/edge-collision-core.test.mjs` refuses an entry with
+none. **Fixing one:** fix it, watch the gate fail on the stale entry, and drop
+the entry in the same change.
 
 ### Line endings
 

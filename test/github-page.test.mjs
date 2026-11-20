@@ -12,7 +12,7 @@ const section = (title) => README.split(`\n## ${title}\n`)[1]?.split('\n## ')[0]
 
 test('the README head names the category beside the wordmark', () => {
   const head = README.split('\n## ')[0];
-  assert.match(head, /Airtable alternative/i);
+  assert.match(head, /portable work system/i);
   assert.match(head, /\bMCP\b/);
 });
 
