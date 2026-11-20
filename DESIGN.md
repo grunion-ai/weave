@@ -71,6 +71,27 @@ Every text in weave, on every surface and at every view density, has one role. T
 
 A clamp always ends on a whole line: `.clamped` counts lines with `-webkit-line-clamp`, so a paragraph gap inside the fold can never slice the last one, and `max-height` never clamps text. An ellipsis or a clamp that ends on a whole line is a deliberate cut, not cut-off text (Feature #353). The same text keeps its role between densities; only its line count changes.
 
+## Corners
+
+Every corner in the app takes its radius from the element's size class, never from taste on the day (Feature #385). The five steps live in one block at the top of `public/style.css`, and `test/radius-scale.test.mjs` holds the app to them.
+
+| Token | Radius | Used on |
+| --- | --- | --- |
+| `--wv-radius-chip` | 4 px | Inline elements 24 px tall or less: chips, tags, kbd, checkboxes, text badges, small text buttons |
+| `--wv-radius-control` | 6 px | Controls 24 to 40 px tall: buttons, icon buttons, inputs, selects, nav rows, segmented controls |
+| `--wv-radius-surface` | 8 px | Floating surfaces and in-page cards: menus, popovers, pickers, toasts, tooltips, board tiles, code blocks |
+| `--wv-radius-panel` | 12 px | The main, dock, side, View and Share panels, dialogs, the command menu and bottom sheets |
+| `--wv-radius-pill` | 999 px | Toggles, number pills and wide pill buttons |
+
+Round things (avatars, dots, the 44 px phone buttons) take `50%`. Four rules sit on top of the table:
+
+1. Nested corners are concentric: a child's radius is its parent's radius less the inset between them, rounded down to a step. A menu row inside an 8 px popover with 4 px padding is 4 px, not 6.
+2. An edge flush against another surface (table cells, full-bleed rows, a panel's attached header, the bottom of a sheet) is 0 on that edge.
+3. One element has one radius on all its corners, unless rule 2 squares an edge.
+4. A radius token from elsewhere is an alias of a step: `--tblr-border-radius` is the control step, `-sm` the chip step, `-lg` the panel step and `-pill` the pill step, so Tabler's own buttons and inputs follow the table.
+
+The gate refuses a raw `border-radius` value that is not a step, `0`, `inherit` or `50%`. A stylesheet that also ships outside the app, as `public/chip.css` does in applets and exports, writes `var(--wv-radius-chip, 4px)`, with the step's own value as the fallback. `test/radius-baseline.json` counts the raw values left per stylesheet: zero in `style.css` and `chip.css`, and five in the status page's `status.css`, which loads neither and keeps the corners under Shapes below. A count may only fall.
+
 ## Layout
 
 The centered shell has an 816px maximum width, including 28px horizontal padding. Sections follow one vertical reading path. The overall summary precedes the services panel; active incidents sit above resolved incident history. Dividers separate service rows and incident entries.
