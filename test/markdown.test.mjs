@@ -129,6 +129,13 @@ test('with an origin an exported page links mermaid, highlighting and the editor
   assert.doesNotMatch(page, /class="wv-export-note"/, 'the bundles resolve, so the page says nothing');
 });
 
+test('a served page keeps its bundles root-relative, which is what same-origin means (Issue #1600)', () => {
+  const page = renderDocumentPage({ title: 'T', markdown: '```mermaid\ngraph LR\n  A --> B\n```\n\n```js\nconst x = 1;\n```', origin: '' });
+  assert.match(page, /src="\/vendor\/mermaid\.min\.js"/, 'a page served from the origin that holds the bundles links them the way it always did');
+  assert.match(page, /src="\/editor-lib\.js"/);
+  assert.doesNotMatch(page, /class="wv-export-note"/, 'and says nothing, because nothing is missing');
+});
+
 test('with no origin an exported page drops the bundles that would 404 and says so once (Issue #1600)', () => {
   const page = renderDocumentPage({ title: 'T', markdown: '```mermaid\ngraph LR\n  A --> B\n```\n\n```js\nconst x = 1;\n```' });
   assert.doesNotMatch(page, /mermaid\.min\.js/, 'a 404 leaves the diagram as source text with no word of why');

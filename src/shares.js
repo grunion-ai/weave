@@ -445,7 +445,7 @@ const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const FOOT = '\n\n_Shared read-only from a weave workspace._';
 
 function page(title, subtitle, markdown) {
-  return renderDocumentPage({ title, subtitle, markdown: markdown + FOOT });
+  return renderDocumentPage({ title, subtitle, markdown: markdown + FOOT, origin: '' });
 }
 
 const rowsIn = (weave, grant, db, where = null, { sort = null, search = '' } = {}) => {

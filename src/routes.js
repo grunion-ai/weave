@@ -47,6 +47,7 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
 const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
+const SAME_ORIGIN = '';
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
 
 const prefersHtml = (accept) => {
@@ -760,9 +761,9 @@ async function buildAccessHelpers(c, fromRequest) {
   return { next: { actorForRequest, requestActor, cap, roleOn, actorOn, resolveMention } };
 }
 async function entityExportRoutes(c, fromRequest) {
-  const { originFor, out, resolveMention, rx, serveStatic, share } = c;
-  const { hostOrigin, linkPreview, path, shellMarker, stampRecent, weave, wsPrefix } = fromRequest;
-  const origin = hostOrigin ?? originFor(rx);
+  const { out, resolveMention, rx, serveStatic, share } = c;
+  const { linkPreview, path, shellMarker, stampRecent, weave, wsPrefix } = fromRequest;
+  const origin = SAME_ORIGIN;
   let m;
   if ((m = path.match(/^\/e\/([^/]+)\/doc(?:\/([^/]+?))?\.(md|mmd|html|pdf)$/))) {
     const entity = sharedRead(weave, share, m[1]);
@@ -956,7 +957,7 @@ async function formAndStatusRoutes(c, fromRequest) {
       '/support': ['Support', SUPPORT],
       '/docs': ['Connect an agent', `${AGENT_DOCS.replaceAll('{{MCP_URL}}', `${hostOrigin ?? mcpOrigin(rx)}${wsPrefix}/mcp`).replace('{{ACCOUNT}}', oidc ? `[Sign in](${wsPrefix}/auth)${openSignup.on ? ` or [Create an account](${startRoot}/start?mode=signup)` : ''} to open this workspace in a browser.\n\n` : '')}\n\n## Tools\n\n${toolTable()}\n`],
     })).get(path);
-    const html = renderDocumentPage({ title, subtitle: 'weave', markdown, origin: hostOrigin ?? originFor(rx) });
+    const html = renderDocumentPage({ title, subtitle: 'weave', markdown, origin: SAME_ORIGIN });
     return out(200, path === '/privacy' ? html.replace('<h3>Cookies</h3>', '<h3 id="cookies">Cookies</h3>') : html, { 'Content-Type': 'text/html; charset=utf-8' });
   }
   return NEXT;
@@ -2043,7 +2044,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     try {
       let m;
       {
-        const hit = await entityExportRoutes({ originFor, out, resolveMention, rx, serveStatic, share }, { hostOrigin, linkPreview, path, shellMarker, stampRecent, weave, wsPrefix });
+        const hit = await entityExportRoutes({ out, resolveMention, rx, serveStatic, share }, { linkPreview, path, shellMarker, stampRecent, weave, wsPrefix });
         if (hit !== NEXT) return hit;
       }
 

@@ -346,6 +346,7 @@ export function renderDocumentPage({ title, subtitle = '', markdown, resolveMent
   const body = renderMarkdown(markdown, { resolveMention });
   const diagrams = body.includes('class="mermaid"');
   const highlighting = body.includes('<pre><code');
+  const served = origin !== null;
   const asset = (path) => `${origin ?? ''}${path}`;
   return `<!doctype html>
 <html>
@@ -411,7 +412,7 @@ pre.mermaid { background: var(--bg); border: 1px dashed var(--line); text-align:
 <div class="wv-prose">
 ${body}
 </div>
-${!origin && (diagrams || highlighting) ? EXPORT_NOTE : ''}
+${!served && (diagrams || highlighting) ? EXPORT_NOTE : ''}
 <script>
 for (const pre of document.querySelectorAll('pre:not(.mermaid)')) {
   const btn = document.createElement('button');
@@ -434,10 +435,10 @@ document.addEventListener('click', (ev) => {
   caret.setAttribute('aria-expanded', String(open));
 });
 </script>
-${diagrams && origin ? `<script src="${asset('/vendor/mermaid.min.js')}" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
+${diagrams && served ? `<script src="${asset('/vendor/mermaid.min.js')}" onerror="document.querySelectorAll('pre.mermaid').forEach(p=>p.style.textAlign='left')"></script>
 <script>if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });</script>` : ''}
 ${
-  highlighting && origin ? `<link rel="stylesheet" href="${asset('/vendor/vditor/dist/js/highlight.js/styles/github.min.css')}" media="(prefers-color-scheme: light)">
+  highlighting && served ? `<link rel="stylesheet" href="${asset('/vendor/vditor/dist/js/highlight.js/styles/github.min.css')}" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="${asset('/vendor/vditor/dist/js/highlight.js/styles/github-dark.min.css')}" media="(prefers-color-scheme: dark)">
 <script src="${asset('/vendor/vditor/dist/js/highlight.js/highlight.min.js')}"></script>
 <script src="${asset('/editor-lib.js')}"></script>
