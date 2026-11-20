@@ -43,4 +43,30 @@ if (s) {
     const { asked } = await bootAsking(`/#/table/${tasks.id}`);
     assert.deepEqual(asked.filter((a) => a.endsWith('/api/billing')), []);
   });
+  const BOOT_GETS = {
+    'GET /api/health': 1,
+    'GET /api/schema': 1,
+    'GET /api/workspace': 1,
+    'GET /api/workspace/home': 1,
+    'GET /api/workspaces': 1,
+    'GET /api/invites': 1,
+  };
+
+  test('a cold home boot reads each of its endpoints once (Issue #1705)', async () => {
+    const { asked } = await bootAsking('/');
+    const counts = {};
+    for (const call of asked) if (call.startsWith('GET ')) counts[call] = (counts[call] ?? 0) + 1;
+    assert.deepEqual(counts, BOOT_GETS, `a cold home boot repeats a read: ${JSON.stringify(counts)}`);
+  });
+  test('a read after boot goes back to the server (Issue #1705)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    try {
+      await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.nav-identity');
+      await page.waitForLoadState('networkidle');
+      const again = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/workspaces', { timeout: 10000 });
+      await page.evaluate(() => buildWsRail());
+      await again;
+    } finally { await page.close(); }
+  });
 }
