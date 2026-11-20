@@ -182,7 +182,7 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .cg-preview-row { display: flex; justify-content: flex-end; }
 .cg-preview-row .cg-wrap.cg-bar { width: 100%; }
 
-.wv-rating { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; white-space: nowrap; line-height: 1; }
+.wv-rating { display: inline-flex; align-items: center; gap: var(--wv-nudge, 1px); vertical-align: middle; white-space: nowrap; line-height: 1; }
 .wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: var(--fs-body); line-height: 1; }
 :is(.wv-rate-ico, .wv-rate-mini) .wv-icon, :is(.wv-rate-ico, .wv-rate-mini) .wv-icon svg { width: 14px; height: 14px; margin: 0; }
 :is(.wv-rate-ico, .wv-rate-mini) svg { stroke-width: 1.5; }

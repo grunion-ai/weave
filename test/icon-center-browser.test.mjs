@@ -78,7 +78,7 @@ test('icons carry no margin: spacing between an icon and its label is the host g
   const rules = css.match(/[^{}]*\.wv-icon[^{}]*\{[^}]*\}/g) ?? [];
   const margined = rules.filter((r) => /margin(-right|-inline-end)?\s*:/.test(r)).map((r) => r.trim().slice(0, 90));
   assert.deepEqual(margined, [], 'no rule sets a margin on .wv-icon');
-  assert.match(css, /:where\(button, \.btn, \.chip-trigger, \.k, \.filter-chip\):where\(:has\(> \.wv-icon\)\) \{ display: inline-flex; align-items: center; gap: 5px; \}/);
+  assert.match(css, /:where\(button, \.btn, \.chip-trigger, \.k, \.filter-chip\):where\(:has\(> \.wv-icon\)\) \{ display: inline-flex; align-items: center; gap: 4px; \}/);
 });
 
 if (s) {

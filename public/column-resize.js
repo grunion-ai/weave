@@ -25,7 +25,7 @@
   const ratingWidth = (n, pad) => n * RATING_METRICS.icon + (n - 1) * RATING_METRICS.gap + (Number.isFinite(pad) ? pad : RATING_METRICS.pad);
   const ratingFits = (width, max, pad) => !(max > 0) || width >= ratingWidth(max, pad);
 
-  const TOGGLE_METRICS = { track: 28, gap: 7, pad: 8 };
+  const TOGGLE_METRICS = { track: 28, gap: 8, pad: 8 };
   const toggleWidth = ({ on = 0, off = 0, pad } = {}) =>
     Math.ceil(TOGGLE_METRICS.track + TOGGLE_METRICS.gap + Math.max(on, off) + (Number.isFinite(pad) ? pad : TOGGLE_METRICS.pad));
 

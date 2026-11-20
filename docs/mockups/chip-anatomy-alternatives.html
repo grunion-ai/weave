@@ -110,7 +110,7 @@
 .cg-preview { display: grid; gap: 6px; max-width: 240px; }
 .cg-preview-row { display: flex; justify-content: flex-end; }
 .cg-preview-row .cg-wrap.cg-bar { width: 100%; }
-.wv-rating { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; white-space: nowrap; line-height: 1; }
+.wv-rating { display: inline-flex; align-items: center; gap: var(--wv-nudge, 1px); vertical-align: middle; white-space: nowrap; line-height: 1; }
 .wv-rate-ico, .wv-rate-mini { display: inline-flex; flex: none; padding: 0; border: 0; background: none; color: var(--wv-cg-empty); font-size: var(--fs-body); line-height: 1; }
 .wv-rating.editable .wv-rate-ico { cursor: pointer; }
 @media (hover: hover) { .wv-rating.editable .wv-rate-ico:hover { transform: translateY(-1px); color: var(--cg-rate, var(--wv-cg-ink)); } }
