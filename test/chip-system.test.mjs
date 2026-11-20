@@ -352,7 +352,7 @@ test('the chip size is two tokens on :root: 13px label, 22px line — a 24px tar
     const r = rulesFor(sel);
     assert.equal(r['font-size'], 'var(--wv-chip-font)', `${sel} reads the font token`);
     assert.equal(r['line-height'], 'var(--wv-chip-line)', `${sel} reads the line token`);
-    assert.equal(r.padding, '1px 8px', `${sel} keeps the 1px vertical padding the 24px sum counts on`);
+    assert.match(r.padding, /^var\(--wv-nudge(, 1px)?\) 8px$/, `${sel} keeps the 1px vertical nudge the 24px sum counts on`);
   }
   assert.ok(!/font-size:\s*11\.5px[^;]*;[^}]*border-radius:\s*4px/.test(CSS),
     'no chip-shaped rule keeps its own 11.5px');

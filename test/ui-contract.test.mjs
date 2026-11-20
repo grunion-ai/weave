@@ -1724,7 +1724,7 @@ test('an empty chip invites writing, never promises navigation', () => {
 
 test('the relation chip’s × is spaced as the trailing piece it is', () => {
   const x = rulesFor('.k-rel > .x');
-  assert.ok(x.margin?.startsWith('0 5px 0'), `the × follows the caret — got margin ${x.margin}`);
+  assert.ok(x.margin?.startsWith('0 4px 0'), `the × follows the caret on the 4 px step (Feature #386) — got margin ${x.margin}`);
 });
 
 test('navigating away dismisses any floating picker', () => {

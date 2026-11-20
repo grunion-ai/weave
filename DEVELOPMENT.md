@@ -241,7 +241,7 @@ by name instead of holding its shard to the job cap (Issue #1817).
 
 ### Ledgers
 
-Fifteen JSON files in `test/` hold what a gate tolerates or expects today, and
+Sixteen JSON files in `test/` hold what a gate tolerates or expects today, and
 each one moves only in the change that earns the move.
 
 | Ledger | Gate | Rule |
@@ -257,6 +257,7 @@ each one moves only in the change that earns the move.
 | `test/onboarding-steps.json` | `test/onboarding-gate-browser.test.mjs` | Pages, sign-ins, consents and clicks per profile. It never goes up, and a run that got shorter lowers it in the same change |
 | `test/radius-baseline.json` | `test/radius-scale.test.mjs` | Raw `border-radius` values per stylesheet that are not a `--wv-radius-*` step, `0`, `inherit` or `50%` (DESIGN.md, Corners). A count above its entry fails, and so does one below it until the entry is lowered (Feature #385) |
 | `test/render-budget.json` | `test/render-budget-browser.test.mjs` | Renders per journey, read on the trend lane (Render budget) |
+| `test/space-baseline.json` | `test/space-scale.test.mjs` | Per stylesheet, the padding, margin, gap and inset declarations with an odd pixel value and the raw pixel values off the spacing scale (DESIGN.md, Spacing). Odd values are 0 in the app stylesheets. A count above its entry fails, and so does one below it until the entry is lowered (Feature #386) |
 | `test/touch-baseline.json` | `test/phone-touch-baseline-browser.test.mjs` | Phone hit areas under 44 px per platform. A recorded one may not shrink, and a new one is held to 44 px (Issue #1712) |
 | `test/touch-held.json` | `test/phone-touch-targets-browser.test.mjs` | Offenders of the held touch states, one entry per hold in `test/lib/states.mjs` (State catalog) |
 | `test/ui-surface-baseline.json` | `test/ui-catalog.test.mjs` | Routes and overlay triggers the UI catalog harvests that no state in `test/lib/states.mjs` names. A surface with no entry fails by name, and an entry a state now covers fails until it is dropped (State catalog) |
