@@ -743,8 +743,11 @@ show, and stops when that verification ends.
 [archify](https://github.com/tt-a1i/archify): `weave.architecture.json` is the source,
 `weave.architecture.html` the rendered page, and every node links to its code at the
 commit named in `meta.repository.revision`. `test/architecture-map.test.mjs` goes red
-when a cited file moves or is deleted, when a new `src/` or `bin/` module is not named
-on the map, or when the HTML no longer matches the JSON. The change that trips it
+when a cited file moves or is deleted, when a cited line sits past the end of its file,
+when a new `src/` or `bin/` module is not named on the map, or when the HTML no longer
+matches the JSON. The line check reads the working tree rather than the pinned revision,
+so a commit that shrinks a file reddens its own pull request instead of stopping the next
+release (Issue #1548). The change that trips it
 updates the JSON and runs `node scripts/architecture.mjs`, which re-pins HEAD,
 re-renders, and rewrites the region index `docs/regions.md` at the same commit.
 Releasing step 5 re-pins it too, so every tagged version carries a map of the
