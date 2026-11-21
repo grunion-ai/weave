@@ -25,7 +25,7 @@ test('every font-size in the stylesheets reads a scale token (Issue #383)', () =
   const ok = (v) => {
     const t = v.match(/^var\(--fs-([a-z0-9]+)\)$/);
     if (t) return t[1] in SCALE;
-    return /^var\(--wv-(grid|chip|edit)-f(ont|s)\)$/.test(v) || v === 'inherit' || v === '0';
+    return /^var\(--wv-(grid|chip|edit|btn)-f(ont|s)\)$/.test(v) || v === 'inherit' || v === '0';
   };
   const bad = sizeValues(CSS).filter((v) => !ok(v));
   assert.deepEqual(bad, [], 'off-scale font-size values');

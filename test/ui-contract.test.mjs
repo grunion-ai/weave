@@ -127,7 +127,7 @@ test('one vocabulary for creating a field: every control that opens the tray say
   const made = 'field|table|space|workspace|view|row|record';
   const drift = [...APP.matchAll(new RegExp(`'Add (?:a |an )?(?:${made})s?'`, 'gi'))].map((m) => m[0]);
   assert.deepEqual(drift, [], 'a thing being made is New; Add only attaches one that exists');
-  assert.match(APP, /class: 'add-field-btn', type: 'button', title: 'New field'/,
+  assert.match(APP, /class: 'add-field-btn[\w -]*', type: 'button', title: 'New field'/,
     'the plus at the end of the field headers carries the one name');
   assert.match(APP, /class: 'chip-pop-row table-filter-add-field'[\s\S]{0,200}'New field'/,
     'so does the row the Filters popover offers');

@@ -241,12 +241,14 @@ by name instead of holding its shard to the job cap (Issue #1817).
 
 ### Ledgers
 
-Sixteen JSON files in `test/` hold what a gate tolerates or expects today, and
+Eighteen JSON files in `test/` hold what a gate tolerates or expects today, and
 each one moves only in the change that earns the move.
 
 | Ledger | Gate | Rule |
 | --- | --- | --- |
 | `test/a11y-baseline.json` | `test/a11y-browser.test.mjs` | Axe violations tolerated today, each naming the Issue that tracks it. It only shrinks: a new violation fails, and so does an entry that no longer reproduces |
+| `test/button-baseline.json` | `test/button-sizes.test.mjs` | Raw padding, height, min-height and width declarations on button selectors in `public/style.css` (DESIGN.md, Buttons). A count above its entry fails, and so does one below it until the entry is lowered (Feature #387) |
+| `test/button-held.json` | `test/button-sizes-browser.test.mjs` | Visible buttons on the main screens whose height and padding match no row of the button table, each naming its Issue. A button no entry names fails, and an entry that now matches a row fails until it is dropped (Feature #387) |
 | `test/byte-budget.json` | `test/byte-budget.test.mjs` | Bytes each served file costs, gzip and brotli. Over budget fails, a budget more than a tenth above the size fails until it is lowered, and a raise writes its reason under `raised[...]` |
 | `test/click-budget.json` | `test/click-budget-browser.test.mjs` | Clicks per journey, ratcheting down (Click budget) |
 | `test/cutoff-baseline.json` | `test/cutoff-gate-browser.test.mjs` | Cut-off counts per platform, a ceiling that only comes down (Cut-off loop) |

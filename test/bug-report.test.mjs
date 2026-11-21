@@ -495,8 +495,9 @@ test('the button is always there, and the panel opens beside it', () => {
 
 test('the corner affordance stays small', () => {
   const px = (decl, prop) => Number(decl.match(new RegExp(prop + ':\\s*(\\d+)px'))[1]);
-  const fab = CSS.match(/\.bug-fab\s*{([^}]*)}/)[1];
-  assert.ok(px(fab, 'width') <= 28, `the button is ${px(fab, 'width')}px`);
+  const step = CSS.match(/--wv-btn-md-h:\s*(\d+)px/)[1];
+  assert.match(readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'), /class: 'bug-fab wv-btn-md wv-btn-square'/, 'the button takes the md step (Feature #387)');
+  assert.ok(Number(step) <= 28, `the button is ${step}px`);
   const panel = CSS.match(/#bug-panel\s*{([^}]*)}/)[1];
   assert.ok(px(panel, 'width') <= 260, `the panel is ${px(panel, 'width')}px`);
 });

@@ -69,7 +69,7 @@ const menuRows = async (page, scope) => {
 const WANT = {
   table: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 22x22 icon 16'],
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 28x28 icon 16'],
     gaps: [], scroll: 0,
     bar: { row: 44, controls: ['dots-btn 44x44 icon 16 border fill', 'table-tools-btn 44x44 icon 20 border fill'], gaps: [14], edge: 0, scroll: 0 },
   },
@@ -77,7 +77,7 @@ const WANT = {
   sheet: ['table-view-btn 44', 'table-share-btn 44', 'table-density-btn 44', 'eye-btn 44', 'table-filter-btn 44', 'table-group-btn 44', 'table-sort-btn 44'],
   record: {
     row: 44,
-    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 22x22 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
+    controls: ['nav-menu 44x44 icon 20 border fill', 'crumb-copy 28x28 icon 16', 'Close — back to the table 34x28 icon 16 border fill'],
     gaps: [], edge: 0, scroll: 0,
     bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [10], edge: 6, scroll: 0 },
   },
@@ -85,7 +85,7 @@ const WANT = {
   recordEye: ['table-control-head', 'field-visibility-actions', 'table-field-legend', 'table-field-list', 'hr', 'fields-add', 'Reference panels'],
   dock: {
     row: 44,
-    controls: ['crumb-copy 22x22 icon 16', 'dock-close 44x44 icon 16 border fill'],
+    controls: ['crumb-copy 28x28 icon 16', 'dock-close 44x44 icon 16 border fill'],
     gaps: [], edge: 0, scroll: 0,
     bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [4], edge: 0, scroll: 0 },
   },

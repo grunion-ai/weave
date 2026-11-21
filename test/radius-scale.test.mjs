@@ -8,7 +8,7 @@ const PUBLIC = join(ROOT, 'public');
 const BASELINE = JSON.parse(readFileSync(join(ROOT, 'test/radius-baseline.json'), 'utf8'));
 export const SCALE = { chip: '4px', control: '6px', surface: '8px', panel: '12px', pill: '999px' };
 const TOKEN = new RegExp(`^var\\(--wv-radius-(${Object.keys(SCALE).join('|')})(?:,\\s*(\\d+px))?\\)$`);
-const token = (part) => { const m = part.match(TOKEN); return !!m && (!m[2] || m[2] === SCALE[m[1]]); };
+const token = (part) => { if (part === 'var(--wv-btn-r)') return true; const m = part.match(TOKEN); return !!m && (!m[2] || m[2] === SCALE[m[1]]); };
 const KEYWORD = new Set(['0', 'inherit', '50%']);
 
 const sheets = () => readdirSync(PUBLIC).filter((f) => f.endsWith('.css')).map((f) => ({ file: `public/${f}`, css: readFileSync(join(PUBLIC, f), 'utf8') }));
@@ -27,6 +27,7 @@ test('raw: tokens, 0, inherit and 50% pass, anything else is raw (Feature #385)'
   assert.deepEqual(raw('var(--wv-radius-surface) !important'), []);
   assert.deepEqual(raw('var(--wv-radius-chip, 4px)'), [], 'a stylesheet read outside the app falls back to the step itself');
   assert.deepEqual(raw('var(--wv-radius-chip, 6px)'), ['var(--wv-radius-chip, 6px)'], 'and never to another value');
+  assert.deepEqual(raw('var(--wv-btn-r)'), [], "a button's radius is its step's, which names a radius step (Feature #387)");
 });
 
 test('the radius scale lives in one block in public/style.css with the five steps (Feature #385)', () => {

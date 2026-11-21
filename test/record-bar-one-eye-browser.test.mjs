@@ -54,7 +54,7 @@ if (s) {
       assert.equal(m.fromRight.close, 0, 'Close ends row 1');
       assert.equal(m.fromRight['dots-btn'], 0, 'the menu ends row 2');
       assert.equal(m.row.h, 28);
-      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
+      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [28, 28, 16], 'Copy permalink is the md step like the rest of the header (Issue #1865)');
       assert.equal(await page.locator('#main .view-header .activity-btn').isVisible(), false, 'no Activity button in the bar');
       assert.equal(await page.locator('#main .view-header .pose-btn').isVisible(), false, 'no Collapse button in the bar');
     } finally { await page.close(); }
@@ -71,7 +71,7 @@ if (s) {
       assert.deepEqual(m.paneGaps, [4]);
       assert.equal(m.items['dots-btn'].right - m.items['eye-btn'].left, 92);
       assert.equal(m.row.h, 28);
-      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16]);
+      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [28, 28, 16], 'Copy permalink is the md step like the rest of the header (Issue #1865)');
       assert.equal(await page.locator('#dock .view-header .activity-btn').isVisible(), false, 'no Activity button in the dock bar');
     } finally { await page.close(); }
   });

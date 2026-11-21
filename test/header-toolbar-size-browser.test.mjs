@@ -74,7 +74,7 @@ if (s) {
       assert.equal(m.items['new-record-btn'].h, 28, 'New is 28 px tall');
       assert.equal(m.fromRight['new-record-btn'], 0, 'New ends row 2');
       assert.equal(m.bar.h, 28, 'row 2 is 28 px tall');
-      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [24, 24, 16], 'the permalink is a 24 px box with a 16 px icon');
+      assert.deepEqual([m.copy.w, m.copy.h, m.copy.icon], [28, 28, 16], 'the permalink is a 28 px box with a 16 px icon, like every header button (Issue #1865)');
     } finally { await page.close(); }
   });
 
@@ -158,7 +158,7 @@ if (s) {
         assert.ok(it.reachable, `${it.name} answers a click, nothing covers it`);
       }
       assert.ok(m.copy?.inside, `the permalink sits fully inside the dock header: ${JSON.stringify(m.copy)}`);
-      assert.deepEqual([m.copy.w, m.copy.h], [24, 24]);
+      assert.deepEqual([m.copy.w, m.copy.h], [28, 28]);
       assert.ok(m.crumbsShown >= 1, 'the current crumb still shows');
       assert.equal(m.scroll, 0, 'the page does not scroll sideways');
       const labels = await menuLabels(page, '#dock');
