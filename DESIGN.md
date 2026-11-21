@@ -92,6 +92,17 @@ Round things (avatars, dots, the 44 px phone buttons) take `50%`. Four rules sit
 
 The gate refuses a raw `border-radius` value that is not a step, `0`, `inherit` or `50%`. A stylesheet that also ships outside the app, as `public/chip.css` does in applets and exports, writes `var(--wv-radius-chip, 4px)`, with the step's own value as the fallback. `test/radius-baseline.json` counts the raw values left per stylesheet: zero in `style.css` and `chip.css`, and five in the status page's `status.css`, which loads neither and keeps the corners under Shapes below. A count may only fall.
 
+## Spacing
+
+Every padding, margin, gap and inset in the app sits on one scale: 0, 2, 4, 8, 12, 16, 20, 24, 32, 40 and 48 px, written `--wv-space-2` to `--wv-space-48` in the token block at the top of `public/style.css` (Feature #386). `test/space-scale.test.mjs` holds the app to four rules:
+
+1. A spacing value is a step of the scale. The 2 px half step is for the inside of controls 24 px tall or less, and for focus-ring and hairline offsets.
+2. Odd values (1, 3, 5, 7, 9 px and so on) are refused outright. A 1 px offset that keeps a border, a chip or a line box on its line writes `--wv-nudge`, and an inset measured from the inside of a 1 px border writes `calc(var(--wv-space-8) - var(--wv-nudge))`.
+3. Siblings in one row share their horizontal inset. Every grid cell, text, document, link and chip alike, starts its text 12 px in, where its column header's label starts (`--wv-cell-text-x`).
+4. Spacing never changes a row height: the density tokens `--wv-row-h` and `--wv-cell-h` own those, and the Text rules above own line counts.
+
+`test/space-baseline.json` counts per stylesheet the odd values (0 in `style.css` and `chip.css`) and the raw pixel values still off the scale, mostly 6, 10 and 14 px, which only fall as later sweeps move them onto steps. `chip.css` writes `var(--wv-nudge, 1px)`, since applets and exports read it without `style.css`; the status page's `status.css` keeps its own spacing under Layout below.
+
 ## Layout
 
 The centered shell has an 816px maximum width, including 28px horizontal padding. Sections follow one vertical reading path. The overall summary precedes the services panel; active incidents sit above resolved incident history. Dividers separate service rows and incident entries.

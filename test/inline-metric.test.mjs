@@ -8,7 +8,7 @@ const INLINE = cssRules().filter((r) => /\binline-edit\b/.test(r.selector));
 test('.inline-edit sets the inline metric once, at grid density, and .wv-edit reads it (Issue #786, Issue #1030)', () => {
   const base = INLINE.filter((r) => r.selector === '.inline-edit');
   assert.equal(base.length, 1, 'one bare .inline-edit rule');
-  assert.equal(decl(base[0].body, '--wv-edit-pad'), '1px 4px');
+  assert.equal(decl(base[0].body, '--wv-edit-pad'), 'var(--wv-nudge) 4px');
   assert.equal(decl(base[0].body, '--wv-edit-fs'), 'var(--wv-grid-font)');
   const edit = cssRules().filter((r) => r.selector === '.wv-edit');
   assert.equal(edit.length, 1, 'one bare .wv-edit rule');

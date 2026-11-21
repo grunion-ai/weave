@@ -87,7 +87,7 @@ const WANT = {
     row: 44,
     controls: ['crumb-copy 22x22 icon 16', 'dock-close 44x44 icon 16 border fill'],
     gaps: [], edge: 0, scroll: 0,
-    bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [3], edge: 0, scroll: 0 },
+    bar: { row: 44, controls: ['table-share-btn 44x44 icon 16 border fill', 'dots-btn 44x44 icon 16 border fill'], gaps: [4], edge: 0, scroll: 0 },
   },
   dockMenu: ['Activity 44', 'Show / hide fields 44', 'Duplicate 44', 'Report a problem 44', 'Markdown 44', 'HTML 44', 'PDF 44', 'Move to trash 44'],
 };
