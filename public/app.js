@@ -445,7 +445,7 @@ function toast(msg, isErr = false, action = null, { kind, key = null, mono = nul
     }, action.label));
   }
   node.append(el('button', {
-    class: 'wv-toast-close', type: 'button', 'aria-label': 'Dismiss', title: 'Dismiss',
+    class: 'wv-toast-close wv-btn-sm wv-btn-square', type: 'button', 'aria-label': 'Dismiss', title: 'Dismiss',
     onclick: () => dropToast(item),
   }, iconEl('lucide:x', 'wv-toast-x')));
   let x0 = null;
@@ -1192,7 +1192,7 @@ function iconCatalogue() {
 }
 
 function iconButton(current, onPick) {
-  const btn = el('button', { class: 'icon-btn', type: 'button', title: 'Set icon' },
+  const btn = el('button', { class: 'icon-btn wv-btn-md wv-btn-square', type: 'button', title: 'Set icon' },
     iconEl(current) ?? el('span', { class: 'wv-icon icon-ghost' }, '◌'));
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5968,7 +5968,7 @@ function tableChrome(db, trashCount) {
 function tableToolsButton(header, ref) {
   const count = el('span', { class: 'table-tools-count', hidden: '' });
   const btn = el('button', {
-    class: 'btn table-tools-btn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+    class: 'btn wv-btn-touch wv-btn-square table-tools-btn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
     'aria-label': 'View, filters, fields and row height', title: 'View, filters, fields and row height',
   }, lucideEl('sliders-horizontal'), count);
   const row = () => header.querySelector('.head-bar');
@@ -7109,7 +7109,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       document.body.append(measure);
       const cs = getComputedStyle(td);
       const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
-      valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box) + 1);
+      valueFloors.set(c, Math.ceil(probe.getBoundingClientRect().width + box) + 2);
       measure.remove();
     }
     for (const c of cols) {
@@ -8458,7 +8458,7 @@ function sortLabelsFor(db, f) {
 function fieldMenuButton(db, f) {
   if (!menuFor('field', f, { db }).length) return null;
   const btn = el('button', {
-    class: 'field-menu', type: 'button',
+    class: 'field-menu wv-btn-xs wv-btn-square', type: 'button',
     title: `Configure ${f.name}`,
     'aria-label': `Configure field ${f.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
   }, iconEl('lucide:ellipsis-vertical', 'wv-icon'));
@@ -8518,7 +8518,7 @@ function dateControl({ value = '', title = '', time = false, format = 'iso', cos
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
-    type: 'button', class: 'date-pick-btn', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
+    type: 'button', class: 'date-pick-btn wv-btn-sm wv-btn-square', title: timeOnly ? 'Pick a time' : 'Pick from the calendar', 'aria-label': timeOnly ? 'Pick a time' : 'Open calendar',
     onclick: (e) => {
       e.stopPropagation();
       withDatePicker(() => datePopover({ anchor: btn, title, value: local(), costume: c, onPick: (localIso) => {
@@ -8573,7 +8573,7 @@ function rangeControl({ value = null, title = '', costume, compact = true, place
   });
   text.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } });
   const btn = el('button', {
-    type: 'button', class: 'date-pick-btn', title: 'Pick the range from the calendar', 'aria-label': 'Open the range calendar',
+    type: 'button', class: 'date-pick-btn wv-btn-sm wv-btn-square', title: 'Pick the range from the calendar', 'aria-label': 'Open the range calendar',
     onclick: (e) => {
       e.stopPropagation();
       withDatePicker(() => datePopover({
@@ -8748,7 +8748,7 @@ async function reorderField(db, fromName, toName, { after = false, onFail = () =
 
 
 function addFieldMenuButton(db) {
-  const btn = el('button', { class: 'add-field-btn', type: 'button', title: 'New field' }, iconEl('+', 'wv-icon'));
+  const btn = el('button', { class: 'add-field-btn wv-btn-xs wv-btn-square', type: 'button', title: 'New field' }, iconEl('+', 'wv-icon'));
   btn.addEventListener('click', (e) => { e.stopPropagation(); addFieldDialog(db); });
   return btn;
 }
@@ -9452,7 +9452,7 @@ function nextStateFor(entity, f, named, refresh) {
   };
   const label = named ? `Move ${f.name} to ${next.name}` : `Move to ${next.name}`;
   return el('button', {
-    class: 'btn next-state-fab', type: 'button', dataset: { field: f.name },
+    class: 'btn wv-btn-xl next-state-fab', type: 'button', dataset: { field: f.name },
     onclick: async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -11329,9 +11329,9 @@ const renderRouteSafely = () => Promise.resolve()
   .then(syncPhoneBar);
 function installPhoneBar() {
   const label = el('span', { class: 'phone-search-label' }, 'Search');
-  const search = el('button', { class: 'phone-search', type: 'button', onclick: () => openPalette() }, lucideEl('search'), label);
+  const search = el('button', { class: 'phone-search wv-btn-xl', type: 'button', onclick: () => openPalette() }, lucideEl('search'), label);
   const add = el('button', {
-    class: 'phone-new', type: 'button', hidden: '',
+    class: 'phone-new wv-btn-xl wv-btn-square', type: 'button', hidden: '',
     onclick: () => {
       const db = state.route?.page === 'db' ? allTables().find((d) => d.id === state.route.dbId) : null;
       if (db?.system) state.inlineAdd?.();
@@ -12035,7 +12035,7 @@ function installBugReporter() {
   }));
 
   const fab = el('button', {
-    class: 'bug-fab', type: 'button', title: 'Report a problem',
+    class: 'bug-fab wv-btn-md wv-btn-square', type: 'button', title: 'Report a problem',
     'aria-label': 'Report a problem', 'aria-expanded': 'false',
     onclick: () => (document.querySelector('#bug-panel') ? closeBugPanel() : openBugPanel(fab)),
   }, bugGlyph());

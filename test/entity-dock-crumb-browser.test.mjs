@@ -34,6 +34,7 @@ if (s) {
       main: box(document.querySelector('#main')),
       path: box(path),
       lineHeight: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5,
+      control: Math.max(0, ...[...path.querySelectorAll('button')].filter((b) => b.getClientRects().length).map((b) => b.getBoundingClientRect().height)),
       controls,
     };
   });
@@ -48,7 +49,7 @@ if (s) {
       const page = await openDocked(opts);
       const m = await measure(page);
       assert.ok(m.main.w < 720, `the dock squeezes the table panel: ${m.main.w}px`);
-      assert.ok(m.path.h <= m.lineHeight * 1.5, `crumb is one line: ${m.path.h}px tall at line-height ${m.lineHeight}px`);
+      assert.ok(m.path.h <= Math.max(m.lineHeight * 1.5, m.control + 0.5), `crumb is one line: ${m.path.h}px tall at line-height ${m.lineHeight}px, its tallest button ${m.control}px`);
       assert.ok(m.path.w > 40, `crumb keeps visible room: ${m.path.w}px`);
       for (const c of m.controls) {
         assert.ok(!overlaps(m.path, c), `crumb ${JSON.stringify(m.path)} overlaps toolbar control ${c.name} ${JSON.stringify(c)}`);

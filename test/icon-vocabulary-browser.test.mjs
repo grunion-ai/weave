@@ -61,7 +61,7 @@ if (s) {
     const row = page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first();
     const box = await page.evaluate(() => {
       var out = {};
-      var svgs = [].slice.call(document.querySelectorAll('.wv-icon svg, .ico svg'));
+      var svgs = [].slice.call(document.querySelectorAll('.wv-icon svg, .ico svg')).filter(function (s) { return s.getClientRects().length > 0; });
       out.count = svgs.length;
       out.widths = svgs.map(function (s) { return Math.round(parseFloat(getComputedStyle(s).width)); });
       return out;

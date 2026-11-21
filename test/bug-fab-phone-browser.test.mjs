@@ -77,14 +77,14 @@ if (s) {
   });
 
   for (const colorScheme of ['light', 'dark']) {
-    test(`on a desktop the bug button keeps its 26px corner, equally inset from both edges, in ${colorScheme} (Issue #846)`, async () => {
+    test(`on a desktop the bug button keeps its 28px corner on the md button step, equally inset from both edges, in ${colorScheme} (Issue #846, Feature #387)`, async () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, colorScheme });
       try {
         await page.goto(`${base}/#/table/${notes.id}`, { waitUntil: 'networkidle' });
         await page.waitForSelector('.bug-fab');
         assert.equal(await page.$eval('html', (h) => h.dataset.bsTheme), colorScheme);
         const b = await fab(page);
-        assert.equal(Math.round(b.width), 26);
+        assert.equal(Math.round(b.width), 28);
         assert.equal(Math.round(b.vw - b.right), 18, 'the 8px pane margin, its 8px bar and 2px of air (Issue #1314)');
         assert.equal(Math.round(b.vh - b.bottom), Math.round(b.vw - b.right));
       } finally { await page.close(); }

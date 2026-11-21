@@ -103,6 +103,23 @@ Every padding, margin, gap and inset in the app sits on one scale: 0, 2, 4, 8, 1
 
 `test/space-baseline.json` counts per stylesheet the odd values (0 in `style.css` and `chip.css`) and the raw pixel values still off the scale, mostly 6, 10 and 14 px, which only fall as later sweeps move them onto steps. `chip.css` writes `var(--wv-nudge, 1px)`, since applets and exports read it without `style.css`; the status page's `status.css` keeps its own spacing under Layout below.
 
+## Buttons
+
+Every button takes its size from one table, so two buttons of the same kind cannot drift apart (Feature #387). `public/button-sizes.js` exports the rows for tests, and the token block at the top of `public/style.css` carries the same rows as `--wv-btn-<step>-*`; `test/button-sizes.test.mjs` keeps the two in agreement.
+
+| Step | Height | Padding | Icon | Gap | Font | Radius | Used on |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `xs` | 20 px | 8 px | 16 px | 4 px | 12 px | control | Small actions inside a header cell or a chip row: `.btn.tiny`, the column menu, New field |
+| `sm` | 24 px | 8 px | 16 px | 4 px | 12 px | control | Inline actions beside content: the date picker, a toast's close, a section's menu and eye |
+| `md` | 28 px | 8 px | 16 px | 4 px | 12 px | control | Every `.btn-sm`, and every icon button in a view header's two rows, the sidebar toggle and the bug button |
+| `lg` | 32 px | 12 px | 16 px | 8 px | 14 px | control | A plain Tabler `.btn`: dialog and form actions |
+| `touch` | 44 px | 16 px | 20 px | 8 px | 16 px | pill | Phone header and toolbar buttons |
+| `xl` | 52 px | 16 px | 24 px | 8 px | 16 px | pill | The phone search bar, the phone New button and the next-state button |
+
+A step is a class: `.wv-btn-xs` to `.wv-btn-xl`, with `.btn` as `lg` and `.btn-sm` as `md`. Tabler's own button variables read the step, so a `.btn` gets its height from `--wv-btn-h`, not from its padding. `.wv-btn-square` makes an icon-only button a square at its step's height. A phone rule that grows a button to 44 px switches its step variables to the touch row; it never writes a pixel size of its own.
+
+`test/button-sizes-browser.test.mjs` walks the workspace home, a table, the View panel, a docked record and a record page at 1440 and 390 px wide and fails on a visible button whose height and horizontal padding match no row. `test/button-held.json` holds today's exceptions under Issue #1880. `test/button-baseline.json` counts the raw padding, height, min-height and width declarations still written on button selectors (32, from 75), and the count may only fall.
+
 ## Layout
 
 The centered shell has an 816px maximum width, including 28px horizontal padding. Sections follow one vertical reading path. The overall summary precedes the services panel; active incidents sit above resolved incident history. Dividers separate service rows and incident entries.
