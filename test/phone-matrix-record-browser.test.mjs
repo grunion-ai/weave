@@ -60,7 +60,7 @@ if (s) {
     });
   });
 
-  test('a phone relation chip spaces its state, name, open and remove parts with one gap (Issue #1392)', { todo: 'Issue #1392' }, async (t) => {
+  test('a phone relation chip spaces its state, name, open and remove parts with one gap (Issue #1392)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openRecord(page, base, tasks, t4);
       const parts = await page.evaluate(() => [...document.querySelector('#dock .fieldrow[data-field="Project"] .k-rel').children]
