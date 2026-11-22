@@ -129,6 +129,20 @@ test('dev.yml gates ready pull requests in seconds and swaps dev on every main p
   assert.match(deploy, /-H "X-Weave-Deploy-Token: \$DEV_DEPLOY_TOKEN" https:\/\/dev\.weave\.grunion\.ai\/api\/health/, 'the supervisor block answers the deploy token only (Issue #1650)');
 });
 
+test('the Dev gate Boot step outwaits a slow docs-workspace seed inside the job budget and fails at once when the server exits (Issue #1481)', () => {
+  const src = text('dev.yml');
+  const gate = src.slice(src.indexOf('  gate:'), src.indexOf('  deploy:'));
+  const boot = gate.slice(gate.indexOf('- name: Boot'));
+  const polls = Number(boot.match(/for _ in \$\(seq (\d+)\)/)?.[1]);
+  const nap = Number(boot.match(/sleep (\d+(?:\.\d+)?)\n/)?.[1]);
+  const window = polls * nap;
+  const budget = Number(gate.match(/timeout-minutes: (\d+)\n/)?.[1]) * 60;
+  assert.ok(window >= 95 * 1.5, `the boot waits ${window} s, at least half again the 95 s a seeding runner took on 2026-11-08`);
+  assert.ok(window + 25 <= budget, `the ${window} s boot wait leaves the job's ${budget} s cap room for checkout, setup and syntax`);
+  assert.match(boot, /serve [^\n]*&\n\s*server=\$!\n/, 'the step keeps the server pid');
+  assert.match(boot, /kill -0 "\$server" \|\| exit 1/, 'a server that exits fails the step at once, so the longer wait costs nothing on a real fault');
+});
+
 test('dev.yml waits for dev to report the commit instead of failing on a check error', () => {
   const script = text('dev.yml').split('run: |').at(-1);
   assert.doesNotMatch(script, /\|\| body=''\n\s*echo/, 'an unanswered check is no longer the whole verdict');
