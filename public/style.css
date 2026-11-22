@@ -2730,7 +2730,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .entity-values .fieldrow > .fieldrow-label { align-self: stretch; margin: 0; padding: 0; }
   .entity-fields .entity-values .fieldrow > .fieldrow-label:hover { background: none; }
   .entity-fields .entity-values .fieldrow > .fieldrow-chev { display: flex; align-items: center; justify-self: end; color: var(--tblr-secondary); }
-  .entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { min-height: 26px; padding: 0 8px;
+  .entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { padding: 0 8px;
     border: 1px dashed var(--tblr-border-color); border-radius: var(--wv-radius-control); background: none; color: var(--tblr-secondary); }
   .entity-fields .entity-values .fieldrow-wide { grid-template-columns: minmax(0, 1fr) 16px; row-gap: 2px; }
   .entity-fields .entity-values .fieldrow-wide > .fieldrow-label { grid-area: 1 / 1; align-self: center; }
