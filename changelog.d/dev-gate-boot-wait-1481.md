@@ -1,0 +1,1 @@
+- **Dev gate boot outwaits a slow seed** (Issue #1481): the Boot step now waits 150 s for `/api/health` instead of 90 s, which covers the 95 s a runner took seeding the docs workspace on 2026-11-08, and it fails at once when the server process exits, so a real crash still fails in seconds. `test/security/workflows.test.mjs` pins the window against the job cap.
