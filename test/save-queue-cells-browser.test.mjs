@@ -9,6 +9,10 @@ const s = await launch('cell and record edits go through the save queue', (weave
   orders = weave.createTable({ space: 'Ops', name: 'Order' });
   for (const f of FIELDS) weave.addField(orders, { name: f, type: 'text' });
   weave.addField(orders, { name: 'Priority', type: 'select', config: { options: ['P0', 'P1', 'P2'] } });
+  weave.addField(orders, { name: 'Due', type: 'date', config: { format: 'iso' } });
+  const customers = weave.createTable({ space: 'Ops', name: 'Customer' });
+  for (const name of ['Acme', 'Globex']) weave.createEntity(customers, { name });
+  weave.addRelation(orders, { name: 'Customer', targetDb: customers, cardinality: 'many-to-one' });
   row = weave.createEntity(orders, { name: 'Sensor boards', values: Object.fromEntries(FIELDS.map((f) => [f, `${f.toLowerCase()}0`])) });
   page2 = weave.createEntity(orders, { name: 'Cables', values: { A: 'start' } });
 });
@@ -137,6 +141,51 @@ if (s) {
       await page.reload({ waitUntil: 'networkidle' });
       assert.equal(await until(() => stored(page2.id, 'Priority'), 'P2', 1000), 'P2', 'leaving the page sent the pick');
       assert.match(await page.locator('.entity-fields .fieldrow', { hasText: 'Priority' }).first().locator('.chip-trigger').textContent(), /P2/, 'and the reloaded page shows it');
+    } finally { await page.close(); }
+  });
+
+  const fieldRow = (page, name) => page.locator(`.entity-fields .fieldrow[data-field="${name}"]`);
+
+  test('a date pick shows at once and survives a reload made before its write is due (Issue #1524)', async () => {
+    weave.updateEntity(page2.id, { Due: '2026-09-15' });
+    const page = await open(`#/entity/${page2.id}`);
+    try {
+      await fieldRow(page, 'Due').locator('.date-pick-btn').click();
+      await page.locator('.date-pop .date-day.in', { hasText: /^20$/ }).click();
+      assert.match(await fieldRow(page, 'Due').evaluate((n) => [n.textContent, ...[...n.querySelectorAll('input')].map((i) => i.value)].join(' ')), /2026-09-20/, 'the field shows the pick before any write');
+      assert.deepEqual(page.__patches, [], 'and the write still waits in the queue');
+      await page.reload({ waitUntil: 'networkidle' });
+      assert.equal(await until(() => stored(page2.id, 'Due'), '2026-09-20', 1000), '2026-09-20', 'leaving the page sent the pick');
+      assert.match(await fieldRow(page, 'Due').evaluate((n) => [n.textContent, ...[...n.querySelectorAll('input')].map((i) => i.value)].join(' ')), /2026-09-20/, 'and the reloaded page shows it');
+    } finally { await page.close(); }
+  });
+
+  test('a relation pick survives a reload made right after it: the store and the reloaded page read it within one second (Issue #1524)', async () => {
+    weave.updateEntity(page2.id, { Customer: null });
+    const page = await open(`#/entity/${page2.id}`);
+    try {
+      await fieldRow(page, 'Customer').getByText('+ link').click();
+      await page.fill('#cmdk-input', 'Globex');
+      await page.locator('#cmdk-results .result', { hasText: 'Globex' }).first().click();
+      await page.reload({ waitUntil: 'networkidle' });
+      const linked = () => JSON.stringify(stored(page2.id, 'Customer') ?? null).includes('Globex');
+      assert.equal(await until(linked, true, 1000), true, 'the store reads the link');
+      assert.equal(await fieldRow(page, 'Customer').locator('.k-rel', { hasText: 'Globex' }).count(), 1, 'and the reloaded page shows it');
+    } finally { await page.close(); }
+  });
+
+  test('a typed grid cell shows at once and survives a reload made before its write is due (Issue #1524)', async () => {
+    reset();
+    const page = await open();
+    try {
+      await page.waitForSelector(`${cell(row.id, 'D')} .text-dressed`);
+      await edit(page, row.id, 'D', 'typed then reloaded');
+      assert.equal(await page.textContent(`${cell(row.id, 'D')} .text-dressed`), 'typed then reloaded', 'the cell shows the text before any write');
+      assert.deepEqual(page.__patches, [], 'and the write still waits in the queue');
+      await page.reload({ waitUntil: 'networkidle' });
+      assert.equal(await until(() => stored(row.id, 'D'), 'typed then reloaded', 1000), 'typed then reloaded', 'leaving the page sent the edit');
+      await page.waitForSelector(`${cell(row.id, 'D')} .text-dressed`);
+      assert.equal(await page.textContent(`${cell(row.id, 'D')} .text-dressed`), 'typed then reloaded', 'and the reloaded grid shows it');
     } finally { await page.close(); }
   });
 
