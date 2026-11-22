@@ -2717,6 +2717,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .entity-values .fieldrow:has(.range-cell) > :nth-child(3) { grid-column: 1; }
 }
 
+.entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { min-height: 26px; }
 @media (max-width: 719px) {
   .entity-fields .entity-values .fieldrow { grid-template-columns: 100px minmax(0, 1fr) 16px; gap: 0 8px; align-items: center;
     min-height: 56px; padding: 4px 0; margin: 0; border-radius: 0; box-shadow: inset 0 -1px 0 var(--tblr-border-color); }
@@ -2729,7 +2730,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .entity-values .fieldrow > .fieldrow-label { align-self: stretch; margin: 0; padding: 0; }
   .entity-fields .entity-values .fieldrow > .fieldrow-label:hover { background: none; }
   .entity-fields .entity-values .fieldrow > .fieldrow-chev { display: flex; align-items: center; justify-self: end; color: var(--tblr-secondary); }
-  .entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { min-height: 26px; padding: 0 8px;
+  .entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { padding: 0 8px;
     border: 1px dashed var(--tblr-border-color); border-radius: var(--wv-radius-control); background: none; color: var(--tblr-secondary); }
   .entity-fields .entity-values .fieldrow-wide { grid-template-columns: minmax(0, 1fr) 16px; row-gap: 2px; }
   .entity-fields .entity-values .fieldrow-wide > .fieldrow-label { grid-area: 1 / 1; align-self: center; }

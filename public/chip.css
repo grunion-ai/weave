@@ -39,9 +39,9 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .k-rel > .mention-workspace::before { content: "⬡"; }
 .k-rel .wv-chip-id { font-family: var(--tblr-font-monospace); font-size: var(--fs-secondary); color: var(--tblr-secondary); flex: none; }
 .k-rel .k { padding: 0 6px; }
-.k-rel > .wv-chip-mark { margin: 0 var(--wv-nudge, 1px) 0 2px; cursor: pointer; flex: none; }
+.k-rel > .wv-chip-mark { margin: 0 0 0 2px; cursor: pointer; flex: none; }
 .k-rel.k-external > a.mention { padding-left: 8px; padding-right: 6px; }
-.k-rel > .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .72; margin-right: 4px; }
+.k-rel > .k-home { font-family: var(--tblr-font-monospace); font-size: var(--fs-meta); opacity: .72; }
 .k-rel > .x { border: 0; background: none; margin: 0 4px 0 0; padding: 0 var(--wv-nudge, 1px); }
 .k-rel, .k-rel > a { max-width: 100%; min-width: 0; }
 .k-rel > a > .k-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -59,10 +59,12 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .mention-f-label { opacity: .65; margin-right: 4px; }
 .mention-caret { border: 1px solid var(--tblr-border-color); background: none; border-radius: var(--wv-radius-chip, 4px); flex: none;
   color: var(--tblr-secondary); cursor: pointer; font-size: var(--fs-meta); line-height: 1.4; padding: 0 4px;
-  margin: 0 6px 0 var(--wv-nudge, 1px); transition: transform .1s; }
+  margin: 0; transition: transform .1s; }
 .k-rel.open > .mention-caret { transform: rotate(180deg); }
 .k .x { margin-left: 2px; cursor: pointer; color: var(--tblr-secondary); font-size: var(--fs-meta); }
 .k .x:hover { color: var(--tblr-danger); }
+.k-rel > .x { margin-left: 0; }
+.k-rel:has(> .mention-caret):not(:has(> .x)) { padding-right: 4px; }
 .k.deleted { opacity: .55; text-decoration: line-through; }
 .mention.broken { color: var(--tblr-secondary); border: 1px dashed var(--tblr-border-color); border-radius: var(--wv-radius-chip, 4px); padding: 0 4px; }
 .wv-prose .k-rel { display: inline; font-size: inherit; line-height: inherit; white-space: normal;
