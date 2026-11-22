@@ -1,1 +1,0 @@
-- **The record header names its `#id` once** (Issue #1878): row 1 on a record ends at the record's table, with Copy permalink after it, and row 2 keeps the table icon and `#id`. The narrow record pane shows the table crumb, on a phone too, so the `#id` no longer repeats from row 1 to row 2.

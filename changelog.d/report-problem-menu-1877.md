@@ -1,1 +1,0 @@
-- **Report a problem in Your menu on a desktop** (Issue #1877): while the View or Share panel, the file viewer or the file panel hides the floating bug button, Your menu offers Report a problem, so a report can always start from the screen the problem is on.
