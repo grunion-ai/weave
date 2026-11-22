@@ -178,6 +178,31 @@ test('every job that rebuilds the manifest reads the same durations (Issue #966)
     'the durations artifact is named plan-history so the ci-* pattern never mixes a past run\'s shard results into this run\'s evidence');
 });
 
+test('the pull request plan weighs shards by the last green main run\'s durations, and every PR job rebuilds the same manifest (Issue #1673)', () => {
+  const workflow = readFileSync('.github/workflows/pr.yml', 'utf8');
+  const jobs = {
+    plan: workflow.slice(workflow.indexOf('  plan:'), workflow.indexOf('  test:')),
+    test: workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  gate:')),
+    gate: workflow.slice(workflow.indexOf('  gate:')),
+  };
+  assert.match(jobs.plan, /permissions:\n      contents: read\n      actions: read\n/, 'the plan job may read the main run\'s artifacts');
+  assert.match(jobs.plan, /gh run list [^\n]*--workflow tests --branch main --status success --limit 1 --json databaseId [^\n]*\|\| true\)\n/,
+    'the durations come from the newest green main tests run, and a repository without one still plans by byte size');
+  assert.match(jobs.plan, /gh run download "\$run" [^\n]*-p 'ci-\*' -D ci-history \|\| echo /, 'expired or unreadable artifacts still plan, by byte size');
+  assert.match(jobs.plan, /name: plan-history\n          path: ci-history\/\n          if-no-files-found: ignore\n          overwrite: true\n/,
+    'the plan job publishes the durations it used, so the shards and the gate weigh what it weighed');
+  assert.doesNotMatch(workflow, /continue-on-error/, 'tolerance lives in the shell, since a killed step never reaches it');
+  for (const [name, job] of Object.entries(jobs)) {
+    assert.match(job, /WEAVE_CI_HISTORY: ci-history\n/, `the ${name} job weighs by the run's own durations`);
+    assert.match(job, /node scripts\/ci-test\.mjs pr-(plan|run|aggregate)/, `the ${name} job rebuilds the manifest`);
+  }
+  assert.match(jobs.test, /uses: actions\/download-artifact@[0-9a-f]{40}\n        with:\n          pattern: plan-history\n          path: ci-history\n/,
+    'the shards take the plan job\'s copy, and a pattern that matches no artifact leaves them planning by byte size');
+  assert.match(jobs.gate, /uses: actions\/download-artifact@[0-9a-f]{40}\n        with:\n          pattern: plan-history\n          path: ci-history\n/,
+    'the gate takes the plan job\'s copy');
+  assert.match(jobs.gate, /pattern: pr-\*\n          path: ci-results\n/, 'the durations land apart from this run\'s shard evidence');
+});
+
 test('only the browser lanes of the full suite start from the browser image (Issue #967)', () => {
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
   assert.match(workflow, /\n    container:\n      image: \$\{\{ matrix\.lane == 'browser' && '[^']+' \|\| '' \}\}\n/,

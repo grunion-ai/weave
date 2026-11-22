@@ -326,10 +326,14 @@ five idle minutes. `--stop` cancels active work, so inspect `--status` first.
 
 The `pr` workflow runs on every ready pull request. Its plan, `node
 scripts/ci-test.mjs pr-plan`, reuses the full-suite planner: every unit file in
-four shards, plus the browser tests the diff maps to.
+four shards, plus the browser tests the diff maps to. Its plan job reads the
+same durations as the `tests` plan job, from the newest green main run, and
+publishes them as the run's `plan-history` artifact for the shards and the
+`PR gate`, so the PR shards balance on measured runtime too and fall back to
+byte size only where a file has no recorded duration (Issue #1673).
 
 - A diff that touches shared code maps to every gating browser test, spread
-  over eight shards as on main and weighed by file size (Feature #368). Shared
+  over eight shards as on main and weighed the same way (Feature #368). Shared
   code is `src/engine.js`, `src/routes.js`, `src/commands.js`, every script and
   stylesheet `public/index.html` loads outside a `<template>` (`eagerAssets` in
   `scripts/ci-test.mjs`), and any `test/lib/` file a browser test imports,
