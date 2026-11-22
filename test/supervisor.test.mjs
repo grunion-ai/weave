@@ -97,7 +97,7 @@ async function supervise(dataPath, gh, extra = {}) {
   const events = [];
   const sup = await startSupervisor({
     port: 0, host: '127.0.0.1', dataPath, env: ENV, fetch: gh.fetch,
-    interval: 0, healthTimeoutMs: 15_000, watchMs: 0, log: { log() {}, warn() {}, error() {} },
+    interval: 0, watchMs: 0, log: { log() {}, warn() {}, error() {} },
     onEvent: (e) => events.push({ ...e, t: Date.now() }),
     onWorkerDied: () => { throw new Error('a worker died under the supervisor'); },
     ...extra,
@@ -331,6 +331,54 @@ test('the image worker names the commit Railway built it from; anything but a fu
       await sup.close();
     }
   }
+});
+
+test('the health wait clears its timer once the worker listens, so a closed supervisor lets its process end (Issue #1831)', async () => {
+  const image = join(mkdtempSync(join(scratch, 'listen-image-')), 'image');
+  mkdirSync(join(image, 'bin'), { recursive: true });
+  writeFileSync(join(image, 'package.json'), JSON.stringify({ name: 'weave', version: '0.0.1' }));
+  writeFileSync(join(image, 'bin', 'weave.js'), `import { createServer } from 'node:http';
+const s = createServer((q, r) => { r.setHeader('content-type', 'application/json'); r.end('{"ok":true,"name":"weave"}'); });
+s.listen(0, '127.0.0.1', () => process.send({ weave: 'listening', port: s.address().port, version: '0.0.1' }));
+`);
+  const script = `import { startSupervisor } from ${JSON.stringify(join(ROOT, 'src', 'supervisor.js'))};
+const sup = await startSupervisor({
+  port: 0, host: '127.0.0.1', dataPath: ${JSON.stringify(join(mkdtempSync(join(scratch, 'listen-data-')), 'weave.db'))},
+  imageDir: ${JSON.stringify(image)}, env: { ...process.env, WEAVE_UPDATE_CHECK: 'off' }, fetch: async () => new Response('', { status: 404 }),
+  interval: 0, watchMs: 0, healthTimeoutMs: 120_000, log: { log() {}, warn() {}, error() {} }, onWorkerDied: () => {},
+});
+await sup.close();
+console.log('closed');
+`;
+  const env = { ...ENV };
+  delete env.WEAVE_DEPLOY_TOKEN;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', script], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  child.stderr.on('data', (d) => { out += d; });
+  let closedAt = 0;
+  child.stdout.on('data', () => { if (!closedAt && out.includes('closed')) closedAt = Date.now(); });
+  const code = await new Promise((r) => {
+    const cap = setTimeout(() => { child.kill('SIGKILL'); r('held open'); }, 20_000);
+    child.on('exit', (c) => { clearTimeout(cap); r(c); });
+  });
+  assert.match(out, /closed/, `the supervisor started and closed: ${out}`);
+  assert.equal(code, 0, 'the process ended on its own instead of waiting out the 120 s health timeout');
+  assert.ok(Date.now() - closedAt < 5000, `the process ended ${Date.now() - closedAt} ms after close`);
+});
+
+test('a worker that never listens is still refused once the health timeout passes (Issue #1831)', async () => {
+  const image = join(mkdtempSync(join(scratch, 'silent-image-')), 'image');
+  mkdirSync(join(image, 'bin'), { recursive: true });
+  writeFileSync(join(image, 'package.json'), JSON.stringify({ name: 'weave', version: '0.0.1' }));
+  writeFileSync(join(image, 'bin', 'weave.js'), 'setInterval(() => {}, 1000);\n');
+  const started = Date.now();
+  await assert.rejects(startSupervisor({
+    port: 0, host: '127.0.0.1', dataPath: join(mkdtempSync(join(scratch, 'silent-data-')), 'weave.db'), imageDir: image,
+    env: { ...ENV, WEAVE_UPDATE_CHECK: 'off' }, fetch: async () => new Response('', { status: 404 }),
+    interval: 0, watchMs: 0, healthTimeoutMs: 500, log: { log() {}, warn() {}, error() {} }, onWorkerDied: () => {},
+  }), /the worker never listened/);
+  assert.ok(Date.now() - started < 10_000, 'the refusal came from the health timeout');
 });
 
 test('a release whose health check fails leaves the old worker serving, and is not retried', async () => {

@@ -276,7 +276,12 @@ export async function startSupervisor({
 
   async function waitHealthy(w) {
     const until = Date.now() + healthTimeoutMs;
-    await Promise.race([w.listening, sleep(healthTimeoutMs).then(() => { throw new Refusal('the worker never listened'); })]);
+    let timer;
+    try {
+      await Promise.race([w.listening, new Promise((_, reject) => { timer = setTimeout(() => reject(new Refusal('the worker never listened')), healthTimeoutMs); })]);
+    } finally {
+      clearTimeout(timer);
+    }
     let last = 'no answer';
     while (Date.now() < until) {
       if (w.child.exitCode !== null || w.child.signalCode) throw new Refusal(`the worker exited (${w.child.signalCode ?? `code ${w.child.exitCode}`})`);
