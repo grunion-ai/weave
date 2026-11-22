@@ -19,12 +19,12 @@ if (s) {
   const openPurge = async (name, theme = 'light') => {
     const page = await browser.newPage();
     await page.addInitScript((t) => localStorage.setItem('weave-theme', t), theme);
-    await page.goto(`${base}/#/settings`);
-    await page.locator('#main .settings-purge tr.purge-row', { hasText: name }).locator('.purge-open').click();
+    await page.goto(`${base}/#/trash`);
+    await page.locator('#main .trash-list tr.purge-row', { hasText: name }).locator('.purge-open').click();
     await page.locator('#main .purge-confirm input').fill(name);
     const hold = page.locator('#main .purge-confirm .hold-btn');
     await hold.waitFor();
-    assert.equal((await hold.textContent()).trim(), 'Delete forever', 'permanent delete is the one hold left, in Settings (Features #295, #296)');
+    assert.equal((await hold.textContent()).trim(), 'Delete forever', 'permanent delete is the one hold left, on each Trash row (Features #295, #296, #382)');
     return { page, hold };
   };
 
@@ -97,8 +97,8 @@ if (s) {
       else document.addEventListener('DOMContentLoaded', kill, { once: true });
     });
     try {
-      await page.goto(`${base}/#/settings`);
-      await page.locator('#main .settings-purge tr.purge-row', { hasText: 'NoSweep' }).locator('.purge-open').click();
+      await page.goto(`${base}/#/trash`);
+      await page.locator('#main .trash-list tr.purge-row', { hasText: 'NoSweep' }).locator('.purge-open').click();
       await page.locator('#main .purge-confirm input').fill('NoSweep');
       const hold = page.locator('#main .purge-confirm .hold-btn');
       await hold.waitFor();

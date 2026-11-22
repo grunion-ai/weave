@@ -419,3 +419,21 @@ test('a date formula travels through describeSchema and applySchema', () => {
   assert.deepEqual(Object.values(w2.getTable('T').fields).find((f) => f.name === 'F').config.grain, ['month']);
   assert.deepEqual(w2.applySchema(doc, { dryRun: true }), [], 'applying the same document again is a no-op');
 });
+
+test('viewer defaults: a date field that sets no format or clock follows the viewer, an explicit one wins, and bad values are ignored (Feature #382)', () => {
+  const g = globalThis.weaveDateGrain;
+  try {
+    assert.equal(g.formatDate('2026-08-03T14:05', { time: true }), 'Aug 3, 2026 2:05 PM');
+    g.setViewerDefaults({ format: 'us', clock: '24h' });
+    assert.deepEqual(g.viewerDefaults(), { format: 'us', clock: '24h' });
+    assert.equal(g.formatDate('2026-08-03T14:05', { time: true }), '8/3/2026 14:05');
+    assert.equal(g.formatFor({}), 'us');
+    assert.equal(g.clockFor({}), '24h');
+    assert.equal(g.formatDate('2026-08-03T14:05', { time: true, format: 'long', clock: '12h' }), 'Aug 3, 2026 2:05 PM');
+    assert.equal(g.formatDateRange({ start: '2026-08-03', end: '2026-08-09' }, {}), '8/3/2026 – 8/9/2026');
+    g.setViewerDefaults({ format: 'quarter', clock: 'sundial' });
+    assert.deepEqual(g.viewerDefaults(), { format: null, clock: null });
+    assert.equal(g.formatDate('2026-08-03', {}), 'Aug 3, 2026');
+    assert.equal(g.DEFAULT_FORMAT, 'long', 'the field default stays fixed: a viewer choice never reaches stored config');
+  } finally { g.setViewerDefaults({}); }
+});

@@ -202,7 +202,7 @@
     },
     "/prefs-core.js": {
       "gzip": 838,
-      "br": 838
+      "br": 751
     },
     "/relation-map.js": {
       "gzip": 1758,
@@ -229,8 +229,8 @@
       "br": 888
     },
     "/settings-view.js": {
-      "gzip": 3068,
-      "br": 2665
+      "gzip": 5158,
+      "br": 4521
     },
     "/setup-core.js": {
       "gzip": 1723,
@@ -342,6 +342,7 @@
     "/space-home-view.js": "Feature #378: the Open home serves the workspace home as well as the space home, so it gained spaceHomePage and mountWorkspaceHome: gzip 2,613 budget to 2,844 served, br 2,306 to 2,519, budget set 5% above",
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
-    "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above."
+    "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
+    "/settings-view.js": "Feature #382: Settings becomes one panel with Preferences (theme, week start, date format, time format, start page) and Workspace pages, mounts Clerk's account profile with those pages inside it when signed in through Clerk, and the Trash page gains the Delete forever hold; measured 4912 gzip and 4305 Brotli, budget set as that plus a twentieth"
   }
 }
