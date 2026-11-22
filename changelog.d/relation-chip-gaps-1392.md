@@ -1,1 +1,0 @@
-- **Relation chip spacing** (Issue #1392): the state pill, name, open arrow and remove × inside a relation chip now sit one 4 px gap apart, where the pill, the caret and the × each added their own margin (5, 5 and 12 px). The `+ link` button in a record's relation field matches the chip's 26 px height at every width, not only on a phone.

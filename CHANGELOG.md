@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.167 (2026-11-22)
+
+- **Automation health through the API** (Issue #1610): `weave_automations` list and describe, `weave automation list` and `describe`, and `GET /api/automations` now return each rule's `health`, `healthReason` and `lastRun` from its System/Workflows row, so an agent sees a failing rule and why without querying the system table.
+- **Relation chip spacing** (Issue #1392): the state pill, name, open arrow and remove × inside a relation chip now sit one 4 px gap apart, where the pill, the caret and the × each added their own margin (5, 5 and 12 px). The `+ link` button in a record's relation field matches the chip's 26 px height at every width, not only on a phone.
+
 ## v0.4.166 (2026-11-21)
 
 - **The avatar picker streams its file** (Issue #1857): picking a photo for an avatar field now prepares an upload grant and PUTs the raw bytes, the path the attachments field already used, instead of posting the file base64-encoded as JSON. The server holds one chunk at a time rather than the body buffer, the parsed string and the decoded bytes at once, so a photo costs about a third of the heap it did. The JSON attach route is unchanged for scripts and MCP, and an avatar still asks for no preview, so nothing extra is encoded or stored.
