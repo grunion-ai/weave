@@ -87,6 +87,7 @@ if (s) {
         await page.waitForURL(`${base}${home}#/settings`);
         assert.equal(await page.evaluate(() => location.hash), '#/settings', 'the root reopens the page the workspace last had open (Issue #977)');
 
+        await page.waitForSelector('#ws-new > .wv-icon');
         await page.locator('#ws-new').click();
         await page.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'Find my workspaces' }).click();
         await page.waitForURL(`${base}/start?pick=1`);

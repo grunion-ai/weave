@@ -58,6 +58,15 @@ if (openHub) {
   };
   const step = (p, name) => p.waitForSelector(`main[data-step="${name}"]`, { timeout: 15000 });
   const go = (p, what) => p.click(`main [data-go="${what}"]`);
+  const holdBuild = async (p) => {
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await p.route((url) => url.pathname === '/api/start/workspaces', async (r) => {
+      if (r.request().method() === 'POST') await held;
+      await r.continue();
+    });
+    return release;
+  };
   const signIn = async (p, h, how = 'signin') => {
     await p.goto(`${h.base}/start${how === 'bypass' ? '?setup=skip' : ''}`);
     await step(p, 'account');
@@ -116,6 +125,7 @@ if (openHub) {
     assert.ok(await p.locator('main [data-go="next"]').isVisible(), 'Continue stays in view under a long gallery');
     assert.equal(await stageArt(p), art, 'the right pane never changes');
     assert.equal(await p.locator('#stage img').evaluate((n) => n.complete && n.naturalWidth > 0), true, 'and it loads');
+    const release = await holdBuild(p);
     await go(p, 'next');
     await step(p, 'build');
     assert.equal(await stageArt(p), art, 'no build animation on the right');
@@ -123,6 +133,7 @@ if (openHub) {
     const mid = await donut(p);
     assert.ok(mid.at > 75 && mid.at <= 100, `the donut carries the build (${mid.at})`);
     assert.match(mid.name, /Ada Sales/);
+    release();
     await step(p, 'agent');
     assert.equal((await donut(p)).at, 100);
     assert.equal(await stageArt(p), art);
@@ -958,9 +969,10 @@ if (openHub) {
           assert.equal(await p.locator('.app[data-tool="codex"]').isHidden(), true);
           assert.ok(await p.locator('main [data-go="open"]').evaluate((n) => n.getBoundingClientRect().bottom < innerHeight));
           await go(p, 'open');
-          await p.waitForSelector('#ws-new', { state: 'attached' });
+          await p.waitForSelector('#ws-new > .wv-icon', { state: 'attached' });
           if (phone) await p.getByRole('button', { name: 'Open navigation', exact: true }).click();
           await p.locator('#ws-new').click();
+          await p.waitForSelector('.wv-menu.ws-plus');
           await p.locator('.wv-menu.ws-plus .wv-menu-row', { hasText: 'New workspace' }).click();
           await step(p, 'workspace');
           assert.equal(await p.inputValue('input[name="name"]'), '');
