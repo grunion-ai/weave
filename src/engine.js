@@ -29,7 +29,7 @@ import { parseCron, dueBetween, nextEvery, diffItems, retryAfterMs, pollPrune, P
 import { DELIVERY_ATTEMPTS, DeliveryError, retryDelayMs, waitingReason, exhaustedReason, DELIVERIES_DESCRIPTION, DELIVERY_STATUSES, deliveryName, requestText, attemptsText, INBOUND_WINDOW_MS, ECHO_WINDOW_MS, ECHO_KEEP, claimKey, matchesEcho, sentValues, utcMinute, HOOK_BODY_MAX, HOOK_LOG_KEEP, hookKeyName, hookRefusal } from './delivery.js';
 import * as Shares from './shares.js';
 import { ANONYMOUS, RANK, SPACE_ACCESS, viewerOf, viewerFor, spaceRole, workspaceRole, seatRole, lower, withViewers, unrestricted } from './access.js';
-import { nearestIcons } from './vocabulary.js';
+import { nearestIcons, nearestNames } from './vocabulary.js';
 import { evaluate, check as checkExpression, references as formulaReferences, renameReferences } from './formula.js';
 import { aggregate as aggregateValues, describeNumbers, histogram, distribution, NUMERIC_AGGREGATES } from './stats.js';
 import { FIELD_TYPE_VOCABULARY, VOCABULARY } from './vocabulary.js';
@@ -129,6 +129,13 @@ const SYSTEM_SPACE_ICON = 'lucide:settings';
 const LEGACY_SYSTEM_SPACE_NAME = 'workspace';
 const answersLegacySystem = (sp, name) => sp?.system === 'workspace' && String(name).toLowerCase() === LEGACY_SYSTEM_SPACE_NAME;
 
+function notFound(message, kind, given, names) {
+  const near = nearestNames(given, names);
+  return new WeaveError(near.length ? `${message}; ${kind}: ${near.join(', ')}` : message, 'not-found');
+}
+function fieldNotFound(ref, db) {
+  return notFound(`Field '${ref}' not found in table '${db.name}'`, 'fields', ref, Object.values(db.fields).filter((f) => !f.system).map((f) => f.name));
+}
 function refuseReserved(kind, name) {
   if (RESERVED_NAMES.has(String(name).trim())) throw new WeaveError(`'${String(name).trim()}' is reserved and cannot name a ${kind}`, 'invalid');
 }
@@ -2345,9 +2352,17 @@ export class Weave {
     return matches[0];
   }
 
+  #tableNotFound(ref) {
+    const hidden = this.#hiddenSpaces();
+    const names = Object.values(this.state.tables)
+      .filter((d) => !d.deletedAt && !this.state.spaces[d.spaceId]?.deletedAt && !hidden?.has(d.spaceId))
+      .map((d) => d.name);
+    return notFound(`Table '${ref}' not found`, 'tables', String(ref).split('/').pop(), names);
+  }
+
   getTable(ref) {
     const db = this.findTable(ref);
-    if (!db) throw new WeaveError(`Table '${ref}' not found`, 'not-found');
+    if (!db) throw this.#tableNotFound(ref);
     return db;
   }
 
@@ -2601,7 +2616,7 @@ export class Weave {
       db = named.find((d) => !spName || this.state.spaces[d.spaceId]?.name.toLowerCase() === spName.toLowerCase())
         ?? named.find((d) => answersLegacySystem(this.state.spaces[d.spaceId], spName));
     }
-    if (!db) throw new WeaveError(`Table '${ref}' not found`, 'not-found');
+    if (!db) throw this.#tableNotFound(ref);
     if (!db.deletedAt) return db;
     const sp = this.state.spaces[db.spaceId];
     if (sp?.deletedAt) throw new WeaveError(`Table '${db.name}' is inside the trashed space '${sp.name}' — restore the space first`, 'invalid');
@@ -6368,7 +6383,7 @@ export class Weave {
   getField(dbRef, ref) {
     const db = this.getTable(dbRef);
     const f = this.findField(db, ref);
-    if (!f) throw new WeaveError(`Field '${ref}' not found in table '${db.name}'`, 'not-found');
+    if (!f) throw fieldNotFound(ref, db);
     return f;
   }
 
@@ -6385,7 +6400,7 @@ export class Weave {
     if (!name) throw new WeaveError('Field name is required', 'invalid');
     refuseReserved('field', name);
     if (this.findField(db, name)) throw new WeaveError(`Field '${name}' already exists`, 'conflict');
-    if (!FIELD_TYPES.includes(type)) throw new WeaveError(`Unknown field type '${type}'`, 'invalid');
+    if (!FIELD_TYPES.includes(type)) throw new WeaveError(`Unknown field type '${type}'; types: ${nearestNames(type, FIELD_TYPES, FIELD_TYPES.length).join(', ')}`, 'invalid');
     if (type === 'relation') throw new WeaveError(`Use addRelation() to create relation fields`, 'invalid');
     if (type === 'view') throw new WeaveError('The chip and the card are minted on every table; configure those instead', 'invalid');
 
@@ -6853,7 +6868,7 @@ export class Weave {
     if (!target) throw new WeaveError('A subtable needs a relation with one target table', 'invalid');
     const named = (n) => {
       const f = typeof n === 'string' ? this.findField(target, n) : null;
-      if (!f) throw new WeaveError(`Field '${n}' not found in table '${target.name}'`, 'not-found');
+      if (!f) throw fieldNotFound(n, target);
       return f.name;
     };
     const list = (key) => {
@@ -7877,7 +7892,7 @@ export class Weave {
   #checkValues(e, db, valuesByName) {
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
-      if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
+      if (!field) throw fieldNotFound(key, db);
       if (COMPUTED_TYPES.includes(field.type)) {
         throw new WeaveError(`Field '${field.name}' is computed (${field.type}) and cannot be written`, 'invalid');
       }
@@ -7952,7 +7967,7 @@ export class Weave {
   #writeValues(e, db, valuesByName, { depth, isCreate, after }) {
     for (const [key, raw] of Object.entries(valuesByName)) {
       const field = this.findField(db, key);
-      if (!field) throw new WeaveError(`Field '${key}' not found in table '${db.name}'`, 'not-found');
+      if (!field) throw fieldNotFound(key, db);
       if (COMPUTED_TYPES.includes(field.type)) {
         throw new WeaveError(`Field '${field.name}' is computed (${field.type}) and cannot be written`, 'invalid');
       }
@@ -8428,7 +8443,7 @@ export class Weave {
       if (fieldRef === 'createdAt' || fieldRef === 'Created At') return e.createdAt;
       if (fieldRef === 'updatedAt' || fieldRef === 'Updated At') return e.updatedAt;
       if (fieldRef === 'publicId' || fieldRef === 'Public Id') return e.publicId;
-      throw new WeaveError(`Field '${fieldRef}' not found in table '${db.name}'`, 'not-found');
+      throw fieldNotFound(fieldRef, db);
     }
     return this.#resolve(e, db, field, depth);
   }
@@ -8679,7 +8694,7 @@ export class Weave {
           const last = i === parts.length - 1;
           if (last && (parts[i] === 'id' || parts[i] === 'publicId')) return;
           const f = this.findField(cdb, parts[i]);
-          if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
+          if (!f) throw fieldNotFound(parts[i], cdb);
           if (!last) {
             if (f.type !== 'relation' || !f.config.targetDb) throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
             cdb = this.state.tables[f.config.targetDb];
@@ -9248,7 +9263,7 @@ export class Weave {
         if (parts[i] === 'updatedAt') { results.push(ce.updatedAt); continue; }
         const f = this.findField(cdb, parts[i]);
         if (!f && Object.hasOwn(SYSTEM_SORT_KEYS, parts[i])) { results.push(this.actorName(ce[SYSTEM_SORT_KEYS[parts[i]]] ?? null)); continue; }
-        if (!f) throw new WeaveError(`Field '${parts[i]}' not found in table '${cdb.name}'`, 'not-found');
+        if (!f) throw fieldNotFound(parts[i], cdb);
         let resolved = this.#resolve(ce, cdb, f, 0);
         if (isLast && f.type === 'formula' && f.config.display === 'sparkline' && Array.isArray(resolved)) resolved = lastNumber(resolved);
         if (isLast) {

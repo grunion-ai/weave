@@ -63,6 +63,13 @@ function editDistance(a, b) {
   }
   return prev[b.length];
 }
+export function nearestNames(given, names, limit = 8) {
+  const q = String(given ?? '').toLowerCase();
+  return [...new Set(names)].map((name) => ({ name, d: editDistance(q, name.toLowerCase()) }))
+    .sort((a, b) => a.d - b.d || (a.name < b.name ? -1 : 1))
+    .slice(0, limit)
+    .map((m) => m.name);
+}
 function iconDistance(q, qw, name) {
   for (const [k, names] of ICON_SYNONYMS) if (qw.includes(k) && names.includes(name)) return -1 + names.indexOf(name) / 100;
   const nw = iconWords(name);

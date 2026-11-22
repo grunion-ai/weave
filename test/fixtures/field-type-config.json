@@ -897,7 +897,7 @@
   {
    "type": "lookup",
    "sent": {},
-   "error": "not-found: Field 'undefined' not found in table 'Deal'"
+   "error": "not-found: Field 'undefined' not found in table 'Deal'; fields: Name, Company, Description"
   },
   {
    "type": "rollup",
