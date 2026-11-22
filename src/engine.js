@@ -9933,6 +9933,7 @@ export class Weave {
   }
 
   #wfField(name) { return this.#sysField(this.#sysTable('workflows'), name); }
+  #wfOption(row, name) { const f = this.#wfField(name); return f.config.options.find((o) => o.id === row.values[f.id])?.name ?? null; }
 
   #workflowRule(row, text = row.docs?.[this.#wfField('Script').id] ?? '') {
     const owner = this.#workflowHome(row);
@@ -10111,6 +10112,9 @@ export class Weave {
       actions: r.actions,
       enabled: r.row.values[this.#wfField('On').id] === true,
       state: r.problem ? 'Setup incomplete' : 'Ready',
+      health: this.#wfOption(r.row, 'Health'),
+      healthReason: r.row.values[this.#wfField('Health Reason').id] ?? null,
+      lastRun: r.row.values[this.#wfField('Last Run').id] ?? null,
     };
     if (r.problem) out.problem = r.problem;
     if (r.trigger?.type === 'webhook-inbound') {
@@ -10157,6 +10161,9 @@ export class Weave {
         tableId: auto.dbId,
         enabled: auto.enabled,
         state: auto.state,
+        health: auto.health,
+        healthReason: auto.healthReason,
+        lastRun: auto.lastRun,
         ...(auto.problem ? { problem: auto.problem } : {}),
         trigger,
         ...(auto.hook ? { hook: auto.hook } : {}),

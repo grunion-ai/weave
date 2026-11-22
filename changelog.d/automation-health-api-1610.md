@@ -1,0 +1,1 @@
+- **Automation health through the API** (Issue #1610): `weave_automations` list and describe, `weave automation list` and `describe`, and `GET /api/automations` now return each rule's `health`, `healthReason` and `lastRun` from its System/Workflows row, so an agent sees a failing rule and why without querying the system table.
