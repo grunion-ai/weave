@@ -1,0 +1,1 @@
+- **Setup flow tests hold the build and wait for the rail** (Issue #1482): the guided setup test holds the workspace POST while it checks the build step, so a slow runner cannot pass the step before the wait sees it, and every `#ws-new` click waits for the icon wireWsNew paints before it binds the click. `test/ws-new-ready-wait.test.mjs` refuses a click without that wait.
