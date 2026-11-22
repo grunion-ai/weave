@@ -169,7 +169,7 @@ test('MCP: query, search, get, CSV and ontology answer nothing from a private sp
     return res;
   };
   for (const [name, args, refusal] of [
-    ['weave_query', { db: 'Sales/Deal' }, /^Error: Table 'Sales\/Deal' not found$/],
+    ['weave_query', { db: 'Sales/Deal' }, /^Error: Table 'Sales\/Deal' not found(?:; tables: (?:(?!Deal)[^;])*)?$/],
     ['weave_search', { query: 'Acme' }, null],
     ['weave_get_entity', { entity: secret.id }, /^Error: Entity '[^']+' not found$/],
     ['weave_export_csv', { db: 'Ops/Task' }, null],
