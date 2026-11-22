@@ -352,16 +352,13 @@ console.log('closed');
 `;
   const env = { ...ENV };
   delete env.WEAVE_DEPLOY_TOKEN;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', script], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--input-type=module', '-e', script], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000, killSignal: 'SIGKILL' });
   let out = '';
   child.stdout.on('data', (d) => { out += d; });
   child.stderr.on('data', (d) => { out += d; });
   let closedAt = 0;
   child.stdout.on('data', () => { if (!closedAt && out.includes('closed')) closedAt = Date.now(); });
-  const code = await new Promise((r) => {
-    const cap = setTimeout(() => { child.kill('SIGKILL'); r('held open'); }, 20_000);
-    child.on('exit', (c) => { clearTimeout(cap); r(c); });
-  });
+  const code = await new Promise((r) => child.on('exit', (c, signal) => r(signal ? `held open until ${signal}` : c)));
   assert.match(out, /closed/, `the supervisor started and closed: ${out}`);
   assert.equal(code, 0, 'the process ended on its own instead of waiting out the 120 s health timeout');
   assert.ok(Date.now() - closedAt < 5000, `the process ended ${Date.now() - closedAt} ms after close`);
