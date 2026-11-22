@@ -1,1 +1,0 @@
-- **Edge collision ratchet** (Feature #388): a browser sweep over ten screens at seven widths fails when one control covers another, is cut by its box or is pushed off the screen. Known collisions sit in `test/edge-collision-baseline.json`, each naming its Issue, and the baseline only shrinks.

@@ -1,1 +1,0 @@
-- **Fill handle drawn whole** (Issue #1859): the blue fill handle on a selected grid cell sits 3px in from the cell's rounded corner, so it shows as a full square instead of a clipped blue leaf.
