@@ -1,7 +1,7 @@
 {
   "public/chip.css": {
     "odd": 0,
-    "offScale": 10
+    "offScale": 9
   },
   "public/status.css": {
     "odd": 19,
