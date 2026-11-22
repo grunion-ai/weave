@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.168 (2026-11-22)
+
+- **Dev gate boot outwaits a slow seed** (Issue #1481): the Boot step now waits 150 s for `/api/health` instead of 90 s, which covers the 95 s a runner took seeding the docs workspace on 2026-11-08, and it fails at once when the server process exits, so a real crash still fails in seconds. `test/security/workflows.test.mjs` pins the window against the job cap.
+- **Save queue gate covers dates, relations and grid cells** (Issue #1524): `test/save-queue-cells-browser.test.mjs` now checks a date pick and a typed grid cell the way it checks a select pick (shown before any write, sent on page hide by a reload while the write waits, read by the store and the reloaded page within one second), and that a relation pick, which writes at once, survives a reload made right after it. All three pass in Chromium and WebKit.
+- **Setup flow tests hold the build and wait for the rail** (Issue #1482): the guided setup test holds the workspace POST while it checks the build step, so a slow runner cannot pass the step before the wait sees it, and every `#ws-new` click waits for the icon wireWsNew paints before it binds the click. `test/ws-new-ready-wait.test.mjs` refuses a click without that wait.
+
 ## v0.4.167 (2026-11-22)
 
 - **Automation health through the API** (Issue #1610): `weave_automations` list and describe, `weave automation list` and `describe`, and `GET /api/automations` now return each rule's `health`, `healthReason` and `lastRun` from its System/Workflows row, so an agent sees a failing rule and why without querying the system table.

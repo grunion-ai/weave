@@ -1,6 +1,6 @@
 {
   "name": "weave",
-  "version": "0.4.167",
+  "version": "0.4.168",
   "description": "A portable work system you own, developed in the open. Connected records, documents and automations with native MCP, REST and CLI access for your existing agent. SQLite storage, zero runtime dependencies, no build step. MIT.",
   "license": "MIT",
   "type": "module",
