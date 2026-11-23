@@ -1151,7 +1151,7 @@ function crepeDividerBelow(M) {
     const { hr, paragraph } = state.schema.nodes;
     const from = $from.before();
     const tr = state.tr.replaceWith(from, $from.after(), [hr.create(), paragraph.create()]);
-    view.dispatch(tr.setSelection(M.TextSelection.create(tr.doc, from + 2)).scrollIntoView());
+    view.dispatch(tr.setSelection(M.TextSelection.create(tr.doc, from + 2)));
     view.focus();
   };
 }
