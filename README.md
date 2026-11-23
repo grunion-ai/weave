@@ -481,6 +481,7 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 - [DejaVu Sans](https://dejavu-fonts.github.io/) 2.37 (`DejaVuSans.ttf`, PDF export Unicode fallback), Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah (full text in `src/vendor/fonts/DejaVuSans-LICENSE.txt`)
 - [decklet](https://github.com/grunion-ai/decklet) 0.3.3+cf73916 (the slide engine, pinned by commit), MIT
 - [Lobe Icons](https://github.com/lobehub/lobe-icons) 1.95.1 (brand marks), MIT © LobeHub
+- [Milkdown Crepe](https://github.com/Milkdown/milkdown) 7.23.0 (the document editor behind the `weave.editor` switch, bundled with its MIT, ISC, BSD and MPL-2.0 OR Apache-2.0 dependencies listed in `public/vendor/crepe/THIRD-PARTY.txt`), MIT © Mirone (full text in `public/vendor/crepe/LICENSE`)
 <!-- third-party:end -->
 
 ## Security
