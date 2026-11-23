@@ -1,0 +1,1 @@
+- Crepe editor: an inline `<br>` breaks the line instead of showing as the text "<br>" (Issue #1897).
