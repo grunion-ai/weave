@@ -26,6 +26,8 @@ if (s) {
   const KEY_GAP = 120;
   const press = async (page, key) => { await page.keyboard.press(key); await page.waitForTimeout(KEY_GAP); };
 
+  const topResult = (page, name) => page.waitForFunction((n) => document.querySelector('#cmdk-results .result')?.textContent.includes(n), name, { timeout: 10000 });
+
   async function saved(page, id, want) {
     await page.evaluate(() => window.__weaveFlushDocSaves());
     let doc = '';
@@ -93,6 +95,64 @@ if (s) {
       assert.match(got, /^- one\n- two$/m);
       assert.match(got, /^---$/m);
       assert.match(got, /See \[\[Note#1\]\] here\. Done\./);
+    } finally { await page.close(); }
+  });
+  test('a stored [[reference]] renders as a chip linking to its record, and the raw text comes back while the caret is inside it (Feature #86)', async () => {
+    const target = weave.createEntity(tableRef, { name: 'Bluefin' });
+    const { page } = await open('Chip host', `See [[Note#${target.publicId}]] here.`);
+    try {
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+      const chip = page.locator('.wv-crepe .wv-ref-chip a.mention');
+      await chip.waitFor({ timeout: 10000 });
+      assert.equal((await chip.textContent()).trim(), 'Bluefin');
+      assert.equal(await chip.getAttribute('href'), `#/entity/${target.id}`);
+      assert.equal(await page.locator('.wv-crepe .wv-ref-src').isVisible(), false, 'the raw [[…]] text hides behind the chip');
+      await page.evaluate(() => {
+        const t = [...document.querySelectorAll('.wv-crepe .ProseMirror p')].find((p) => p.textContent.includes('[['));
+        const walker = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const at = n.data.indexOf('Note#');
+          if (at < 0) continue;
+          getSelection().collapse(n, at);
+          return;
+        }
+      });
+      await page.waitForSelector('.wv-crepe .wv-ref-chip', { state: 'detached', timeout: 5000 });
+    } finally { await page.close(); }
+  });
+
+  test('typing [[ opens the reference search and the pick lands as a reference (Feature #86)', async () => {
+    weave.createEntity(tableRef, { name: 'Marlin' });
+    const { page, id } = await open('Bracket pick');
+    try {
+      await page.keyboard.type('Ask [[', { delay: 30 });
+      await page.waitForSelector('#cmdk-input:focus', { timeout: 10000 });
+      await page.keyboard.type('Marlin', { delay: 30 });
+      await topResult(page, 'Marlin');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+      await page.keyboard.type(' now', { delay: 30 });
+      const doc = await saved(page, id, /now/);
+      assert.match(doc, /^Ask \[\[[^\]\n]*#\d+\|Marlin\]\] now$/m);
+      await page.locator('.wv-crepe .wv-ref-chip a.mention').waitFor({ timeout: 10000 });
+    } finally { await page.close(); }
+  });
+
+  test('the slash menu offers Entity, which opens the reference search (Feature #120)', async () => {
+    weave.createEntity(tableRef, { name: 'Wahoo' });
+    const { page, id } = await open('Slash entity');
+    try {
+      await page.keyboard.type('/entity', { delay: 30 });
+      await page.waitForSelector('.milkdown-slash-menu[data-show="true"]', { timeout: 10000 });
+      await press(page, 'Enter');
+      await page.waitForSelector('#cmdk-input:focus', { timeout: 10000 });
+      await page.keyboard.type('Wahoo', { delay: 30 });
+      await topResult(page, 'Wahoo');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+      const doc = await saved(page, id, /Wahoo/);
+      assert.match(doc, /^\[\[[^\]\n]*#\d+\|Wahoo\]\]$/m);
+      assert.doesNotMatch(doc, /\/entity/);
     } finally { await page.close(); }
   });
 }

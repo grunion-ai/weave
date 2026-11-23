@@ -1,0 +1,1 @@
+- Crepe editor: `[[references]]` render as chips that link to their record and show the raw text while the caret is inside, typing `[[` opens the reference search, and the slash menu gains Entity, Table and Space items (Features #86, #120, #389).
