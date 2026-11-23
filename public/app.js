@@ -9173,6 +9173,8 @@ function attachDashRail(section, host) {
   return st;
 }
 
+const DOC_BLOCK_ROOT = '.vditor-ir .vditor-reset, .wv-crepe .ProseMirror';
+
 function headText(h) {
   return [...h.childNodes]
     .filter((n) => !(n.nodeType === 1 && n.classList.contains('vditor-ir__marker')))
@@ -9191,7 +9193,7 @@ function sectionTexts(h) {
 
 function refreshDashRail(st) {
   if (!document.body.contains(st.section)) { st.close(); docRails.delete(st); return; }
-  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  const root = st.host.querySelector(DOC_BLOCK_ROOT);
   if (!root) return;
   const heads = [...root.querySelectorAll(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')]
     .filter((h) => h.offsetParent !== null);
@@ -9251,27 +9253,30 @@ function attachHeadingFolds(host, entityId, field, recordName = () => '') {
 
 function refreshHeadingFolds(st) {
   if (!document.body.contains(st.host)) { docFolds.delete(st); return; }
-  const root = st.host.querySelector('.vditor-ir .vditor-reset');
+  const root = st.host.querySelector(DOC_BLOCK_ROOT);
   if (!root) return;
   if (!st.layer.isConnected) st.host.append(st.layer);
   const lib = globalThis.WeaveEditorLib;
-  const blocks = [...root.children];
+  const blocks = [...root.children].filter((b) => !b.matches('.prosemirror-virtual-cursor, .ProseMirror-widget'));
   const echo = blocks.length > 1 && blocks[0].tagName === 'H1'
     && lib.isTitleEcho(headText(blocks[0]), st.recordName());
-  if (blocks[0] && blocks[0].classList.contains('wv-title-echo') !== echo) {
-    blocks[0].classList.toggle('wv-title-echo', echo);
-    for (const rail of docRails) rail.schedule();
-  }
+  const echoChanged = !!blocks[0] && blocks[0].classList.contains('wv-title-echo') !== echo;
   const levels = blocks.map((b, i) => (echo && i === 0 ? null : /^H[1-6]$/.test(b.tagName) ? +b.tagName[1] : null));
   const folded = docFoldState(st.entityId, st.field);
   const headKey = (h) => `${h.tagName[1]}:${headText(h)}`;
-
-  for (const b of blocks.slice(1)) b.classList.remove('wv-title-echo');
-  for (const b of blocks) b.classList.remove('wv-folded');
+  const hide = new Set();
   levels.forEach((lvl, i) => {
     if (lvl == null || !folded.has(headKey(blocks[i]))) return;
-    for (const j of lib.foldRange(levels, i)) blocks[j].classList.add('wv-folded');
+    for (const j of lib.foldRange(levels, i)) hide.add(j);
   });
+  const marks = blocks.map((_, i) => [echo && i === 0 ? 'wv-title-echo' : '', hide.has(i) ? 'wv-folded' : ''].filter(Boolean).join(' '));
+  const markBlocks = root.closest('.wv-crepe')?.weaveMarkBlocks;
+  if (markBlocks) markBlocks(marks);
+  else blocks.forEach((b, i) => {
+    b.classList.toggle('wv-title-echo', marks[i].includes('wv-title-echo'));
+    b.classList.toggle('wv-folded', marks[i].includes('wv-folded'));
+  });
+  if (echoChanged) for (const rail of docRails) rail.schedule();
 
   const base = st.layer.getBoundingClientRect();
   const carets = [];

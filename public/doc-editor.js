@@ -1124,6 +1124,25 @@ function crepeReferences(M) {
   }));
 }
 
+function crepeBlockMarks(M, key) {
+  return M.$prose(() => new M.Plugin({
+    key,
+    state: { init: () => [], apply: (tr, marks) => tr.getMeta(key) ?? marks },
+    props: {
+      decorations(state) {
+        const marks = key.getState(state);
+        const decos = [];
+        let i = 0;
+        state.doc.forEach((node, pos) => {
+          const cls = marks[i++];
+          if (cls) decos.push(M.Decoration.node(pos, pos + node.nodeSize, { class: cls }));
+        });
+        return M.DecorationSet.create(state.doc, decos);
+      },
+    },
+  }));
+}
+
 function crepeReferenceMenu(M) {
   return (builder) => {
     const group = builder.addGroup('reference', 'Reference');
@@ -1166,6 +1185,8 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
     },
   });
   crepe.editor.use(crepeReferences(M));
+  const marksKey = new M.PluginKey('weave-block-marks');
+  crepe.editor.use(crepeBlockMarks(M, marksKey));
   crepe.editor.config((ctx) => ctx.update(M.remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: '-', rule: '-' })));
   crepe.on((l) => {
     l.markdownUpdated((_, md) => {
@@ -1197,8 +1218,16 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
     setTheme: () => {},
     destroy: () => { liveEditors.delete(editor); crepe.destroy(); root.remove(); },
   };
+  root.weaveMarkBlocks = (marks) => {
+    if (!ready) return;
+    const view = crepe.editor.ctx.get(M.editorViewCtx);
+    const now = marksKey.getState(view.state);
+    if (now.length === marks.length && now.every((m, i) => m === marks[i])) return;
+    view.dispatch(view.state.tr.setMeta(marksKey, marks));
+  };
   crepe.create().then(() => {
     ready = true;
+    scheduleDecorFor(host);
     if (readOnly) crepe.setReadonly(true);
     else if (autoFocus) editor.focus();
   });
