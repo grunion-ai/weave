@@ -987,3 +987,61 @@ function pickReference(editor, value, marker, kind, onInput) {
     onDismiss: () => settle(''),
   });
 }
+
+const crepeMarkdown = (md) => String(md ?? '').replace(/\\\[\\\[/g, '[[');
+
+function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
+  const M = globalThis.WeaveCrepe;
+  const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(crepeMarkdown(v));
+  const root = document.createElement('div');
+  root.className = 'wv-crepe';
+  host.append(root);
+  let handed = stored(value ?? '');
+  let ready = false;
+  const crepe = new M.Crepe({
+    root,
+    defaultValue: value ?? '',
+    features: { [M.Crepe.Feature.AI]: false, [M.Crepe.Feature.TopBar]: false },
+    featureConfigs: { [M.Crepe.Feature.Placeholder]: { text: placeholder ?? '', mode: 'doc' } },
+  });
+  crepe.editor.config((ctx) => ctx.update(M.remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: '-', rule: '-' })));
+  crepe.on((l) => {
+    l.markdownUpdated((_, md) => {
+      if (!ready) return;
+      const v = stored(md);
+      if (v === handed) return;
+      handed = v;
+      hand(v);
+    });
+    if (onBlur) l.blur(() => onBlur());
+  });
+  const editor = {
+    crepe,
+    getValue: () => (ready ? stored(crepe.getMarkdown()) : handed),
+    setValue: (md) => {
+      handed = stored(md);
+      if (ready) crepe.editor.action(M.replaceAll(md));
+    },
+    focus: () => root.querySelector('.ProseMirror')?.focus(),
+    setTheme: () => {},
+    destroy: () => { liveEditors.delete(editor); crepe.destroy(); root.remove(); },
+  };
+  crepe.create().then(() => {
+    ready = true;
+    if (readOnly) crepe.setReadonly(true);
+    else if (autoFocus) editor.focus();
+  });
+  host.addEventListener('focusout', () => {
+    if (!ready) return;
+    const v = stored(crepe.getMarkdown());
+    if (v !== handed) { handed = v; hand(v); }
+    flushDocSaves();
+  });
+  docPulls.set(editor, () => {
+    if (!ready) return;
+    const v = stored(crepe.getMarkdown());
+    if (v !== handed) { handed = v; hand(v); }
+  });
+  liveEditors.add(editor);
+  return editor;
+}
