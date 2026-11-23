@@ -285,6 +285,30 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
+function attachTabKeys(host) {
+  let escaped = false;
+  host.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { escaped = true; return; }
+    if (e.key !== 'Tab') { escaped = false; return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    if (escaped) { escaped = false; e.stopImmediatePropagation(); return; }
+    const hint = host.querySelector('.vditor-hint');
+    if (hint && hint.style.display !== 'none' && hint.childElementCount) return;
+    const node = document.getSelection()?.anchorNode;
+    const at = node instanceof Element ? node : node?.parentElement;
+    const root = host.querySelector('.vditor-ir .vditor-reset');
+    if (!at || !root?.contains(at) || at.closest('td, th, pre') !== root) return;
+    const li = at.closest('li');
+    if (!li || !root.contains(li)) return;
+    const button = host.querySelector(`.vditor-toolbar [data-type="${e.shiftKey ? 'outdent' : 'indent'}"]`);
+    if (!button) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    button.classList.remove('vditor-menu--disabled');
+    button.dispatchEvent(new Event(navigator.userAgent.includes('iPhone') ? 'touchstart' : 'click', { bubbles: true, cancelable: true }));
+  }, { capture: true });
+}
+
 const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
 const TASK_BOX = /^\[([ xX])\]$/;
 
@@ -418,6 +442,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachCodeAuto(host);
   attachCodeRawToggle(host);
   attachTableKeys(host);
+  attachTabKeys(host);
   attachListMarkers(host);
   attachHintClamp(host);
   holdDocFrames(host);
@@ -430,6 +455,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
     icon: 'ant',
     theme: t.ui,
     minHeight: 160,
+    tab: '\t',
     cache: { enable: false },
     counter: { enable: false },
     toolbar: [
