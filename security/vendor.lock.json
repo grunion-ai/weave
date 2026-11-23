@@ -1010,6 +1010,768 @@
         }
       ],
       "build": "Copied as shipped: claude-color, claudecode-color, openai, codex-color, gemini-color, geminicli-color and antigravity-color. Brand marks of Anthropic, OpenAI and Google, used to name each agent on the connect step."
+    },
+    {
+      "name": "crepe",
+      "npm": "@milkdown/crepe",
+      "version": "7.23.0",
+      "versionSource": "npm view @milkdown/crepe version; installed as @milkdown/crepe@7.23.0",
+      "note": "Milkdown Crepe editor and its dependency tree (ProseMirror, remark, CodeMirror 6, KaTeX, Vue), all MIT, ISC, BSD or MPL-2.0 OR Apache-2.0; the package list with licenses is THIRD-PARTY.txt",
+      "files": [
+        {
+          "path": "public/vendor/crepe/LICENSE",
+          "sha256": "a9d856fd85b6598d7e894ce064a35921f2fb9bb4d903b905dd8d7b639e05422f"
+        },
+        {
+          "path": "public/vendor/crepe/THIRD-PARTY.txt",
+          "sha256": "a47eaa0a9817afb146a4afc3992bcc82b522fd767e50401363bbb005ebcf1c9a"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-27QA46GA.js",
+          "sha256": "3d51d3a225c245316e7a5304e927aa42e517b9014bc53be9d633fba5cca92749"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-2E6N2VMM.js",
+          "sha256": "54107ac277bac577bea07e2b945f561b20deca2798a6abe749db7ba0765580f4"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-2IKVRQPL.js",
+          "sha256": "02b37b9cfc9165fbd8be78dea29f8ad938b02c28cc70797cb279cc57fcc4d981"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-3H4V3F4A.js",
+          "sha256": "11dbd5bd5704dec686181b2b398c1a91048a4d7b420ca8d0eeca130b48cbfd5e"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-3QD7ILRE.js",
+          "sha256": "b045f313f928929a54b0aaab50332acf4d5b3e91c110d6bd6d5232da354b3537"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-42DR2V3T.js",
+          "sha256": "7541fb0b3145e01bf51c16a7f06c49310dc365010cd73da9984ce10e7d2fb237"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-4ACZEHON.js",
+          "sha256": "62aab033284703e310a0b70fbfa4388ae664bc311c1c976c7b5244bea151cabf"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-4BZVGSQA.js",
+          "sha256": "bac6d800c14009485ca289ea72727897818f354293d3f927d962cc83746369ed"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-4DDT3NX3.js",
+          "sha256": "006d23621e45af77a182c54d5a005e70944ddbf7d2078918e0e41cf3e8326cc7"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-4UX35LPQ.js",
+          "sha256": "fd71a85002112915804f6fcd76b38aba9571693bf2f24301b3a016a3e4104738"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-5BEG253V.js",
+          "sha256": "f46fde0d55ddc6b9dfb6fb3be7b6c4a768a3d34af51efb1d3303a32b2bce71ed"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-5PQ63BGC.js",
+          "sha256": "63c272e9b73de7c3c8be51d54f039465da3d4776cb6f2ba4a0f23cd69d23976c"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-5TBO732O.js",
+          "sha256": "adcdc9077e5b925090fd1f5edb50d5a1fda3e28574b2a0e2fa5ba2c8ea589ce1"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-5VNE3UQ3.js",
+          "sha256": "dcb5608b88471ab0ea908471982d285ed2508cad7ecca847b05edc99c680f060"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-65OKFT26.js",
+          "sha256": "3f02353951f1c09a3e9b79e6c7f4f2ec77f224d5c666e177710821a83ec749c8"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-6GQVOWIZ.js",
+          "sha256": "3b5e057353a5aed119936b18a4205a8f800a97cf3f55072792e55d84048f5457"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-6QTVC5EY.js",
+          "sha256": "8379e0be61fbfddda731fc28cbf0dc3e8596ae14e6fbb3e45436760df9208f84"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-6R7YAKZR.js",
+          "sha256": "8ab2306df342e9fc2b37dbafa347a9665def61570189a84976cac1ff7ce2737f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-6VV4JR77.js",
+          "sha256": "ab26c406140d087474ecf9df7cb625bd2508b5bcaeb875238d5d7f474abd4d23"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-73BKZ2U2.js",
+          "sha256": "bde23a558654787591897eb887fd16021d22e42a4328c67b8b7f4e30fb903f3e"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-7EEUDU45.js",
+          "sha256": "7561e0da658d6db73d9d86aad22c335f23defb957e659f6abcd16f23c22c4b97"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-7KU5ORZR.js",
+          "sha256": "1bedae78797f2dab65004f2d3f23f2e21eb36ae23b45a9ff936f3abd775f7f53"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-7QAH6ECN.js",
+          "sha256": "81171e8c3e9e2d0909b601f30212a8303d5f254de784c55473806cea3257b482"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-7X3C265F.js",
+          "sha256": "6f03e96f200edacadc66d55c55bacd615d2c34dbcd9c45522b3181032bada544"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-A3U75D5X.js",
+          "sha256": "6710549a04e1c7b95b52820dc2098f7fbcc72e2265d935efde7bc225d17804fd"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-A5EV6J57.js",
+          "sha256": "f58d6eaa2d163a499028658551fab865bc5b4f593377caa447d3adae8928ce1f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-ABQUB2CR.js",
+          "sha256": "b6de28765870e18b41a1066b6aa485feee4495f6c114c19cfbf8e6b747ca81de"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-AEMOXASJ.js",
+          "sha256": "2c5264da0361203880878f8fb26143205ca9b79f8f76e408c1801186986caf5f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-AJ6CTMOL.js",
+          "sha256": "5c660996d9d72683d16224c6e7e062fc79e654d7141e29fa4f0abb98dc88cd4d"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-BFQIQCL7.js",
+          "sha256": "2889e595e4c7dae2930b1de57e3e8bdc43d585a4e05d3b349eaa9b2adaac78e4"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-BMHJCQ6Z.js",
+          "sha256": "4e1a1c2652755e8dc01d43f11de4e6546d86382b3cabab1245f6901128a93e70"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-CNBHKM6S.js",
+          "sha256": "b257b6e61922458182cf1c89390745949205fe7fa99b6455d2f96dfa0cb6ca53"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-DHQVAPJ3.js",
+          "sha256": "2ebdf2729b8c980d78b8b8e6f88cc1503d84cb0c4378921870b24e6060d01e34"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-DUPRK7ZE.js",
+          "sha256": "5e3c6efb0d66b6115a9c43b68478fcbd1752a88dfafe067df8ea1eb38d42b4ea"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-E2EU6KMB.js",
+          "sha256": "26014634ad9f671777afb21b733ce4888af83a0ab618fa7992896ba04f8bd0fe"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-EA4MC6IC.js",
+          "sha256": "db06f1f28a91590e710c9b7865db85951a5b4438b59dc1771b0229e13071835e"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-EGGG33O2.js",
+          "sha256": "999997c7045893bfe21e97eda02831ec0125a21d05f76da0dacde7ef0b957636"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-EWZHKRXT.js",
+          "sha256": "973bd7e9e976e2158365f5c7427019bae1149cbe483b1b8d53478b383653378e"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-EYVVGDS7.js",
+          "sha256": "12935875c862d50e752847c7fd01d90bdaebfa6bfe38d6100aeb93a1fd030b15"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-FEKONY6H.js",
+          "sha256": "9e122188425f85b63173feb908ed3a305b0b0db5812ef7ebd9187f713a8b4324"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-FOJGBZUL.js",
+          "sha256": "e3703c31f55ff0a44b4a6aee49d42bad7b336b618027c01dad9f7bbf9fb7b58d"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-FPAXHMW2.js",
+          "sha256": "aa97be6542198acb9324b6a53097a6e931afd14021c64beda0896cbc4e33a48b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-FPR7OATG.js",
+          "sha256": "8e9dfaf34c53528926d642e7387e9f33a740a73fedf74b077a1e406e91c0b164"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-FXFGIIHI.js",
+          "sha256": "ce06edb2ed2adbce78d701ece4f2abc9cfd4027a02ca5f175cf771a1f8829cfe"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-GCUVPXF6.js",
+          "sha256": "dc6f8080dcf06e3ef2de9fed95c433582b11543e287f4e1d0979f03837b3d201"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-GFH7C4RI.js",
+          "sha256": "e086f2667a8e7d672fac3337b4493586c401b6aac44253ad8e0865381512a8ac"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-HDKKKR77.js",
+          "sha256": "1848450f56fe163e2b37c8f1408b17e7899a601c87516cc5fd14b8b83cbe4646"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-HHYP2UZL.js",
+          "sha256": "380ebbef0f29748a53d225d66874fa2fea73f7275f4aa0a727d42f194dc6bc75"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-HLLCGP2Z.js",
+          "sha256": "82be18bb8bf41f5af2a8ffd193f7961416c3ca4e0e3df4216fda7e263fa0f8eb"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-IEEPAFLR.js",
+          "sha256": "ae45b09f04df8d74c2b9d4a8dea69f8dcef9005229a45da7f19c7aa20ebe7ccd"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-IGM5O3VP.js",
+          "sha256": "d8b4941bd184a92ee3d1db2fa3da310cfe375013ba8a0e36faca794da23b090b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-IIGC7Q4X.js",
+          "sha256": "fa5b23d4816f5934c28a2ae6aa6784951272bd634aff38f96039215f9b9e0c14"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-J6S66WFH.js",
+          "sha256": "527f6ed48c277b577588b0c3f2a05c42784e77f943d5c079446c6fa8be3f6796"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-JBQESGGP.js",
+          "sha256": "463a995b1e4d0a892bbbff8da8ecb35fefee427b5056ed3aff6c6deef56200a5"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-JFEP4HCP.js",
+          "sha256": "269645ca0458f13a825780d0e2a72a4c564a64277856edb709b9fd57b94992b3"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-JMXCUTQ2.js",
+          "sha256": "697003ff27eaff5d7c69096998e58f0d4326e17aec108f374ee89e5e44fdd84a"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-JMXU36GX.js",
+          "sha256": "54413920bf79c8c5fddd8a88d839dedaa5a698a4e764e320c370422858fb45c4"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-K2P4KRSU.js",
+          "sha256": "0be5304b87756f5485b955096033af534f549bce18ea291585196e7bc03816cd"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-K4HJG6SO.js",
+          "sha256": "57d5b003bf2df41a769f8fb4942d3e700c34ac272a04b97f8a51dc5717f51e54"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KD5MN32N.js",
+          "sha256": "fb20c69713dd94d290e12fde9ef28df19c23fd1caccddb0ba47e8fd1bfbe7eea"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KG7HT756.js",
+          "sha256": "0b327ea443fbfc2821f62fd3dca3bfa6fb68a20e545e94ab0a4685c4e8a65017"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KICKESRK.js",
+          "sha256": "12f9bb0dded4a966f23a4f7ca0429dbefb656f9dc2c2ae2bf749899c125386d7"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KKWJGKGK.js",
+          "sha256": "c911b812c24d41c82de04edf7af6af264bde9b7325d61f360c58e4ed6f8f2fb7"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KUZFQTKK.js",
+          "sha256": "1fea4d3606d6cf08c31b4f5271be82dfe4f5043cae6f239c078894c1cdd36213"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-KW3AUD5P.js",
+          "sha256": "8de10a92d25f913a24865163cefb79349c2b32af719ccb9681744e75e2005b72"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-LDIJH6OM.js",
+          "sha256": "add9a4ef9fa0fbc2168135feb1b8115e7d0f13f3c06819038307feaa17efa3c3"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-LNN2KG4T.js",
+          "sha256": "628b4052206de9690a026d87252397d9b637cf7f3583bae81e25f56039ddfe30"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-LQ5PYZC6.js",
+          "sha256": "c3c5c90717b59fe9f4922cfaedd26fb21fd6b218b170891ada32f5c97711abe9"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-LTXQBF5B.js",
+          "sha256": "f74a67631c5ea1ece785ff8b8060426a949f8326939750e4563f95efbe09d897"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-LZC4LRGX.js",
+          "sha256": "f255d7163c7ee7daf8a6c110b775a62b347e4ff9fc536b9ec2d2eecb8176a2cc"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-MBLHRE2C.js",
+          "sha256": "229483091fdf2bb0b132d97dde785f48da2ef635f5a1e9c454a1dad31d7a2f28"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-MDDMSRLC.js",
+          "sha256": "1e8e402f2ea07952fa85f13021265a6dcb6110f8101e3afae7407f455a1009ff"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-MFOUJEOV.js",
+          "sha256": "62f1a0ad12f74cc060958d0e73a81458f26b2add2efcd997b042df859001e32b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-N3H7FOGK.js",
+          "sha256": "fd19102895b72040ea44f3be3d4c7f06b1817d2e47d172662b01e9d88e9e6a47"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-N54EOFJD.js",
+          "sha256": "5a8ab61b89f9699a597546d2ad90f88df7db193a2fe15f27f660ebbe410e218f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-N5J5RGRK.js",
+          "sha256": "e47f33dac9f1463eff6efafe4d9b34e20eaa7cf5435c440b61ebc0ac273a195e"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-NALSTZ6H.js",
+          "sha256": "7bb4f6a1c3a4a229b6948caef05bd09459f82339580d00805eb3ec17d15f9e12"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-NTMJAY5M.js",
+          "sha256": "0ccc34b5d216c5165115aead732a60c60e14d6cf6328d3ebc6220e6f316ace21"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-ON6FTSHW.js",
+          "sha256": "27845dc5cb865dbdc7881cf8a11fa3442e53239ce9890e83acc84b407505c403"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-OW3HDFQM.js",
+          "sha256": "9576895bb0e345ca70679ba939a7f13a9f1dd6acd8c0785164b8c19a42d389cf"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-PJLE5J7A.js",
+          "sha256": "5010200417f9df08f7b2bd7176e5fceebe1f903ecd35b763889f8aed2ee67410"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-PM3K33FS.js",
+          "sha256": "20fd682d10e714f6bb1e1c0ef0c7a5944a88ef28637695f769aca6765aa17283"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-PNGGDVIO.js",
+          "sha256": "ee6ebde52f3a0c4947803d8201a99f939cfc68acdd8145b80aec7e35d414a77b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-PQNZIUTX.js",
+          "sha256": "14c618a579aa6e5dbb054249d1fda553883bb3dbd6ac6db1af3de09d2e803700"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-PYYWCFIP.js",
+          "sha256": "164626f185fdacd154bb69f02dfdfa40701859e6dcdcefa2ff25709b402a074b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-Q3FMTWI5.js",
+          "sha256": "050e1d38f6e733cd372f1e7c49a2b2468dc485159297fff66e08809bf5eef41c"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-Q6UIE5V4.js",
+          "sha256": "9778ea96c9c703a0e2af7e930ebeea36531defb576a0d0ed25dd2c5e5c62c99c"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-QDVG7U7D.js",
+          "sha256": "3e49f3f11dc91d2822ca9c5c240bce3566af542ef058ed897ab74a640e1ee1ec"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-QN2CKUFG.js",
+          "sha256": "ddee54db43621988549de5cb3ec2e7bedf96efad5c7f767c06e394355b8790c4"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-QUMJUH3N.js",
+          "sha256": "8d0bb2475128cb1a75640de8dd84dc9831b12b9f504a67ec7a91a31e3a986c59"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-RJ7I7F5P.js",
+          "sha256": "ea8fd1a2d0e3498c7e9bed46ad1468835000047d4ece892abd9d14154d7352e9"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-RRWDMWWO.js",
+          "sha256": "d302d128dd5a706f467e4dbbff69d235d1b52bd824f8c4ee49b622f309990b20"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-RSQZ532X.js",
+          "sha256": "adf7b60f32073129acd1214fbbfdde5b0061b687dc752604a9f9b0bf17fe95fb"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-SLV7EMJB.js",
+          "sha256": "671bbfdf3c4aed75ba8e50b0720d59c113d920ec011b0c3bb089c2e0bff3c28b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-SYSOA6GA.js",
+          "sha256": "481a1328a01651af63d619c32e87d6ad4fb22ba5a62ebefbcd3687de82fd2752"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-TEMVRH7B.js",
+          "sha256": "823df3f43d941692895ba4d730155ace91480b71b22a39b629f65478d76e395c"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-TJPIIVNL.js",
+          "sha256": "13789d4aa5abb6062a0cd9532bef4bbd15617d53139082de2bdc1545404e1762"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-TP3FEMAS.js",
+          "sha256": "3a51b1bdbc7947a73d2c5a75af8bb80a3ece4cbbdac05163d7b6f02067c7dacb"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-U2ORQZYV.js",
+          "sha256": "f9423c228f0a0a534fc45795d875c479daf9ab876cda46fad4fed77508935273"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-U2WOTIJD.js",
+          "sha256": "1542a6fb249e177b6cf432eb8d0a2e3987037303a2ff220b9097038d1ec19bb4"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-UFBQF7IT.js",
+          "sha256": "5912547e9a8bab5cbf870d631f5830a29a476fdd493a58768b1005ce456d836f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-UMU3FHE4.js",
+          "sha256": "ed674a29bbff688e3919ed0f70e3a590cbd9f3583f3709d3880b3fe214620482"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VA3ILPBG.js",
+          "sha256": "12dd53e39d6996d4ba800d70dc6b356a16aa118ebb1188c8efbcd788ac3ad369"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VAB3C755.js",
+          "sha256": "15a39370be7bab19cd0fc33e94274eee74ec228aae169dffd59983f160dc580f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VBM74NLN.js",
+          "sha256": "01da705eb898dcfb1e1618e68fe2816b028186d2f38e8e0822076de6c12222c2"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VFBP267X.js",
+          "sha256": "51a3422e1475a0d91f1552d28aa48b49b5e58d5b06ec3fd35e63c34e12c83bcd"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VTUBU4Y7.js",
+          "sha256": "e1f354b86aa48f2295d880591a7afaa273d85f7b0d757aa5ad3d02329cf57c3f"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VX42R5UW.js",
+          "sha256": "7f607a6b87a65fa147581da118317cfa92b5359f643d7772ff4a7b199b6c9641"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-VXFFGMIG.js",
+          "sha256": "e0afb9318a93ddfdb4ccba22f855fd2205de5881f22f0fa20022e08d390068cf"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-W2A4ANVV.js",
+          "sha256": "de7825a3f30b877af9085ecd51dbfde185eca15dbb7938a02369b891a3b84bec"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-W73SDM5O.js",
+          "sha256": "2c7a39290da48b6826d65fdd7511a0bc8056498f99a05480a2df8cb4dc9bd382"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-WB34DMXL.js",
+          "sha256": "0a67a552daeecebb07dbbf2e99e809ce729160facc30ce8513f0b8da2c407dce"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-WHDJB7L5.js",
+          "sha256": "328d5883b859e9cd49ff49caf163c56219e69a72b043ade6746344f567eaa04b"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-WQNSWDBC.js",
+          "sha256": "bd6561b81f3b4bc95ed45d08cbd97edebd51d84b53415d1b6f94410d0d41e02c"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-WVK7SQDE.js",
+          "sha256": "ebcb6ea2dc2a9af1a9500b05107a066a205f373131daa91da94d7d582308f445"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-X5OTVM3R.js",
+          "sha256": "599746ec6996ad360ebe7fa0b03d51ffc7cc9c14ea95dbd1f1f0de57c1894288"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-XDSSYQDS.js",
+          "sha256": "29a0c39c1610da33281c32fc97d3366a214af087e7bb7a86f0326e81adb2ab09"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-XKLWU6DT.js",
+          "sha256": "fa2ad331e54559875cc04e32fe82c501962a74dce4133ae553c1ddd7db672674"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-XMS4LKOD.js",
+          "sha256": "b662135a87203b561c501cc58bfa311a1220d7b4d72f78c6ee6d47b562b1def6"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-XWPD43GY.js",
+          "sha256": "3665252dab9f734f0063c05304b81a4f3aa31549a6658ec4e04baefd7a32fcd1"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-YDYKYMQ5.js",
+          "sha256": "8a703842b7a51b73bfbe326ac60b9a75edef9112ae886053a958f3c77ad1c848"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-YRZF5QW5.js",
+          "sha256": "9d41dbd7219054f70c704e25b60978ad40c92d6718b0db81a0156ab9490fbc14"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-ZTRG7BQK.js",
+          "sha256": "231973ee51672ec8c1933e2fbf38b078d2a1bb38e9fbbf6a0a5b9768868bcf62"
+        },
+        {
+          "path": "public/vendor/crepe/chunk-ZZ6VH3UQ.js",
+          "sha256": "97d2ee39d516fedafb254565bb8f70204787e9fe4fa92d2a095a1816365ce961"
+        },
+        {
+          "path": "public/vendor/crepe/crepe.css",
+          "sha256": "d29e3659564e955f32f9a9077628e8ca409b310853116dad12fc12af46c2eaa3"
+        },
+        {
+          "path": "public/vendor/crepe/crepe.js",
+          "sha256": "d385a3491a3462bea01d9147397c811b4e687bae2abe6d762dbc1b021e6d08bb"
+        },
+        {
+          "path": "public/vendor/crepe/font-222HN3GT.ttf",
+          "sha256": "a6b2099fb555c60e3a0db3a08842ebf1d732c6eb4e4bf44913613bed4fc4e39b"
+        },
+        {
+          "path": "public/vendor/crepe/font-2GA4IZIN.woff",
+          "sha256": "c76c5d696297d51b9cb1639c7da4334f0e7dec81b42b11213b5e25ef671bb822"
+        },
+        {
+          "path": "public/vendor/crepe/font-2PEIFJSJ.woff2",
+          "sha256": "51814d270d06ff0255dba0799994fa4d8c84d11f09951d47595f4abb1f3602dc"
+        },
+        {
+          "path": "public/vendor/crepe/font-2QVFK6NQ.woff2",
+          "sha256": "74444efd593c005e3f4573b44524704c0af0a937fe911cca9e94068d0d140d3f"
+        },
+        {
+          "path": "public/vendor/crepe/font-2TL3USAE.ttf",
+          "sha256": "f36ea897e19f4a2e571d1e900e4e3710e438deb05a842486045ba0a3e616a4ad"
+        },
+        {
+          "path": "public/vendor/crepe/font-3F5K6SQ6.ttf",
+          "sha256": "f01f3e87d9c6a61c0c081ceb577abd864eb00a612f7ac1620dd6915fad2ef5aa"
+        },
+        {
+          "path": "public/vendor/crepe/font-3LKEU76G.woff",
+          "sha256": "3398dd02302557a793f2863f88e02d96ce10df2abffa07c8e9fa90775116e65c"
+        },
+        {
+          "path": "public/vendor/crepe/font-4HRHTS65.woff",
+          "sha256": "c943cc986384f59e86bea5fd7dc50a9c4dfe567a7c05eb40d6790720dead97c9"
+        },
+        {
+          "path": "public/vendor/crepe/font-4P4C7HJH.woff",
+          "sha256": "a6f7ec0d846ac7ad975adb8959c37ed49b94acbc4ae436db9ce9e20287e4a64c"
+        },
+        {
+          "path": "public/vendor/crepe/font-5LRUTBFT.woff2",
+          "sha256": "6b47c40166b6dbe21a5dfca7718413f2147fd2399be1ba605d8ad39cedf25dfe"
+        },
+        {
+          "path": "public/vendor/crepe/font-5QL5CMTE.woff2",
+          "sha256": "de7701e42cf1f4cf0b766c03fb27977207eee2f4fd5d76fa82188406da43ea4c"
+        },
+        {
+          "path": "public/vendor/crepe/font-5U4OPH2X.ttf",
+          "sha256": "1e6f9579e90e2cac37f8f60a597c436e075c114385652b7cbeb0dec0421291b3"
+        },
+        {
+          "path": "public/vendor/crepe/font-6EBV3DK5.woff",
+          "sha256": "850c0af5c2238497febaf5e461d880bf458c341f42f4f330f1b1ab5698b1998e"
+        },
+        {
+          "path": "public/vendor/crepe/font-6KGCHLFN.woff2",
+          "sha256": "7af58c5ec8f132a2ddde9027c6d7814decce4d3b822a11192a42a20e2e973264"
+        },
+        {
+          "path": "public/vendor/crepe/font-72OLXYNA.ttf",
+          "sha256": "1c67f068fea8bb09bf099c088b1cf64bd27516a6e07f4684344873564bb66a67"
+        },
+        {
+          "path": "public/vendor/crepe/font-7K6AASVL.ttf",
+          "sha256": "95b6d2f1a50173bfedb8c63e1d1c99b10427d0a4df4201cb44513b226951a22b"
+        },
+        {
+          "path": "public/vendor/crepe/font-7PGNVPQK.ttf",
+          "sha256": "c647367d1dd4e162468717d020e1fc0f1dc5c26ebfdffbe55261713bf88c5877"
+        },
+        {
+          "path": "public/vendor/crepe/font-A5IFOEBS.woff",
+          "sha256": "d96cdf2b3bdd4d64a8fd5f74a4c467f123a8a73931cd435889f08ffaf9bf947a"
+        },
+        {
+          "path": "public/vendor/crepe/font-A7XRTZ5Q.ttf",
+          "sha256": "ed0b74372feefcbb9c0666b2e210da37b7e49fa7fbbf3eeb11db5f693dacfbb7"
+        },
+        {
+          "path": "public/vendor/crepe/font-APUWIHLP.woff2",
+          "sha256": "036d4e95149b69ff9bcc0cd55771efeb25ffa3947293e69acd78d5ac328c684b"
+        },
+        {
+          "path": "public/vendor/crepe/font-ARRPAO67.woff2",
+          "sha256": "c2342cd8b869e01752a9321dc17213fc40d4d04c79688c1d43f2cf316abd7866"
+        },
+        {
+          "path": "public/vendor/crepe/font-CDMV7U5C.woff2",
+          "sha256": "a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0"
+        },
+        {
+          "path": "public/vendor/crepe/font-CYEKBG2K.woff",
+          "sha256": "30da91e84c893f875e252689faebdc590b2871145e8adc7f9a9d4dbd8ce0b251"
+        },
+        {
+          "path": "public/vendor/crepe/font-HMPFTM52.woff2",
+          "sha256": "00b26ac825e2095056396e0553b8ac26d3f8ad158c3826e28b4c45b385c4714a"
+        },
+        {
+          "path": "public/vendor/crepe/font-I43T2HSR.ttf",
+          "sha256": "0d85ae7cc30f23790a7f1a58c4a112fdca8aae769b6ba11429af1d98b1b6cb3a"
+        },
+        {
+          "path": "public/vendor/crepe/font-JKX5W2C4.ttf",
+          "sha256": "68534840bcfdd2bffb6f0e8deb48684dd01e7f04ea2813267577afb906de1d13"
+        },
+        {
+          "path": "public/vendor/crepe/font-K4WTGH3J.woff2",
+          "sha256": "dc47344dbb6cb5b655c8460d561f4df5f501b90c804ad3c6cec65fe322351ab1"
+        },
+        {
+          "path": "public/vendor/crepe/font-K5ZHAIS6.woff",
+          "sha256": "2014c523c3210bcc166648c4d4cc57f05b747df07a24277bf71c51e67dc79e3d"
+        },
+        {
+          "path": "public/vendor/crepe/font-KKK3USB2.woff",
+          "sha256": "8a8d244581371912b8f3f5a23e2437cb2a59cd9bcaebb0346e722c05737a2571"
+        },
+        {
+          "path": "public/vendor/crepe/font-KX5MEWCF.woff2",
+          "sha256": "5d53e70ad607c2352162dec9e0923fb54ecdafaccbf604cd8dcf7d00facb989b"
+        },
+        {
+          "path": "public/vendor/crepe/font-LELKET5D.woff2",
+          "sha256": "d04c54219f9eaec6d4d4fd42dfb28785975a4794d6b2fc71e566b9cd6db842dd"
+        },
+        {
+          "path": "public/vendor/crepe/font-MJMFSK64.woff",
+          "sha256": "e14fed02b1aba7ce9f5afd5844b5d0321b22351febc720e0de8b8723527609f7"
+        },
+        {
+          "path": "public/vendor/crepe/font-N4V3DX7S.woff2",
+          "sha256": "99cd42a3c072d918f2f44984a807cf7aa16e13545fd0875fc07c6c65f99e715b"
+        },
+        {
+          "path": "public/vendor/crepe/font-ODMLBJJQ.ttf",
+          "sha256": "70ee1f64a20f2048c21940ef46d0144fd215baa953ca69afd1e31e98544f708f"
+        },
+        {
+          "path": "public/vendor/crepe/font-OQCII6EP.woff",
+          "sha256": "11e4dc8a6471ff6d6ee561d53d10fde8f7489e798257ff449c5d37c197435605"
+        },
+        {
+          "path": "public/vendor/crepe/font-P5I74A2A.woff",
+          "sha256": "c6368d87e8a1a3a5d337623d83d8dc4b868f242a9ad476237d6f8d1e0f168cdc"
+        },
+        {
+          "path": "public/vendor/crepe/font-PKMWZHNC.woff",
+          "sha256": "99f9c6750b489c9462bf04900bd3f939df9b829339daaaaa99ef5495cdddea58"
+        },
+        {
+          "path": "public/vendor/crepe/font-PQMHCIK6.woff",
+          "sha256": "5e28753be717dac97f559f49bc10be9cf3c124ddcabda6659d11cb68febc6463"
+        },
+        {
+          "path": "public/vendor/crepe/font-PSN4QKYX.woff",
+          "sha256": "91ee67500cc0129aa0ace3ac5c61ff1692102f0f31d02b69347fba35dcb75bf2"
+        },
+        {
+          "path": "public/vendor/crepe/font-RELBIK7M.woff2",
+          "sha256": "97479ca6cce906abc961ecac96faa5f9ca2e61b8e7670d475826bcdee9a7c267"
+        },
+        {
+          "path": "public/vendor/crepe/font-RRNVJFFW.woff2",
+          "sha256": "e99ae51144bf1232efcc1bfe5add36262c6866b0faab24fa75740e1b98577a62"
+        },
+        {
+          "path": "public/vendor/crepe/font-SASNQFN2.woff",
+          "sha256": "f1d6ef86f3b11a528bd5185199bd2443ecb2b0dead96d88674b5a2c12be24bdf"
+        },
+        {
+          "path": "public/vendor/crepe/font-SON4MRCA.ttf",
+          "sha256": "08ce98e51b04d58945a301e639e02b6998af29fdfd61a7b8afdd07bbfc479d4a"
+        },
+        {
+          "path": "public/vendor/crepe/font-STQ6RXC7.ttf",
+          "sha256": "1ece03f79f95277d57dc7f6b435a74e1379b0d46104a8530286b60ff49369ea0"
+        },
+        {
+          "path": "public/vendor/crepe/font-T4SWXBMT.woff",
+          "sha256": "9be7ceb88004ab8ad124082246fbfcca4091e36385d4ec6ed1df67375dad50fb"
+        },
+        {
+          "path": "public/vendor/crepe/font-TLFPAHDE.woff",
+          "sha256": "6ab6b62e9b62dae2c00dd90f791bd10950be0ecc3490d7d6045f51c2e8fe0949"
+        },
+        {
+          "path": "public/vendor/crepe/font-U6PRYMIZ.woff2",
+          "sha256": "0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308"
+        },
+        {
+          "path": "public/vendor/crepe/font-UFCO6WCA.ttf",
+          "sha256": "500e04d54f0d51666332c9d2089aa803be22aa878eca539e59fa53c6e522b082"
+        },
+        {
+          "path": "public/vendor/crepe/font-VB447A4D.ttf",
+          "sha256": "f9377ab0271cda59af24bcffbd46a4d0c8a3572ffafdbb38de2ad5ea7b0d5ee5"
+        },
+        {
+          "path": "public/vendor/crepe/font-VBYJ4NRC.woff2",
+          "sha256": "71d517d67827787cfabdf186914cc3358eda539e37931941f2b2fd4a21f68c0b"
+        },
+        {
+          "path": "public/vendor/crepe/font-W5FBVCZM.ttf",
+          "sha256": "138ac28d1663b3037e9c5f52371fa5c63d8324f4a38d22cd573e6ea3a3fd0cf8"
+        },
+        {
+          "path": "public/vendor/crepe/font-W74P5G27.ttf",
+          "sha256": "d0332f52868370fd83ae7fa46470f90c8f2eab2fcf12bc4f88080b340c95a830"
+        },
+        {
+          "path": "public/vendor/crepe/font-WGHVTYOR.ttf",
+          "sha256": "9163df9c7122432e6495b4229fa9071cf9ae86a758ae5efc4924ec2e1a6dbce1"
+        },
+        {
+          "path": "public/vendor/crepe/font-WQRQ47UD.woff2",
+          "sha256": "73d591271b1604960cb10bb90fee021670af7297017e0e98480b332d11f51995"
+        },
+        {
+          "path": "public/vendor/crepe/font-WTBAZBGY.ttf",
+          "sha256": "3931dd81faed86ba021bb2bbdc36f5bed9a38d6b4f4077aca59b265aa1b02083"
+        },
+        {
+          "path": "public/vendor/crepe/font-WZ3QSGD3.woff",
+          "sha256": "1ae6bd7475590e97e7f145a89e09ccde322f7a6bc0b91607b1c8b8ee28290fed"
+        },
+        {
+          "path": "public/vendor/crepe/font-X5M5EMOD.woff",
+          "sha256": "ece03cfd83e22c212cdef66feb8442d25a083beb988db3f1883f3f9738d750ba"
+        },
+        {
+          "path": "public/vendor/crepe/font-XIQ62X4E.woff2",
+          "sha256": "68e8c73ef42afd3ccec58bf0fba302cce448938e7fc020a5e31f8a952eee1342"
+        },
+        {
+          "path": "public/vendor/crepe/font-YP5VVQRP.woff2",
+          "sha256": "0f60d1b897938ec918c8ce073092411baf9438f6739465693ff18b0f9d20b021"
+        },
+        {
+          "path": "public/vendor/crepe/font-ZTS3R3HK.ttf",
+          "sha256": "07d8e303ce4fc12b4bb54f1004170dd190a1f3db45d400fe68060df3e0897268"
+        }
+      ],
+      "build": "npm i @milkdown/crepe@7.23.0 esbuild@0.25.0, then esbuild an entry re-exporting Crepe, remarkStringifyOptionsCtx, editorViewCtx and parserCtx from @milkdown/kit/core, replaceAll, getMarkdown and insert from @milkdown/kit/utils, listener and listenerCtx from @milkdown/kit/plugin/listener: --bundle --minify --format=esm --splitting --chunk-names=chunk-[hash] --entry-names=crepe; crepe.css bundles @milkdown/crepe/theme/common/style.css and theme/frame.css with --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.svg=dataurl --asset-names=font-[hash]"
     }
   ]
 }

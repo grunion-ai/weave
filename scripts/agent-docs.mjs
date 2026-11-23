@@ -43,6 +43,7 @@ export const LIBRARIES = {
   lucide: { title: 'Lucide', url: 'https://github.com/lucide-icons/lucide', about: 'icon shapes, with motion CSS from movingicons.dev under MIT', license: 'ISC © Lucide Contributors' },
   'dejavu-fonts': { title: 'DejaVu Sans', url: 'https://dejavu-fonts.github.io/', about: '`DejaVuSans.ttf`, PDF export Unicode fallback', license: 'Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah' },
   decklet: { title: 'decklet', url: 'https://github.com/grunion-ai/decklet', about: 'the slide engine, pinned by commit', license: 'MIT' },
+  crepe: { title: 'Milkdown Crepe', url: 'https://github.com/Milkdown/milkdown', about: 'the document editor behind the `weave.editor` switch, bundled with its MIT, ISC, BSD and MPL-2.0 OR Apache-2.0 dependencies listed in `public/vendor/crepe/THIRD-PARTY.txt`', license: 'MIT © Mirone' },
   'lobehub-icons': { title: 'Lobe Icons', url: 'https://github.com/lobehub/lobe-icons', about: 'brand marks', license: 'MIT © LobeHub' },
 };
 
