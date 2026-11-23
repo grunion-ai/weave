@@ -9106,10 +9106,8 @@ function loadTiptap() {
   return tiptapLoading;
 }
 function docEditorKind() {
-  try {
-    const kind = localStorage.getItem('weave.editor');
-    return kind === 'crepe' || kind === 'tiptap' ? kind : 'vditor';
-  } catch { return 'vditor'; }
+  const kind = WeavePrefs.read('weave.editor');
+  return kind === 'crepe' || kind === 'tiptap' ? kind : 'vditor';
 }
 const docBubbles = new Set();
 
