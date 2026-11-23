@@ -180,6 +180,32 @@ test('a never-run rule starts its window at the tick that first sees it: a slot 
   assert.equal(w.runSchedules(), 1);
 });
 
+test('a rule created just before its due minute fires on the first tick after that minute (Issue #1609)', () => {
+  const { w, t, a } = demo();
+  let clock = T('2027-03-10T16:59:50Z');
+  w.now = () => clock;
+  const auto = w.createAutomation(t.id, nudge);
+  clock = T('2027-03-10T17:00:30Z');
+  assert.equal(w.runSchedules(), 1, 'created at 08:59:50 Los Angeles, the 09:00 slot is due on the first tick');
+  assert.equal(read(w, a.id).fields.Flag, true);
+  assert.equal(lastRun(w, auto.id), '2027-03-10T17:00:30.000Z');
+  clock = T('2027-03-10T17:01:30Z');
+  assert.equal(w.runSchedules(), 0, 'the slot fires once');
+});
+
+test('a rule switched On just before its due minute fires on the first tick after that minute (Issue #1609)', () => {
+  const { w, t, a } = demo();
+  let clock = T('2027-03-10T16:59:50Z');
+  w.now = () => clock;
+  const wf = w.getTable('System/Workflows');
+  const row = w.createEntity(wf.id, { Name: 'Raw nudge' });
+  w.setDoc(row.id, JSON.stringify({ table: 'Ops/Task', ...nudge }), 'Script');
+  w.updateEntity(row.id, { On: true });
+  clock = T('2027-03-10T17:00:30Z');
+  assert.equal(w.runSchedules(), 1, 'the write that armed the rule opens its window');
+  assert.equal(read(w, a.id).fields.Flag, true);
+});
+
 test('an action that throws stamps Failed with the reason, Last Run still moves and the row stays On', () => {
   const { w, t, a } = demo();
   let clock = T('2027-03-10T16:59:30Z');

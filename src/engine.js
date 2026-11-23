@@ -2117,7 +2117,7 @@ export class Weave {
     this.#dirty.add(id);
     for (const w of this.#engines()) w.#forgetDerived(e?.dbId ?? null);
     this.#touching?.add(id);
-    if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; }
+    if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; this.#reg.#scheduleArmed.set(id, this.now().getTime()); }
   }
 
   settleDeferred() {
@@ -10859,6 +10859,7 @@ export class Weave {
   }
 
   #scheduleSince = new Map();
+  #scheduleArmed = new Map();
 
   runSchedules({ now = this.now() } = {}) {
     this.runDeliveries({ now });
@@ -10872,9 +10873,10 @@ export class Weave {
         this.#scheduleSince.set(row.id, now.getTime());
         continue;
       }
-      const seen = this.#scheduleSince.get(row.id);
+      const seen = this.#scheduleSince.get(row.id) ?? reg.#scheduleArmed.get(row.id);
       const lastRun = row.values[F('Last Run').id];
-      if (seen === undefined && lastRun == null) { this.#scheduleSince.set(row.id, now.getTime()); continue; }
+      this.#scheduleSince.set(row.id, seen ?? now.getTime());
+      if (seen === undefined && lastRun == null) continue;
       const since = new Date(Math.max(lastRun ? Date.parse(lastRun) : 0, seen ?? 0));
       if (!dueBetween(parseCron(rule.trigger.cron), rule.trigger.zone, since, now)) continue;
       const db = this.state.tables[rule.dbId];

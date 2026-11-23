@@ -61,7 +61,7 @@ A `schedule` trigger fires on a timer instead of a row change:
 
 `cron` is the five-field expression: minute, hour, day, month, weekday, with `*`, lists, ranges and `*/n` steps. It is read on the wall clock of `zone`, an IANA name, UTC when you leave it out. At each due minute the rule runs its actions on every live row of its table, or on the rows its `where` clause admits, written in the query filter syntax. `{{Today}}` reads the clock of the run and `event.type` is `schedule`.
 
-The server checks every minute, and a due minute fires once. A box that slept through several due minutes does one catch-up pass when it wakes, reaching back seven days at most. A new rule starts at the first tick that sees it, and a rule switched On after its minute waits for the next one.
+The server checks every minute, and a due minute fires once. A box that slept through several due minutes does one catch-up pass when it wakes, reaching back seven days at most. A new rule starts at the moment it is saved, so a rule saved a few seconds before its minute fires on that minute. A rule switched On after its minute waits for the next one, and a never-run rule the server first sees after a restart starts at that tick.
 
 ## When a polled source changes
 
