@@ -193,8 +193,12 @@ before Node starts. File lists must name existing files; use
 | Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
 
 Affected selection includes staged, unstaged and untracked files relative to the
-base. Only changed tests narrow it; source, UI, configuration and unknown paths
-select the whole inventory, and the printed plan explains the decision.
+base. When only tests changed it runs those tests. Any other change runs what the
+`PR gate` would (`prSelection` in `scripts/ci-test.mjs`, Verification, below):
+every gating unit file, the smoke journeys and the browser suites the diff maps
+to, or every gating browser suite when shared code changed (Issue #1641). The
+printed plan names the counts, and the `CI gate` still runs the whole inventory
+on main.
 
 ### Browser suites
 

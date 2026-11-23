@@ -1,26 +1,43 @@
-import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { lanes } from './lanes.mjs';
+import { gating, prSelection } from './ci-test.mjs';
 
-export function selectTests({ files, changed }) {
+const ROOT = resolve(import.meta.dirname, '..');
+
+export function selectTests({ files, changed, read, root = ROOT, diff = '' }) {
   const all = [...new Set(files)].sort();
   if (!all.length) throw new Error('No test files discovered; refusing an empty verification.');
   const changes = [...new Set(changed)].sort();
   if (changes.length && changes.every(file => all.includes(file))) {
     return { files: changes, mode: 'targeted', reasons: ['Only test files changed; run every changed test.'] };
   }
+  const full = (reasons) => ({ files: all, mode: 'full', reasons });
+  if (!changes.length) return full(['No changed files found; full suite required rather than an empty pass.']);
+  const split = lanes(all, root);
+  let pick;
+  try {
+    pick = prSelection(gating(split), changes, read ?? (file => readFileSync(join(root, file), 'utf8')), diff);
+  } catch (error) {
+    return full([`PR gate selection unavailable (${error.message}); full suite required.`]);
+  }
+  const selected = [...new Set([...pick.unit, ...pick.browser, ...changes.filter(file => all.includes(file))])].sort();
   return {
-    files: all,
-    mode: 'full',
-    reasons: changes.length
-      ? changes.filter(file => !all.includes(file)).map(file => `${file}: blast radius unproven; full suite required.`)
-      : ['No changed files found; full suite required rather than an empty pass.'],
+    files: selected,
+    mode: 'pr',
+    reasons: [
+      `${changes.filter(file => !all.includes(file)).length} non-test change(s); PR gate selection: ${pick.unit.length} unit and ${pick.browser.length} of ${split.browser.length} browser suites${pick.shared ? ' (shared code changed: every gating browser suite)' : ''}.`,
+      'CI gate runs the full inventory on main.',
+    ],
   };
 }
 
 export function affectedTests(root, base = 'HEAD') {
-  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\0').filter(Boolean);
-  const changed = [...git('diff', '--name-only', '--no-renames', '-z', base, '--'), ...git('ls-files', '--others', '--exclude-standard', '-z')];
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const names = (...args) => git(...args).split('\0').filter(Boolean);
+  const changed = [...names('diff', '--name-only', '--no-renames', '-z', base, '--'), ...names('ls-files', '--others', '--exclude-standard', '-z')];
+  const diff = git('diff', '-W', '--no-renames', base, '--', 'public', 'src', 'bin');
   const files = [];
   function discover(directory) {
     for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
@@ -30,5 +47,5 @@ export function affectedTests(root, base = 'HEAD') {
     }
   }
   discover('test');
-  return selectTests({ files, changed });
+  return selectTests({ files, changed, root, diff });
 }

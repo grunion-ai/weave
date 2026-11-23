@@ -112,7 +112,7 @@ test('default node discovery does not launch the suite through scripts/test.mjs 
   try {
     mkdirSync(join(dir, 'scripts'));
     mkdirSync(join(dir, 'test'));
-    for (const file of ['test.mjs', 'failed-files.mjs']) writeFileSync(join(dir, 'scripts', file), read(`scripts/${file}`));
+    for (const file of ['test.mjs', 'lanes.mjs', 'failed-files.mjs']) writeFileSync(join(dir, 'scripts', file), read(`scripts/${file}`));
     const marker = join(dir, 'runs');
     writeFileSync(join(dir, 'test', 'sentinel.test.mjs'),
       `import { appendFileSync } from 'node:fs'; appendFileSync(${JSON.stringify(marker)}, 'run\\n');`);
