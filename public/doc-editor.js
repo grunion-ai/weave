@@ -9,6 +9,7 @@ const refMarker = (kind) => `⁣ref:${kind}⁣`;
 const DEFERRED_INSERTS = {
   '⁣raw-html⁣': '<div>html</div>',
   '⁣table⁣': { md: '| Column | Column |\n| --- | --- |\n| Cell | Cell |', select: 'Column' },
+  '⁣code⁣': { md: '```\ncode\n```', select: 'code' },
 };
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
@@ -47,7 +48,7 @@ function slashItems() {
     { label: 'Numbered list', icon: '1.', flat: 'list-ordered', group: 'all', hint: '1.', aliases: ['ol', 'ordered'], insert: blockMarker('number') },
     { label: 'Task list', icon: '☑', flat: 'square-check', group: 'all', hint: '- [ ]', aliases: ['todo', 'checkbox'], insert: blockMarker('task') },
     { label: 'Quote', icon: '❝', flat: 'quote', group: 'all', hint: '>', aliases: ['blockquote'], insert: blockMarker('quote') },
-    { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '```\ncode\n```' },
+    { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '⁣code⁣' },
     { label: 'Mermaid diagram', icon: '◈', flat: 'workflow', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
     { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '⁣table⁣' },
     { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
