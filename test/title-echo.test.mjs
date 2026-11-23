@@ -30,5 +30,6 @@ test('an unnamed record echoes nothing', () => {
 
 test('the page applies the rule to the first block only, as a class Lute ignores', () => {
   assert.match(APP, /isTitleEcho\(headText\(/, 'the fold pass asks the rule about the first heading');
-  assert.match(CSS, /\.vditor-reset > h1\.wv-title-echo\s*\{[^}]*display:\s*none/, 'the echo is hidden, not deleted');
+  assert.match(CSS, /\.vditor-reset > h1\.wv-title-echo,[^{]*\{[^}]*display:\s*none/, 'the echo is hidden, not deleted');
+  assert.match(CSS, /\.wv-crepe \.ProseMirror > h1\.wv-title-echo\s*\{[^}]*display:\s*none/, 'the echo hides under Crepe too');
 });

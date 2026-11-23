@@ -1227,6 +1227,7 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   };
   crepe.create().then(() => {
     ready = true;
+    scheduleDecorFor(host);
     if (readOnly) crepe.setReadonly(true);
     else if (autoFocus) editor.focus();
   });
