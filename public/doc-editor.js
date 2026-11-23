@@ -1451,7 +1451,7 @@ function tiptapSlashMenu() {
         rows.push(el('div', { class: 'wv-slash-group' }, group));
       }
       const mark = el('span', { class: 'wv-slash-mark' });
-      if (item.icon) mark.innerHTML = item.icon;
+      if (item.icon) mark.append(new DOMParser().parseFromString(item.icon, 'image/svg+xml').documentElement);
       else mark.textContent = item.glyph;
       rows.push(el('div', {
         class: 'wv-slash-row' + (i === at ? ' on' : ''),
