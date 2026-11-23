@@ -1230,6 +1230,78 @@ function crepeReferenceMenu(M) {
   };
 }
 
+let crepeCellClick = null;
+function crepeCellCaret(M, crepe, root) {
+  root.addEventListener('mousedown', (e) => {
+    const cell = e.target.closest?.('td, th');
+    if (!cell || e.button !== 0 || e.shiftKey || e.detail > 1 || !cell.closest('.ProseMirror')) return;
+    const text = cell.querySelector('p') ?? cell;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    if ([...range.getClientRects()].some((r) => e.clientX >= r.left - 2 && e.clientX <= r.right + 2 && e.clientY >= r.top && e.clientY <= r.bottom)) return;
+    const view = crepe.editor.ctx.get(M.editorViewCtx);
+    e.preventDefault();
+    e.stopPropagation();
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(M.TextSelection.create(view.state.doc, view.posAtDOM(text, text.childNodes.length))));
+  }, true);
+  root.addEventListener('mousedown', (e) => {
+    crepeCellClick = e.button === 0 && e.target.closest?.('td, th') ? { x: e.clientX, y: e.clientY, at: performance.now() } : null;
+  }, true);
+}
+
+function crepeCellClicks(M) {
+  let view = null;
+  return M.$prose(() => new M.Plugin({
+    view: (v) => { view = v; return {}; },
+    appendTransaction: (trs, old, state) => {
+      const click = crepeCellClick;
+      if (!click || !view || performance.now() - click.at > 800 || !state.selection.node?.isTextblock) return null;
+      const at = view.posAtCoords({ left: click.x, top: click.y });
+      return at ? state.tr.setSelection(M.TextSelection.create(state.doc, at.pos)) : null;
+    },
+    props: {
+      handleKeyDown(view, e) {
+        if ((e.key !== 'End' && e.key !== 'Home') || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return false;
+        const { $head, empty } = view.state.selection;
+        if (!empty) return false;
+        let inCell = false;
+        for (let d = $head.depth; d > 0; d--) if (/^table_(cell|header)$/.test($head.node(d).type.name)) inCell = true;
+        if (!inCell || !$head.parent.isTextblock) return false;
+        const pos = e.key === 'End' ? $head.end() : $head.start();
+        view.dispatch(view.state.tr.setSelection(M.TextSelection.create(view.state.doc, pos)));
+        return true;
+      },
+    },
+  }));
+}
+
+function crepeSourceKeeper(M, ctx, source) {
+  const doc = ctx.get(M.editorViewCtx).state.doc;
+  const blocks = ctx.get(M.remarkCtx).parse(source).children.filter((n) => n.position);
+  if (blocks.length !== doc.childCount) return () => null;
+  const was = [];
+  doc.forEach((n) => was.push(n));
+  const spans = blocks.map((b) => [b.position.start.offset, b.position.end.offset]);
+  const serialize = ctx.get(M.serializerCtx);
+  return (next, clean) => {
+    const now = [];
+    next.forEach((n) => now.push(n));
+    let head = 0;
+    while (head < now.length && head < was.length && now[head].eq(was[head])) head++;
+    let tail = 0;
+    while (tail < now.length - head && tail < was.length - head && now[now.length - 1 - tail].eq(was[was.length - 1 - tail])) tail++;
+    if (head === now.length && head === was.length) return source;
+    const mid = now.slice(head, now.length - tail);
+    const parts = [];
+    if (head) parts.push(source.slice(0, spans[head - 1][1]));
+    if (mid.length) parts.push(clean(serialize(next.type.create(null, mid))).replace(/\n+$/, ''));
+    if (tail) parts.push(source.slice(spans[was.length - tail][0]));
+    const end = tail ? '' : (was.length ? source.slice(spans[was.length - 1][1]) : '\n') || '\n';
+    return parts.join('\n\n') + end;
+  };
+}
+
 function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
   const M = globalThis.WeaveCrepe;
   const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(crepeMarkdown(v));
@@ -1238,6 +1310,9 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   host.append(root);
   let handed = stored(value ?? '');
   let ready = false;
+  let keep = () => null;
+  const keepFrom = (source) => crepe.editor.action((ctx) => { keep = crepeSourceKeeper(M, ctx, source); });
+  const current = () => keep(crepe.editor.ctx.get(M.editorViewCtx).state.doc, stored) ?? stored(crepe.getMarkdown());
   const crepe = new M.Crepe({
     root,
     defaultValue: value ?? '',
@@ -1252,13 +1327,14 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   });
   crepe.editor.use(crepeReferences(M));
   crepe.editor.use(crepeHoldScroll(M, host));
+  crepe.editor.use(crepeCellClicks(M));
   const marksKey = new M.PluginKey('weave-block-marks');
   crepe.editor.use(crepeBlockMarks(M, marksKey));
   crepe.editor.config((ctx) => ctx.update(M.remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: '-', rule: '-' })));
   crepe.on((l) => {
-    l.markdownUpdated((_, md) => {
+    l.markdownUpdated(() => {
       if (!ready) return;
-      const v = stored(md);
+      const v = current();
       if (v === handed) return;
       handed = v;
       hand(v);
@@ -1267,10 +1343,12 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   });
   const editor = {
     crepe,
-    getValue: () => (ready ? stored(crepe.getMarkdown()) : handed),
+    getValue: () => (ready ? current() : handed),
     setValue: (md) => {
       handed = stored(md);
-      if (ready) crepe.editor.action(M.replaceAll(md));
+      if (!ready) return;
+      crepe.editor.action(M.replaceAll(md));
+      keepFrom(md);
     },
     insertValue: (md) => {
       if (!ready) return;
@@ -1294,10 +1372,12 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   };
   crepe.create().then(() => {
     ready = true;
+    keepFrom(value ?? '');
     scheduleDecorFor(host);
     if (readOnly) crepe.setReadonly(true);
     else if (autoFocus) editor.focus();
   });
+  crepeCellCaret(M, crepe, root);
   const takeFiles = (e, data) => {
     if (readOnly || !data?.files?.length) return;
     e.preventDefault();
@@ -1308,13 +1388,13 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
   root.addEventListener('drop', (e) => takeFiles(e, e.dataTransfer), true);
   host.addEventListener('focusout', () => {
     if (!ready) return;
-    const v = stored(crepe.getMarkdown());
+    const v = current();
     if (v !== handed) { handed = v; hand(v); }
     flushDocSaves();
   });
   docPulls.set(editor, () => {
     if (!ready) return;
-    const v = stored(crepe.getMarkdown());
+    const v = current();
     if (v !== handed) { handed = v; hand(v); }
   });
   liveEditors.add(editor);
