@@ -581,7 +581,7 @@ test('the Handbook guide and AGENTS.md name the verbs, the variables, the nightl
   const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
   assert.match(agents, /`weave backup`/);
   assert.match(agents, /`weave restore <archive>`/);
-  const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('## v0.4.17')[0];
+  const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8').split('## v0.4.17 (')[0];
   assert.match(changelog, /weave backup/);
   assert.match(changelog, /Feature #209/);
   assert.match(changelog, /Issue #250/);
