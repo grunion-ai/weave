@@ -1145,7 +1145,7 @@ function crepeReferenceMenu(M) {
   };
 }
 
-function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
+function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
   const M = globalThis.WeaveCrepe;
   const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(crepeMarkdown(v));
   const root = document.createElement('div');
@@ -1160,6 +1160,9 @@ function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, aut
     featureConfigs: {
       [M.Crepe.Feature.Placeholder]: { text: placeholder ?? '', mode: 'doc' },
       [M.Crepe.Feature.BlockEdit]: { buildMenu: crepeReferenceMenu(M) },
+      [M.Crepe.Feature.ImageBlock]: {
+        onUpload: (file) => streamUpload(`/entities/${entityId}/files`, { entity: entityId, file }).then((meta) => `${WS_PREFIX}/api/files/${meta.id}`),
+      },
     },
   });
   crepe.editor.use(crepeReferences(M));
@@ -1181,6 +1184,15 @@ function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, aut
       handed = stored(md);
       if (ready) crepe.editor.action(M.replaceAll(md));
     },
+    insertValue: (md) => {
+      if (!ready) return;
+      crepe.editor.action(M.insert(md));
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(M.editorViewCtx);
+        const { selection: sel, doc } = view.state;
+        if (sel.node) view.dispatch(view.state.tr.setSelection(M.TextSelection.near(doc.resolve(sel.to))));
+      });
+    },
     focus: () => root.querySelector('.ProseMirror')?.focus(),
     setTheme: () => {},
     destroy: () => { liveEditors.delete(editor); crepe.destroy(); root.remove(); },
@@ -1190,6 +1202,14 @@ function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, aut
     if (readOnly) crepe.setReadonly(true);
     else if (autoFocus) editor.focus();
   });
+  const takeFiles = (e, data) => {
+    if (readOnly || !data?.files?.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    uploadDocFiles(data.files, entityId, () => editor, hand, host);
+  };
+  root.addEventListener('paste', (e) => takeFiles(e, e.clipboardData), true);
+  root.addEventListener('drop', (e) => takeFiles(e, e.dataTransfer), true);
   host.addEventListener('focusout', () => {
     if (!ready) return;
     const v = stored(crepe.getMarkdown());

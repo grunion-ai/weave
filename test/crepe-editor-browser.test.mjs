@@ -155,4 +155,31 @@ if (s) {
       assert.doesNotMatch(doc, /\/entity/);
     } finally { await page.close(); }
   });
+  const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==';
+  const dropFiles = (page, type) => page.evaluate(({ type, png }) => {
+    const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'dot.png', { type: 'image/png' }));
+    data.items.add(new File(['plain words\n'], 'read.txt', { type: 'text/plain' }));
+    const target = document.querySelector('.wv-crepe .ProseMirror');
+    const ev = type === 'paste'
+      ? new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+      : new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    target.dispatchEvent(ev);
+  }, { type, png: PNG_B64 });
+
+  for (const how of ['paste', 'drop']) {
+    test(`files arriving by ${how} attach to the record and land as an image and a link (Feature #161)`, async () => {
+      const { page, id } = await open(`Upload by ${how}`);
+      try {
+        await page.keyboard.type('Files:', { delay: 30 });
+        await dropFiles(page, how);
+        const doc = await saved(page, id, /!\[[^\]]*\]\([^)]*\/api\/files\/[\w-]+\)[\s\S]*\[read\.txt\]\([^)]*\/api\/files\/[\w-]+\)/);
+        assert.match(doc, /!\[[^\]]*\]\([^)]*\/api\/files\/[\w-]+\)/, 'the png lands as an image');
+        assert.match(doc, /\[read\.txt\]\([^)]*\/api\/files\/[\w-]+\)/, 'the text file lands as a link');
+        assert.equal(weave.readEntity(id).files.length, 2, 'both files attach to the record');
+        await page.locator('.wv-crepe img[src*="/api/files/"]').first().waitFor({ timeout: 10000 });
+      } finally { await page.close(); }
+    });
+  }
 }
