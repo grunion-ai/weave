@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { selectTests, affectedTests } from '../scripts/test-selection.mjs';
-import { lanes } from '../scripts/test.mjs';
+import { lanes, testFiles } from '../scripts/test.mjs';
+import { gating, prSelection, SMOKE } from '../scripts/ci-test.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/core.test.mjs', 'test/editor-browser.test.mjs', 'test/other.test.mjs'];
@@ -14,12 +15,40 @@ test('test-only changes select sorted unique existing tests', () => {
   assert.deepEqual(result.files, [files[0], files[2]]);
   assert.ok(result.reasons.length);
 });
-for (const changed of [[], ['public/app.js'], ['public/style.css'], ['src/engine.js'], ['package.json'], ['README.md'], ['test/lib/browser.mjs'], ['test/deleted.test.mjs'], ['unknown'], ['test/core.test.mjs', 'src/server.js']]) {
-  test(`uncertain blast radius uses full suite: ${JSON.stringify(changed)}`, () => {
-    const result = selectTests({ files, changed });
-    assert.equal(result.mode, 'full');
-    assert.deepEqual(result.files, files);
-    assert.ok(result.reasons.length);
+test('no changed files uses the full suite rather than an empty pass', () => {
+  const result = selectTests({ files, changed: [] });
+  assert.equal(result.mode, 'full');
+  assert.deepEqual(result.files, files);
+  assert.ok(result.reasons.length);
+});
+test('a checkout the PR planner cannot read falls back to the full suite', () => {
+  const result = selectTests({ files, changed: ['src/server.js'], read: () => '' });
+  assert.equal(result.mode, 'full');
+  assert.deepEqual(result.files, files);
+  assert.match(result.reasons.join(' '), /full suite required/);
+});
+
+const ROOT = join(import.meta.dirname, '..');
+const real = testFiles(ROOT);
+const read = (file) => readFileSync(join(ROOT, file), 'utf8');
+const groups = gating(lanes(real, ROOT));
+for (const changed of [['scripts/test-selection.mjs'], ['src/field-hints.js'], ['package.json'], ['README.md'], ['test/deleted.test.mjs'], ['unknown'], ['test/test-selection.test.mjs', 'src/server.js']]) {
+  test(`a non-test change runs what the PR gate would, not the full suite (Issue #1641): ${JSON.stringify(changed)}`, () => {
+    const result = selectTests({ files: real, changed, read });
+    assert.equal(result.mode, 'pr');
+    const pick = prSelection(groups, changed, read);
+    assert.deepEqual(result.files, [...pick.unit, ...pick.browser].sort());
+    for (const file of groups.unit) assert.ok(result.files.includes(file), `${file}: every unit file runs, as on the PR gate`);
+    for (const file of SMOKE) assert.ok(result.files.includes(file), `${file}: the smoke journeys run`);
+    assert.ok(result.files.length < real.length, `${result.files.length} of ${real.length}: the browser lane is narrowed`);
+    assert.match(result.reasons.join(' '), /PR gate selection: \d+ unit and \d+ of \d+ browser suites/);
+  });
+}
+for (const changed of [['src/routes.js'], ['public/app.js'], ['public/style.css'], ['test/lib/browser.mjs']]) {
+  test(`a shared-code change runs every gating browser suite, as the PR gate does: ${JSON.stringify(changed)}`, () => {
+    const result = selectTests({ files: real, changed, read });
+    assert.equal(result.mode, 'pr');
+    for (const file of [...groups.unit, ...groups.browser]) assert.ok(result.files.includes(file), file);
   });
 }
 test('empty discovered test list fails closed', () => {

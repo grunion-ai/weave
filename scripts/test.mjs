@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { availableParallelism, tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
+import { testFiles, lanes } from './lanes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPORTER = pathToFileURL(join(ROOT, 'scripts/failed-files.mjs')).href;
@@ -13,23 +14,7 @@ const CI_REPORTER = `--test-reporter=${pathToFileURL(join(ROOT, 'scripts/ci-test
 
 export const RETRIES = 1;
 
-export function testFiles(root = ROOT) {
-  return readdirSync(join(root, 'test'), { recursive: true })
-    .filter((f) => f.endsWith('.test.mjs'))
-    .map((f) => join('test', f).split('\\').join('/'))
-    .sort();
-}
-
-const BROWSER = /(?:^|;)\s*(?:import\s[^;]*?from\s*|(?:const|let)\s[^=;]*=\s*await\s+import\(\s*)['"](?:[^'"\n]*\/lib\/browser\.mjs|playwright)['"]/m;
-export function lanes(files, root = ROOT) {
-  const browser = [], unit = [];
-  for (const f of files) {
-    let drives = /-browser\.test\.mjs$/.test(f);
-    if (!drives) { try { drives = BROWSER.test(readFileSync(resolve(root, f), 'utf8')); } catch {} }
-    (drives ? browser : unit).push(f);
-  }
-  return { unit, browser };
-}
+export { testFiles, lanes };
 
 export const browserConcurrency = (cores = availableParallelism()) => Math.max(1, Math.floor(cores / 2));
 

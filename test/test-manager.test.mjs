@@ -10,7 +10,7 @@ import { tempDir } from './lib/temp.mjs';
 const { ROOT, scratch, env, cli, fixture } = managerHarness('weave-manager-test-');
 const stubRoot = realpathSync(tempDir('weave-manager-stub-driver-'));
 mkdirSync(join(stubRoot, 'scripts'));
-for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFileSync(join(stubRoot, 'scripts', name), readFileSync(join(ROOT, 'scripts', name)));
+for (const name of ['test.mjs', 'lanes.mjs', 'test-manager.mjs', 'failed-files.mjs']) writeFileSync(join(stubRoot, 'scripts', name), readFileSync(join(ROOT, 'scripts', name)));
 stubBrowserDriver(stubRoot);
 execFileSync('git', ['init', '-q'], { cwd: stubRoot });
 const browserCli = args => {

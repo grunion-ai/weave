@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, mkdtempS
 import { tmpdir } from 'node:os';
 import { basename, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { testFiles, lanes } from './test.mjs';
+import { testFiles, lanes } from './lanes.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -158,11 +158,16 @@ export function browserHelpers(browser, read) {
   return [...seen].filter(file => file.startsWith('test/lib/')).sort();
 }
 
-export function prPlan({ unit, browser }, changed, read, weight, diff = '') {
+export function prSelection({ unit, browser }, changed, read, diff = '') {
   const shared = [...MONOLITHS, ...eagerAssets(read), ...browserHelpers(browser, read)];
-  if (changed.some(file => shared.includes(file))) return plan([...unit, ...browser], { unit, browser: touchedBrowser(browser, browser, read) }, weight, 4);
-  const touched = touchedBrowser(changed, browser, read, diff);
-  return plan([...unit, ...touched], { unit, browser: touched }, weight, 4, Math.min(4, Math.ceil(touched.length / 20)));
+  if (changed.some(file => shared.includes(file))) return { unit, browser: touchedBrowser(browser, browser, read), shared: true };
+  return { unit, browser: touchedBrowser(changed, browser, read, diff), shared: false };
+}
+
+export function prPlan(groups, changed, read, weight, diff = '') {
+  const { unit, browser, shared } = prSelection(groups, changed, read, diff);
+  if (shared) return plan([...unit, ...groups.browser], { unit, browser }, weight, 4);
+  return plan([...unit, ...browser], { unit, browser }, weight, 4, Math.min(4, Math.ceil(browser.length / 20)));
 }
 
 export function durationsFrom(results) {

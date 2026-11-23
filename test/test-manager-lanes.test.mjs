@@ -20,7 +20,7 @@ function write(root, path, body) {
 }
 function worktree(files = {}) {
   const root = realpathSync(tempDir('weave-lanes-root-'));
-  for (const name of ['test.mjs', 'test-manager.mjs', 'failed-files.mjs']) write(root, `scripts/${name}`, readFileSync(join(ROOT, 'scripts', name)));
+  for (const name of ['test.mjs', 'lanes.mjs', 'test-manager.mjs', 'failed-files.mjs']) write(root, `scripts/${name}`, readFileSync(join(ROOT, 'scripts', name)));
   for (const [path, body] of Object.entries(files)) write(root, path, body);
   stubBrowserDriver(root);
   execFileSync('git', ['init', '-q'], { cwd: root });
