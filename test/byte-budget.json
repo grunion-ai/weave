@@ -97,8 +97,8 @@
       "br": 409
     },
     "/doc-editor.js": {
-      "gzip": 12965,
-      "br": 11538
+      "gzip": 13350,
+      "br": 11900
     },
     "/editor-lib.js": {
       "gzip": 4499,
@@ -343,6 +343,7 @@
     "/space-home-view.js": "Feature #378: the Open home serves the workspace home as well as the space home, so it gained spaceHomePage and mountWorkspaceHome: gzip 2,613 budget to 2,844 served, br 2,306 to 2,519, budget set 5% above",
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
-    "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above."
+    "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
+    "/doc-editor.js": "Issues #1888, #1889, #1890: mountCrepeEditor adapts the vendored Milkdown Crepe editor to the document editor contract (getValue, setValue, destroy, saves on blur and leave), about 120 bytes compressed."
   }
 }

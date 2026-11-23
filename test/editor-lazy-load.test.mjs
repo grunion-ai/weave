@@ -18,7 +18,9 @@ test('the document editor is not render-blocking: index.html names its files in 
 
 test('the editor mounts only after its files load (Issue #989)', () => {
   assert.match(APP, /function loadVditor\(\)/);
-  assert.match(APP, /loadVditor\(\)\.then\(mount, /, 'the editor waits for both assets');
+  assert.match(APP, /\(crepe \? loadCrepe\(\) : loadVditor\(\)\)\.then\(mount, /, 'the editor waits for its assets');
+  assert.match(APP, /function loadCrepe\(\)/);
+  assert.match(APP, /Promise\.all\(\[styled, code, lazyScript\('\/doc-editor\.js'\)/, 'Crepe mounts after its stylesheet, its module and doc-editor.js');
 });
 
 function loadingContext() {
@@ -66,15 +68,19 @@ test('a failed stylesheet can retry after the script has already loaded', async 
   await retry;
 });
 
-for (const fail of [false, true]) {
+for (const kind of ['vditor', 'crepe']) for (const fail of [false, true]) {
   for (const dismissed of [false, true]) {
-    test(`a ${dismissed ? 'dismissed' : 'current'} document handles a pending editor ${fail ? 'failure' : 'load'}`, async () => {
+    test(`a ${dismissed ? 'dismissed' : 'current'} document handles a pending ${kind} editor ${fail ? 'failure' : 'load'}`, async () => {
       let resolve, reject;
       const pending = new Promise((ok, no) => { resolve = ok; reject = no; });
       const calls = [];
       const context = createContext({
         window: {}, host: { isConnected: true }, entity: { docs: {} }, f: { name: 'Body' }, id: 'row', editors: [], pendingDocSaves: new Map(),
-        loadVditor: () => pending, mountDocEditor: () => calls.push('editor'),
+        docEditorKind: () => kind,
+        loadVditor: () => (kind === 'vditor' ? pending : Promise.reject(new Error('wrong loader'))),
+        loadCrepe: () => (kind === 'crepe' ? pending : Promise.reject(new Error('wrong loader'))),
+        mountDocEditor: () => calls.push(kind === 'vditor' ? 'editor' : 'wrong editor'),
+        mountCrepeEditor: () => calls.push(kind === 'crepe' ? 'editor' : 'wrong editor'),
         mountSourceEditor: () => calls.push('source'), toast: () => calls.push('toast'),
       });
       const start = APP.indexOf('    const mountEditor = () => {');

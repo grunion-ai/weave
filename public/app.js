@@ -9077,6 +9077,26 @@ function loadVditor() {
   });
   return vditorLoading;
 }
+let crepeLoading = null;
+function loadCrepe() {
+  crepeLoading ??= new Promise((resolve, reject) => {
+    const css = el('link', { rel: 'stylesheet', href: '/vendor/crepe/crepe.css' });
+    const failed = () => new Error('The editor did not load. Showing the source instead; reload to try again.');
+    const styled = new Promise((ok, fail) => {
+      css.addEventListener('load', ok, { once: true });
+      css.addEventListener('error', () => fail(failed()), { once: true });
+    });
+    const code = import('/vendor/crepe/crepe.js').then((m) => { globalThis.WeaveCrepe = m; }, () => { throw failed(); });
+    const tpl = document.querySelector('#vditor-assets');
+    if (tpl) tpl.before(css); else document.head.append(css);
+    Promise.all([styled, code, lazyScript('/doc-editor.js').catch(() => { throw failed(); })])
+      .then(() => resolve(), (err) => { crepeLoading = null; css.remove(); reject(err); });
+  });
+  return crepeLoading;
+}
+function docEditorKind() {
+  try { return localStorage.getItem('weave.editor') === 'crepe' ? 'crepe' : 'vditor'; } catch { return 'vditor'; }
+}
 const docBubbles = new Set();
 
 const REF_CHIP_DEBOUNCE = 250;
@@ -9707,7 +9727,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
-        const ed = mountDocEditor(host, {
+        const ed = (crepe ? mountCrepeEditor : mountDocEditor)(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
           readOnly: !!entity.readOnly,
@@ -9722,7 +9742,8 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         editors?.push(ed);
         docEd = ed;
       };
-      loadVditor().then(mount, (err) => {
+      const crepe = docEditorKind() === 'crepe';
+      (crepe ? loadCrepe() : loadVditor()).then(mount, (err) => {
         if (!host.isConnected) return;
         mountSourceEditor();
         toast(err.message, true);
