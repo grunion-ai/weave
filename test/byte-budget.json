@@ -97,8 +97,8 @@
       "br": 409
     },
     "/doc-editor.js": {
-      "gzip": 16630,
-      "br": 14770
+      "gzip": 17610,
+      "br": 15670
     },
     "/editor-lib.js": {
       "gzip": 4499,
@@ -344,6 +344,6 @@
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
     "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
-    "/doc-editor.js": "Issue #1896: crepeHoldScroll (keeps the page still when Crepe updates with the caret in view), crepeDividerBelow and the slash list scroll keeper sit beside the Vditor mount until Vditor is removed: gzip 15,340 budget to 15,839 served, br 13,720 to 14,062, budget set 5% above."
+    "/doc-editor.js": "Issue #1896: crepeSourceKeeper (unchanged blocks keep their source text on save), crepeCellCaret and crepeCellClicks (a click in a table cell places the caret) sit beside the Vditor mount until Vditor is removed: gzip 16,630 budget to 16,768 served, br 14,770 to 14,915, budget set 5% above."
   }
 }

@@ -1528,7 +1528,7 @@
         },
         {
           "path": "public/vendor/crepe/crepe.js",
-          "sha256": "be44ce556f10f76eac71e415f26fa59f98d01d5dc4a6a8ec6b0dd585b1218278"
+          "sha256": "25c6f6a45268c997ca0b5791d6ae28c148ae07be74343cecca86912031d3516a"
         },
         {
           "path": "public/vendor/crepe/font-222HN3GT.ttf",
@@ -1771,7 +1771,7 @@
           "sha256": "07d8e303ce4fc12b4bb54f1004170dd190a1f3db45d400fe68060df3e0897268"
         }
       ],
-      "build": "npm i @milkdown/crepe@7.23.0 esbuild@0.25.0, then esbuild an entry re-exporting Crepe, remarkStringifyOptionsCtx, editorViewCtx and parserCtx from @milkdown/kit/core, replaceAll, getMarkdown, insert and $prose from @milkdown/kit/utils, Plugin, PluginKey and TextSelection from @milkdown/kit/prose/state, Decoration and DecorationSet from @milkdown/kit/prose/view, listener and listenerCtx from @milkdown/kit/plugin/listener: --bundle --minify --format=esm --splitting --chunk-names=chunk-[hash] --entry-names=crepe; crepe.css bundles @milkdown/crepe/theme/common/style.css and theme/frame.css with --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.svg=dataurl --asset-names=font-[hash]"
+      "build": "npm i @milkdown/crepe@7.23.0 esbuild@0.25.0, then esbuild an entry re-exporting Crepe, remarkStringifyOptionsCtx, editorViewCtx, parserCtx, serializerCtx and remarkCtx from @milkdown/kit/core, replaceAll, getMarkdown, insert and $prose from @milkdown/kit/utils, Plugin, PluginKey and TextSelection from @milkdown/kit/prose/state, Decoration and DecorationSet from @milkdown/kit/prose/view, listener and listenerCtx from @milkdown/kit/plugin/listener: --bundle --minify --format=esm --splitting --chunk-names=chunk-[hash] --entry-names=crepe; crepe.css bundles @milkdown/crepe/theme/common/style.css and theme/frame.css with --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.svg=dataurl --asset-names=font-[hash]"
     }
   ]
 }

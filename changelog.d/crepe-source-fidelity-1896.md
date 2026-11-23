@@ -1,0 +1,1 @@
+- Crepe editor: saving keeps every block you did not touch exactly as it was written, so one edit no longer rewrites tables, lists, emphasis and escapes across the whole document, and a click in a table cell puts the caret there instead of selecting the cell, which made the next keystroke replace its text (Issue #1896).
