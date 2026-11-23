@@ -894,6 +894,17 @@ a.wv-start-template { text-decoration: none; }
 .ref-backlinks { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .doc-editor { position: relative; }
+.wv-crepe .milkdown { --crepe-color-background: transparent; --crepe-color-on-background: var(--tblr-body-color);
+  --crepe-color-surface: var(--tblr-bg-surface); --crepe-color-surface-low: var(--tblr-bg-surface-secondary);
+  --crepe-color-on-surface: var(--tblr-body-color); --crepe-color-on-surface-variant: var(--tblr-secondary);
+  --crepe-color-outline: var(--tblr-border-color); --crepe-color-primary: var(--tblr-primary);
+  --crepe-color-secondary: var(--tblr-bg-surface-secondary); --crepe-color-on-secondary: var(--tblr-body-color);
+  --crepe-color-inverse: var(--tblr-body-color); --crepe-color-on-inverse: var(--tblr-bg-surface);
+  --crepe-color-inline-code: var(--tblr-danger); --crepe-color-error: var(--tblr-danger);
+  --crepe-color-hover: var(--tblr-bg-surface-secondary); --crepe-color-selected: var(--tblr-border-color);
+  --crepe-color-inline-area: var(--tblr-bg-surface-secondary);
+  --crepe-font-title: var(--tblr-font-sans-serif); --crepe-font-default: var(--tblr-font-sans-serif);
+  --crepe-font-code: var(--tblr-font-monospace); }
 .vditor-reset img.emoji { width: 1.05em; height: 1.05em; max-width: none; vertical-align: -.15em; margin: 0 .08em; }
 [data-bs-theme="dark"] .vditor-reset img.emoji { filter: invert(.86) hue-rotate(180deg); }
 .vditor-hint img { width: 1em; height: 1em; vertical-align: -.15em; margin-right: 6px; }
