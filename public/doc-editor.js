@@ -1046,9 +1046,9 @@ const crepeMarkdown = (md) => String(md ?? '').replace(/\\\[\\\[/g, '[[');
 const CREPE_REF_RE = /\[\[([^[\]\n]+)\]\]/g;
 
 const CREPE_REF_ICONS = {
-  entity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M11 4 7 20M17 4l-4 16"/></svg>',
-  table: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></svg>',
-  space: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
+  entity: '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 9h14M5 15h14M11 4 7 20M17 4l-4 16"/></svg>',
+  table: '<svg viewBox="0 0 24 24"><rect fill="none" stroke="currentColor" stroke-width="2" x="4" y="4" width="16" height="16" rx="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M4 10h16M10 4v16"/></svg>',
+  space: '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
 };
 
 function crepePickReference(view, from, to, kind) {
@@ -1143,8 +1143,74 @@ function crepeBlockMarks(M, key) {
   }));
 }
 
+function crepeDividerBelow(M) {
+  return (ctx) => {
+    const view = ctx.get(M.editorViewCtx);
+    const { state } = view;
+    const { $from } = state.selection;
+    const { hr, paragraph } = state.schema.nodes;
+    const from = $from.before();
+    const tr = state.tr.replaceWith(from, $from.after(), [hr.create(), paragraph.create()]);
+    view.dispatch(tr.setSelection(M.TextSelection.create(tr.doc, from + 2)).scrollIntoView());
+    view.focus();
+  };
+}
+
+let crepeMenuScrollFrom = null;
+const crepeMenuList = () => document.querySelector('.wv-crepe .milkdown-slash-menu[data-show="true"] .menu-groups');
+addEventListener('keydown', (e) => {
+  const list = (e.key === 'ArrowDown' || e.key === 'ArrowUp') && crepeMenuList();
+  crepeMenuScrollFrom = list ? list.scrollTop : null;
+}, true);
+addEventListener('keydown', (e) => {
+  const list = crepeMenuScrollFrom === null ? null : crepeMenuList();
+  const from = crepeMenuScrollFrom;
+  crepeMenuScrollFrom = null;
+  if (!list) return;
+  const rows = [...list.querySelectorAll('.menu-group li')];
+  const at = rows.findIndex((li) => li.classList.contains('hover'));
+  const row = rows[Math.min(rows.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+  if (!row) return;
+  const group = row.closest('.menu-group');
+  const top = (row === group.querySelector('li') ? group.offsetTop : row.offsetTop) - list.offsetTop;
+  const bottom = row.offsetTop - list.offsetTop + row.offsetHeight;
+  list.scrollTop = top < from ? top : bottom > from + list.clientHeight ? bottom - list.clientHeight : from;
+});
+
+const CREPE_HOLD_MS = 400;
+let crepeScrolledAt = -Infinity;
+for (const type of ['wheel', 'touchstart', 'pointerdown']) {
+  addEventListener(type, () => { crepeScrolledAt = performance.now(); }, { capture: true, passive: true });
+}
+addEventListener('keydown', (e) => { if (e.key === 'PageUp' || e.key === 'PageDown') crepeScrolledAt = performance.now(); }, true);
+const CREPE_HOLD_DRIFT_PX = 40;
+function crepeHoldScroll(M, host) {
+  return M.$prose(() => new M.Plugin({
+    view: () => ({
+      update: (view, prev) => {
+        if (prev.doc.eq(view.state.doc) && prev.selection.eq(view.state.selection)) return;
+        const scroller = editorScroller(host);
+        if (!scroller) return;
+        const held = scrollTopOf(scroller);
+        const box = scroller === document.scrollingElement ? { top: 0, bottom: innerHeight } : scroller.getBoundingClientRect();
+        const caret = view.coordsAtPos(view.state.selection.head);
+        if (caret.top < box.top || caret.bottom > box.bottom) return;
+        const at = performance.now();
+        const pin = () => {
+          if (performance.now() - at > CREPE_HOLD_MS || crepeScrolledAt > at) return;
+          if (Math.abs(scrollTopOf(scroller) - held) > CREPE_HOLD_DRIFT_PX) putScrollTop(scroller, held);
+          requestAnimationFrame(pin);
+        };
+        requestAnimationFrame(pin);
+      },
+    }),
+  }));
+}
+
 function crepeReferenceMenu(M) {
   return (builder) => {
+    const divider = builder.getGroup('text').group.items.find((item) => item.key === 'divider');
+    if (divider) divider.onRun = crepeDividerBelow(M);
     const group = builder.addGroup('reference', 'Reference');
     for (const [kind, label] of [['entity', 'Entity'], ['table', 'Table'], ['space', 'Space / workspace']]) {
       group.addItem(kind, {
@@ -1185,6 +1251,7 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
     },
   });
   crepe.editor.use(crepeReferences(M));
+  crepe.editor.use(crepeHoldScroll(M, host));
   const marksKey = new M.PluginKey('weave-block-marks');
   crepe.editor.use(crepeBlockMarks(M, marksKey));
   crepe.editor.config((ctx) => ctx.update(M.remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: '-', rule: '-' })));

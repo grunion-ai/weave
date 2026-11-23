@@ -97,8 +97,8 @@
       "br": 409
     },
     "/doc-editor.js": {
-      "gzip": 15340,
-      "br": 13720
+      "gzip": 16630,
+      "br": 14770
     },
     "/editor-lib.js": {
       "gzip": 4499,
@@ -282,7 +282,7 @@
     },
     "/style.css": {
       "gzip": 47613,
-      "br": 37079
+      "br": 38980
     },
     "/term-core.js": {
       "gzip": 1499,
@@ -336,7 +336,7 @@
     "/space-home-core.js": "Feature #344: Kyle ruled the space home keys by table name, so the core gained rowsByTable and table labels: gzip 927 to 1,017, br 842 to 914, budget set 5% above. Feature #355: the core gained workspaceSections for the phone workspace launcher: gzip 1,068 budget to 1,179 served, br 960 to 1,065, budget set 5% above",
     "/start.js": "PR #693 (Issue #1334, Issue #1340) added the load-failure alert with Try again and the support link, and the logo that keeps the draft, on top of PR #613 sign-in door work: gzip 13,750, br 12,239. Budget set 5% above",
     "/starter-core.js": "Feature #244 added the Notes starter, the Months date and a grows note for agents on each featured starter: gzip 16,414, br 13,699. Budget set 5% above",
-    "/style.css": "Feature #340 (View pane) added the pane, its accordion, sort and group level cards, grouped-table header and subtotal rows and list subtotals: gzip 37,512 to 38,922, br 30,903 to 31,836. Budget set 5% above. PR #555 reverts Issue #1286 (PR #546) and removes its raise to gzip 41,000, br 33,600, restoring the earlier gzip 40,868, br 33,428. Feature #348 (PR #542) had added the group header, crumb and breakdown rules under that headroom and raised no budget for this asset, so the reverted file still carries them: served gzip 40,871 over 40,868, br 33,451 over 33,428. Budget set 5% above at gzip 42,915, br 35,124. Issues #1361 to #1364 (upload progress and failure tiles, the amber warn toast, the red accent on error toasts): served gzip 43,180 over 42,915, br 35,313 over 35,124. Budget set 5% above. Features #385 to #387 (the radius, spacing and button token blocks and the button table): served gzip 45,346 over 45,339; budget set 5% above at 47,613",
+    "/style.css": "Issue #1896: three Crepe slash menu rules (list scroll, icon colour, highlighted row): br 37,079 budget to 37,122 served, budget set 5% above.",
     "/term-core.js": "PR #520 (Issue #1262) added inverseName, the inverse relation name the engine and the field dialog share: served gzip 1,427 over the 1,362 budget, br 1,215 over 1,147. Budget set 5% above",
     "/upload-core.js": "Issue #1413 (upload error causes) added the restarting, storage-full and request-id failures, the retry waits and the generic-call strings: gzip 1,551 to 1,864, br 1,349 to 1,634 served. Budget set 5% above",
     "/view-pane-core.js": "Feature #348 (PR #542) added crumbs, crumbText, breakdownField and breakdown for group headers: served gzip 2,950 over 2,727, br 2,677 over 2,469. Budget set 5% above",
@@ -344,6 +344,6 @@
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
     "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
-    "/doc-editor.js": "Feature #389 step 2: crepeReferences (reference chips, the [[ trigger) and crepeReferenceMenu (Entity, Table and Space slash items) live beside the Vditor mount until Vditor is removed: gzip 14,167 budget to 14,610 served, br 12,665 to 13,068, budget set 5% above."
+    "/doc-editor.js": "Issue #1896: crepeHoldScroll (keeps the page still when Crepe updates with the caret in view), crepeDividerBelow and the slash list scroll keeper sit beside the Vditor mount until Vditor is removed: gzip 15,340 budget to 15,839 served, br 13,720 to 14,062, budget set 5% above."
   }
 }
