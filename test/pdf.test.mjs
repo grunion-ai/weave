@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import { markdownToPdf, stripInline, unicodeFont } from '../src/pdf.js';
@@ -183,4 +184,86 @@ test('the PDF font lives beside the writer, outside the static web root (Issue #
   assert.ok(fs.existsSync(path.join(root, 'src/vendor/fonts/DejaVuSans.ttf')), 'src/pdf.js reads its font from src/vendor/fonts');
   assert.ok(fs.existsSync(path.join(root, 'src/vendor/fonts/DejaVuSans-LICENSE.txt')), 'the licence travels with it');
   assert.ok(!fs.existsSync(path.join(root, 'public/vendor/fonts')), 'public/ no longer serves the 757 KB font no page loads');
+});
+
+function embeddedFont(s) {
+  const id = s.match(/\/FontFile2 (\d+) 0 R/)[1];
+  const at = s.indexOf(`\n${id} 0 obj\n`);
+  const head = s.slice(at).match(/<< \/Length (\d+) \/Filter \/FlateDecode \/Length1 (\d+) >>\nstream\n/);
+  const start = at + s.slice(at).indexOf(head[0]) + head[0].length;
+  const ttf = zlib.inflateSync(Buffer.from(s.slice(start, start + Number(head[1])), 'latin1'));
+  assert.equal(ttf.length, Number(head[2]), 'Length1 is the decoded font length');
+  return ttf;
+}
+
+function ttfTables(buf) {
+  const tables = {};
+  for (let i = 0; i < buf.readUInt16BE(4); i++) {
+    const o = 12 + i * 16;
+    tables[buf.toString('ascii', o, o + 4)] = { sum: buf.readUInt32BE(o + 4), off: buf.readUInt32BE(o + 8), len: buf.readUInt32BE(o + 12) };
+  }
+  return tables;
+}
+
+function glyphBytes(buf) {
+  const t = ttfTables(buf);
+  const long = buf.readInt16BE(t.head.off + 50) === 1;
+  const at = (gid) => (long ? buf.readUInt32BE(t.loca.off + gid * 4) : buf.readUInt16BE(t.loca.off + gid * 2) * 2);
+  return (gid) => buf.subarray(t.glyf.off + at(gid), t.glyf.off + at(gid + 1));
+}
+
+test('one arrow and one emoji embed a subset of DejaVu holding only the glyphs used, not the whole font (Issue #1599)', () => {
+  const md = '# Plan\n\nShip it → then rest \u{1f389}\n';
+  const buf = markdownToPdf(md, { title: 'Plan' });
+  assert.ok(buf.length < 40_000, `the PDF is ${buf.length} bytes`);
+  const s = buf.toString('latin1');
+  checkXref(s);
+  assert.match(s, /\/BaseFont \/[A-Z]{6}\+DejaVuSans/, 'the subset carries a six-letter tag');
+  const sub = embeddedFont(s);
+  const full = fs.readFileSync(new URL('../src/vendor/fonts/DejaVuSans.ttf', import.meta.url));
+  const uni = unicodeFont();
+  assert.equal(sub.readUInt16BE(ttfTables(sub).maxp.off + 4), uni.numGlyphs, 'glyph ids keep their numbering for /CIDToGIDMap /Identity');
+  const [a, b] = [glyphBytes(full), glyphBytes(sub)];
+  for (const cp of [0x2192, 0x25a1, 0x53, 0x68]) {
+    const gid = uni.gidFor(cp);
+    assert.ok(a(gid).length > 0);
+    assert.deepEqual(b(gid), a(gid), `glyph ${gid} for U+${cp.toString(16)} is copied whole`);
+  }
+  assert.equal(b(uni.gidFor(0x041f)).length, 0, 'an unused glyph is empty');
+  assert.equal(b(0).length, a(0).length, 'the notdef glyph stays');
+});
+
+test('a subset font keeps the components of a composite glyph and valid table checksums (Issue #1599)', () => {
+  const s = markdownToPdf('Ångström Ő →', { title: 'x' }).toString('latin1');
+  const sub = embeddedFont(s);
+  const full = fs.readFileSync(new URL('../src/vendor/fonts/DejaVuSans.ttf', import.meta.url));
+  const uni = unicodeFont();
+  const [a, b] = [glyphBytes(full), glyphBytes(sub)];
+  const gid = uni.gidFor(0x0150);
+  const g = a(gid);
+  assert.ok(g.readInt16BE(0) < 0, 'U+0150 is a composite glyph in DejaVu Sans');
+  let o = 10;
+  for (;;) {
+    const flags = g.readUInt16BE(o);
+    const part = g.readUInt16BE(o + 2);
+    assert.deepEqual(b(part), a(part), `component ${part} is kept`);
+    if (!(flags & 0x20)) break;
+    o += 4 + (flags & 1 ? 4 : 2) + (flags & 8 ? 2 : flags & 0x40 ? 4 : flags & 0x80 ? 8 : 0);
+  }
+  for (const [tag, t] of Object.entries(ttfTables(sub))) {
+    if (tag === 'head') continue;
+    let sum = 0;
+    const padded = Buffer.concat([sub.subarray(t.off, t.off + t.len), Buffer.alloc(3)]);
+    for (let i = 0; i < t.len; i += 4) sum = (sum + padded.readUInt32BE(i)) >>> 0;
+    assert.equal(sum, t.sum, `${tag} checksum`);
+  }
+});
+
+test('a table cell too wide for its column ends in an ellipsis, and a cell that fits is left whole (Issue #1599)', () => {
+  const long = 'word '.repeat(60).trim();
+  const md = `| Name | Notes |\n|---|---|\n| short | ${long} |\n`;
+  const s = markdownToPdf(md, { title: 'T' }).toString('latin1');
+  assert.match(s, /\((?:word )+word?\\205\) Tj/, 'the cut cell ends in the WinAnsi ellipsis');
+  assert.match(s, /\(Notes\) Tj/, 'the header that fits its column is whole');
+  assert.doesNotMatch(s, /\(Notes\\205\) Tj/);
 });
