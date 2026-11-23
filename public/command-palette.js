@@ -61,9 +61,10 @@ function paletteRow(hit, i, { needle, group, onPick, href, checked = null }) {
 
 function openCommandK({
   onPick = null, onDismiss = null, kinds = null, placeholder = null,
-  scope = null, browse = false, selected = null, multi = false, onCommit = null, create = null,
+  scope = null, browse = false, selected = null, multi = false, onCommit = null, create = null, shell = null,
 } = {}) {
-  if ($('#cmdk-back')) return;
+  if (!shell && $('#cmdk-back')) return;
+  shell?.adopt();
   const P = weavePalette;
   const here = currentWsName();
   const linked = (selected ?? []).map((h) => ({ kind: 'entity', ...h }));
@@ -80,14 +81,14 @@ function openCommandK({
     if (multi) onCommit?.([...chosen]);
     else onDismiss?.();
   };
-  const back = el('div', { id: 'cmdk-back', onclick: (e) => { if (e.target === back) dismiss(); } });
-  const input = el('input', {
-    id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false',
-    role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list',
-    placeholder: placeholder ?? (here ? `Search ${here}` : 'Search'),
-  });
+  const back = shell?.back ?? el('div', { id: 'cmdk-back' });
+  back.addEventListener('click', (e) => { if (e.target === back) dismiss(); });
+  const input = shell?.input ?? el('input', { id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false' });
+  for (const [k, v] of Object.entries({ role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'cmdk-results', 'aria-autocomplete': 'list' })) input.setAttribute(k, v);
+  input.placeholder = placeholder ?? (here ? `Search ${here}` : 'Search');
   input.setAttribute('aria-label', input.placeholder);
-  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results', ...(multi ? { 'aria-multiselectable': 'true' } : {}) });
+  const list = shell?.list ?? el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results' });
+  if (multi) list.setAttribute('aria-multiselectable', 'true');
   list.addEventListener('mousedown', (e) => { if (!e.target.closest('button')) e.preventDefault(); });
   let groups = [], flat = [], rowEls = [], sel = 0;
   let timer, inflight = null;
@@ -213,22 +214,25 @@ function openCommandK({
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
   });
   const cap = (k) => el('kbd', {}, k);
-  const box = el('div', { id: 'cmdk' },
-    el('div', { class: 'cmdk-inp' },
-      iconEl('lucide:search', 'wv-icon cmdk-ic'),
-      input,
-      here ? el('span', { class: 'cmdk-ws', title: 'This workspace' }, here) : null),
-    list,
-    el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
-      el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
-      el('span', {}, cap('↵'), multi ? ' toggle' : picking ? ' pick' : ' open'),
-      el('span', {}, cap('tab'), ' next group'),
-      multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close')));
-  back.append(box);
-  holdPage(back, box, 'Search');
+  const ws = here ? el('span', { class: 'cmdk-ws', title: 'This workspace' }, here) : null;
+  const foot = el('div', { class: 'cmdk-foot', 'aria-hidden': 'true' },
+    el('span', {}, cap('↑'), ' ', cap('↓'), ' move'),
+    el('span', {}, cap('↵'), multi ? ' toggle' : picking ? ' pick' : ' open'),
+    el('span', {}, cap('tab'), ' next group'),
+    multi ? el('span', {}, cap('↵'), ' on empty or ', cap('esc'), ' done') : el('span', {}, cap('esc'), ' close'));
+  if (shell) {
+    if (ws) shell.row.append(ws);
+    shell.box.append(foot);
+  } else {
+    const box = el('div', { id: 'cmdk' }, el('div', { class: 'cmdk-inp' }, iconEl('lucide:search', 'wv-icon cmdk-ic'), input, ws), list, foot);
+    back.append(box);
+    holdPage(back, box, 'Search');
+  }
+  const typed = input.value.trim();
   if (scope) {
     render('', scopedGroups('', []), 'Searching…');
-    load('');
-  } else showRecent();
+    load(typed);
+  } else if (typed) load(typed);
+  else showRecent();
   input.focus();
 }

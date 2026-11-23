@@ -10685,8 +10685,38 @@ function wireSearchButton() {
   $('#search-btn')?.addEventListener('click', openPalette);
 }
 
-function openPalette(...args) {
-  lazyScript('/command-palette.js').then(() => openCommandK(...args), () => toast('Search did not load. Check the connection and try again.', true));
+function paletteShell(opts) {
+  const here = currentWsName();
+  const placeholder = opts.placeholder ?? (here ? `Search ${here}` : 'Search');
+  const input = el('input', { id: 'cmdk-input', class: 'search-bare', autocomplete: 'off', spellcheck: 'false', placeholder, 'aria-label': placeholder });
+  const row = el('div', { class: 'cmdk-inp' }, iconEl('lucide:search', 'wv-icon cmdk-ic'), input);
+  const list = el('div', { id: 'cmdk-results', role: 'listbox', 'aria-label': 'Results' });
+  const box = el('div', { id: 'cmdk' }, row, list);
+  const back = el('div', { id: 'cmdk-back' }, box);
+  const early = new AbortController();
+  const close = () => {
+    early.abort();
+    back.remove();
+    releasePage();
+    if (!opts.multi) opts.onDismiss?.();
+  };
+  back.addEventListener('click', (e) => { if (e.target === back) close(); }, { signal: early.signal });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } }, { signal: early.signal });
+  holdPage(back, box, 'Search');
+  input.focus();
+  return { back, box, row, list, input, adopt: () => early.abort() };
+}
+
+function openPalette(arg) {
+  if ($('#cmdk-back')) return;
+  const opts = arg instanceof Event || !arg ? {} : arg;
+  const shell = paletteShell(opts);
+  lazyScript('/command-palette.js').then(() => { if (shell.back.isConnected) openCommandK({ ...opts, shell }); }, () => {
+    shell.adopt();
+    shell.back.remove();
+    releasePage();
+    toast('Search did not load. Check the connection and try again.', true);
+  });
 }
 
 function relationTargets(f) {
