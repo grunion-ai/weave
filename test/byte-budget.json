@@ -97,8 +97,8 @@
       "br": 409
     },
     "/doc-editor.js": {
-      "gzip": 13350,
-      "br": 11900
+      "gzip": 14167,
+      "br": 12665
     },
     "/editor-lib.js": {
       "gzip": 4499,
@@ -344,6 +344,6 @@
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
     "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
-    "/doc-editor.js": "Issues #1888, #1889, #1890: mountCrepeEditor adapts the vendored Milkdown Crepe editor to the document editor contract (getValue, setValue, destroy, saves on blur and leave), about 120 bytes compressed."
+    "/doc-editor.js": "Issues #1888 and #1892: attachTabKeys (Tab and Shift+Tab nest and un-nest list items, Escape then Tab leaves) and attachCodeFenceReturn (Return after three backticks opens an untagged block) live in the Vditor mount: gzip 13,350 budget to 13,492 served, br 11,900 to 12,061, budget set 5% above."
   }
 }

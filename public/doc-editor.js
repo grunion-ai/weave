@@ -285,6 +285,32 @@ function attachTableKeys(host) {
   }, { capture: true });
 }
 
+function editorHintOpen(host) {
+  const hint = [...host.querySelectorAll('.vditor-hint')].find((h) => !h.closest('.vditor-toolbar'));
+  return !!hint && hint.style.display !== 'none' && !!hint.querySelector('button') ? hint : null;
+}
+
+function attachCodeFenceReturn(host) {
+  let chose = false;
+  host.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { chose = !!editorHintOpen(host); return; }
+    if (e.key !== 'Enter') { chose = false; return; }
+    const picked = chose;
+    chose = false;
+    if (picked || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    const hint = editorHintOpen(host);
+    const node = document.getSelection()?.anchorNode;
+    const at = node instanceof Element ? node : node?.parentElement;
+    const block = at?.closest('[data-type="code-block"]');
+    if (!hint || !block || !host.contains(block)) return;
+    const info = block.querySelector('[data-type="code-block-info"]');
+    if ((info?.textContent ?? '').replace(/\u200b/g, '').trim()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    hint.style.display = 'none';
+  }, { capture: true });
+}
+
 function attachTabKeys(host) {
   let escaped = false;
   host.addEventListener('keydown', (e) => {
@@ -292,8 +318,7 @@ function attachTabKeys(host) {
     if (e.key !== 'Tab') { escaped = false; return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
     if (escaped) { escaped = false; e.stopImmediatePropagation(); return; }
-    const hint = host.querySelector('.vditor-hint');
-    if (hint && hint.style.display !== 'none' && hint.childElementCount) return;
+    if (editorHintOpen(host)) return;
     const node = document.getSelection()?.anchorNode;
     const at = node instanceof Element ? node : node?.parentElement;
     const root = host.querySelector('.vditor-ir .vditor-reset');
@@ -443,6 +468,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachCodeRawToggle(host);
   attachTableKeys(host);
   attachTabKeys(host);
+  attachCodeFenceReturn(host);
   attachListMarkers(host);
   attachHintClamp(host);
   holdDocFrames(host);
