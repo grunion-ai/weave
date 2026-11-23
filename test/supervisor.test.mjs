@@ -717,13 +717,17 @@ test('a walled worker that hides its version from anonymous health is verified b
   }
 });
 
-test('a worker that reports a different version over IPC is refused', async () => {
+test('a worker that reports a different version over IPC is refused at once, not after the health timeout (Issue #1674)', async () => {
   const dataPath = dataDir('walled-wrong');
   const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: walledBin('0.0.1') }) });
-  const { sup, base } = await supervise(dataPath, gh);
+  const { sup, base } = await supervise(dataPath, gh, { healthTimeoutMs: 60_000 });
   try {
+    const started = Date.now();
     const result = await sup.check();
     assert.equal(result.action, 'failed');
+    assert.equal(result.retry, false, 'a healthy worker of the wrong version is a verdict on the release');
+    assert.match(result.reason, /answered ok as version 0\.0\.1, not 9\.9\.9/);
+    assert.ok(Date.now() - started < 10_000, `refused after ${Date.now() - started} ms; the 60 s health timeout should never be waited out`);
     assert.equal((await health(base)).version, IMAGE_VERSION);
   } finally {
     await sup.close();
@@ -1003,7 +1007,7 @@ test('a worker that stops answering inside its watch is tallied as 502s until th
 test('a candidate whose health check answers 502 is refused before any request reaches it, and the serving worker keeps serving', async () => {
   const dataPath = dataDir('candidate-502');
   const gh = fakeGitHub({ tarball: () => releaseTarball(NEXT, { bin: fakeBin(NEXT, { healthStatus: 502 }) }) });
-  const { sup, base, events } = await supervise(dataPath, gh, { healthTimeoutMs: 10_000 });
+  const { sup, base, events } = await supervise(dataPath, gh, { healthTimeoutMs: 2_000 });
   try {
     const before = await health(base);
     const result = await sup.check();

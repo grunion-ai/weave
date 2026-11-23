@@ -285,13 +285,16 @@ export async function startSupervisor({
     let last = 'no answer';
     while (Date.now() < until) {
       if (w.child.exitCode !== null || w.child.signalCode) throw new Refusal(`the worker exited (${w.child.signalCode ?? `code ${w.child.exitCode}`})`);
+      let wrong = null;
       try {
         const r = await globalThis.fetch(`${origin(w)}/api/health`, { signal: AbortSignal.timeout(5000) });
         const h = await r.json();
         const version = h.version ?? w.reported;
         if (r.ok && h.ok && version === w.version) return h;
+        if (r.ok && h.ok) wrong = version;
         last = `HTTP ${r.status}, version ${version}`;
       } catch (err) { last = err.message; }
+      if (wrong !== null) throw new Refusal(`/api/health answered ok as version ${wrong}, not ${w.version}`);
       await sleep(100);
     }
     throw new Refusal(`/api/health never answered ok for ${w.version}: ${last}`);
