@@ -1,8 +1,8 @@
 # Region index
 
-`public/app.js` (12,190 lines) and `src/engine.js` (12,035 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
+`public/app.js` (12,241 lines) and `src/engine.js` (12,035 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
 
-`node scripts/region-index.mjs` generates this page at commit [`8b67a6e`](https://github.com/grunion-ai/weave/tree/8b67a6ee8199523eb5e51b6f0a077e45928cdb52), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
+`node scripts/region-index.mjs` generates this page at commit [`d8557c3`](https://github.com/grunion-ai/weave/tree/d8557c3355f5e5f1666e54bbb551bf6b433f6c09), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
 
 ## Grid behaviours
 
@@ -17,11 +17,11 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | Which columns are drawn | `visibleCols` 6583-6587, `gridFields` 5094-5103, `fieldVisibilityPopover` 6378-6563, `dropDrawnColumn` 6565-6574 |
 | Only the rows near the viewport are in the DOM | `public/grid-window.js` 1-57, `rewindow` 7512-7523 in `renderTable`, `paint` 7478-7511 in `renderTable`, `renderTable` 6590-8070 (1,481 lines, 8 regions below) |
 | The next page is fetched as the reader scrolls | `gridPager` 5123-5169, `WeaveGridWindow.feedFor` public/grid-window.js 27-33 |
-| The loading state | `gridHold` 11123-11128, `paintGridWait` 11134-11149, `showGridLoader` 11166-11180, `hideGridLoader` 11181-11185, `resetGridWait` 11186-11192 |
+| The loading state | `gridHold` 11174-11179, `paintGridWait` 11185-11200, `showGridLoader` 11217-11231, `hideGridLoader` 11232-11236, `resetGridWait` 11237-11243 |
 | A cell rests, opens and commits | `activateCell` 2597-2617, `openCellPicker` 2588-2595, `editorFor` 4188-4523 (336 lines, 2 regions below) |
-| A commit writes and the grid catches up | `renderTable` 6590-8070 (1,481 lines, 8 regions below), `patchRows` 7560-7587 in `renderTable`, `refreshView` 10891-10896, `undoPatch` 10866-10871, `bulkPatch` 5079-5083 |
-| A write in the docked pane reaches the row behind it | `surfaceBehind` 9524-9524 in `renderEntityView`, `tellSurface` 9525-9525 in `renderEntityView`, `docSaved` 9526-9530 in `renderEntityView` |
-| A new row is added and takes focus | `newRowTray` 11399-11493, `focusNewRow` 2678-2700, `focusGridRow` 10898-10902 |
+| A commit writes and the grid catches up | `renderTable` 6590-8070 (1,481 lines, 8 regions below), `patchRows` 7560-7587 in `renderTable`, `refreshView` 10942-10947, `undoPatch` 10917-10922, `bulkPatch` 5079-5083 |
+| A write in the docked pane reaches the row behind it | `surfaceBehind` 9544-9544 in `renderEntityView`, `tellSurface` 9545-9545 in `renderEntityView`, `docSaved` 9546-9550 in `renderEntityView` |
+| A new row is added and takes focus | `newRowTray` 11450-11544, `focusNewRow` 2678-2700, `focusGridRow` 10949-10953 |
 | Focus and scroll survive a redraw | `rememberGridFocus` 2147-2156, `restoreGridFocus` 2158-2172, `keepScroll` 8682-8701 |
 | The keyboard moves the cursor | `public/grid-keymap.js` 1-106, `gridMoves` 5085-5092 |
 | A range is selected, copied and filled | `public/grid-range.js` 1-192, `public/selection-core.js` 1-62, `repaintRange` 6620-6620 in `renderTable`, `paintSelection` 6631-6650 in `renderTable` |
@@ -35,9 +35,9 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | The view pane that configures all four | `renderViewPane` 5794-5863, `paneFilters` 5732-5752, `paneWrite` 5498-5509 |
 | Footer totals | `rollupCells` 5620-5622, `footStatLists` 5659-5684, `footRollupWrite` 5685-5710 |
 | A row becomes a card on a phone | `public/phone-row.js` 1-101, `phoneRowOf` 2904-2909, `phoneLeadEl` 2910-2921, `fitPhoneChipLines` 2930-2961 |
-| The phone action bar | `installPhoneBar` 11330-11343, `syncPhoneBar` 11494-11505 |
+| The phone action bar | `installPhoneBar` 11381-11394, `syncPhoneBar` 11545-11556 |
 | Which fields the card shows | `phoneRowPopover` 5392-5465 |
-| A related table on a record page | `relatedGrid` 10337-10461, `subtableOf` 10463-10471, `subtableChips` 10474-10482, `subtablePopover` 10484-10518 |
+| A related table on a record page | `relatedGrid` 10358-10482, `subtableOf` 10484-10492, `subtableChips` 10495-10503, `subtablePopover` 10505-10539 |
 
 ## public/app.js
 
@@ -94,26 +94,26 @@ A name with no file is in `public/app.js`, and "in" names the function a declara
 | 8458-8652 | `fieldMenuButton`, `measureCtx`, `textWidth`, `dateControl`, `dateStoreFns`, `rangeControl`, `calendarGlyph`, `segCtl`, `lazyScripts`, `workflowCells`, `lazyScript`, `warmDatePicker`, `withDatePicker`, `openForms`, `openInvite`, `settingsView`, `openTrash`, `openSettings`, `openDeleteWorkspace`, `boardView`, `openFieldDialog` |
 | 8653-8833 | `fieldConfigToast`, `rolledBackText`, `SCROLL_PANES`, `keepScroll`, `editFieldDialog`, `reorderBlocks`, `reorderField`, `addFieldMenuButton`, `FOOT_LABELS`, `FOOT_NUMERIC`, `footPickerLabel`, `footAggregatesFor`, `spaceRollupName`, `RATING_SCALE_FOOT`, `spaceRollupEntry`, `renderFooter`, `fillFooter` |
 | 8834-9023 | `footerPicker`, `spaceStatTiles`, `showSpace`, `appendSpaceDetails`, `systemSpaceNote`, `useTemplateButton`, `useTemplateDialog` |
-| 9024-9220 | `spaceTablesCard`, `relationMap`, `relationMapCard`, `liveEditors`, `pendingDocSaves`, `docPulls`, `vditorTheme`, `vditorLoading`, `loadVditor`, `docBubbles`, `REF_CHIP_DEBOUNCE`, `refChipLayers`, `docCodeAuto`, `docCodeRaw`, `scrollRest`, `scrollMoved`, `resizeFrame`, `DASH_READING_LINE`, `docRails`, `attachDashRail`, `headText`, `sectionTexts`, `refreshDashRail`, `docFolds`, `DOC_DECOR`, `docFoldState` |
-| 9221-9411 | `attachHeadingFolds`, `refreshHeadingFolds`, `__weaveEditors`, `__weaveDocSaves`, `__weaveFlushDocSaves`, `retheme`, `docBases`, `docBaseOf`, `noteDocBase`, `sendDoc`, `docConflict`, `scheduleDocSave`, `flushDocSave`, `whenEl`, `flushDocSaves`, `leaveDocs`, `teardownDocEditors`, `dropDecor`, `docSectionCollapse`, `foldCaret`, `appearsAsPanel` |
-| 9412-9481 | `showEntity`, `nextStateButton`, `nextStateFor`, `pageGo`, `entityHop`, `entityRefs` |
-| 9482-9632 | in `renderEntityView`: `repaint`, `holds`, `holdsDoc`, `asNode`, `streamed`, `surfaceBehind`, `tellSurface`, `docSaved`, `frame`, `saved`, `recordCtx`, `openEye`, `drawFab`, `shownRefPanels`, `openSide` |
-| 9633-9824 | in `renderEntityView`: `docSection`, `relationCount`, `coverEl`, `placeCover`, `anchor`, `restingGrip`, `handle`, `wireBlock` |
-| 9825-10020 | in `renderEntityView`: `dragRow`, `named`, `drawFiles` |
-| 10021-10063 | in `renderEntityView`: `refCard`, `drawRefs` |
-| 10064-10219 | `activityPanel`, `quickCreate`, `newUserDialog`, `tableTray`, `runStarter`, `emptyWorkspace`, `onboardingAsked`, `maybeOnboard` |
-| 10220-10336 | `onboard`, `SCHEMA_OPEN_KEY`, `schemaDisclosure`, `fieldTray`, `addFieldDialog` |
-| 10337-10526 | `relatedGrid`, `subtableOf`, `chipTriple`, `subtableChips`, `subtableWrites`, `subtablePopover`, `ACTIVITY_PAGE`, `openActivityLog` |
-| 10527-10698 | `showView`, `homeReads`, `bootHomeReads`, `workspaceSystemCard`, `savedPagesCard`, `showHome`, `appendWorkspaceDetails`, `ROLE_LABELS`, `currentWsName`, `RECENT_KEY`, `RECENT_KEEP`, `readRecents`, `noteRecent`, `noteEntityRecent`, `marked`, `wireSearchButton`, `openPalette`, `relationTargets` |
-| 10699-10897 | `linkSearch`, `gestures`, `GESTURE_CAP`, `UNDO_WINDOW`, `CLAIM_CAP`, `UNDO_REFUSED`, `keptLine`, `undoToast`, `undoKey`, `pendingClaims`, `looseIds`, `ENTITY_UNDO`, `BULK_UNDO`, `undoEntriesOf`, `newGesture`, `noteWrite`, `pinClaims`, `claimOwn`, `undoQueue`, `undoOwn`, `stepBackOwn`, `unlinkWithUndo`, `undoPatch`, `undoGesture`, `refreshView` |
-| 10898-11083 | `focusGridRow`, `KEY_SHEET_ANYWHERE`, `KEY_SHEET_TABLE`, `openKeySheet`, `LOADER_CYCLE_MS`, `LOADER_SHOW_AFTER_MS`, `LOADER_POSE_FROM`, `LOADER_POSE_TO`, `LOADER_EXIT_RATE`, `LOADER_HOLD_MS`, `LOADER_FADE_MS`, `SKELETON_SHOW_AFTER_MS`, `LOADER_CAPTION_AFTER_MS`, `LOADER_RETRY_AFTER_MS`, `LOADER_CAPTION_TEXT`, `LOADER_RETRY_LABEL`, `loading`, `initPageLoader`, `showPageLoader`, `paintLoaderWait`, `paintLoaderRetry`, `clearLoaderWait`, `hidePageLoader`, `stillLoader`, `ropeAnimations`, `settleLoader`, `keepLoader` |
-| 11084-11265 | `withPageLoader`, `gridWait`, `gridHold`, `markGridWait`, `paintGridWait`, `gridLoaderNode`, `placeGridLoader`, `showGridLoader`, `hideGridLoader`, `resetGridWait`, `paintSkeleton`, `skeleton`, `scheduleSkeleton`, `cancelSkeleton`, `syncDocTitle`, `renderRoute`, `rememberRoute`, `navDraw`, `navOwns` |
-| 11266-11398 | `dispatchRoute`, `paintRouteError`, `renderRouteSafely`, `installPhoneBar`, `NEW_ROW_CHOICES`, `NEW_ROW_OPTIONS`, `rowNoun`, `sheetGrip` |
-| 11399-11551 | `newRowTray`, `syncPhoneBar`, `ensureNavMenu`, `route`, `redock` |
-| 11552-11719 | `buildWsRail`, `wsSpec`, `servesBareRoot`, `bareRootWs`, `wsHref`, `wsApiPrefix`, `wsApi`, `wsLogoButton`, `uploadWorkspaceLogo`, `removeWorkspaceLogo`, `wireWsNew`, `tightShell`, `navPeekDwell`, `closeNavPeek`, `showNavCollapsed`, `setNavCollapsed` |
-| 11720-11909 | `wireNavCollapse`, `NAV_WIDTH`, `wireNavResize`, `NAV_KEY_OWNERS`, `wireNavHold`, `labelNavMenu` |
-| 11910-12057 | `navMenuButton`, `wireSkipLink`, `THEME_ICONS`, `THEME_LABELS`, `THEME_MEDIA`, `themePref`, `applyTheme`, `cycleTheme`, `wireTheme`, `syncSchema`, `bugGlyph`, `bugRecorder`, `bugDraft`, `installBugReporter`, `bugTrigger`, `closeBugPanel` |
-| 12058-12190 | `openBugPanel` |
+| 9024-9191 | `spaceTablesCard`, `relationMap`, `relationMapCard`, `liveEditors`, `pendingDocSaves`, `docPulls`, `vditorTheme`, `vditorLoading`, `loadVditor`, `crepeLoading`, `loadCrepe`, `docEditorKind`, `docBubbles`, `REF_CHIP_DEBOUNCE`, `refChipLayers`, `docCodeAuto`, `docCodeRaw`, `scrollRest`, `scrollMoved`, `resizeFrame`, `DASH_READING_LINE`, `docRails`, `attachDashRail`, `headText`, `sectionTexts` |
+| 9192-9391 | `refreshDashRail`, `docFolds`, `DOC_DECOR`, `docFoldState`, `attachHeadingFolds`, `refreshHeadingFolds`, `__weaveEditors`, `__weaveDocSaves`, `__weaveFlushDocSaves`, `retheme`, `docBases`, `docBaseOf`, `noteDocBase`, `sendDoc`, `docConflict`, `scheduleDocSave`, `flushDocSave`, `whenEl`, `flushDocSaves`, `leaveDocs`, `teardownDocEditors`, `dropDecor`, `docSectionCollapse` |
+| 9392-9501 | `foldCaret`, `appearsAsPanel`, `showEntity`, `nextStateButton`, `nextStateFor`, `pageGo`, `entityHop`, `entityRefs` |
+| 9502-9652 | in `renderEntityView`: `repaint`, `holds`, `holdsDoc`, `asNode`, `streamed`, `surfaceBehind`, `tellSurface`, `docSaved`, `frame`, `saved`, `recordCtx`, `openEye`, `drawFab`, `shownRefPanels`, `openSide` |
+| 9653-9845 | in `renderEntityView`: `docSection`, `relationCount`, `coverEl`, `placeCover`, `anchor`, `restingGrip`, `handle`, `wireBlock` |
+| 9846-10041 | in `renderEntityView`: `dragRow`, `named`, `drawFiles` |
+| 10042-10084 | in `renderEntityView`: `refCard`, `drawRefs` |
+| 10085-10240 | `activityPanel`, `quickCreate`, `newUserDialog`, `tableTray`, `runStarter`, `emptyWorkspace`, `onboardingAsked`, `maybeOnboard` |
+| 10241-10357 | `onboard`, `SCHEMA_OPEN_KEY`, `schemaDisclosure`, `fieldTray`, `addFieldDialog` |
+| 10358-10547 | `relatedGrid`, `subtableOf`, `chipTriple`, `subtableChips`, `subtableWrites`, `subtablePopover`, `ACTIVITY_PAGE`, `openActivityLog` |
+| 10548-10742 | `showView`, `homeReads`, `bootHomeReads`, `workspaceSystemCard`, `savedPagesCard`, `showHome`, `appendWorkspaceDetails`, `ROLE_LABELS`, `currentWsName`, `RECENT_KEY`, `RECENT_KEEP`, `readRecents`, `noteRecent`, `noteEntityRecent`, `marked`, `wireSearchButton`, `paletteShell`, `openPalette` |
+| 10743-10941 | `relationTargets`, `linkSearch`, `gestures`, `GESTURE_CAP`, `UNDO_WINDOW`, `CLAIM_CAP`, `UNDO_REFUSED`, `keptLine`, `undoToast`, `undoKey`, `pendingClaims`, `looseIds`, `ENTITY_UNDO`, `BULK_UNDO`, `undoEntriesOf`, `newGesture`, `noteWrite`, `pinClaims`, `claimOwn`, `undoQueue`, `undoOwn`, `stepBackOwn`, `unlinkWithUndo`, `undoPatch`, `undoGesture` |
+| 10942-11134 | `refreshView`, `focusGridRow`, `KEY_SHEET_ANYWHERE`, `KEY_SHEET_TABLE`, `openKeySheet`, `LOADER_CYCLE_MS`, `LOADER_SHOW_AFTER_MS`, `LOADER_POSE_FROM`, `LOADER_POSE_TO`, `LOADER_EXIT_RATE`, `LOADER_HOLD_MS`, `LOADER_FADE_MS`, `SKELETON_SHOW_AFTER_MS`, `LOADER_CAPTION_AFTER_MS`, `LOADER_RETRY_AFTER_MS`, `LOADER_CAPTION_TEXT`, `LOADER_RETRY_LABEL`, `loading`, `initPageLoader`, `showPageLoader`, `paintLoaderWait`, `paintLoaderRetry`, `clearLoaderWait`, `hidePageLoader`, `stillLoader`, `ropeAnimations`, `settleLoader`, `keepLoader` |
+| 11135-11316 | `withPageLoader`, `gridWait`, `gridHold`, `markGridWait`, `paintGridWait`, `gridLoaderNode`, `placeGridLoader`, `showGridLoader`, `hideGridLoader`, `resetGridWait`, `paintSkeleton`, `skeleton`, `scheduleSkeleton`, `cancelSkeleton`, `syncDocTitle`, `renderRoute`, `rememberRoute`, `navDraw`, `navOwns` |
+| 11317-11449 | `dispatchRoute`, `paintRouteError`, `renderRouteSafely`, `installPhoneBar`, `NEW_ROW_CHOICES`, `NEW_ROW_OPTIONS`, `rowNoun`, `sheetGrip` |
+| 11450-11602 | `newRowTray`, `syncPhoneBar`, `ensureNavMenu`, `route`, `redock` |
+| 11603-11770 | `buildWsRail`, `wsSpec`, `servesBareRoot`, `bareRootWs`, `wsHref`, `wsApiPrefix`, `wsApi`, `wsLogoButton`, `uploadWorkspaceLogo`, `removeWorkspaceLogo`, `wireWsNew`, `tightShell`, `navPeekDwell`, `closeNavPeek`, `showNavCollapsed`, `setNavCollapsed` |
+| 11771-11960 | `wireNavCollapse`, `NAV_WIDTH`, `wireNavResize`, `NAV_KEY_OWNERS`, `wireNavHold`, `labelNavMenu` |
+| 11961-12108 | `navMenuButton`, `wireSkipLink`, `THEME_ICONS`, `THEME_LABELS`, `THEME_MEDIA`, `themePref`, `applyTheme`, `cycleTheme`, `wireTheme`, `syncSchema`, `bugGlyph`, `bugRecorder`, `bugDraft`, `installBugReporter`, `bugTrigger`, `closeBugPanel` |
+| 12109-12241 | `openBugPanel` |
 
 ## src/engine.js
 

@@ -1,1 +1,0 @@
-- Tab in a document list item nests it under the item above and Shift+Tab moves it back out; Tab in a paragraph types a tab, and Escape then Tab still moves focus out of the editor (Issue #1888).
