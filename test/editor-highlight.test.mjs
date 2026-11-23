@@ -17,7 +17,10 @@ function slashInsert(label) {
 }
 
 test('the slash Code block leaves the language to the content', () => {
-  assert.equal(slashInsert('Code block'), '```\\ncode\\n```', 'no language is guessed at insert time');
+  const marker = slashInsert('Code block');
+  const deferred = APP.split('\n').find((l) => l.startsWith(`  '${marker}':`));
+  assert.ok(deferred, 'the Code block marker is a deferred insert');
+  assert.match(deferred, /md: '```\\ncode\\n```'/, 'no language is guessed at insert time');
   assert.match(APP, /detectCodeLanguage\(text\)/, 'something has to do the detecting');
 });
 
