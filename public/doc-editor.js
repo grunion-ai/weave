@@ -1041,7 +1041,7 @@ function pickReference(editor, value, marker, kind, onInput) {
   });
 }
 
-const crepeMarkdown = (md) => String(md ?? '').replace(/\\\[\\\[/g, '[[');
+const crepeMarkdown = (md) => String(md ?? '').replace(/\\\[\\\[/g, '[[').replace(/\[\[([^[\]\n]*?)\\\]\\\]/g, '[[$1]]');
 
 const CREPE_REF_RE = /\[\[([^[\]\n]+)\]\]/g;
 
@@ -1064,7 +1064,7 @@ function crepePickReference(view, from, to, kind) {
   });
 }
 
-function crepeReferences(M) {
+function referencesPlugin(M) {
   const key = new M.PluginKey('weave-references');
   const chip = (hit) => {
     const span = document.createElement('span');
@@ -1097,7 +1097,7 @@ function crepeReferences(M) {
     });
     return [...refs];
   };
-  return M.$prose(() => new M.Plugin({
+  return new M.Plugin({
     key,
     props: {
       decorations: decorate,
@@ -1121,11 +1121,11 @@ function crepeReferences(M) {
         destroy: () => { live = false; },
       };
     },
-  }));
+  });
 }
 
-function crepeBlockMarks(M, key) {
-  return M.$prose(() => new M.Plugin({
+function blockMarksPlugin(M, key) {
+  return new M.Plugin({
     key,
     state: { init: () => [], apply: (tr, marks) => tr.getMeta(key) ?? marks },
     props: {
@@ -1140,7 +1140,7 @@ function crepeBlockMarks(M, key) {
         return M.DecorationSet.create(state.doc, decos);
       },
     },
-  }));
+  });
 }
 
 function crepeDividerBelow(M) {
@@ -1184,8 +1184,8 @@ for (const type of ['wheel', 'touchstart', 'pointerdown']) {
 }
 addEventListener('keydown', (e) => { if (e.key === 'PageUp' || e.key === 'PageDown') crepeScrolledAt = performance.now(); }, true);
 const CREPE_HOLD_DRIFT_PX = 40;
-function crepeHoldScroll(M, host) {
-  return M.$prose(() => new M.Plugin({
+function holdScrollPlugin(M, host) {
+  return new M.Plugin({
     view: () => ({
       update: (view, prev) => {
         if (prev.doc.eq(view.state.doc) && prev.selection.eq(view.state.selection)) return;
@@ -1204,7 +1204,7 @@ function crepeHoldScroll(M, host) {
         requestAnimationFrame(pin);
       },
     }),
-  }));
+  });
 }
 
 function crepeReferenceMenu(M) {
@@ -1250,9 +1250,9 @@ function crepeCellCaret(M, crepe, root) {
   }, true);
 }
 
-function crepeCellClicks(M) {
+function cellClicksPlugin(M) {
   let view = null;
-  return M.$prose(() => new M.Plugin({
+  return new M.Plugin({
     view: (v) => { view = v; return {}; },
     appendTransaction: (trs, old, state) => {
       const click = crepeCellClick;
@@ -1273,7 +1273,7 @@ function crepeCellClicks(M) {
         return true;
       },
     },
-  }));
+  });
 }
 
 function crepeSourceKeeper(M, ctx, source) {
@@ -1301,6 +1301,11 @@ function crepeSourceKeeper(M, ctx, source) {
     return parts.join('\n\n') + end;
   };
 }
+
+const crepeReferences = (M) => M.$prose(() => referencesPlugin(M));
+const crepeBlockMarks = (M, key) => M.$prose(() => blockMarksPlugin(M, key));
+const crepeHoldScroll = (M, host) => M.$prose(() => holdScrollPlugin(M, host));
+const crepeCellClicks = (M) => M.$prose(() => cellClicksPlugin(M));
 
 function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
   const M = globalThis.WeaveCrepe;
@@ -1398,5 +1403,390 @@ function mountCrepeEditor(host, { value, entityId, placeholder, onInput: hand, o
     if (v !== handed) { handed = v; hand(v); }
   });
   liveEditors.add(editor);
+  return editor;
+}
+
+const TIPTAP_SLASH = [
+  { group: 'Basic', key: 'text', label: 'Text', glyph: 'T', aliases: ['paragraph', 'plain'], run: (c) => c.setParagraph() },
+  { group: 'Basic', key: 'h1', label: 'Heading 1', glyph: 'H1', aliases: ['title', 'h1'], run: (c) => c.setHeading({ level: 1 }) },
+  { group: 'Basic', key: 'h2', label: 'Heading 2', glyph: 'H2', aliases: ['subtitle', 'h2'], run: (c) => c.setHeading({ level: 2 }) },
+  { group: 'Basic', key: 'h3', label: 'Heading 3', glyph: 'H3', aliases: ['h3'], run: (c) => c.setHeading({ level: 3 }) },
+  { group: 'Basic', key: 'quote', label: 'Quote', glyph: '❝', aliases: ['blockquote', 'cite'], run: (c) => c.toggleBlockquote() },
+  { group: 'Lists', key: 'bullet', label: 'Bullet list', glyph: '•', aliases: ['ul', 'list', 'unordered'], run: (c) => c.toggleBulletList() },
+  { group: 'Lists', key: 'ordered', label: 'Numbered list', glyph: '1.', aliases: ['ol', 'ordered', 'number'], run: (c) => c.toggleOrderedList() },
+  { group: 'Lists', key: 'task', label: 'Task list', glyph: '☐', aliases: ['todo', 'checkbox', 'check'], run: (c) => c.toggleTaskList() },
+  { group: 'Insert', key: 'divider', label: 'Divider', glyph: '—', aliases: ['hr', 'rule', 'line', 'separator'], run: (c) => c.insertContent([{ type: 'horizontalRule' }, { type: 'paragraph' }]) },
+  { group: 'Insert', key: 'code', label: 'Code block', glyph: '{ }', aliases: ['pre', 'fence', 'snippet'], run: (c) => c.toggleCodeBlock() },
+  { group: 'Insert', key: 'table', label: 'Table', glyph: '▦', aliases: ['grid'], run: (c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }) },
+  { group: 'Insert', key: 'file', label: 'Image or file', glyph: '↑', aliases: ['upload', 'image', 'picture', 'photo', 'attach'], file: true },
+  { group: 'Reference', key: 'entity', label: 'Entity', icon: CREPE_REF_ICONS.entity, aliases: ['record', 'row', 'mention', 'link entity'], ref: 'entity' },
+  { group: 'Reference', key: 'table-ref', label: 'Table', icon: CREPE_REF_ICONS.table, aliases: ['database', 'link table'], ref: 'table' },
+  { group: 'Reference', key: 'space', label: 'Space / workspace', icon: CREPE_REF_ICONS.space, aliases: ['link space', 'workspace'], ref: 'space' },
+];
+
+function tiptapSlashItems(query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return TIPTAP_SLASH;
+  return TIPTAP_SLASH.filter((i) => [i.label, ...i.aliases].some((w) => w.toLowerCase().includes(q)));
+}
+
+function tiptapSlashMenu() {
+  let box = null;
+  let items = [];
+  let at = 0;
+  let pick = () => {};
+  const keepInView = () => {
+    const row = box.querySelector('.wv-slash-row.on');
+    if (!row) return;
+    const head = row.previousElementSibling?.classList.contains('wv-slash-group') ? row.previousElementSibling : row;
+    if (head.offsetTop < box.scrollTop) box.scrollTop = head.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight;
+  };
+  const paint = () => {
+    const rows = [];
+    let group = null;
+    items.forEach((item, i) => {
+      if (item.group !== group) {
+        group = item.group;
+        rows.push(el('div', { class: 'wv-slash-group' }, group));
+      }
+      const mark = el('span', { class: 'wv-slash-mark' });
+      if (item.icon) mark.append(new DOMParser().parseFromString(item.icon, 'image/svg+xml').documentElement);
+      else mark.textContent = item.glyph;
+      rows.push(el('div', {
+        class: 'wv-slash-row' + (i === at ? ' on' : ''),
+        role: 'option',
+        'aria-selected': i === at ? 'true' : 'false',
+        onmousedown: (e) => e.preventDefault(),
+        onmousemove: () => { if (at !== i) { at = i; paint(); } },
+        onclick: () => pick(item),
+      }, mark, el('span', { class: 'wv-slash-label' }, item.label)));
+    });
+    if (!items.length) rows.push(el('div', { class: 'wv-slash-empty' }, 'No matching block'));
+    box.replaceChildren(...rows);
+    keepInView();
+  };
+  const place = (rect) => {
+    const r = rect?.();
+    if (!r) return;
+    const h = box.offsetHeight;
+    const below = innerHeight - r.bottom;
+    box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8))}px`;
+    box.style.top = `${below >= h + 12 || r.top < h + 12 ? r.bottom + 6 : r.top - h - 6}px`;
+  };
+  return {
+    onStart: (p) => {
+      box = el('div', { class: 'wv-slash', role: 'listbox' });
+      document.body.append(box);
+      items = p.items;
+      pick = p.command;
+      at = 0;
+      paint();
+      place(p.clientRect);
+    },
+    onUpdate: (p) => {
+      items = p.items;
+      pick = p.command;
+      at = Math.max(0, Math.min(at, items.length - 1));
+      paint();
+      place(p.clientRect);
+    },
+    onKeyDown: ({ event }) => {
+      if (!items.length) return false;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        at = (at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        paint();
+        return true;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        pick(items[at]);
+        return true;
+      }
+      return false;
+    },
+    onExit: () => { box?.remove(); box = null; },
+  };
+}
+
+function tiptapSlash(T, pickFiles) {
+  return T.Extension.create({
+    name: 'weaveSlash',
+    addProseMirrorPlugins() {
+      return [T.Suggestion({
+        editor: this.editor,
+        char: '/',
+        pluginKey: new T.PluginKey('weave-slash'),
+        allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
+        items: ({ query }) => tiptapSlashItems(query),
+        command: ({ editor, range, props: item }) => {
+          const chain = editor.chain().focus().deleteRange(range);
+          if (item.run) return item.run(chain).run();
+          chain.run();
+          if (item.file) return pickFiles();
+          crepePickReference(editor.view, range.from, range.from, item.ref);
+        },
+        render: tiptapSlashMenu,
+      })];
+    },
+  });
+}
+
+function tiptapRawHtml(T) {
+  return T.Node.create({
+    name: 'rawHtml',
+    group: 'block',
+    atom: true,
+    selectable: true,
+    draggable: true,
+    addAttributes: () => ({ html: { default: '' } }),
+    parseHTML: () => [{ tag: 'div[data-raw-html]', getAttrs: (d) => ({ html: d.getAttribute('data-raw-html') }) }],
+    renderHTML: ({ node }) => ['div', { 'data-raw-html': node.attrs.html, class: 'wv-raw-html' }, ['span', { class: 'wv-raw-html-tag' }, 'HTML'], ['code', {}, node.attrs.html]],
+    markdownTokenName: 'html',
+    parseMarkdown: (token) => {
+      const raw = String(token.raw ?? token.text ?? '');
+      if (token.block) return { type: 'rawHtml', attrs: { html: raw.replace(/\s+$/, '') } };
+      if (/^<br\s*\/?>$/i.test(raw.trim())) return { type: 'hardBreak' };
+      return { type: 'text', text: raw };
+    },
+    renderMarkdown: (node) => node.attrs.html,
+  });
+}
+
+const TIPTAP_BUBBLE = [
+  { key: 'bold', label: 'B', title: 'Bold', run: (c) => c.toggleBold() },
+  { key: 'italic', label: 'I', title: 'Italic', run: (c) => c.toggleItalic() },
+  { key: 'strike', label: 'S', title: 'Strikethrough', run: (c) => c.toggleStrike() },
+  { key: 'code', label: '</>', title: 'Inline code', run: (c) => c.toggleCode() },
+  { key: 'link', label: 'Link', title: 'Link' },
+  { key: 'heading', attrs: { level: 2 }, label: 'H2', title: 'Heading', run: (c) => c.toggleHeading({ level: 2 }) },
+  { key: 'blockquote', label: '❝', title: 'Quote', run: (c) => c.toggleBlockquote() },
+  { key: 'bulletList', label: '•', title: 'Bullet list', run: (c) => c.toggleBulletList() },
+  { key: 'taskList', label: '☐', title: 'Task list', run: (c) => c.toggleTaskList() },
+];
+
+function tiptapBubble() {
+  const bar = el('div', { class: 'wv-bubble', role: 'toolbar', 'aria-label': 'Format' });
+  let tt = null;
+  const buttons = TIPTAP_BUBBLE.map((b) => el('button', {
+    type: 'button',
+    class: 'wv-bubble-btn',
+    title: b.title,
+    'aria-label': b.title,
+    'data-mark': b.key,
+    onmousedown: (e) => e.preventDefault(),
+    onclick: () => (b.run ? b.run(tt.chain().focus()).run() : askLink()),
+  }, b.label));
+  const refresh = () => {
+    if (!tt) return;
+    TIPTAP_BUBBLE.forEach((b, i) => buttons[i].classList.toggle('on', tt.isActive(b.key, b.attrs)));
+  };
+  const askLink = () => {
+    if (tt.isActive('link')) return tt.chain().focus().extendMarkRange('link').unsetLink().run();
+    const input = el('input', { class: 'wv-bubble-link', type: 'url', placeholder: 'Paste a link, then Return', 'aria-label': 'Link address' });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const href = input.value.trim();
+        bar.replaceChildren(...buttons);
+        if (href) tt.chain().focus().extendMarkRange('link').setLink({ href }).run();
+        else tt.commands.focus();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        bar.replaceChildren(...buttons);
+        tt.commands.focus();
+      }
+    });
+    bar.replaceChildren(input);
+    input.focus();
+  };
+  bar.append(...buttons);
+  return {
+    el: bar,
+    bind: (editor) => {
+      tt = editor;
+      editor.on('selectionUpdate', refresh);
+      editor.on('transaction', refresh);
+    },
+  };
+}
+
+function tiptapGrip() {
+  const grip = el('div', { class: 'wv-drag', title: 'Drag to move', 'aria-hidden': 'true' });
+  grip.innerHTML = '<svg viewBox="0 0 10 16" width="10" height="16"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></svg>';
+  return grip;
+}
+
+function tiptapSourceKeeper(tt, source) {
+  const trimmed = (list) => {
+    const out = [...list];
+    while (out.length && out.at(-1).type === 'paragraph' && !out.at(-1).content?.length) out.pop();
+    return out;
+  };
+  const blocksOf = (doc) => {
+    const out = [];
+    doc.forEach((n) => out.push(n));
+    while (out.length && out.at(-1).type.name === 'paragraph' && !out.at(-1).content.size) out.pop();
+    return out;
+  };
+  const units = [];
+  let at = 0;
+  for (const t of tt.markdown.instance.lexer(source)) {
+    if (t.type !== 'space' && t.type !== 'def') {
+      const count = trimmed(tt.markdown.parse(t.raw).content ?? []).length;
+      if (count) units.push({ from: at, to: at + t.raw.replace(/\s+$/, '').length, count });
+    }
+    at += t.raw.length;
+  }
+  const was = blocksOf(tt.state.doc);
+  if (units.reduce((n, u) => n + u.count, 0) !== was.length) return () => null;
+  const text = (nodes) => tt.markdown.serialize({ type: 'doc', content: nodes.map((n) => n.toJSON()) });
+  const owner = [];
+  units.forEach((u, k) => { for (let c = 0; c < u.count; c++) owner.push(k); });
+  const wasText = [];
+  const alike = (a, i, b, j) => a[i].eq(b[j]) || (a[i].type === b[j].type && (wasText[i] ??= text([a[i]])) === text([b[j]]));
+  return (next, clean) => {
+    const now = blocksOf(next);
+    const n = was.length;
+    const m = now.length;
+    const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        lcs[i][j] = alike(was, i, now, j) ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+      }
+    }
+    const matchOf = new Int32Array(n).fill(-1);
+    for (let i = 0, j = 0; i < n && j < m;) {
+      if (alike(was, i, now, j) && lcs[i][j] === lcs[i + 1][j + 1] + 1) { matchOf[i] = j; i++; j++; }
+      else if (lcs[i + 1][j] >= lcs[i][j + 1]) i++;
+      else j++;
+    }
+    const keptAt = new Map();
+    let first = 0;
+    units.forEach((u, k) => {
+      const start = matchOf[first];
+      let whole = start >= 0;
+      for (let c = 1; whole && c < u.count; c++) whole = matchOf[first + c] === start + c;
+      if (whole) keptAt.set(start, k);
+      first += u.count;
+    });
+    if (keptAt.size === units.length && m === n) return source;
+    const pieces = [];
+    let run = [];
+    const flush = () => {
+      if (!run.length) return;
+      pieces.push({ text: clean(text(run)).replace(/\n+$/, '') });
+      run = [];
+    };
+    for (let j = 0; j < m;) {
+      const k = keptAt.get(j);
+      if (k === undefined) { run.push(now[j]); j++; continue; }
+      flush();
+      pieces.push({ unit: k, text: source.slice(units[k].from, units[k].to) });
+      j += units[k].count;
+    }
+    flush();
+    let out = '';
+    pieces.forEach((p, i) => {
+      const prev = pieces[i - 1];
+      if (i) out += prev.unit !== undefined && p.unit === prev.unit + 1 ? source.slice(units[prev.unit].to, units[p.unit].from) : '\n\n';
+      else if (p.unit === 0) out += source.slice(0, units[0].from);
+      out += p.text;
+    });
+    const last = pieces.at(-1);
+    return out + (last?.unit === units.length - 1 ? source.slice(units.at(-1).to) || '\n' : '\n');
+  };
+}
+
+function mountTiptapEditor(host, { value, entityId, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
+  const T = globalThis.WeaveTiptap;
+  const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(crepeMarkdown(v));
+  const root = document.createElement('div');
+  root.className = 'wv-tiptap';
+  host.append(root);
+  const marksKey = new T.PluginKey('weave-block-marks');
+  const bubble = tiptapBubble();
+  let handed = stored(value ?? '');
+  let keep = () => null;
+  let editor = null;
+  const pickFiles = () => {
+    const input = el('input', { type: 'file', multiple: true, hidden: true });
+    input.addEventListener('change', () => { if (input.files?.length) uploadDocFiles(input.files, entityId, () => editor, hand, host); input.remove(); });
+    document.body.append(input);
+    input.click();
+  };
+  const tt = new T.Editor({
+    element: root,
+    editable: !readOnly,
+    injectCSS: false,
+    content: value ?? '',
+    contentType: 'markdown',
+    extensions: [
+      T.StarterKit.configure({ codeBlock: false, link: { openOnClick: false, autolink: true } }),
+      T.CodeBlockLowlight.configure({ lowlight: T.createLowlight(T.common) }),
+      T.TaskList,
+      T.TaskItem.configure({ nested: true }),
+      T.TableKit.configure({ table: { resizable: false } }),
+      T.Image,
+      T.Placeholder.configure({ placeholder: placeholder ?? '' }),
+      T.Markdown,
+      tiptapRawHtml(T),
+      T.BubbleMenu.configure({
+        element: bubble.el,
+        shouldShow: ({ editor: ed, state }) => ed.isEditable && !state.selection.empty && !state.selection.node,
+      }),
+      T.DragHandle.configure({ render: tiptapGrip }),
+      tiptapSlash(T, pickFiles),
+      T.Extension.create({
+        name: 'weavePlugins',
+        addProseMirrorPlugins: () => [referencesPlugin(T), blockMarksPlugin(T, marksKey), holdScrollPlugin(T, host)],
+      }),
+    ],
+  });
+  bubble.bind(tt);
+  keep = tiptapSourceKeeper(tt, value ?? '');
+  const current = () => keep(tt.state.doc, stored) ?? stored(tt.getMarkdown());
+  const push = () => {
+    const v = current();
+    if (v !== handed) { handed = v; hand(v); }
+  };
+  tt.on('update', push);
+  if (onBlur) tt.on('blur', () => onBlur());
+  editor = {
+    tiptap: tt,
+    getValue: current,
+    setValue: (md) => {
+      handed = stored(md);
+      tt.commands.setContent(md, { contentType: 'markdown', emitUpdate: false });
+      keep = tiptapSourceKeeper(tt, md);
+    },
+    insertValue: (md) => {
+      tt.chain().focus().insertContent(md, { contentType: 'markdown' }).run();
+      const { selection, doc } = tt.state;
+      if (selection.node) tt.view.dispatch(tt.state.tr.setSelection(T.TextSelection.near(doc.resolve(selection.to))));
+    },
+    focus: () => tt.commands.focus(),
+    setTheme: () => {},
+    destroy: () => { liveEditors.delete(editor); tt.destroy(); bubble.el.remove(); root.remove(); },
+  };
+  root.weaveMarkBlocks = (marks) => {
+    const now = marksKey.getState(tt.state);
+    if (now.length === marks.length && now.every((m, i) => m === marks[i])) return;
+    tt.view.dispatch(tt.state.tr.setMeta(marksKey, marks));
+  };
+  const takeFiles = (e, data) => {
+    if (readOnly || !data?.files?.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    uploadDocFiles(data.files, entityId, () => editor, hand, host);
+  };
+  root.addEventListener('paste', (e) => takeFiles(e, e.clipboardData), true);
+  root.addEventListener('drop', (e) => takeFiles(e, e.dataTransfer), true);
+  host.addEventListener('focusout', () => { push(); flushDocSaves(); });
+  docPulls.set(editor, push);
+  liveEditors.add(editor);
+  queueMicrotask(() => {
+    scheduleDecorFor(host);
+    if (autoFocus && !readOnly) tt.commands.focus('end');
+  });
   return editor;
 }

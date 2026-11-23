@@ -482,6 +482,7 @@ README screenshots are regenerated with `node scripts/screenshots.mjs`.
 - [decklet](https://github.com/grunion-ai/decklet) 0.3.3+cf73916 (the slide engine, pinned by commit), MIT
 - [Lobe Icons](https://github.com/lobehub/lobe-icons) 1.95.1 (brand marks), MIT © LobeHub
 - [Milkdown Crepe](https://github.com/Milkdown/milkdown) 7.23.0 (the document editor behind the `weave.editor` switch, bundled with its MIT, ISC, BSD and MPL-2.0 OR Apache-2.0 dependencies listed in `public/vendor/crepe/THIRD-PARTY.txt`), MIT © Mirone (full text in `public/vendor/crepe/LICENSE`)
+- [Tiptap](https://github.com/ueberdosis/tiptap) 3.35.0 (the document editor behind `weave.editor` = `tiptap`, bundled with ProseMirror, marked, lowlight and highlight.js; the 54 packages and their MIT and BSD-3-Clause licenses are in `public/vendor/tiptap/THIRD-PARTY.txt`), MIT © Tiptap GmbH (full text in `public/vendor/tiptap/LICENSE`)
 <!-- third-party:end -->
 
 ## Security
