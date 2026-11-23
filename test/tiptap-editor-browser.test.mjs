@@ -40,7 +40,7 @@ for (const engine of ['chromium', 'webkit']) {
   if (!s) continue;
   const { base, browser, weave } = s;
   const ROOT = '.wv-tiptap .ProseMirror[contenteditable="true"]';
-  const MOD = engine === 'webkit' || process.platform === 'darwin' ? 'Meta' : 'Control';
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
   async function open(name, doc = '', viewport = { width: 1280, height: 800 }) {
     const e = weave.createEntity(tableRef, { name });
