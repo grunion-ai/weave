@@ -1042,6 +1042,108 @@ function pickReference(editor, value, marker, kind, onInput) {
 
 const crepeMarkdown = (md) => String(md ?? '').replace(/\\\[\\\[/g, '[[');
 
+const CREPE_REF_RE = /\[\[([^[\]\n]+)\]\]/g;
+
+const CREPE_REF_ICONS = {
+  entity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M11 4 7 20M17 4l-4 16"/></svg>',
+  table: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></svg>',
+  space: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
+};
+
+function crepePickReference(view, from, to, kind) {
+  const { kinds, placeholder } = REF_KINDS[kind] ?? REF_KINDS.entity;
+  openPalette({
+    kinds,
+    placeholder,
+    onPick: (hit) => {
+      view.dispatch(view.state.tr.insertText(referenceFor(kind, hit), from, to));
+      view.focus();
+    },
+    onDismiss: () => view.focus(),
+  });
+}
+
+function crepeReferences(M) {
+  const key = new M.PluginKey('weave-references');
+  const chip = (hit) => {
+    const span = document.createElement('span');
+    span.className = 'wv-ref-chip';
+    span.contentEditable = 'false';
+    span.append(hit.chip.cloneNode(true));
+    return span;
+  };
+  const decorate = (state) => {
+    const { from: a, to: b } = state.selection;
+    const decos = [];
+    state.doc.descendants((node, pos) => {
+      if (!node.isText || node.marks.some((m) => m.type.name === 'inlineCode')) return;
+      for (const m of node.text.matchAll(CREPE_REF_RE)) {
+        const from = pos + m.index;
+        const to = from + m[0].length;
+        const hit = refResolveCache.get(m[1]);
+        if (!hit || (a <= to && b >= from)) continue;
+        decos.push(M.Decoration.widget(from, () => chip(hit), { side: -1, key: `${m[1]}@${from}`, ignoreSelection: true }));
+        decos.push(M.Decoration.inline(from, to, { class: 'wv-ref-src' }));
+      }
+    });
+    return M.DecorationSet.create(state.doc, decos);
+  };
+  const unresolved = (doc) => {
+    const refs = new Set();
+    doc.descendants((node) => {
+      if (!node.isText) return;
+      for (const m of node.text.matchAll(CREPE_REF_RE)) if (!refResolveCache.has(m[1])) refs.add(m[1]);
+    });
+    return [...refs];
+  };
+  return M.$prose(() => new M.Plugin({
+    key,
+    props: {
+      decorations: decorate,
+      handleTextInput(view, from, to, text) {
+        if (text !== '[' || view.state.doc.textBetween(Math.max(0, from - 1), from) !== '[') return false;
+        view.dispatch(view.state.tr.insertText(text, from, to));
+        crepePickReference(view, from - 1, from + 1, 'entity');
+        return true;
+      },
+    },
+    view: (view) => {
+      let live = true;
+      const resolve = () => {
+        const refs = unresolved(view.state.doc);
+        if (!refs.length) return;
+        resolveRefs(refs).then(() => { if (live) view.dispatch(view.state.tr.setMeta(key, 'resolved')); });
+      };
+      resolve();
+      return {
+        update: (v, prev) => { if (!prev.doc.eq(v.state.doc)) resolve(); },
+        destroy: () => { live = false; },
+      };
+    },
+  }));
+}
+
+function crepeReferenceMenu(M) {
+  return (builder) => {
+    const group = builder.addGroup('reference', 'Reference');
+    for (const [kind, label] of [['entity', 'Entity'], ['table', 'Table'], ['space', 'Space / workspace']]) {
+      group.addItem(kind, {
+        label,
+        icon: CREPE_REF_ICONS[kind],
+        onRun: (ctx) => {
+          const view = ctx.get(M.editorViewCtx);
+          const { $from } = view.state.selection;
+          const start = $from.start();
+          const slash = view.state.doc.textBetween(start, $from.pos).lastIndexOf('/');
+          const at = slash < 0 ? $from.pos : start + slash;
+          view.dispatch(view.state.tr.delete(at, $from.pos));
+          crepePickReference(view, at, at, kind);
+        },
+      });
+    }
+  };
+}
+
 function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, autoFocus, readOnly = false }) {
   const M = globalThis.WeaveCrepe;
   const stored = (v) => globalThis.WeaveEditorLib.normalizeTaskBoxes(crepeMarkdown(v));
@@ -1054,8 +1156,12 @@ function mountCrepeEditor(host, { value, placeholder, onInput: hand, onBlur, aut
     root,
     defaultValue: value ?? '',
     features: { [M.Crepe.Feature.AI]: false, [M.Crepe.Feature.TopBar]: false },
-    featureConfigs: { [M.Crepe.Feature.Placeholder]: { text: placeholder ?? '', mode: 'doc' } },
+    featureConfigs: {
+      [M.Crepe.Feature.Placeholder]: { text: placeholder ?? '', mode: 'doc' },
+      [M.Crepe.Feature.BlockEdit]: { buildMenu: crepeReferenceMenu(M) },
+    },
   });
+  crepe.editor.use(crepeReferences(M));
   crepe.editor.config((ctx) => ctx.update(M.remarkStringifyOptionsCtx, (o) => ({ ...o, bullet: '-', rule: '-' })));
   crepe.on((l) => {
     l.markdownUpdated((_, md) => {

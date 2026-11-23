@@ -87,7 +87,7 @@ a.k-attach, a.k-attach:hover { text-decoration: none; }
 .doc-ref-layer .doc-ref-slot.long .k-rel.open > .mention-fields { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .doc-ref-layer .doc-ref-slot.long .k-rel.open > :is(.k, .k-home, .mention-caret, .x) { flex: none; }
 .doc-ref-layer .doc-ref-slot .k-rel { white-space: nowrap; }
-.doc-ref-raw:not(.open) { display: inline-block; font-size: 0; line-height: 0; color: transparent;
+.doc-ref-raw:not(.open), .wv-ref-src { display: inline-block; font-size: 0; line-height: 0; color: transparent;
   overflow: hidden; white-space: nowrap; vertical-align: middle; }
 .wv-av { --wv-av-size: 18px; position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: var(--wv-av-size); height: var(--wv-av-size); border-radius: var(--wv-radius-chip, 4px); overflow: visible;
