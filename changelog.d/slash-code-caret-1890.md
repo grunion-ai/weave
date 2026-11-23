@@ -1,0 +1,1 @@
+- Choosing Code block from the slash menu puts the caret inside the new block with the placeholder `code` selected, so typing fills the block instead of the language tag (Issue #1890).
