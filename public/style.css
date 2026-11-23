@@ -908,6 +908,7 @@ a.wv-start-template { text-decoration: none; }
 .wv-crepe .milkdown .milkdown-slash-menu .menu-groups { scroll-behavior: auto; }
 .wv-crepe .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg { color: var(--tblr-secondary); fill: currentColor; }
 .wv-crepe .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover { background: color-mix(in srgb, var(--tblr-primary) 9%, transparent); }
+.wv-crepe .ProseMirror span[data-type="html"]:is([data-value="<br>" i], [data-value="<br/>" i], [data-value="<br />" i]) { display: block; height: 0; font-size: 0; overflow: hidden; visibility: hidden; }
 .vditor-reset img.emoji { width: 1.05em; height: 1.05em; max-width: none; vertical-align: -.15em; margin: 0 .08em; }
 [data-bs-theme="dark"] .vditor-reset img.emoji { filter: invert(.86) hue-rotate(180deg); }
 .vditor-hint img { width: 1em; height: 1em; vertical-align: -.15em; margin-right: 6px; }
