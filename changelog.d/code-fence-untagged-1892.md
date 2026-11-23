@@ -1,1 +1,0 @@
-- Typing three backticks and Return in a document opens an untagged code block; the language list closes, and only an arrow-key choice sets a language (Issue #1892).

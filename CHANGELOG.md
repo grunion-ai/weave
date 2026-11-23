@@ -2,6 +2,14 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.169 (2026-11-23)
+
+- Typing three backticks and Return in a document opens an untagged code block; the language list closes, and only an arrow-key choice sets a language (Issue #1892).
+- A second document editor, Milkdown Crepe 7.23.0 (MIT), is vendored and mounts in place of Vditor when `localStorage['weave.editor']` is `crepe`. Under it Tab and Shift+Tab nest and un-nest list items wherever the caret sits, Return on an empty nested item moves up one level, and /code puts the caret inside the new block (Issues #1888, #1889, #1890). Vditor stays the default while weave's references, slash catalogue and uploads move across.
+- Tab in a document list item nests it under the item above and Shift+Tab moves it back out; Tab in a paragraph types a tab, and Escape then Tab still moves focus out of the editor (Issue #1888).
+- The search sheet paints and focuses its field on the tap, before the palette code arrives, so a phone keyboard opens with it and anything typed early is kept and searched once the results load (Issue #1060).
+- Choosing Code block from the slash menu puts the caret inside the new block with the placeholder `code` selected, so typing fills the block instead of the language tag (Issue #1890).
+
 ## v0.4.168 (2026-11-22)
 
 - **Dev gate boot outwaits a slow seed** (Issue #1481): the Boot step now waits 150 s for `/api/health` instead of 90 s, which covers the 95 s a runner took seeding the docs workspace on 2026-11-08, and it fails at once when the server process exits, so a real crash still fails in seconds. `test/security/workflows.test.mjs` pins the window against the job cap.
