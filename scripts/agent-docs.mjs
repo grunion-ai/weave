@@ -44,6 +44,7 @@ export const LIBRARIES = {
   'dejavu-fonts': { title: 'DejaVu Sans', url: 'https://dejavu-fonts.github.io/', about: '`DejaVuSans.ttf`, PDF export Unicode fallback', license: 'Bitstream Vera license © Bitstream, Inc.; DejaVu changes public domain; Arev glyphs © Tavmjong Bah' },
   decklet: { title: 'decklet', url: 'https://github.com/grunion-ai/decklet', about: 'the slide engine, pinned by commit', license: 'MIT' },
   crepe: { title: 'Milkdown Crepe', url: 'https://github.com/Milkdown/milkdown', about: 'the document editor behind the `weave.editor` switch, bundled with its MIT, ISC, BSD and MPL-2.0 OR Apache-2.0 dependencies listed in `public/vendor/crepe/THIRD-PARTY.txt`', license: 'MIT © Mirone' },
+  tiptap: { title: 'Tiptap', url: 'https://github.com/ueberdosis/tiptap', about: 'the document editor behind `weave.editor` = `tiptap`, bundled with ProseMirror, marked, lowlight and highlight.js; the 54 packages and their MIT and BSD-3-Clause licenses are in `public/vendor/tiptap/THIRD-PARTY.txt`', license: 'MIT © Tiptap GmbH' },
   'lobehub-icons': { title: 'Lobe Icons', url: 'https://github.com/lobehub/lobe-icons', about: 'brand marks', license: 'MIT © LobeHub' },
 };
 

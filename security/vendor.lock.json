@@ -1772,6 +1772,28 @@
         }
       ],
       "build": "npm i @milkdown/crepe@7.23.0 esbuild@0.25.0, then esbuild an entry re-exporting Crepe, remarkStringifyOptionsCtx, editorViewCtx, parserCtx, serializerCtx and remarkCtx from @milkdown/kit/core, replaceAll, getMarkdown, insert and $prose from @milkdown/kit/utils, Plugin, PluginKey and TextSelection from @milkdown/kit/prose/state, Decoration and DecorationSet from @milkdown/kit/prose/view, listener and listenerCtx from @milkdown/kit/plugin/listener: --bundle --minify --format=esm --splitting --chunk-names=chunk-[hash] --entry-names=crepe; crepe.css bundles @milkdown/crepe/theme/common/style.css and theme/frame.css with --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.svg=dataurl --asset-names=font-[hash]"
+    },
+    {
+      "name": "tiptap",
+      "npm": "@tiptap/core",
+      "version": "3.35.0",
+      "versionSource": "npm view @tiptap/core version; installed as @tiptap/core@3.35.0 with the matching 3.35.0 extensions",
+      "note": "Tiptap 3 editor, its ProseMirror runtime, marked (via @tiptap/markdown), lowlight and highlight.js: 54 packages, 53 MIT and highlight.js BSD-3-Clause, listed with their license texts in THIRD-PARTY.txt",
+      "files": [
+        {
+          "path": "public/vendor/tiptap/LICENSE",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        },
+        {
+          "path": "public/vendor/tiptap/THIRD-PARTY.txt",
+          "sha256": "1bc305f363ab65635148e8a8fb6ebbfabf919eed265e27ce8534ad00b929515d"
+        },
+        {
+          "path": "public/vendor/tiptap/tiptap.js",
+          "sha256": "2863962f2919861c288f54fadb6c5aefc807a68e011e9e3428077de48292df11"
+        }
+      ],
+      "build": "npm i @tiptap/core@3.35.0 @tiptap/pm@3.35.0 @tiptap/starter-kit@3.35.0 @tiptap/markdown@3.35.0 @tiptap/extension-bubble-menu@3.35.0 @tiptap/extension-floating-menu@3.35.0 @tiptap/suggestion@3.35.0 @tiptap/extension-drag-handle@3.35.0 @tiptap/extension-table@3.35.0 @tiptap/extension-list@3.35.0 @tiptap/extension-image@3.35.0 @tiptap/extensions@3.35.0 @tiptap/extension-code-block-lowlight@3.35.0 lowlight@3.3.0 esbuild@0.25.0, then esbuild an entry re-exporting Editor, Extension, Node, Mark, mergeAttributes and InputRule from @tiptap/core, StarterKit, Markdown, BubbleMenu, FloatingMenu, Suggestion, DragHandle, TableKit, TaskList, TaskItem, Image, Placeholder, CodeBlockLowlight, createLowlight and common from lowlight, Plugin, PluginKey, TextSelection and NodeSelection from @tiptap/pm/state, Decoration and DecorationSet from @tiptap/pm/view: --bundle --minify --format=esm --splitting --chunk-names=chunk-[hash] --entry-names=tiptap. LICENSE is @tiptap/core LICENSE.md."
     }
   ]
 }

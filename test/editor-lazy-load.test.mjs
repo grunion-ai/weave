@@ -18,7 +18,9 @@ test('the document editor is not render-blocking: index.html names its files in 
 
 test('the editor mounts only after its files load (Issue #989)', () => {
   assert.match(APP, /function loadVditor\(\)/);
-  assert.match(APP, /\(crepe \? loadCrepe\(\) : loadVditor\(\)\)\.then\(mount, /, 'the editor waits for its assets');
+  assert.match(APP, /const load = kind === 'tiptap' \? loadTiptap : kind === 'crepe' \? loadCrepe : loadVditor;\n\s+load\(\)\.then\(mount, /, 'the editor waits for its assets');
+  assert.match(APP, /function loadTiptap\(\)/);
+  assert.match(APP, /import\('\/vendor\/tiptap\/tiptap\.js'\)[\s\S]{0,80}lazyScript\('\/doc-editor\.js'\)/, 'Tiptap mounts after its module and doc-editor.js');
   assert.match(APP, /function loadCrepe\(\)/);
   assert.match(APP, /Promise\.all\(\[styled, code, lazyScript\('\/doc-editor\.js'\)/, 'Crepe mounts after its stylesheet, its module and doc-editor.js');
 });
@@ -68,7 +70,7 @@ test('a failed stylesheet can retry after the script has already loaded', async 
   await retry;
 });
 
-for (const kind of ['vditor', 'crepe']) for (const fail of [false, true]) {
+for (const kind of ['vditor', 'crepe', 'tiptap']) for (const fail of [false, true]) {
   for (const dismissed of [false, true]) {
     test(`a ${dismissed ? 'dismissed' : 'current'} document handles a pending ${kind} editor ${fail ? 'failure' : 'load'}`, async () => {
       let resolve, reject;
@@ -79,8 +81,10 @@ for (const kind of ['vditor', 'crepe']) for (const fail of [false, true]) {
         docEditorKind: () => kind,
         loadVditor: () => (kind === 'vditor' ? pending : Promise.reject(new Error('wrong loader'))),
         loadCrepe: () => (kind === 'crepe' ? pending : Promise.reject(new Error('wrong loader'))),
+        loadTiptap: () => (kind === 'tiptap' ? pending : Promise.reject(new Error('wrong loader'))),
         mountDocEditor: () => calls.push(kind === 'vditor' ? 'editor' : 'wrong editor'),
         mountCrepeEditor: () => calls.push(kind === 'crepe' ? 'editor' : 'wrong editor'),
+        mountTiptapEditor: () => calls.push(kind === 'tiptap' ? 'editor' : 'wrong editor'),
         mountSourceEditor: () => calls.push('source'), toast: () => calls.push('toast'),
       });
       const start = APP.indexOf('    const mountEditor = () => {');

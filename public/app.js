@@ -9094,8 +9094,22 @@ function loadCrepe() {
   });
   return crepeLoading;
 }
+let tiptapLoading = null;
+function loadTiptap() {
+  tiptapLoading ??= Promise.all([
+    import('/vendor/tiptap/tiptap.js').then((m) => { globalThis.WeaveTiptap = m; }),
+    lazyScript('/doc-editor.js'),
+  ]).then(() => {}, () => {
+    tiptapLoading = null;
+    throw new Error('The editor did not load. Showing the source instead; reload to try again.');
+  });
+  return tiptapLoading;
+}
 function docEditorKind() {
-  try { return localStorage.getItem('weave.editor') === 'crepe' ? 'crepe' : 'vditor'; } catch { return 'vditor'; }
+  try {
+    const kind = localStorage.getItem('weave.editor');
+    return kind === 'crepe' || kind === 'tiptap' ? kind : 'vditor';
+  } catch { return 'vditor'; }
 }
 const docBubbles = new Set();
 
@@ -9173,7 +9187,7 @@ function attachDashRail(section, host) {
   return st;
 }
 
-const DOC_BLOCK_ROOT = '.vditor-ir .vditor-reset, .wv-crepe .ProseMirror';
+const DOC_BLOCK_ROOT = '.vditor-ir .vditor-reset, .wv-crepe .ProseMirror, .wv-tiptap .ProseMirror';
 
 function headText(h) {
   return [...h.childNodes]
@@ -9270,7 +9284,7 @@ function refreshHeadingFolds(st) {
     for (const j of lib.foldRange(levels, i)) hide.add(j);
   });
   const marks = blocks.map((_, i) => [echo && i === 0 ? 'wv-title-echo' : '', hide.has(i) ? 'wv-folded' : ''].filter(Boolean).join(' '));
-  const markBlocks = root.closest('.wv-crepe')?.weaveMarkBlocks;
+  const markBlocks = root.closest('.wv-crepe, .wv-tiptap')?.weaveMarkBlocks;
   if (markBlocks) markBlocks(marks);
   else blocks.forEach((b, i) => {
     b.classList.toggle('wv-title-echo', marks[i].includes('wv-title-echo'));
@@ -9732,7 +9746,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
     const mountEditor = () => {
       const mount = () => {
         if (!host.isConnected) return;
-        const ed = (crepe ? mountCrepeEditor : mountDocEditor)(host, {
+        const ed = (kind === 'tiptap' ? mountTiptapEditor : kind === 'crepe' ? mountCrepeEditor : mountDocEditor)(host, {
           value: pendingDocSaves.get(`${id}::${f.name}`)?.value ?? entity.docs?.[f.name] ?? '',
           entityId: id,
           readOnly: !!entity.readOnly,
@@ -9747,8 +9761,9 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
         editors?.push(ed);
         docEd = ed;
       };
-      const crepe = docEditorKind() === 'crepe';
-      (crepe ? loadCrepe() : loadVditor()).then(mount, (err) => {
+      const kind = docEditorKind();
+      const load = kind === 'tiptap' ? loadTiptap : kind === 'crepe' ? loadCrepe : loadVditor;
+      load().then(mount, (err) => {
         if (!host.isConnected) return;
         mountSourceEditor();
         toast(err.message, true);
