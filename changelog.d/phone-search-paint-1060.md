@@ -1,0 +1,1 @@
+- The search sheet paints and focuses its field on the tap, before the palette code arrives, so a phone keyboard opens with it and anything typed early is kept and searched once the results load (Issue #1060).

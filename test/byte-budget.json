@@ -69,8 +69,8 @@
       "br": 2196
     },
     "/command-palette.js": {
-      "gzip": 3435,
-      "br": 3047
+      "gzip": 3626,
+      "br": 3227
     },
     "/consent.js": {
       "gzip": 2305,
@@ -322,6 +322,7 @@
     }
   },
   "raised": {
+    "/command-palette.js": "Issue #1060: openCommandK adopts the search sheet app.js paints on the tap, reusing its field, results list and focus hold; measured 3453 gzip and 3073 Brotli, budget set as that plus a twentieth",
     "/bug-core.js": "Issue #1708: the recorder keeps only its own fields per event kind and rebuilds each request path from the pathname and six allow-listed query names, so a search term never enters the buffer; measured 3465 gzip and 3028 Brotli, budget set as that plus a twentieth",
     "/grid-window.js": "Issue #1702: samePage joins the grid cores so a cold open can tell a page whose row stamps moved from one whose cells moved, which is 273 gzip bytes of comparison; measured 816 gzip and 726 Brotli, budget set as that plus a twentieth",
     "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes.",

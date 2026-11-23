@@ -179,6 +179,51 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  const holdPalette = async (page) => {
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await page.route(/\/command-palette\.js(\?|$)/, async (route) => { await held; await route.continue(); });
+    return release;
+  };
+
+  test('the search sheet paints and takes typing before the palette file arrives (Issue #1060)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      const release = await holdPalette(page);
+      await page.click('#search-btn');
+      await page.waitForSelector('#cmdk-back #cmdk-input', { timeout: 1000 });
+      assert.equal(await page.evaluate(() => typeof openCommandK), 'undefined', 'the sheet painted while the palette file was still held');
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'cmdk-input', 'the field takes focus inside the tap');
+      await page.keyboard.type('Big');
+      release();
+      await page.locator('#cmdk-results .result', { hasText: 'Big' }).first().waitFor();
+      assert.equal(await page.inputValue('#cmdk-input'), 'Big', 'what was typed before the file arrived is kept');
+      assert.equal(await page.locator('#cmdk-input').count(), 1);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'cmdk-input');
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+    } finally { await page.close(); }
+  });
+
+  test('Escape on the early search sheet closes it, and the late palette file opens nothing (Issue #1060)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    try {
+      await page.goto(`${base}/#/table/${deals.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      const release = await holdPalette(page);
+      await page.click('#search-btn');
+      await page.waitForSelector('#cmdk-back #cmdk-input', { timeout: 1000 });
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#cmdk-back', { state: 'detached' });
+      release();
+      await page.waitForFunction(() => typeof openCommandK === 'function');
+      assert.equal(await page.locator('#cmdk-back').count(), 0);
+      assert.equal(await page.evaluate(() => [...document.body.children].some((n) => n.inert)), false, 'the page is live again');
+    } finally { await page.close(); }
+  });
+
   test('a date cell paints without the date picker, then takes a typed date and the calendar', async () => {
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     try {
