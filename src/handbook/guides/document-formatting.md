@@ -125,7 +125,7 @@ An HTML export carries its own chip stylesheet and favicon, so chips keep their 
 
 Or by URL: `/e/<id>/doc/<Field>.md`, `.html`, `.mmd`, `.pdf`. The whole entity downloads as one file from the entity page.
 
-The PDF writer is in-tree and embeds DejaVu, so accented text, Greek, arrows and box-drawing survive the trip. The standard PDF fonts cannot carry those, which is why the fonts are embedded rather than named.
+The PDF writer is in-tree and embeds DejaVu, so accented text, Greek, arrows and box-drawing survive the trip. The standard PDF fonts cannot carry those, which is why the fonts are embedded rather than named. Only the glyphs a document uses are embedded, so one arrow adds about 12 KB to the file instead of the whole 757 KB font. A table cell too wide for its column ends in an ellipsis.
 
 ## Written by an agent, read by a person
 

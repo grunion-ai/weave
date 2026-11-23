@@ -101,7 +101,87 @@ function parseTtf(buf) {
     return scale(buf.readUInt16BE(hmtx + i * 4));
   };
 
-  return { data: buf, unitsPerEm, bbox, ascent, descent, capHeight, numGlyphs, gidFor, widthFor };
+  return { data: buf, tables, unitsPerEm, bbox, ascent, descent, capHeight, numGlyphs, gidFor, widthFor };
+}
+
+const SUBSET_TABLES = ['OS/2', 'cvt ', 'fpgm', 'glyf', 'head', 'hhea', 'hmtx', 'loca', 'maxp', 'prep'];
+
+function tableSum(data) {
+  const padded = Buffer.concat([data, Buffer.alloc((4 - (data.length % 4)) % 4)]);
+  let sum = 0;
+  for (let i = 0; i < padded.length; i += 4) sum = (sum + padded.readUInt32BE(i)) >>> 0;
+  return sum;
+}
+
+function subsetTtf(font, gids) {
+  const { data: buf, tables, numGlyphs } = font;
+  const long = buf.readInt16BE(tables.head.off + 50) === 1;
+  const at = (gid) => (long ? buf.readUInt32BE(tables.loca.off + gid * 4) : buf.readUInt16BE(tables.loca.off + gid * 2) * 2);
+  const glyph = (gid) => buf.subarray(tables.glyf.off + at(gid), tables.glyf.off + at(gid + 1));
+  const keep = new Set();
+  const queue = [0, ...gids];
+  while (queue.length) {
+    const gid = queue.pop();
+    if (keep.has(gid) || gid >= numGlyphs) continue;
+    keep.add(gid);
+    const g = glyph(gid);
+    if (g.length < 10 || g.readInt16BE(0) >= 0) continue;
+    for (let o = 10; ;) {
+      const flags = g.readUInt16BE(o);
+      queue.push(g.readUInt16BE(o + 2));
+      if (!(flags & 0x20)) break;
+      o += 4 + (flags & 1 ? 4 : 2) + (flags & 8 ? 2 : flags & 0x40 ? 4 : flags & 0x80 ? 8 : 0);
+    }
+  }
+  const parts = [];
+  const loca = Buffer.alloc((numGlyphs + 1) * 4);
+  let size = 0;
+  for (let gid = 0; gid < numGlyphs; gid++) {
+    loca.writeUInt32BE(size, gid * 4);
+    if (!keep.has(gid)) continue;
+    const g = glyph(gid);
+    const pad = (4 - (g.length % 4)) % 4;
+    parts.push(g, Buffer.alloc(pad));
+    size += g.length + pad;
+  }
+  loca.writeUInt32BE(size, numGlyphs * 4);
+  const head = Buffer.from(buf.subarray(tables.head.off, tables.head.off + tables.head.len));
+  head.writeUInt32BE(0, 8);
+  head.writeInt16BE(1, 50);
+  const body = { glyf: Buffer.concat(parts), loca, head };
+  const tags = SUBSET_TABLES.filter((t) => body[t] || tables[t]);
+  const dir = Buffer.alloc(12 + tags.length * 16);
+  const pow = 2 ** Math.floor(Math.log2(tags.length));
+  dir.writeUInt32BE(0x00010000, 0);
+  dir.writeUInt16BE(tags.length, 4);
+  dir.writeUInt16BE(pow * 16, 6);
+  dir.writeUInt16BE(Math.log2(pow), 8);
+  dir.writeUInt16BE((tags.length - pow) * 16, 10);
+  const chunks = [dir];
+  let off = dir.length;
+  tags.forEach((tag, i) => {
+    const data = body[tag] ?? buf.subarray(tables[tag].off, tables[tag].off + tables[tag].len);
+    const o = 12 + i * 16;
+    dir.write(tag, o, 'ascii');
+    dir.writeUInt32BE(tableSum(data), o + 4);
+    dir.writeUInt32BE(off, o + 8);
+    dir.writeUInt32BE(data.length, o + 12);
+    const pad = Buffer.alloc((4 - (data.length % 4)) % 4);
+    chunks.push(data, pad);
+    off += data.length + pad.length;
+  });
+  const out = Buffer.concat(chunks);
+  const headAt = dir.readUInt32BE(12 + tags.indexOf('head') * 16 + 8);
+  out.writeUInt32BE((0xb1b0afba - tableSum(out)) >>> 0, headAt + 8);
+  return out;
+}
+
+function subsetTag(gids) {
+  let h = 2166136261;
+  for (const gid of gids) h = Math.imul(h ^ gid, 16777619) >>> 0;
+  let tag = '';
+  for (let i = 0; i < 6; i++) { tag += String.fromCharCode(65 + (h % 26)); h = Math.floor(h / 26) || 7919 * (i + 1); }
+  return tag;
 }
 
 let UNI = null;
@@ -349,7 +429,10 @@ export function markdownToPdf(markdown, { title = 'Document', subtitle = '' } = 
             const font = ri === 0 ? 'F2' : 'F1';
             let text = stripInline(cell ?? '');
             const maxW = widths[c] * scale - 6;
-            while (text.length > 1 && textWidth(font, text, 9.5) > maxW) text = text.slice(0, -1);
+            if (textWidth(font, text, 9.5) > maxW) {
+              while (text.length > 1 && textWidth(font, `${text}\u2026`, 9.5) > maxW) text = text.slice(0, -1);
+              text = `${text.trimEnd()}\u2026`;
+            }
             b.ops.push(b.tj(text, font, 9.5, x, b.y, '0 0 0 rg '));
             x += widths[c] * scale;
           });
@@ -410,14 +493,17 @@ function assemble(pages, used = new Map()) {
 
   if (used.size) {
     const uni = unicodeFont();
-    const fontData = deflateSync(uni.data).toString('latin1');
-    const fileId = addObj(`<< /Length ${fontData.length} /Filter /FlateDecode /Length1 ${uni.data.length} >>\nstream\n${fontData}\nendstream`);
-    const descId = addObj(`<< /Type /FontDescriptor /FontName /DejaVuSans /Flags 32 /FontBBox [${uni.bbox.join(' ')}] /ItalicAngle 0 /Ascent ${uni.ascent} /Descent ${uni.descent} /CapHeight ${uni.capHeight} /StemV 80 /FontFile2 ${fileId} 0 R >>`);
+    const gids = [...used.keys()].sort((a, b) => a - b);
+    const subset = subsetTtf(uni, gids);
+    const name = `${subsetTag(gids)}+DejaVuSans`;
+    const fontData = deflateSync(subset).toString('latin1');
+    const fileId = addObj(`<< /Length ${fontData.length} /Filter /FlateDecode /Length1 ${subset.length} >>\nstream\n${fontData}\nendstream`);
+    const descId = addObj(`<< /Type /FontDescriptor /FontName /${name} /Flags 32 /FontBBox [${uni.bbox.join(' ')}] /ItalicAngle 0 /Ascent ${uni.ascent} /Descent ${uni.descent} /CapHeight ${uni.capHeight} /StemV 80 /FontFile2 ${fileId} 0 R >>`);
     const wArr = [...used.keys()].sort((a, b) => a - b).map((gid) => `${gid} [${uni.widthFor(gid)}]`).join(' ');
-    const cidId = addObj(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${descId} 0 R /DW 600 /W [${wArr}] /CIDToGIDMap /Identity >>`);
+    const cidId = addObj(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${descId} 0 R /DW 600 /W [${wArr}] /CIDToGIDMap /Identity >>`);
     const cmapStream = toUnicodeCMap(used);
     const tuId = addObj(`<< /Length ${Buffer.byteLength(cmapStream, 'latin1')} >>\nstream\n${cmapStream}\nendstream`);
-    const type0Id = addObj(`<< /Type /Font /Subtype /Type0 /BaseFont /DejaVuSans /Encoding /Identity-H /DescendantFonts [${cidId} 0 R] /ToUnicode ${tuId} 0 R >>`);
+    const type0Id = addObj(`<< /Type /Font /Subtype /Type0 /BaseFont /${name} /Encoding /Identity-H /DescendantFonts [${cidId} 0 R] /ToUnicode ${tuId} 0 R >>`);
     fontRes += ` /FU ${type0Id} 0 R`;
   }
 
