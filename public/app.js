@@ -1619,10 +1619,7 @@ function renderNav() {
     const tables = el('div', { class: 'nav-tables' });
     const group = el('div', { class: 'nav-group', dataset: { space: space.spaceId } }, spaceRow, tables);
     const groups = () => [...nav.querySelectorAll(':scope > .nav-group:not(.wv-reorder-lift)')];
-    const slot = () => {
-      const users = groups().map((g) => g.dataset.space);
-      return state.schema.map((sp) => (sp.system ? sp.spaceId : users.shift())).indexOf(space.spaceId);
-    };
+    const slot = () => groups().map((g) => g.dataset.space).indexOf(space.spaceId);
     navDrag(spaceRow, group, { items: groups, home: () => nav, save: () => api('PATCH', `/spaces/${space.spaceId}`, { position: slot() }) });
     nav.append(group);
     if (isFolded) continue;
