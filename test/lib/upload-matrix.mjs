@@ -299,7 +299,7 @@ export function matrixCases(s, { dir, rows }, scenarios) {
           }
         }
         if (failedCount) {
-          const look = await page.locator('.attach-item.is-failed').first().evaluate(inkOn);
+          const look = await page.evaluate(`(${inkOn})(document.querySelector('.attach-item.is-failed'))`);
           assert.ok(look.ratio >= 4.5, `a failed tile reads at ${look.ratio.toFixed(2)}:1, under WCAG AA`);
           assert.ok(look.ink[0] > look.ink[1] + 60 && look.ink[0] > look.ink[2] + 60, `a failed tile is not red: rgb(${look.ink.join(', ')})`);
         }
