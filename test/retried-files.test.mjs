@@ -5,7 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { run, childEnv } from '../scripts/test.mjs';
 import { shardResult, digest, plan, aggregate } from '../scripts/ci-test.mjs';
-import { realIO, dryIO, retriedFlakes, recordRetries, flakeName, flakeLine } from '../scripts/sheriff.mjs';
+import { realIO, dryIO, retriedFlakes, recordRetries, flakeName, flakeLine, failingFiles, unresolvedFiles } from '../scripts/sheriff.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -24,6 +24,7 @@ function fixtures(kinds) {
     const body = {
       good: "test('good', () => {});\n",
       broken: "test('subject', () => { throw new Error('always'); });\n",
+      crash: "test('dies', () => { process.exit(3); });\n",
       flaky: `import { existsSync, writeFileSync } from 'node:fs';\ntest('flakes once', () => {\n  const first = !existsSync(${mark});\n  writeFileSync(${mark}, '1');\n  if (first) throw new Error('flaked');\n});\n`,
     }[kind];
     writeFileSync(file, `import test from 'node:test';\n${body}`);
@@ -67,6 +68,17 @@ test('a retry that saves one file and not another records the one it saved, and 
   assert.doesNotMatch(clean.said, /RETRIED/);
 });
 
+test('a file that crashes its process on both runs is named in the shard JSON as still red, and the sheriff counts it as a failing file (Issue #1748)', () => {
+  const { code, result, files } = runShard({ good: 'good', crash: 'crash', broken: 'broken' });
+  assert.equal(code, 1);
+  assert.deepEqual(result.summaries.filter((s) => s.file === files.crash), [], 'a crashed process writes no test:summary, which is why the list is needed');
+  assert.deepEqual(result.stillRed, [files.broken, files.crash].sort());
+  assert.deepEqual(failingFiles([result]), [files.broken, files.crash].sort());
+  assert.deepEqual(unresolvedFiles([result]), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)).stillRed, result.stillRed, 'the field survives the JSON the shard uploads');
+  assert.deepEqual(runShard({ good: 'good', flaky: 'flaky' }).result.stillRed, [], 'a lane its retry turns green names nothing still red');
+});
+
 test('a lane nested inside a test writes nothing into the shard report it inherits, so a fixture never reads as a retried repo file (Issue #1671)', () => {
   const { dir, paths } = fixtures({ good: 'good', flaky: 'flaky' });
   const report = join(dir, 'events.jsonl');
@@ -91,6 +103,7 @@ test('one shard result is pinned: every record it carried before, in the same or
     commit: 'abc', manifest: 'd1', attempt: 2, code: 0, timedOut: false, durationMs: 40,
     summaries: [failed, passed], skips: [skip], cases: [red, green],
     retried: ['test/a.test.mjs'],
+    stillRed: [],
   }, null, 2));
   assert.deepEqual(shardResult({ id: 'unit-1' }, [{ type: 'summary', data: passed }], {}).retried, []);
 });

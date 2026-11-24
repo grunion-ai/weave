@@ -91,10 +91,14 @@ syncBuiltinESMExports();`;
 const KEYCHAIN_GUARD = `--import=data:text/javascript,${encodeURIComponent(LANE_PRELOAD_SOURCE)}`;
 const guardedOptions = (options = '') => [options, KEYCHAIN_GUARD].filter(Boolean).join(' ');
 
+function report(type, files, env, extraArgs) {
+  if (!env.WEAVE_CI_REPORT || !extraArgs.includes(CI_REPORTER)) return;
+  appendFileSync(env.WEAVE_CI_REPORT, files.map((file) => `${JSON.stringify({ type, data: { file: relative(ROOT, resolve(ROOT, file)).split('\\').join('/') } })}\n`).join(''));
+}
+
 function recordRetried(files, out, env, extraArgs) {
   out(`# RETRIED and green: ${files.length} file(s) failed the first run and passed the second: ${files.join(' ')}`);
-  if (!env.WEAVE_CI_REPORT || !extraArgs.includes(CI_REPORTER)) return;
-  appendFileSync(env.WEAVE_CI_REPORT, files.map((file) => `${JSON.stringify({ type: 'retried', data: { file: relative(ROOT, resolve(ROOT, file)).split('\\').join('/') } })}\n`).join(''));
+  report('retried', files, env, extraArgs);
 }
 
 function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, env = childEnv() } = {}) {
@@ -111,7 +115,10 @@ function runLane(files, extraArgs, cap, { retries = RETRIES, out = console.log, 
       if (green.length) recordRetried(green, out, env, extraArgs);
       if (status === 0) return 0;
       if (i >= retries || !failed.length) {
-        if (i) out(`# RETRIED and still red: ${failed.join(' ') || 'the run failed without naming a file'}`);
+        if (i) {
+          out(`# RETRIED and still red: ${failed.join(' ') || 'the run failed without naming a file'}`);
+          report('still-red', failed, env, extraArgs);
+        }
         return status || 1;
       }
       out(`# RETRYING ${failed.length} file(s) that failed: ${failed.join(' ')}`);

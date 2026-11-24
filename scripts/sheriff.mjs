@@ -182,6 +182,7 @@ function fileRuns(results) {
   const seen = new Map();
   for (const result of [...results].sort((a, b) => Number(a.attempt ?? 1) - Number(b.attempt ?? 1))) {
     for (const s of result.summaries ?? []) if (s.file) seen.set(s.file, { red: s.success === false || s.counts?.failed > 0, runs: (seen.get(s.file)?.runs ?? 0) + 1 });
+    for (const file of result.stillRed ?? []) seen.set(file, { red: true, runs: Math.max(2, seen.get(file)?.runs ?? 0) });
   }
   return seen;
 }

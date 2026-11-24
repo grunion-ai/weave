@@ -1,0 +1,1 @@
+- A test file that crashes its process on its first run and again on its retry is now named in the shard result as still red, so the sheriff counts it as a failing file instead of judging the red with no file at all (Issue #1748).
