@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.173 (2026-11-24)
+
+- Typing `[] ` or `[ ] ` at the start of a line turns it into a task item, the same as `- [ ] ` (Issue #1894).
+- Return on an empty nested list item moves it up one level instead of leaving a loose paragraph inside the item above (Issue #1889).
+- Picking Divider from the slash menu puts the caret on a new paragraph below the rule, so typing continues under it instead of above it (Issue #1891).
+- Cmd+Z right after a list shortcut such as `- ` or `1. ` gives back the typed characters as text instead of keeping the list item (Issue #1895).
+
 ## v0.4.172 (2026-11-24)
 
 - Removing a select or multiselect option, or a workflow state, that records still hold now answers `lossy: true` with an `orphaned` count per removed id, and the compact MCP reply keeps `lossy`, `orphaned`, `activity` and `formulas` when a change loses something (Issue #1561).
