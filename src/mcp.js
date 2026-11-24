@@ -283,10 +283,7 @@ export const SUMMARY = {
 };
 TOOLS.push({
   name: 'weave_call',
-  description: [
-    'Call any weave tool: {name, args}. {name: "help", args: {tool}} returns its description and input schema; read before the first call. Other tools:',
-    ...TOOLS.filter((t) => !CORE_TOOLS.has(t.name)).map((t) => `${t.name}: ${SUMMARY[t.name] ?? t.description.split(/[.:]\s/)[0].slice(0, 60)}`),
-  ].join('\n'),
+  description: 'Call any weave tool not listed: {name, args}. {name: "help"} lists them, one line each; {name: "help", args: {tool}} returns one tool\'s description and input schema; read it before the first call.',
   inputSchema: {
     type: 'object',
     properties: { name: { type: 'string', description: 'A tool name, or "help"' }, args: { type: 'object', description: 'That tool\'s arguments' } },
@@ -345,6 +342,10 @@ export function listTools(profile = toolProfile()) {
   return profile === 'all' ? TOOLS : TOOLS.filter((t) => CORE_TOOLS.has(t.name));
 }
 
+const hiddenToolLines = (caller) => TOOLS
+  .filter((t) => !CORE_TOOLS.has(t.name) && visible(caller, t.name))
+  .map((t) => `${t.name}: ${SUMMARY[t.name] ?? t.description.split(/[.:]\s/)[0].slice(0, 60)}`);
+
 const envOrigin = () => process.env.WEAVE_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
 
 function callTool(weave, name, rawArgs, caller) {
@@ -353,8 +354,9 @@ function callTool(weave, name, rawArgs, caller) {
     let inner = rawArgs.args ?? {};
     if (typeof inner === 'string') inner = JSON.parse(inner);
     if (rawArgs.name === 'help') {
+      if (inner.tool == null) return { tools: hiddenToolLines(caller) };
       const t = TOOLS.find((x) => x.name === inner.tool);
-      if (!t) throw new Error(`help needs args.tool, one of the names weave_call lists (got ${JSON.stringify(inner.tool ?? null)})`);
+      if (!t) throw new Error(`help needs args.tool, one of the names bare help lists (got ${JSON.stringify(inner.tool)})`);
       if (!visible(caller, t.name)) throw hidden(t.name, caller);
       return { name: t.name, description: t.description, inputSchema: t.inputSchema };
     }

@@ -204,9 +204,9 @@ For small inline payloads, `contentBase64` still works, with optional `field`.
 `tools/list` names the default tools in the [Tool map](#tool-map); every other
 tool is one `weave_call` away: `weave_call {name: "weave_set_doc", args: {entity, markdown}}`
 runs it with the same gate, the same compact reply and the same `verbose`
-switch as a direct call. The `weave_call` description lists each of those
-tools with a few words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}`
-returns that tool's full description and input schema. The full list costs
+switch as a direct call. `weave_call {name: "help"}` lists each of those
+tools the token may call with a few words, and `weave_call {name: "help", args: {tool: "weave_set_doc"}}`
+returns that tool's full description and input schema (Issue #1565). The full list costs
 about 12,000 tokens on every turn and a build uses about twelve tools, so the
 default lists only those (Issue #595). To list every tool directly, start the
 server with `weave mcp --tools all` or set `WEAVE_MCP_TOOLS=all`; the variable

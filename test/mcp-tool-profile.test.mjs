@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PassThrough } from 'node:stream';
 import { Weave } from '../src/engine.js';
-import { handleMcpMessage, startMcpServer, TOOLS, CORE_TOOLS, listTools } from '../src/mcp.js';
+import { handleMcpMessage, startMcpServer, TOOLS, CORE_TOOLS, ROLE_TOOLS, listTools } from '../src/mcp.js';
 import { unwrapData } from './lib/fixtures.mjs';
 import { tempDir } from './lib/temp.mjs';
 
@@ -41,12 +41,28 @@ test('tools/list answers the core set plus weave_call by default', () => withEnv
   assert.deepEqual(new Set(existing), new Set(names), 'CORE_TOOLS is what is listed');
 }));
 
-test('the core list costs well under half the full one', () => withEnv(null, () => {
+const PER_TOOL_CAP = 1200;
+const PER_TOOL_ALLOWANCE = { weave_query: 2561, weave_build: 2241, weave_add_field: 1939 };
+const CORE_CEILING = 16005;
+
+test('the core list costs well under half the full one and stays under its ceiling', () => withEnv(null, () => {
   const w = new Weave();
   const core = JSON.stringify(rpc(w, 'tools/list').result).length;
   const all = JSON.stringify(rpc(w, 'tools/list', {}, { tools: 'all' }).result).length;
   assert.ok(core * 2.5 < all, `core ${core} bytes vs all ${all}`);
-  assert.ok(core < 18400, `core tools/list is ${core} bytes; the Issue #1558 lean shape and row cap on weave_query raised the budget from 18250, which the Issue #654 glossary depth on weave_ontology had raised from 18200, which the Issue #1319 idempotentHint had raised from 17900, which the Issue #1270 row shape on weave_query had raised from 17600, which the Issue #1267 paging contract had raised from 17400, the Feature #331 annotations from the Issue #857 figure of 15400`);
+  assert.ok(core <= CORE_CEILING, `core tools/list is ${core} bytes, over the ${CORE_CEILING} ceiling; Issue #1565 fixed this ceiling as a product limit, so trim a description or move it behind weave_call help rather than raise it`);
+}));
+
+test('every core tool fits the per-tool cap, or its named allowance, which only falls', () => withEnv(null, () => {
+  const over = [];
+  for (const t of rpc(new Weave(), 'tools/list').result.tools) {
+    const size = JSON.stringify(t).length;
+    const allowed = PER_TOOL_ALLOWANCE[t.name] ?? PER_TOOL_CAP;
+    if (size > allowed) over.push(`${t.name} is ${size} bytes, over its ${allowed}`);
+    if (t.name in PER_TOOL_ALLOWANCE && size <= PER_TOOL_CAP) over.push(`${t.name} is ${size} bytes, under the ${PER_TOOL_CAP} cap: drop its allowance`);
+    if (t.name in PER_TOOL_ALLOWANCE && size < allowed) over.push(`${t.name} is ${size} bytes: lower its allowance from ${allowed} to ${size}`);
+  }
+  assert.deepEqual(over, [], over.join('; '));
 }));
 
 test('--tools all, WEAVE_MCP_TOOLS=all and listTools("all") list every tool', () => {
@@ -82,7 +98,6 @@ test('weave_call help returns a tool\'s whole definition; mistakes are tool erro
   }
   for (const args of [
     { name: 'help', args: { tool: 'weave_nope' } },
-    { name: 'help', args: {} },
     { name: 'weave_nope', args: {} },
     { name: 'weave_call', args: { name: 'weave_schema' } },
     {},
@@ -92,18 +107,27 @@ test('weave_call help returns a tool\'s whole definition; mistakes are tool erro
   }
 });
 
-test('weave_call names every tool the core list leaves out, one short line each', () => {
-  const call = TOOLS.find((t) => t.name === 'weave_call');
+test('bare help names every tool the core list leaves out, one short line each', () => withEnv(null, () => {
+  const w = new Weave();
   const listed = new Set(listTools('core').map((t) => t.name));
-  const lines = call.description.split('\n');
-  for (const t of TOOLS) {
-    if (listed.has(t.name)) continue;
-    const line = lines.find((l) => l.startsWith(t.name + ':'));
-    assert.ok(line, `weave_call names ${t.name}`);
-    assert.ok(line.length <= 80, `${t.name} line is short: ${line}`);
+  const hidden = TOOLS.filter((t) => !listed.has(t.name)).map((t) => t.name);
+  for (const args of [{ name: 'help' }, { name: 'help', args: {} }]) {
+    const { tools } = ok(callTool(w, 'weave_call', args));
+    assert.deepEqual(tools.map((l) => l.split(':')[0]), hidden, 'help lists the hidden tools in TOOLS order');
+    for (const line of tools) assert.ok(line.length <= 80, `line is short: ${line}`);
   }
+  const call = TOOLS.find((t) => t.name === 'weave_call');
+  for (const name of hidden) assert.ok(!call.description.includes(name + ':'), `weave_call's description leaves ${name} to help`);
   assert.match(call.description, /help/);
   assert.deepEqual(call.inputSchema.required, ['name']);
+}));
+
+test('bare help lists only the tools the caller may reach', () => {
+  const w = new Weave();
+  const all = ok(callTool(w, 'weave_call', { name: 'help' })).tools;
+  const mine = ok(callTool(w, 'weave_call', { name: 'help' }, { caller: { tier: 'observer' } })).tools.map((l) => l.split(':')[0]);
+  assert.ok(mine.length < all.length, `an observer sees ${mine.length} of ${all.length}`);
+  assert.deepEqual(mine.filter((n) => !ROLE_TOOLS.observer.has(n)), [], 'every name offered to an observer is one it may call');
 });
 
 test('the admin gate holds through weave_call', () => {
