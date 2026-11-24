@@ -443,6 +443,41 @@ function attachListMarkers(host) {
   host.addEventListener('mousedown', () => { undo = null; }, { capture: true });
 }
 
+function attachListMove(host) {
+  host.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (!e.ctrlKey || e.metaKey === e.altKey || e.shiftKey || e.isComposing) return;
+    if (editorHintOpen(host)) return;
+    const sel = document.getSelection();
+    if (!sel?.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    const at = node instanceof Element ? node : node?.parentElement;
+    const root = host.querySelector('.vditor-ir .vditor-reset');
+    if (!at || !root?.contains(at) || at.closest('td, th, pre') !== root) return;
+    const li = at.closest('li');
+    if (!li || !root.contains(li)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const other = e.key === 'ArrowUp' ? li.previousElementSibling : li.nextElementSibling;
+    if (other?.tagName !== 'LI') return;
+    const { startContainer, startOffset, endContainer, endOffset } = range;
+    const marker = li.getAttribute('data-marker');
+    const otherMarker = other.getAttribute('data-marker');
+    if (marker !== null && otherMarker !== null) {
+      li.setAttribute('data-marker', otherMarker);
+      other.setAttribute('data-marker', marker);
+    }
+    if (e.key === 'ArrowUp') other.before(li); else other.after(li);
+    const r = document.createRange();
+    r.setStart(startContainer, startOffset);
+    r.setEnd(endContainer, endOffset);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ' ' }));
+  }, { capture: true });
+}
+
 const WORD_SEGMENTS = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
 const DOUBLE_CLICK_SLOP = 4;
 
@@ -549,6 +584,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachTabKeys(host);
   attachCodeFenceReturn(host);
   attachListMarkers(host);
+  attachListMove(host);
   attachWordDoubleClick(host);
   attachHintClamp(host);
   holdDocFrames(host);
