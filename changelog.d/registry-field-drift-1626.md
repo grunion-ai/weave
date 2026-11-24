@@ -1,0 +1,1 @@
+- System/Fields keeps a field's Type current after a type change, trashes, restores and drops the rows of a relation's lookups and rollups with the relation, and registryReport now names a row whose Type or Definition differs from its field, read in the form the Definition column stores (Issue #1626).
