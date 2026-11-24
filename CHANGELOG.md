@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.171 (2026-11-23)
+
+- A budgets run that kept no trend reading now writes a gap point the next runs count and name on the run page, instead of shortening every streak that crosses it in silence (Issue #1848).
+- A test file that crashes its process on its first run and again on its retry is now named in the shard result as still red, so the sheriff counts it as a failing file instead of judging the red with no file at all (Issue #1748).
+- The MCP `weave_call` tool no longer inlines the 49 hidden tool summaries in its description; bare `weave_call {name: "help"}` lists them for the caller's role, the core `tools/list` drops from 18,390 to 16,005 bytes, and a per-tool cap of 1,200 bytes with named allowances that only fall replaces the raised-every-time total (Issue #1565).
+
 ## v0.4.170 (2026-11-23)
 
 - **Local affected selection runs what the PR gate would** (Issue #1641): `npm test -- --affected` used to fall back to the whole inventory for any change that was not itself a test, so a one-line source fix paid all 470 browser suites. It now runs the `PR gate` selection, read from the same `prSelection` in `scripts/ci-test.mjs`: every gating unit file, the smoke journeys and the browser suites the diff maps to (17 of 470 for a `src/field-hints.js` edit), or every gating browser suite when shared code changed. A checkout the planner cannot read still gets the full suite, and `lanes()` and `testFiles()` move to `scripts/lanes.mjs` so the selector can load the planner while `scripts/test.mjs` runs.

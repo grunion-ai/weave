@@ -1,1 +1,0 @@
-- The MCP `weave_call` tool no longer inlines the 49 hidden tool summaries in its description; bare `weave_call {name: "help"}` lists them for the caller's role, the core `tools/list` drops from 18,390 to 16,005 bytes, and a per-tool cap of 1,200 bytes with named allowances that only fall replaces the raised-every-time total (Issue #1565).
