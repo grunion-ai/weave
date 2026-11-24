@@ -96,6 +96,41 @@ if (s) {
     });
   }
 
+  for (const typed of ['[] ', '[ ] ']) {
+    test(`"${typed}" at the start of a line becomes a task item on the space (Issue #1894)`, async () => {
+      const { id, page, surface } = await open();
+      try {
+        await surface.click();
+        await page.keyboard.type(typed);
+        const got = await shape(surface);
+        assert.equal(got.tag, 'UL', JSON.stringify(got));
+        assert.ok(got.task, `the item is a task: ${JSON.stringify(got)}`);
+        assert.equal(got.checked, false);
+        assert.equal(got.text, '', 'the box text is gone from the item');
+        assert.ok(got.caretInItem, 'the caret sits inside the new item');
+        assert.deepEqual(got.paragraphs, [], 'no paragraph keeps the box text');
+        await page.keyboard.type('alpha');
+        await page.keyboard.press('Enter');
+        await page.keyboard.type('X');
+        const want = '- [ ] alpha\n- [ ] X\n';
+        assert.equal(await saved(page, surface, id, want), want);
+      } finally { await page.close(); }
+    });
+  }
+
+  test('Backspace right after "[] " becomes a task gives back the typed box (Issue #1894)', async () => {
+    const { page, surface } = await open();
+    try {
+      await surface.click();
+      await page.keyboard.type('[] ');
+      assert.ok((await shape(surface)).task);
+      await page.keyboard.press('Backspace');
+      const got = await shape(surface);
+      assert.equal(got.tag, null, `the list is gone: ${JSON.stringify(got)}`);
+      assert.deepEqual(got.paragraphs, ['[] ']);
+    } finally { await page.close(); }
+  });
+
   test('the conversion runs the editor\'s input path, so a save follows the space alone (Issue #750)', async () => {
     const { page, surface } = await open('Intro\n');
     const puts = [];

@@ -1,0 +1,1 @@
+- Typing `[] ` or `[ ] ` at the start of a line turns it into a task item, the same as `- [ ] ` (Issue #1894).
