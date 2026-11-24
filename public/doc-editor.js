@@ -10,6 +10,7 @@ const DEFERRED_INSERTS = {
   '⁣raw-html⁣': '<div>html</div>',
   '⁣table⁣': { md: '| Column | Column |\n| --- | --- |\n| Cell | Cell |', select: 'Column' },
   '⁣code⁣': { md: '```\ncode\n```', select: 'code' },
+  '⁣divider⁣': { md: '\n***\n\n', caretAfter: true },
 };
 const ENTITY_LINK_MARKER = refMarker('entity');
 const REF_MARKER_RE = /⁣ref:(entity|table|space)⁣/;
@@ -51,7 +52,7 @@ function slashItems() {
     { label: 'Code block', icon: '#', flat: 'code', group: 'all', hint: '```', aliases: ['fence', 'pre'], insert: '⁣code⁣' },
     { label: 'Mermaid diagram', icon: '◈', flat: 'workflow', group: 'all', hint: '```mermaid', aliases: ['chart', 'graph', 'flow'], insert: '```mermaid\ngraph TD\n  A --> B\n```' },
     { label: 'Table', icon: '▦', flat: 'table', group: 'all', hint: '| a | b |', aliases: ['grid'], insert: '⁣table⁣' },
-    { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '\n***\n' },
+    { label: 'Divider', icon: '—', flat: 'minus', group: 'all', hint: '***', aliases: ['hr', 'rule', 'separator'], insert: '⁣divider⁣' },
     { label: 'Line break', icon: '↵', flat: 'corner-down-left', group: 'all', hint: '\\ + ⏎', aliases: ['br', 'newline', 'return'], insert: '\\\n' },
     { label: 'Image', icon: '▤', flat: 'image', group: 'all', hint: '![](…)', aliases: ['picture', 'photo'], insert: '![alt](url)' },
     { label: 'Raw HTML', icon: '</>', flat: 'braces', group: 'all', hint: '<div>', aliases: ['embed', 'html'], insert: '⁣raw-html⁣' },
@@ -991,6 +992,7 @@ function applyCommandMarkers(host, editor, onInput) {
   for (const [marker, block] of Object.entries(DEFERRED_INSERTS)) {
     if (!v.includes(marker)) continue;
     if (block.select) return insertSelecting(host, editor, onInput, v.replace(marker, block.md), block.select);
+    if (block.caretAfter) return insertCaretAfter(host, editor, onInput, v, marker, block.md);
     const next = v.replace(marker, block);
     editor.setValue(next);
     editor.focus();
@@ -1022,6 +1024,13 @@ function insertSelecting(host, editor, onInput, md, select) {
   const at = md.indexOf(select);
   editor.setValue(md.slice(0, at) + CARET_SENTINEL + md.slice(at));
   if (!caretToToken(host, CARET_SENTINEL, select.length)) { editor.setValue(md); editor.focus(); }
+  onInput(editor.getValue());
+  scheduleDecorFor(host);
+}
+
+function insertCaretAfter(host, editor, onInput, v, marker, md) {
+  editor.setValue(v.replace(marker, md + CARET_SENTINEL));
+  if (!caretToToken(host, CARET_SENTINEL)) { editor.setValue(v.replace(marker, md)); editor.focus(); }
   onInput(editor.getValue());
   scheduleDecorFor(host);
 }

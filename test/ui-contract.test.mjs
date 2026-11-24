@@ -1505,8 +1505,11 @@ test('the divider inserts *** — an inserted --- pair is YAML front matter to L
   const items = APP.slice(APP.indexOf('function slashItems'), APP.indexOf('function slashScore'));
   const item = items.match(/label: 'Divider'.*insert: '((?:[^'\\]|\\.)*)'/);
   assert.ok(item, 'the Divider item exists');
-  assert.equal(item[1], '\\n***\\n', 'thematic break, unambiguous spelling');
-  assert.doesNotMatch(items, /insert: '\\n---\\n'/, 'the front-matter spelling is gone');
+  assert.equal(item[1], '⁣divider⁣', 'deferred so the caret can land below the rule (Issue #1891)');
+  const block = APP.match(/'⁣divider⁣': \{ md: '((?:[^'\\]|\\.)*)', caretAfter: true \}/);
+  assert.ok(block, 'the divider deferred insert puts the caret after the rule');
+  assert.equal(block[1], '\\n***\\n\\n', 'thematic break, unambiguous spelling, then a paragraph');
+  assert.doesNotMatch(APP, /md: '\\n---\\n/, 'the front-matter spelling is gone');
 });
 
 test('the slash menu clamps under the record header instead of hiding its promoted row', () => {
