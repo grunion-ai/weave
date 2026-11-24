@@ -1,0 +1,1 @@
+- A space position written over REST, MCP or the CLI now counts the spaces in the sidebar, so position 1 places a space second instead of first; the System space no longer takes a slot, and the left nav drag sends the sidebar index it shows (Issue #1423).

@@ -1768,6 +1768,13 @@ export class Weave {
   }
 
   #spacesInOrder() { return byPosition(Object.values(this.state.spaces)); }
+  #placeSpace(space, position) {
+    const all = this.#spacesInOrder();
+    const hidden = this.#hiddenSpaces();
+    const live = all.filter((x) => x !== space && !x.deletedAt);
+    const anchor = position && live.filter((x) => !x.system && !hidden?.has(x.id))[position];
+    this.#place(all, space, anchor ? live.indexOf(anchor) : position && live.length);
+  }
   #tablesOfSpace(spaceId) { return byPosition(Object.values(this.state.tables).filter((d) => d.spaceId === spaceId)); }
 
   #reconcileFieldOrder(db) {
@@ -2253,7 +2260,7 @@ export class Weave {
     if (patch.icon != null) { const v = iconValue(patch.icon); if (v) s.icon = v; else delete s.icon; }
     if (patch.template != null) { if (patch.template) s.template = true; else delete s.template; }
     if (patch.access != null) { if (patch.access === 'private') s.access = 'private'; else delete s.access; }
-    if (patch.position != null) this.#place(this.#spacesInOrder(), s, patch.position);
+    if (patch.position != null) this.#placeSpace(s, patch.position);
     this.#syncSpaceRow(s);
     this.save();
     return s;

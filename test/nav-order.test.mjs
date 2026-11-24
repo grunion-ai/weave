@@ -291,3 +291,52 @@ test('CLI reads and writes the same order (Feature #284)', () => inTempDir((dir)
   assert.deepEqual(onRoot('workspace', 'move', 'beta', '--position', '0').map((x) => x.name), ['beta', 'root']);
   assert.deepEqual(onRoot('workspace', 'order').map((x) => x.name), ['beta', 'root']);
 }));
+
+test('a middle space position counts the sidebar, never the System space (Issue #1423)', () => {
+  const w = build();
+  assert.equal(w.listSpaces()[0].system ? 'system' : 'user', 'system', 'System sorts first in a fresh workspace');
+  w.updateSpace('Charlie', { position: 1 });
+  assert.deepEqual(userSpaces(w), ['Alpha', 'Charlie', 'Bravo']);
+  assert.ok(w.listSpaces()[0].system, 'System keeps its place');
+  w.updateSpace('Alpha', { position: 2 });
+  assert.deepEqual(userSpaces(w), ['Charlie', 'Bravo', 'Alpha']);
+  w.updateSpace('Alpha', { position: 0 });
+  assert.deepEqual(w.listSpaces().map((s) => s.system ? 'System' : s.name), ['Alpha', 'System', 'Charlie', 'Bravo'], '0 stays first in the sidebar and in the schema');
+  w.updateSpace('Bravo', { position: 1 });
+  assert.deepEqual(userSpaces(w), ['Alpha', 'Bravo', 'Charlie']);
+  w.updateSpace('Alpha', { position: 99 });
+  assert.deepEqual(userSpaces(w), ['Bravo', 'Charlie', 'Alpha']);
+  assert.deepEqual(w.listSpaces().map((s) => s.position), w.listSpaces().map((_, i) => i), 'positions stay dense');
+});
+
+test('a trashed space takes no sidebar slot when another space moves (Issue #1423)', () => {
+  const w = build();
+  w.createSpace({ name: 'Delta' });
+  w.deleteSpace('Alpha');
+  w.updateSpace('Delta', { position: 1 });
+  assert.deepEqual(userSpaces(w), ['Bravo', 'Delta', 'Charlie']);
+});
+
+test('a table position is untouched by the space fix (Issue #1423)', () => {
+  const w = build();
+  w.updateTable('Alpha/Three', { position: 1 });
+  assert.deepEqual(tablesIn(w, 'Alpha'), ['One', 'Three', 'Two']);
+});
+
+test('REST, MCP and the CLI place position 1 second in the sidebar (Issue #1423)', async () => {
+  await withServer(async ({ root, call }) => {
+    root.createSpace({ name: 'Charlie' });
+    assert.equal((await call('PATCH', '/api/spaces/Charlie', { position: 1 })).status, 200);
+    const spaces = (await call('GET', '/api/spaces')).data.filter((s) => !s.system);
+    assert.deepEqual(spaces.map((s) => s.name), ['Alpha', 'Charlie', 'Bravo']);
+    dispatchTool(root, 'weave_update_space', { space: 'Alpha', position: 1 });
+    assert.deepEqual(dispatchTool(root, 'weave_schema', {}).filter((s) => !s.system).map((s) => s.space), ['Charlie', 'Alpha', 'Bravo']);
+  });
+  inTempDir((dir) => {
+    const data = join(dir, 'ws.db');
+    const cli = (...args) => JSON.parse(execFileSync('node', [BIN, ...args, '--data', data], { encoding: 'utf8' }));
+    for (const name of ['Alpha', 'Bravo', 'Charlie']) cli('space', 'create', name);
+    cli('space', 'update', 'Charlie', '--position', '1');
+    assert.deepEqual(cli('space', 'list').filter((s) => !s.system).map((s) => s.name), ['Alpha', 'Charlie', 'Bravo']);
+  });
+});

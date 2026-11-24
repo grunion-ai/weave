@@ -149,4 +149,26 @@ if (s) {
       await p.waitForFunction(() => /#\/space\//.test(location.hash), null, { timeout: 5000 });
     } finally { await p.close(); }
   });
+
+  test('a space dropped in a middle slot sends its sidebar index, so System takes no slot (Issue #1423)', async () => {
+    const p = await page();
+    try {
+      await open(p);
+      const before = await spaceKeys(p);
+      const bodies = [];
+      p.on('request', (r) => { if (r.method() === 'PATCH' && r.url().includes('/spaces/')) bodies.push(JSON.parse(r.postData())); });
+      const hand = pointer(p);
+      await hand.press(await centre(group(p, before[2]).locator('.nav-space-row')));
+      await hand.nudge();
+      await hand.to(await aimAt(group(p, before[1]), 'before', 'y'));
+      await quiet(p);
+      await hand.release();
+      await p.waitForFunction(() => !document.querySelector('.wv-reorder-lift, .wv-reorder-slot'), null, { timeout: 5000 });
+      await p.waitForLoadState('networkidle');
+      assert.deepEqual(bodies, [{ position: 1 }]);
+      assert.deepEqual(spaceNames(), [before[0], before[2], before[1]]);
+      assert.deepEqual(await spaceKeys(p), [before[0], before[2], before[1]]);
+      assert.ok(weave.listSpaces().some((x) => x.system), 'System stays in the stored order');
+    } finally { await p.close(); }
+  });
 }
