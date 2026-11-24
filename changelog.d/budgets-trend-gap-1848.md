@@ -1,1 +1,0 @@
-- A budgets run that kept no trend reading now writes a gap point the next runs count and name on the run page, instead of shortening every streak that crosses it in silence (Issue #1848).
