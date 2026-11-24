@@ -1,1 +1,0 @@
-- Crepe editor: colours and fonts come from weave's own tokens, so the editor follows the light and dark themes (Feature #389).

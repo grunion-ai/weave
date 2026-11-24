@@ -1,1 +1,0 @@
-- Crepe editor: Return and the slash menu no longer scroll the page away from the caret, arrowing through the slash menu scrolls the list only as rows run out, /divider leaves the caret on a new line under the rule, and the menu's icons and highlighted row use weave's colours (Issue #1896).

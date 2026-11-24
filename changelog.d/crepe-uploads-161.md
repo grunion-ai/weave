@@ -1,1 +1,0 @@
-- Crepe editor: files pasted or dropped into a document attach to the record and land as an image, a viewer or a link, and Crepe's image block uploads to the record too (Features #161, #389).

@@ -1,1 +1,0 @@
-- Crepe editor: the outline rail lists the document's headings, heading folds hide their sections, and an opening heading that repeats the record name hides, as under Vditor (Features #87, #88, #389).
