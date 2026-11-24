@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.175 (2026-11-24)
+
+- Ctrl+Cmd+Up and Ctrl+Cmd+Down (Ctrl+Alt on keyboards without Cmd) move the list item at the caret above or below its sibling in the document editor, carrying its nested items and keeping the caret where it was (Issue #1893).
+- An OAuth MCP request no longer rewrites the workspace meta and the Users table on every call: the account is touched at most once a minute and Last Seen at most once an hour, as sessions already were (Issue #1574).
+
 ## v0.4.174 (2026-11-24)
 
 - A space position written over REST, MCP or the CLI now counts the spaces in the sidebar, so position 1 places a space second instead of first; the System space no longer takes a slot, and the left nav drag sends the sidebar index it shows (Issue #1423).
