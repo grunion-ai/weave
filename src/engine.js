@@ -5707,7 +5707,7 @@ export class Weave {
           problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row Type differs from the field' });
         }
         const definition = fieldRow.values[this.#sysField(fieldsT, 'Definition').id];
-        if (fieldDefinable(f) && canonicalJSON(definition) !== canonicalJSON({ type: f.type, config: f.config })) {
+        if (fieldDefinable(f) && canonicalJSON(definition) !== canonicalJSON(normalizeDefinition({ type: f.type, config: structuredClone(f.config) }, 4))) {
           problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row Definition differs from the field' });
         }
       }

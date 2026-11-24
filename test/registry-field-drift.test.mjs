@@ -36,7 +36,8 @@ test('a type change refreshes the System/Fields Type, and a reopen keeps it (Iss
 
 test('registryReport names a row whose Type or Definition differs from its field', () => {
   const w = pair();
-  const f = w.addField('Task', { name: 'Estimate', type: 'number' });
+  const f = w.addField('Task', { name: 'Estimate', type: 'number', config: { width: 200 } });
+  assert.deepEqual(w.registryReport().problems, [], 'a column width lives on the view, so it is no drift');
   const row = rowFor(w, f.id);
   const typeId = Object.values(fieldsT(w).fields).find((x) => x.name === 'Type').id;
   const defId = Object.values(fieldsT(w).fields).find((x) => x.name === 'Definition').id;
@@ -69,5 +70,11 @@ test('trashing a relation trashes its lookup row, and restoring brings both rows
   w.deleteField('Task', 'Project');
   w.deleteField('Task', 'Project', { hard: true });
   assert.equal(rowFor(w, lookup.id, { includeDeleted: true }), undefined, 'a purge from the trash drops both rows');
+  assert.deepEqual(w.registryReport().problems, []);
+});
+
+test('a record term set with the table keeps the Name field row in step', () => {
+  const w = pair();
+  w.updateTable('Task', { noun: 'chore' });
   assert.deepEqual(w.registryReport().problems, []);
 });
