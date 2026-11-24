@@ -567,7 +567,7 @@ async function resolveUploadAndMcpDoors(c, fromRequest) {
     spentUploads.set(uploadToken, { expiresAt: upload.expiresAt, landed: false, incomplete: false });
     upload.engine.maybeRefresh();
     if (upload.accountId == null) {
-      if (upload.engine.listAccounts().length) return { hit: deny(401, 'This workspace now has accounts; prepare the upload again') };
+      if (upload.engine.hasAccounts()) return { hit: deny(401, 'This workspace now has accounts; prepare the upload again') };
     } else {
       const account = upload.engine.listAccounts().find((a) => a.id === upload.accountId);
       if (!account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id)) return { hit: deny(401, 'The upload account or sign-in link no longer exists') };
@@ -1021,7 +1021,7 @@ async function backupAndUploadRoutes(c, fromRequest) {
       const currentRole = Weave.roleName(account?.role);
       const refused = byAccount
         ? !account || (upload.identity && upload.engine.accountForIdentity(upload.identity, { touch: false })?.id !== account.id) || !['editor', 'architect'].includes(currentRole) || (upload.engine !== weave && currentRole !== 'architect')
-        : upload.engine.listAccounts().length > 0;
+        : upload.engine.hasAccounts();
       if (refused) return deny(403, 'The upload account no longer has permission');
       if (currentRole === 'editor' && weave.state.tables[weave.getEntity(upload.entity).dbId]?.system) return deny(403, 'This token cannot change the schema');
       if (weave.getEntity(upload.entity).deletedAt) throw new WeaveError('The upload destination is deleted', 'not-found');
@@ -1381,7 +1381,7 @@ async function workspaceRoutes(c, fromRequest) {
     const target = ref ? hub.get(decodeURIComponent(ref)) : weave;
     if (!target) return notFound({ error: 'Workspace not found', code: 'not-found' });
     const targetRole = roleOn(target);
-    const local = !hub.walled && !target.state.meta.requireAuth && !target.listAccounts().length;
+    const local = !hub.walled && !target.state.meta.requireAuth && !target.hasAccounts();
     if (!local && targetRole !== 'architect') return deny(targetRole ? 403 : 401, 'Managing a workspace needs its architect');
   }
   if (route === 'POST /api/workspaces' && body?.from != null) {
@@ -2038,7 +2038,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
         return out(503, { error: error.message, code: 'billing-unavailable' }, { 'Retry-After': '60', 'Cache-Control': 'no-store' });
       }
     }
-    const guarded = () => !!weave.listAccounts().length;
+    const guarded = () => weave.hasAccounts();
     if (role) role = workspaceRole(weave, viewer);
     if (requestAccount && !share && !role && !openDoor) {
       const ws = weave.state.meta.name;
@@ -2053,7 +2053,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       }), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     const viewerOn = (w) => {
-      if (!w.listAccounts().length && !w.state.meta.requireAuth) return null;
+      if (!w.hasAccounts() && !w.state.meta.requireAuth) return null;
       if (w === weave) return viewer;
       if (share) return ANONYMOUS;
       const bearer = authz && /^Bearer /i.test(authz) ? authz.slice(7).trim() : null;

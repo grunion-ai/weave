@@ -37,6 +37,7 @@ const INTERNAL = {
   isActor: 'permission helper (Issue #699): the comment check asks whether a stored actor, id or legacy name, is the caller; an agent never asks it',
   readFileMeta: 'revalidation helper (Issue #1430): the file route checks the row is visible and answers 304 before readFile loads any bytes; an agent reads files through readFile',
   openFile: 'streaming helper (Issue #1412): the file route pipes a blob kept on disk from its path, a byte range included, instead of loading it whole through readFile; an agent reads files through readFile',
+  hasAccounts: 'gate helper (Issue #1580): the auth, admin and local-key gates ask whether any account exists without building the account list and its seat roles; an agent lists accounts through listAccounts',
   save: 'persistence', maybeRefresh: 'cross-process refresh',
   filesOnDisk: 'storage predicate (Issue #1428): the upload route asks whether this workspace keeps file bytes beside the database before it streams a body to disk',
   stageBlob: 'upload plumbing (Issue #1428): names a staging file in files/ for a body the server has not read yet; an agent attaches bytes through attachFile',
