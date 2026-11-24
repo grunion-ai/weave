@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { install, APT_CONF, ATTEMPTS, ATTEMPT_SECONDS, LOCK_WAIT_SECONDS } from '../scripts/ci/install-browsers.mjs';
+import { install, APT_CONF, ATTEMPTS, LOCK_WAIT_SECONDS } from '../scripts/ci/install-browsers.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 function host({ satisfied = false, cacheInstalls = true, mirrorFails = 0, debs = [], cached = [], lockHeldFor = 0 } = {}) {
@@ -154,13 +154,10 @@ test('every workflow that installs browsers on the runner goes through the one s
   }
 });
 
-test('each mirror attempt runs under its own time limit, so a stalled download is retried inside the step budget (Issue #1848)', () => {
+test('a mirror attempt carries no inner time limit, because one tighter than the 300-second dpkg lock wait kills an attempt that is only waiting (Issues #1347, #1848)', () => {
   const { state, options } = host({ mirrorFails: 1 });
   assert.equal(install(['chromium', 'webkit'], options).source, 'mirror');
   const attempts = state.calls.filter((line) => line.includes('install --with-deps'));
-  assert.equal(attempts.length, 2);
-  for (const line of attempts) assert.equal(line, `timeout --kill-after=15 ${ATTEMPT_SECONDS} npx --no-install playwright install --with-deps chromium webkit`);
-  const step = readFileSync('.github/workflows/budgets.yml', 'utf8').match(/timeout-minutes: (\d+)\n        run: node scripts\/ci\/install-browsers\.mjs/);
-  assert.ok(step, 'budgets.yml bounds the install step');
-  assert.ok(ATTEMPTS * (ATTEMPT_SECONDS + 15) <= Number(step[1]) * 60 - 120, `${ATTEMPTS} attempts of ${ATTEMPT_SECONDS}s fit in the ${step[1]}-minute step with two minutes for the image check and the cache`);
+  assert.deepEqual(attempts, Array(2).fill('npx --no-install playwright install --with-deps chromium webkit'));
+  assert.doesNotMatch(readFileSync('scripts/ci/install-browsers.mjs', 'utf8'), /'timeout'|timeout:/);
 });

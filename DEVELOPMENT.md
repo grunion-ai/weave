@@ -947,7 +947,12 @@ sheriff, release and promotion never read them.
 `scripts/ci-trend.mjs`. It reads the reading line each suite logs and keeps,
 per suite and key, the fastest reading of the run's attempts with its budget
 and every walk. That point is the run's `trend-series` artifact, and each run
-downloads the points of the six main pushes before it.
+downloads the points of the six main pushes before it. A run that fails
+before its readings writes a gap point under `if: failure()` (`node
+scripts/ci-trend.mjs --gap <reason>`), and an earlier run with no artifact is
+stubbed as one. A gap neither counts toward nor breaks a streak; each run warns
+how many of its six were gaps, and a miss note names the gaps its streak
+crossed (Issue #1848).
 
 A reading over its budget is a trend note, not a red run: a warning on the run
 and one standing tracker row per suite and key, named `Slow: <suite> <key> over
