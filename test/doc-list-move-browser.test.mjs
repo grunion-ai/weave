@@ -129,7 +129,7 @@ if (s) {
       await page.waitForTimeout(900);
       const first = () => page.locator('.doc-section[data-doc-field="Description"] .vditor-reset li').first().textContent();
       assert.match(await first(), /beta/);
-      await page.keyboard.press('Meta+z');
+      await page.keyboard.press('ControlOrMeta+z');
       assert.match(await first(), /alpha/);
       const want = '- alpha\n- beta\n';
       assert.equal(await saved(page, surface, id, want), want);
