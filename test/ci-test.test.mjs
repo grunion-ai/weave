@@ -453,7 +453,7 @@ test('every workflow that installs browsers on the runner bounds the install ins
     const job = workflow.slice(workflow.indexOf(from), to ? workflow.indexOf(to) : undefined);
     assert.ok(job.length > 200, `${file} has a ${from.trim()} job`);
     assert.match(job, new RegExp(`timeout-minutes: ${jobBudget}\\n`), `${file} declares the job budget this test reasons about`);
-    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: node scripts\/ci\/install-browsers\.mjs [a-z ]+\n/g)];
+    const steps = [...job.matchAll(/- name: Install [^\n]*\n(?:        id: [^\n]*\n)?(?:        if: [^\n]*\n)?        timeout-minutes: (\d+)\n        run: node scripts\/ci\/install-browsers\.mjs [a-z ]+\n/g)];
     assert.equal(steps.length, 1, `${file} has one bounded install step`);
     assert.ok(Number(steps[0][1]) < jobBudget, `${file} leaves the job room to run its work`);
     assert.doesNotMatch(job, /continue-on-error/, `${file} does not lean on continue-on-error, which a killed step does not survive`);
@@ -533,7 +533,7 @@ test('budgets.yml records each run as one point of the series and judges it agai
   const step = (name) => yml.slice(yml.indexOf(`- name: ${name}`)).split(/\n(?=      - )/)[0];
   const history = step('Series from the earlier budget runs');
   assert.match(history, /gh run list -R "\$GITHUB_REPOSITORY" --workflow budgets\.yml --branch main --event push --status completed --limit \d+ --json databaseId -q '\.\[\]\.databaseId' \|\| true\)\n/, 'the earlier main pushes, and none at all on a first run');
-  assert.match(history, /gh run download "\$run" -R "\$GITHUB_REPOSITORY" -n trend-series -D "trend-history\/\$run" \|\| echo /, 'a run that kept no series is skipped in the shell');
+  assert.match(history, /gh run download "\$run" -R "\$GITHUB_REPOSITORY" -n trend-series -D "trend-history\/\$run" \|\| \{\n\s+echo "run \$run kept no trend series"\n/, 'a run that kept no series is named in the shell and stubbed as a gap point (Issue #1848)');
   assert.match(history, /GH_TOKEN: \$\{\{ github\.token \}\}\n/);
   const judge = step('Run the timing budgets and judge the trend');
   assert.match(judge, /WEAVE_TREND_HISTORY: trend-history\n/);

@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './lib/temp.mjs';
 import { TREND } from '../scripts/ci-test.mjs';
-import { SUITES, SUSTAINED, NOTE_LOG, readingOf, readTap, judge, streakOf, noteName, noteSymptom, noteLine, readHistory, trend, fileNote, suiteEnv, realIO } from '../scripts/ci-trend.mjs';
+import { SUITES, SUSTAINED, NOTE_LOG, readingOf, readTap, judge, streakOf, noteName, noteSymptom, noteLine, readHistory, trend, gap, gapsWithin, fileNote, suiteEnv, realIO } from '../scripts/ci-trend.mjs';
 import { BUDGET, SUITE as EDGE } from '../scripts/edge-probe.mjs';
 
 const result = (pass, n, name) => [`# Subtest: ${name}`, `${pass ? 'ok' : 'not ok'} ${n} - ${name}`, '  ---', '  duration_ms: 9125.25', "  type: 'test'", '  ...'];
@@ -291,4 +291,53 @@ test('a host the probe could not reach records nothing, warns, and leaves the la
 
 test('the budgets lane probes the live hosts itself (Issue #1268)', () => {
   assert.equal(typeof realIO({}).edge, 'function');
+});
+
+const GAP = (run) => ({ run, readings: [], gap: 'browser install' });
+
+test('a push that kept no reading is counted as a gap inside a run of misses, never skipped silently (Issue #1848)', () => {
+  const now = { suite: 'vitals', key: 'open-table|desktop|cls', value: 0.139, budget: 0.01 };
+  const history = [past('8', 0.139), GAP('7'), GAP('6'), past('5', 0.139), past('4', 0.004), GAP('3')];
+  assert.equal(streakOf(now, history, '9'), 3, 'a gap neither counts toward the streak nor breaks it');
+  assert.equal(gapsWithin(now, history, '9'), 2, 'the two gaps inside the run of misses are counted; the one past the hold is not');
+  const [miss] = judge({ tests: [], readings: [now] }, { history, run: '9' }).misses;
+  assert.equal(miss.gaps, 2);
+});
+
+test('a judged run says how many of the earlier pushes kept no reading, and a miss names the gaps it crossed (Issue #1848)', async () => {
+  const io = fakeIO({ history: [past('43143618538', 0.139), GAP('43142855333'), past('43140523229', 0.004)] });
+  assert.equal(await trend(io), 0);
+  assert.ok(io.logs.includes('::warning title=Trend gap::1 of the last 3 main pushes kept no trend reading (43142855333: browser install)'));
+  assert.ok(io.summaries.includes('- 1 of the last 3 main pushes kept no trend reading (43142855333: browser install)'));
+  assert.match(io.notes[0].line, /read 0\.139 against a budget of 0\.01, 2 main pushes in a row, across 1 push that kept no reading: /);
+  const clean = fakeIO({ history: [past('43143618538', 0.004)] });
+  await trend(clean);
+  assert.ok(!clean.logs.some((l) => l.includes('Trend gap')), 'a series with no gap says nothing about gaps');
+});
+
+test('a run that failed before its readings writes a gap point the next run reads, and says so on the run page (Issue #1848)', () => {
+  const io = fakeIO();
+  io.kept = () => false;
+  assert.equal(gap(io, 'browser install'), 0);
+  assert.deepEqual(io.points, [{ ...POINT, readings: [], gap: 'browser install' }]);
+  assert.ok(io.logs.includes(`::error title=Trend gap::this run kept no trend reading: browser install. The next runs count it as a gap in every streak.`));
+  assert.ok(io.summaries.includes(`- trend gap: this run kept no trend reading (browser install) ${URL_OF_RUN}`));
+  const judged = fakeIO();
+  judged.kept = () => true;
+  gap(judged, 'browser install');
+  assert.deepEqual(judged.points, [], 'a run whose judge already wrote its point keeps that point');
+  const dir = tempDir('weave-trend-gap-');
+  mkdirSync(join(dir, '7'), { recursive: true });
+  writeFileSync(join(dir, '7', 'series.json'), JSON.stringify(GAP('7')));
+  assert.deepEqual(readHistory(dir), [GAP('7')]);
+});
+
+test('the budgets workflow writes a gap point when a step fails, and stubs an earlier run that kept no series (Issue #1848)', () => {
+  const workflow = readFileSync('.github/workflows/budgets.yml', 'utf8');
+  const step = workflow.match(/- name: Name a run that kept no trend reading\n        if: failure\(\)\n[\s\S]*?run: node scripts\/ci-trend\.mjs --gap "([^\n]+)"\n/);
+  assert.ok(step, 'a failure() step runs the gap writer');
+  assert.match(step[1], /steps\.install\.outcome == 'failure' && 'browser install'/);
+  assert.match(workflow, /- name: Install browsers and system dependencies\n        id: install\n/);
+  assert.ok(workflow.indexOf('--gap') < workflow.indexOf('name: trend-series'), 'the gap point is written before the upload');
+  assert.match(workflow, /"gap":"kept no trend series"/, 'an earlier run with no artifact reads as a gap, not as nothing');
 });
