@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.174 (2026-11-24)
+
+- A space position written over REST, MCP or the CLI now counts the spaces in the sidebar, so position 1 places a space second instead of first; the System space no longer takes a slot, and the left nav drag sends the sidebar index it shows (Issue #1423).
+- Double-clicking a word inside bold, italic or inline code selects that word, instead of the `*` marker that appears under the pointer once the first click expands the formatting (Issue #1901).
+
 ## v0.4.173 (2026-11-24)
 
 - Typing `[] ` or `[ ] ` at the start of a line turns it into a task item, the same as `- [ ] ` (Issue #1894).
