@@ -171,6 +171,23 @@ if (s) {
     } finally { await page.close(); }
   });
 
+  for (const [typed, shown, want] of [['- ', '\\- ', '\\- X\n'], ['7) ', '7\\) ', '7\\) X\n'], ['[] ', '[] ', '[] X\n']]) {
+    test(`Cmd+Z right after "${typed}" converts gives back the typed text, not a list (Issue #1895)`, async () => {
+      const { id, page, surface } = await open();
+      try {
+        await surface.click();
+        await page.keyboard.type(typed);
+        assert.ok((await shape(surface)).tag, 'the marker converted first');
+        await page.keyboard.press('ControlOrMeta+z');
+        const got = await shape(surface);
+        assert.equal(got.tag, null, `the list is gone: ${JSON.stringify(got)}`);
+        assert.deepEqual(got.paragraphs, [shown]);
+        await page.keyboard.type('X');
+        assert.equal(await saved(page, surface, id, want), want);
+      } finally { await page.close(); }
+    });
+  }
+
   test('a marker typed inside a code block stays code (Issue #750)', async () => {
     const { page, surface } = await open('```\nx\n```\n');
     try {

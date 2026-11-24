@@ -360,6 +360,8 @@ function pressListButton(host, type) {
 const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
 const TASK_BOX = /^\[([ xX])\]$/;
 const BARE_BOX = /^\[ ?\]$/;
+const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Shift', 'Alt']);
+const literalMarker = (typed) => typed.replace(/^([-*+])/, '\\$1').replace(/^(\d{1,9})([.)])/, '$1\\$2');
 
 function attachListMarkers(host) {
   let undo = null;
@@ -416,9 +418,12 @@ function attachListMarkers(host) {
     fireInput(root);
   }, { capture: true });
   host.addEventListener('keydown', (e) => {
+    if (MODIFIER_KEYS.has(e.key)) return;
     const armed = undo;
     undo = null;
-    if (!armed || e.key !== 'Backspace' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+    const back = e.key === 'Backspace' && !e.metaKey && !e.ctrlKey;
+    const undoKey = e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey);
+    if (!armed || !(back || undoKey) || e.altKey || e.shiftKey || e.isComposing) return;
     const root = rootOf();
     const range = getSelection()?.rangeCount ? getSelection().getRangeAt(0) : null;
     const li = range?.endContainer && (range.endContainer.nodeType === 3 ? range.endContainer.parentElement : range.endContainer).closest('li');
@@ -428,9 +433,10 @@ function attachListMarkers(host) {
     e.stopImmediatePropagation();
     const p = document.createElement('p');
     p.setAttribute('data-block', '0');
-    p.textContent = armed;
+    const typed = undoKey ? literalMarker(armed) : armed;
+    p.textContent = typed;
     list.replaceWith(p);
-    putCaret(p.firstChild, armed.length);
+    putCaret(p.firstChild, typed.length);
     fireInput(root);
   }, { capture: true });
   host.addEventListener('mousedown', () => { undo = null; }, { capture: true });
