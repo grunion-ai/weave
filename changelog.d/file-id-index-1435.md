@@ -1,1 +1,0 @@
-- Reading a file no longer scans every row of the workspace to find the one that holds it: the engine keeps an index from file id to row, checks it against the row on every read and rebuilds it when it misses, so 200 reads over 5,000 rows drop from about 80 ms to under 1 ms (Issue #1435).
