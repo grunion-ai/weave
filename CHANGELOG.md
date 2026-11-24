@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.176 (2026-11-24)
+
+- Downloading a file kept on disk streams it from the file, for a whole file and for a byte range alike, instead of reading the whole file into memory first; a file kept in the database, a preview and an inline text file are served as before (Issue #1412).
+- Reading a file no longer scans every row of the workspace to find the one that holds it: the engine keeps an index from file id to row, checks it against the row on every read and rebuilds it when it misses, so 200 reads over 5,000 rows drop from about 80 ms to under 1 ms (Issue #1435).
+- The checks that only ask whether a workspace has any account (the sign-in wall, the admin gate for tools, local keys, uploads and the protected-workspace detach check) no longer build the full account list with every account's seat role across every space on each request (Issue #1580).
+- A schedule over a large table no longer holds the server for the whole run: it runs 200 rows per turn of the event loop and queues the rest, stamps Last Run once the last row has run, and a due minute that arrives while a run is still going is skipped (Issue #1899).
+
 ## v0.4.175 (2026-11-24)
 
 - Ctrl+Cmd+Up and Ctrl+Cmd+Down (Ctrl+Alt on keyboards without Cmd) move the list item at the caret above or below its sibling in the document editor, carrying its nested items and keeping the caret where it was (Issue #1893).

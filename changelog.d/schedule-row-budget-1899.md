@@ -1,1 +1,0 @@
-- A schedule over a large table no longer holds the server for the whole run: it runs 200 rows per turn of the event loop and queues the rest, stamps Last Run once the last row has run, and a due minute that arrives while a run is still going is skipped (Issue #1899).

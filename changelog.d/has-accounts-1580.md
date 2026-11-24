@@ -1,1 +1,0 @@
-- The checks that only ask whether a workspace has any account (the sign-in wall, the admin gate for tools, local keys, uploads and the protected-workspace detach check) no longer build the full account list with every account's seat role across every space on each request (Issue #1580).
