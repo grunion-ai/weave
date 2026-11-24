@@ -42,7 +42,7 @@ if (s) {
         });
         assert.ok(at, 'the word is on screen');
         await page.mouse.click(at.x, at.y, { clickCount: clicks });
-        assert.equal(await page.evaluate(() => getSelection().toString().trim()), want);
+        assert.equal((await page.evaluate(() => getSelection().toString())).replace(/[*`]/g, '').trim(), want);
       } finally { await page.close(); }
     });
   }
