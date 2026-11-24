@@ -337,6 +337,10 @@ function canonicalJSON(v) {
   return JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
     ? Object.fromEntries(Object.keys(x).sort().map((kk) => [kk, x[kk]])) : x));
 }
+function fieldDefinable(f) {
+  return DEFINABLE_TYPES.includes(f.type) && !(f.type === 'field' && (f.config.depth ?? 1) >= 4);
+}
+
 function choiceIds(field) {
   if (field.type === 'select' || field.type === 'multiselect') return (field.config.options ?? []).map((o) => o.id);
   if (field.type === 'workflow') return (field.config.states ?? []).map((s) => s.id);
@@ -5699,6 +5703,13 @@ export class Weave {
         if (!relIds(fieldRow, fieldsT, 'Table').includes(tableRow.id)) {
           problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row is not registered to its table' });
         }
+        if (fieldRow.values[this.#sysField(fieldsT, 'Type').id] !== f.type) {
+          problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row Type differs from the field' });
+        }
+        const definition = fieldRow.values[this.#sysField(fieldsT, 'Definition').id];
+        if (fieldDefinable(f) && canonicalJSON(definition) !== canonicalJSON({ type: f.type, config: f.config })) {
+          problems.push({ kind: 'field', name: `${db.name}.${f.name}`, problem: 'row Definition differs from the field' });
+        }
       }
     }
     const reg = this.#reg;
@@ -5879,7 +5890,7 @@ export class Weave {
     if (!tableRow) return undefined;
     const reg = this.#reg;
     const wsRow = this.#sysRow('workspaces', this.state.meta.id);
-    const definable = DEFINABLE_TYPES.includes(f.type) && !(f.type === 'field' && (f.config.depth ?? 1) >= 4);
+    const definable = fieldDefinable(f);
     let row = this.#sysRow('fields', f.id);
     if (!row) {
       row = reg.#metaSync(() => reg.createEntity(t.id, {
@@ -5898,6 +5909,7 @@ export class Weave {
     }
     const patch = {};
     if (reg.entityName(row) !== f.name) patch.Name = f.name;
+    if (row.values[this.#sysField(t, 'Type').id] !== f.type) patch.Type = f.type;
     if (definable) patch.Definition = { type: f.type, config: f.config };
     if (!this.#relIds(row, t, 'Table').includes(tableRow.id)) patch.Table = tableRow.id;
     if (wsRow && !this.#relIds(row, t, 'Workspace').includes(wsRow.id)) patch.Workspace = wsRow.id;
@@ -7262,17 +7274,14 @@ export class Weave {
       const other = this.state.tables[field.config.targetDb];
       if (other) this.#removeFieldRaw(other, field.config.inverseFieldId);
     }
-    for (const f of Object.values(db.fields)) {
-      if ((f.type === 'lookup' || f.type === 'rollup') && f.config.relationField === field.id) {
-        this.#removeFieldRaw(db, f.id);
-      }
-    }
+    const dependents = Object.values(db.fields).filter((f) => (f.type === 'lookup' || f.type === 'rollup') && f.config.relationField === field.id).map((f) => f.id);
+    for (const id of dependents) this.#removeFieldRaw(db, id);
     this.#removeFieldRaw(db, field.id);
     if (entry) {
       (db.trashedFields ??= {})[field.id] = entry;
-      this.#trashSysRow('fields', field.id);
+      for (const id of [field.id, ...dependents]) this.#trashSysRow('fields', id);
     } else {
-      this.#dropFieldRow(field.id);
+      for (const id of [field.id, ...dependents]) this.#dropFieldRow(id);
     }
     if (field.type === 'relation' && field.config.inverseFieldId) this.#dropFieldRow(field.config.inverseFieldId);
     this.#syncTableRow(db);
@@ -7311,7 +7320,7 @@ export class Weave {
     for (const [table, snap] of placements) this.#reinstateField(table, snap);
     delete db.trashedFields[main.id];
     if (!Object.keys(db.trashedFields).length) delete db.trashedFields;
-    this.#restoreSysRow('fields', main.id);
+    for (const [, snap] of placements) this.#restoreSysRow('fields', snap.field.id);
     for (const [table, snap] of placements) this.#syncFieldRow(table, table.fields[snap.field.id]);
     this.#syncTableRow(db);
     if (far && far.id !== db.id) this.#syncTableRow(far);
