@@ -26,12 +26,15 @@ const watch = (page) => page.evaluate(() => {
 if (s) {
   const { base, browser, weave } = s;
 
-  const openCold = async (page) => {
+  const openCold = async (page, note) => {
     await page.goto(`${base}/#/`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#main');
     await watch(page);
+    const fresh = page.waitForResponse((res) => res.request().method() === 'POST' && res.url().endsWith(`/tables/${tasks.id}/query`));
     await page.goto(`${base}/#/table/${tasks.id}`, { waitUntil: 'networkidle' });
     await page.waitForSelector(`#main .table-wrap tr[data-eid="${rows[0]}"]`);
+    await fresh;
+    await page.waitForFunction(({ eid, text }) => document.querySelector(`#main tr[data-eid="${eid}"] td[data-field="Note"]`)?.innerText === text, { eid: rows[0], text: note });
     await page.waitForTimeout(500);
     return page.evaluate(() => window.__draws);
   };
@@ -47,7 +50,7 @@ if (s) {
       await warm(page);
       weave.updateEntity(rows[0], { Note: 'two' });
       weave.updateEntity(rows[0], { Note: 'one' });
-      assert.equal(await openCold(page), 1, 'the fresh page redrew a grid the reader could not tell from the cached one');
+      assert.equal(await openCold(page, 'one'), 1, 'the fresh page redrew a grid the reader could not tell from the cached one');
       assert.equal(await page.locator(`tr[data-eid="${rows[0]}"] td[data-field="Note"]`).innerText(), 'one');
     } finally { await page.close(); }
   });
@@ -56,8 +59,12 @@ if (s) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     try {
       await warm(page);
+      await page.route(`**/tables/${tasks.id}/query`, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      });
       weave.updateEntity(rows[0], { Note: 'three' });
-      assert.equal(await openCold(page), 2, 'the reader was left looking at the cached cell');
+      assert.equal(await openCold(page, 'three'), 2, 'the reader was left looking at the cached cell');
       assert.equal(await page.locator(`tr[data-eid="${rows[0]}"] td[data-field="Note"]`).innerText(), 'three');
     } finally { await page.close(); }
   });
