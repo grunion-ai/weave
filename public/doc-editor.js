@@ -326,13 +326,35 @@ function attachTabKeys(host) {
     if (!at || !root?.contains(at) || at.closest('td, th, pre') !== root) return;
     const li = at.closest('li');
     if (!li || !root.contains(li)) return;
-    const button = host.querySelector(`.vditor-toolbar [data-type="${e.shiftKey ? 'outdent' : 'indent'}"]`);
-    if (!button) return;
+    if (!pressListButton(host, e.shiftKey ? 'outdent' : 'indent')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    button.classList.remove('vditor-menu--disabled');
-    button.dispatchEvent(new Event(navigator.userAgent.includes('iPhone') ? 'touchstart' : 'click', { bubbles: true, cancelable: true }));
   }, { capture: true });
+  host.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    if (editorHintOpen(host)) return;
+    const sel = document.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const node = sel.anchorNode;
+    const at = node instanceof Element ? node : node?.parentElement;
+    const root = host.querySelector('.vditor-ir .vditor-reset');
+    if (!at || !root?.contains(at) || at.closest('td, th, pre') !== root) return;
+    const li = at.closest('li');
+    if (!li || !root.contains(li) || li.querySelector('ul, ol')) return;
+    if ((li.textContent ?? '').replace(/\u200b/g, '').trim() !== '') return;
+    if (li.parentElement?.parentElement?.tagName !== 'LI') return;
+    if (!pressListButton(host, 'outdent')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, { capture: true });
+}
+
+function pressListButton(host, type) {
+  const button = host.querySelector(`.vditor-toolbar [data-type="${type}"]`);
+  if (!button) return false;
+  button.classList.remove('vditor-menu--disabled');
+  button.dispatchEvent(new Event(navigator.userAgent.includes('iPhone') ? 'touchstart' : 'click', { bubbles: true, cancelable: true }));
+  return true;
 }
 
 const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
