@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Weave } from '../src/engine.js';
+import { Weave, SCHEDULE_ROW_BUDGET } from '../src/engine.js';
 import { dispatchTool } from '../src/mcp.js';
 import { parseCron, cronMatches, zonedParts, dueBetween, armSchedules } from '../src/schedule.js';
 import { startServer } from '../src/server.js';
@@ -277,4 +277,30 @@ test('the server ticks every hub workspace: a due rule fires without any request
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+test('a schedule over more rows than the per-tick budget runs one budget inline and the rest on later turns, stamping Last Run once at the end (Issue #1899)', async () => {
+  const w = new Weave();
+  w.createSpace({ name: 'Ops' });
+  const t = w.createTable({ space: 'Ops', name: 'Task' });
+  w.addField(t.id, { name: 'Flag', type: 'checkbox' });
+  const total = SCHEDULE_ROW_BUDGET * 2 + 5;
+  const ids = Array.from({ length: total }, (_, i) => w.createEntity(t.id, { Name: `R${i}` }).id);
+  let clock = T('2027-03-10T16:59:30Z');
+  w.now = () => clock;
+  const auto = w.createAutomation(t.id, { name: 'Flag all', trigger: { type: 'schedule', cron: '0 9 * * *', zone: LA }, actions: [{ type: 'set-field', field: 'Flag', value: true }, { type: 'add-comment', text: 'tick' }] });
+  w.runSchedules();
+  clock = T('2027-03-10T17:00:10Z');
+  assert.equal(w.runSchedules(), 1);
+  const flagged = () => ids.filter((id) => read(w, id).fields.Flag === true).length;
+  assert.ok(flagged() > 0, 'the first chunk runs inside the tick');
+  assert.ok(flagged() <= SCHEDULE_ROW_BUDGET, `the tick ran ${flagged()} rows, over the budget of ${SCHEDULE_ROW_BUDGET}`);
+  assert.equal(lastRun(w, auto.id) ?? null, null, 'Last Run waits for the last chunk');
+  clock = T('2027-03-11T17:00:05Z');
+  assert.equal(w.runSchedules(), 0, 'a rule whose run is still in flight is not fired again');
+  await w.automationsSettled();
+  assert.equal(flagged(), total, 'every row ran once the queued chunks drained');
+  assert.ok(ids.every((id) => read(w, id).comments.length === 1), 'no row ran twice');
+  assert.equal(lastRun(w, auto.id), '2027-03-10T17:00:10.000Z', 'Last Run is the tick that started the run');
+  assert.equal(read(w, auto.id).fields.Health, 'Healthy');
 });

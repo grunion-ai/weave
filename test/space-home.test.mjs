@@ -67,7 +67,7 @@ test('runs read newest first and each firing is its own run', () => {
   assert.deepEqual(runs.map((r) => r.changedRows.map((x) => x.id)), [[b.id], [a.id]]);
 });
 
-test('a scheduled run over many rows groups into one run, and a thousand rows stay bounded', () => {
+test('a scheduled run over many rows groups into one run, and a thousand rows stay bounded', async () => {
   const { w, sales, deal } = demo();
   const rows = [];
   for (let i = 0; i < 1200; i++) rows.push(w.createEntity(deal.id, { Name: `Row ${i}` }));
@@ -81,6 +81,7 @@ test('a scheduled run over many rows groups into one run, and a thousand rows st
   w.runSchedules();
   clock = new Date('2027-03-10T17:00:10Z');
   assert.equal(w.runSchedules(), 1);
+  await w.automationsSettled();
   const { runs } = w.spaceHome(sales.id);
   assert.equal(runs.length, 1);
   assert.equal(runs[0].changedCount, 1200);
