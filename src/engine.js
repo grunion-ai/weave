@@ -278,12 +278,17 @@ function checkWhereNode(node, at) {
   }
   if (node === null || typeof node !== 'object') throw new WeaveError(`${at} must be a [path, operator, value] condition or an {and} or {or} group, not ${describeValue(node)}`, 'invalid');
   const keys = ['and', 'or'].filter((k) => Object.hasOwn(node, k));
-  if (keys.length !== 1) throw new WeaveError(`${at} must hold exactly one of and or or, not ${keys.length ? 'both' : 'neither'}`, 'invalid');
+  if (keys.length !== 1) throw new WeaveError(`${at} must hold exactly one of and or or, not ${keys.length ? 'both' : `neither; ${CONDITION_SHAPE}`}`, 'invalid');
   const list = node[keys[0]];
   if (!Array.isArray(list)) throw new WeaveError(`${at}.${keys[0]} must be a list of conditions, not ${describeValue(list)}`, 'invalid');
   list.forEach((child, i) => checkWhereNode(child, `${at}.${keys[0]}[${i}]`));
 }
+const PATH_SYSTEM_KEYS = new Set(['id', 'publicId', 'Public Id', 'createdAt', 'updatedAt']);
+const CONDITION_SHAPE = 'a condition is a [path, operator, value] list, e.g. [["Name", "=", "x"]]';
+const INVALID_WHERE_NODE = `Invalid where node: where is a list of conditions or an {and} or {or} group, and ${CONDITION_SHAPE}`;
+const isBareCondition = (where) => Array.isArray(where) && (where.length === 2 || where.length === 3) && typeof where[0] === 'string' && typeof where[1] === 'string';
 function checkQueryDocs(where, sort) {
+  if (isBareCondition(where)) throw new WeaveError(`where is a list of conditions, so wrap a single condition in a list: ${JSON.stringify([where])}`, 'invalid');
   if (where != null) {
     if (Array.isArray(where)) where.forEach((node, i) => checkWhereNode(node, `where[${i}]`));
     else checkWhereNode(where, 'where');
@@ -8728,23 +8733,24 @@ export class Weave {
     return { targetDb: targetDb ?? null, targetField, owner };
   }
 
+  #checkPath(db, path) {
+    const parts = String(path).split('.');
+    let cdb = db;
+    for (let i = 0; i < parts.length; i++) {
+      if (PATH_SYSTEM_KEYS.has(parts[i])) return;
+      const f = this.findField(cdb, parts[i]);
+      if (!f && Object.hasOwn(SYSTEM_SORT_KEYS, parts[i])) return;
+      if (!f) throw fieldNotFound(parts[i], cdb);
+      if (i === parts.length - 1) return;
+      if (f.type !== 'relation') throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
+      cdb = f.config.targetDb ? this.state.tables[f.config.targetDb] : null;
+      if (!cdb) return;
+    }
+  }
+
   #checkWhere(db, node) {
     if (Array.isArray(node)) {
-      if (node.length === 3 && typeof node[0] === 'string') {
-        const parts = node[0].split('.');
-        let cdb = db;
-        for (let i = 0; i < parts.length; i++) {
-          const last = i === parts.length - 1;
-          if (last && (parts[i] === 'id' || parts[i] === 'publicId')) return;
-          const f = this.findField(cdb, parts[i]);
-          if (!f) throw fieldNotFound(parts[i], cdb);
-          if (!last) {
-            if (f.type !== 'relation' || !f.config.targetDb) throw new WeaveError(`'${parts[i]}' is not a relation; cannot traverse`, 'invalid');
-            cdb = this.state.tables[f.config.targetDb];
-          }
-        }
-        return;
-      }
+      if ((node.length === 2 || node.length === 3) && typeof node[0] === 'string') return this.#checkPath(db, node[0]);
       for (const n of node) this.#checkWhere(db, n);
       return;
     }
@@ -8752,7 +8758,7 @@ export class Weave {
       for (const n of node.and ?? node.or) this.#checkWhere(db, n);
       return;
     }
-    throw new WeaveError('Invalid where node', 'invalid');
+    throw new WeaveError(INVALID_WHERE_NODE, 'invalid');
   }
 
   tableRollups(dbRef, { field = null } = {}) {
@@ -9076,6 +9082,8 @@ export class Weave {
     limit = limit == null ? null : pageNumber('limit', limit, { negative: true });
     offset = offset == null ? 0 : pageNumber('offset', offset);
     const db = this.getTable(dbRef);
+    if (where && (Array.isArray(where) ? where.length : true)) this.#checkWhere(db, where);
+    for (const s of sort) this.#checkPath(db, typeof s === 'string' ? s : s.field);
     let grouped = null;
     if (view != null && view !== '') {
       const saved = this.#viewQueryIn(db, view);
@@ -9245,7 +9253,7 @@ export class Weave {
     if (Array.isArray(node)) return this.#matchCondition(e, db, node);
     if (node.and) return node.and.every((n) => this.#matchNode(e, db, n));
     if (node.or) return node.or.some((n) => this.#matchNode(e, db, n));
-    throw new WeaveError('Invalid where node', 'invalid');
+    throw new WeaveError(INVALID_WHERE_NODE, 'invalid');
   }
 
   #matchCondition(e, db, [path, op, value]) {
