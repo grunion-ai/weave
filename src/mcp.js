@@ -383,7 +383,7 @@ function systemTarget(weave, command, args) {
 }
 
 export function mayAdminister(on, role) {
-  return Weave.roleName(role) === 'architect' || !on.listAccounts().length;
+  return Weave.roleName(role) === 'architect' || !on.hasAccounts();
 }
 const SPACE_PATH = /^\/api\/(?:tables|spaces|entities)\/:/;
 const bound = (c) => c.bound ?? (c.name === 'entity.bulk' || SPACE_PATH.test(c.http?.path ?? ''));

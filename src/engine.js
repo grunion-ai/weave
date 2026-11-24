@@ -4150,7 +4150,7 @@ export class Weave {
     return this.keyStore.value(name, entry);
   }
 
-  #localKeys() { return (this.localKeyAccess === true || this.localKeyAccess !== false && !this.listAccounts().length) && !/^account:/.test(String(this.actor ?? '')); }
+  #localKeys() { return (this.localKeyAccess === true || this.localKeyAccess !== false && !this.hasAccounts()) && !/^account:/.test(String(this.actor ?? '')); }
 
   #keyInWorkspace(entry) {
     if (entry.workspace) return entry.workspace === this.state.meta.id;
@@ -4344,6 +4344,10 @@ export class Weave {
     if (!a) return null;
     const { tokenHash, ...pub } = a;
     return pub;
+  }
+
+  hasAccounts() {
+    return Object.keys(this.state.meta.accounts ?? {}).length > 0;
   }
 
   listAccounts() {
@@ -4915,7 +4919,7 @@ export class Weave {
     const resumed = members.filter(w => w.state.meta.localRegistry?.source === this.state.meta.id);
     if (!legacy.length && !resumed.length) return { migrated: 0 };
     for (const w of legacy) {
-      if (w.state.meta.requireAuth && !w.listAccounts().length) throw new WeaveError(`Cannot detach ${w.state.meta.name}: this protected workspace has no local account; create an explicit local account or invite before upgrading`, 'invalid');
+      if (w.state.meta.requireAuth && !w.hasAccounts()) throw new WeaveError(`Cannot detach ${w.state.meta.name}: this protected workspace has no local account; create an explicit local account or invite before upgrading`, 'invalid');
     }
     const plans = legacy.map(w => ({ w, ...detachedRegistryState(this, w, members) }));
     const moving = new Set([...plans.flatMap(p => [...p.ids]), ...resumed.flatMap(w => w.state.meta.localRegistry.rows ?? [])]);

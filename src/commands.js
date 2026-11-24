@@ -2000,7 +2000,7 @@ export const COMMANDS = [
       if (ctx?.workspaces) return ctx.workspaces.move(a.name, a.position);
       if (ctx?.door === 'mcp') {
         const caller = ctx.caller;
-        if (caller && !(Weave.roleName(caller.role) === 'architect' || !w.listAccounts().length)) throw new Error('weave_workspace move needs an architect token on this workspace');
+        if (caller && !(Weave.roleName(caller.role) === 'architect' || !w.hasAccounts())) throw new Error('weave_workspace move needs an architect token on this workspace');
         return { workspaces: caller?.moveWorkspace ? caller.moveWorkspace(a.name, a.position) : w.moveWorkspace(a.name, a.position) };
       }
       return ctx.withHub((hub) => hub.move(a.name, a.position, { workspace: w }));
