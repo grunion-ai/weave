@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.177 (2026-11-24)
+
+- **The cold-open test waits for the fresh page before it counts draws** (Issue #1810): `test/table-cold-open-browser.test.mjs` counted grid draws a fixed 500 ms after the cached page appeared, so a fresh query slower than that left one draw and took main CI red with "the reader was left looking at the cached cell". The test now waits for the fresh query's response and for the edited cell to show its value, then counts, and the lost-cell case holds the fresh query for 1.5 s on every run.
+- **The upload matrix reads a failed tile's colour in one page task** (Issue #1809): `test/lib/upload-matrix.mjs` resolved the first failed tile and read its colour in two steps, and every upload repaint replaces the failed tiles, so a repaint between the steps left a detached node whose colour read as `rgb(0, 0, 0)` and took main CI red with "a failed tile is not red". The colour is now read from a tile queried in the same page evaluation.
+- **The introduction link case waits for the opened record, not its first address** (Issue #1797): `test/documentation-presentation-browser.test.mjs` waited for the popup's URL to match `/e/<id>`, but the app rewrites that address to `#/entity/<id>` as it boots, so a slow runner that checked after the rewrite timed out on main CI. The case now waits until the popup shows the destination record's name and checks that its URL names the record.
+
 ## v0.4.176 (2026-11-24)
 
 - Downloading a file kept on disk streams it from the file, for a whole file and for a byte range alike, instead of reading the whole file into memory first; a file kept in the database, a preview and an inline text file are served as before (Issue #1412).
