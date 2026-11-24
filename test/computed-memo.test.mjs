@@ -70,8 +70,16 @@ test('a sort on a one-row table never resolves the sort key, as before (Issue #1
   const w = new Weave();
   w.createSpace({ name: 'S' });
   const t = w.createTable({ space: 'S', name: 'One' });
-  w.createEntity(t.id, { name: 'only' });
-  assert.equal(w.query(t.id, { sort: [{ field: 'Nope' }] }).total, 1);
+  w.addField(t.id, { name: 'Score', type: 'number' });
+  w.createEntity(t.id, { name: 'only', values: { Score: 1 } });
+  const findField = Weave.prototype.findField;
+  let seen = 0;
+  w.findField = function (db, ref) {
+    if (ref === 'Score') seen++;
+    return findField.call(this, db, ref);
+  };
+  assert.equal(w.query(t.id, { sort: [{ field: 'Score' }], select: ['Name'] }).total, 1);
+  assert.equal(seen, 1, 'the query checks the sort field name once and resolves no row');
 });
 
 test('5k rows sorted by a formula over a lookup answer inside the budget (Issue #1000)', () => {

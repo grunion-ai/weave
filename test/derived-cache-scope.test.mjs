@@ -59,7 +59,7 @@ test('a write to a table the page does not read keeps its sort and its filter wa
   w.deleteEntity(row.id);
   assert.deepEqual(byAmount(w, deal), ['Deal 2', 'Deal 0']);
   assert.deepEqual(overTwenty(w, deal), ['Deal 0', 'Deal 2', 'Deal 3']);
-  assert.equal(amountReads(), 0, 'three writes to Other leave the Deal pages warm');
+  assert.equal(amountReads(), 2, 'three writes to Other leave the Deal pages warm: each query checks its field name once and reads no row');
 });
 
 test('a save that writes no row keeps the page warm, and a session renewal moves no schema version (Issue #1613)', () => {
@@ -71,13 +71,13 @@ test('a save that writes no row keeps the page warm, and a session renewal moves
   assert.ok(amountReads() > 0);
   w.save();
   byAmount(w, deal);
-  assert.equal(amountReads(), 0, 'a bare save');
+  assert.equal(amountReads(), 1, 'a bare save: the query checks its field name once and reads no row');
   const version = w.schemaVersion();
   for (const s of Object.values(w.state.meta.sessions)) s.lastSeenAt = new Date(Date.now() - 120_000).toISOString();
   assert.equal(w.verifySession(token).renewed, true);
   assert.equal(w.schemaVersion(), version, 'a renewed session is not structure');
   assert.deepEqual(byAmount(w, deal), ['Deal 2', 'Deal 0']);
-  assert.equal(amountReads(), 0, 'a renewal cools no page');
+  assert.equal(amountReads(), 1, 'a renewal cools no page: the query checks its field name once and reads no row');
 });
 
 test('a write to the sorted table cools its page and the page sorts on the new value (Issue #1613)', () => {
