@@ -9,7 +9,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError, detachHubRegistry } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
-import { createRequestHandler, decodePath, MAX_BODY_BYTES, errorBody, statusFor } from './routes.js';
+import { createRequestHandler, decodePath, MAX_BODY_BYTES, errorBody, statusFor, COMPRESSIBLE } from './routes.js';
 import { refuseOnDocs, ensureBugForm } from './forms.js';
 import { createOidc, oidcFromEnv } from './oidc.js';
 import { mailerFromEnv } from './mail-send.js';
@@ -81,7 +81,6 @@ export const MIME = {
   '.json': 'application/json',
 };
 
-const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const GZIP_MIN = 1024;
 
 export function acceptsCoding(header, coding) {
