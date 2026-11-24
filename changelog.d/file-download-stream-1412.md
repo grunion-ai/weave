@@ -1,0 +1,1 @@
+- Downloading a file kept on disk streams it from the file, for a whole file and for a byte range alike, instead of reading the whole file into memory first; a file kept in the database, a preview and an inline text file are served as before (Issue #1412).

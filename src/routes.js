@@ -46,6 +46,7 @@ export const clientAddress = ({ forwarded, remote, trustProxy }) => {
 
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACH_BODY_BYTES = Math.ceil(((FILE_MAX_BYTES + PREVIEW_MAX_BYTES) * 4) / 3) + 64 * 1024;
+export const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i;
 const ATTACH_ROUTE = /^\/api\/entities\/[^/]+\/(?:fields\/[^/]+\/)?files$/;
 const SAME_ORIGIN = '';
 const actorOf = (account) => account?.visitor ? `visitor: ${account.name}` : account?.id ? accountActor(account.id) : account?.name;
@@ -1647,6 +1648,17 @@ async function registeredAndSpaceRoutes(c, fromRequest) {
         const etag = `"${id}${preview ? '-preview' : ''}"`;
         const cache = { ETag: etag, 'Cache-Control': 'private, max-age=31536000, immutable' };
         if (String(rx.header('if-none-match') ?? '').split(',').some((t) => [etag, `W/${etag}`, '*'].includes(t.trim()))) return out(304, '', cache);
+        const disk = preview || view ? null : weave.openFile(id);
+        if (disk?.size) {
+          const headers = { ...fileHeaders(disk.meta, disk.head), ...cache, 'Accept-Ranges': 'bytes' };
+          if (!COMPRESSIBLE.test(headers['Content-Type'])) {
+            const range = byteRange(rx.header('range'), disk.size);
+            if (range === 'unsatisfiable') return out(416, '', { ...headers, 'Content-Range': `bytes */${disk.size}` });
+            const { first, last } = range ?? { first: 0, last: disk.size - 1 };
+            const sent = { ...headers, 'Content-Length': String(last - first + 1), ...(range ? { 'Content-Range': `bytes ${first}-${last}/${disk.size}` } : {}) };
+            return out(range ? 206 : 200, disk.stream(first, last), sent);
+          }
+        }
         const { meta, bytes } = weave.readFile(id, { preview });
         const headers = { ...fileHeaders(meta, bytes, { view }), ...cache, 'Accept-Ranges': 'bytes' };
         const range = byteRange(rx.header('range'), bytes.length);

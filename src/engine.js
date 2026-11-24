@@ -13,7 +13,7 @@ import '../public/board-core.js';
 import '../public/phone-row.js';
 import '../public/cell-graphics.js';
 import '../public/field-dialog-core.js';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, renameSync, openSync, readSync, closeSync, statSync, createReadStream } from 'node:fs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { openKeyStore, keystoreFilePath, keystoreKind, migrateKeys } from './keystore.js';
 import { join, dirname } from 'node:path';
@@ -671,7 +671,7 @@ export const ONTOLOGY = {
       key: 'file', name: 'File', storedIn: 'entity.files',
       definition: 'A blob attached to an entity, stored beside the workspace file and referenced by id from attachments fields. An HTML file also keeps its page storage (Issue #1176): the localStorage its page writes while weave shows it, held in the store\'s file_storage table beside the file and never written into the file\'s bytes.',
       identity: 'uuid; the blob is files/<id> next to the workspace',
-      api: ['attachFile', 'attachToField', 'readFile', 'readFileMeta', 'deleteFile', 'readFileStorage', 'writeFileStorage'],
+      api: ['attachFile', 'attachToField', 'readFile', 'readFileMeta', 'openFile', 'deleteFile', 'readFileStorage', 'writeFileStorage'],
     },
     {
       key: 'activity', name: 'Activity', storedIn: 'entity.activity',
@@ -11634,6 +11634,14 @@ export class Weave {
     const bytes = this.#readBlob(fileId);
     if (bytes == null) throw new WeaveError('File blob missing', 'not-found');
     return { meta, bytes };
+  }
+
+  openFile(fileId) {
+    const meta = this.readFileMeta(fileId);
+    const p = this.#blobPath(fileId);
+    if (!p) return null;
+    if (!existsSync(p)) throw new WeaveError('File blob missing', 'not-found');
+    return { meta, size: statSync(p).size, head: this.#blobHead(p), stream: (start, end) => createReadStream(p, { start, end }) };
   }
 
   #fileMeta(fileId) {
