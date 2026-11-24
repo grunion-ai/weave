@@ -359,6 +359,7 @@ function pressListButton(host, type) {
 
 const LIST_MARKER = /^(?:([-*+])(?: \[([ xX])\])?|(\d{1,9})([.)]))$/;
 const TASK_BOX = /^\[([ xX])\]$/;
+const BARE_BOX = /^\[ ?\]$/;
 
 function attachListMarkers(host) {
   let undo = null;
@@ -392,8 +393,8 @@ function attachListMarkers(host) {
     if (!block || !caretAtEnd(block, range)) return;
     const text = textOf(block);
     let li, typed = text;
-    if (block.tagName === 'P' && block.parentElement === root && LIST_MARKER.test(text)) {
-      const [, bullet, box, num, delim] = text.match(LIST_MARKER);
+    if (block.tagName === 'P' && block.parentElement === root && (LIST_MARKER.test(text) || BARE_BOX.test(text))) {
+      const [, bullet, box, num, delim] = BARE_BOX.test(text) ? [text, '-', ' '] : text.match(LIST_MARKER);
       const marker = bullet ?? `${num}${delim}`;
       const tag = bullet ? 'ul' : 'ol';
       const start = num && Number(num) !== 1 ? String(Number(num)) : null;
