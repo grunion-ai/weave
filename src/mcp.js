@@ -109,6 +109,9 @@ function brief(obj) {
 function compactResult(name, result) {
   if (!COMPACT_TOOLS.has(name) || !result || typeof result !== 'object') return result;
   if (name === 'weave_add_relation') return { field: brief(result.field), ...(result.inverse ? { inverse: brief(result.inverse) } : {}) };
+  if (name === 'weave_update_field' && (result.lossy || result.formulas)) {
+    return { ...brief(result), activity: result.activity, ...(result.lossy ? { lossy: true } : {}), ...(result.orphaned ? { orphaned: result.orphaned } : {}), ...(result.formulas ? { formulas: result.formulas } : {}) };
+  }
   return brief(result);
 }
 const VERBOSE = { type: 'boolean', description: 'Return the whole object' };

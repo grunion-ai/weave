@@ -337,6 +337,12 @@ function canonicalJSON(v) {
   return JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
     ? Object.fromEntries(Object.keys(x).sort().map((kk) => [kk, x[kk]])) : x));
 }
+function choiceIds(field) {
+  if (field.type === 'select' || field.type === 'multiselect') return (field.config.options ?? []).map((o) => o.id);
+  if (field.type === 'workflow') return (field.config.states ?? []).map((s) => s.id);
+  return null;
+}
+
 function definitionChanges(before, after) {
   const out = [];
   if (before.name !== after.name) out.push('name');
@@ -6742,6 +6748,7 @@ export class Weave {
     const db = this.getTable(dbRef);
     const field = this.getField(db.id, fieldRef);
     const before = fieldDefinition(field);
+    const choicesBefore = choiceIds(field);
     const touchedBefore = this.#spacesTouching(db, field);
     const recipeSent = (patch.type == null || patch.type === field.type) && (field.type === 'lookup' || field.type === 'rollup')
       && patch.config && RECIPE_KEYS.some((k) => k in patch.config);
@@ -6842,6 +6849,7 @@ export class Weave {
     if (renamed) this.#syncTableRow(db);
     const after = fieldDefinition(field);
     const changed = definitionChanges(before, after);
+    const orphaned = before.type === after.type && choicesBefore ? this.#orphanedChoices(db, field, choicesBefore) : null;
     const recipeMoved = !!nextRecipe && RECIPE_KEYS.some((k) => changed.includes(k));
     const recipe = recipeMoved ? { before: recipeBefore, after: this.#ontologyComputed(db, field, () => '') } : null;
     const broken = recipeMoved ? this.#formulasBroken(healthBefore, this.#formulaHealth(db, field)) : [];
@@ -6849,7 +6857,7 @@ export class Weave {
       ? { table: this.qualifiedName(db), tableId: db.id, fieldId: field.id, field: field.name, changed, before, after, seq: this.#nextSeq(),
         ...(recipe ? { recipe } : {}), ...(broken.length ? { formulas: broken } : {}),
         ...(rewritten.length || settings.length || rules.length ? { rewritten: [...rewritten.map(({ f, before, after }) => ({ field: f.name, before, after })), ...settings.map(({ t, f, setting, before, after }) => ({ field: `${t.name}.${f.name}`, setting, before, after })), ...rules.filter((r) => r.script).map(({ name, before, script }) => ({ automation: name, setting: 'Script', before, after: script }))] } : {}),
-        ...(before.type !== after.type ? { lossy: true } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
+        ...(before.type !== after.type ? { lossy: true } : {}), ...(orphaned ? { orphaned } : {}), ...(migrated ? { snapshot: migrated.rows } : {}),
         ...(undo ?? {}), ...(restore && migrated ? migrated.counts : {}) }
       : null;
     this.save();
@@ -6858,6 +6866,17 @@ export class Weave {
       if (migrated) this.#dropOlderSnapshots(field.id, logged.seq);
     } else if (!db.system) this.#audit('field-updated', { table: db.name, name: field.name, patch: Object.keys(patch) }, changed.length ? [...touchedBefore, ...this.#spacesTouching(db, field)] : null);
     return { field, counts: migrated?.counts ?? null };
+  }
+
+  #orphanedChoices(db, field, idsBefore) {
+    const now = new Set(choiceIds(field));
+    const gone = new Set(idsBefore.filter((id) => !now.has(id)));
+    if (!gone.size) return null;
+    const counts = {};
+    for (const e of this.listEntities(db.id)) {
+      for (const id of [].concat(e.values[field.id] ?? [])) if (gone.has(id)) counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return Object.keys(counts).length ? counts : null;
   }
 
   #subtableConfig(field, raw) {
