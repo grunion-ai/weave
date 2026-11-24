@@ -1,0 +1,1 @@
+- Double-clicking a word inside bold, italic or inline code selects that word, instead of the `*` marker that appears under the pointer once the first click expands the formatting (Issue #1901).

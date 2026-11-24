@@ -443,6 +443,54 @@ function attachListMarkers(host) {
   host.addEventListener('mousedown', () => { undo = null; }, { capture: true });
 }
 
+const WORD_SEGMENTS = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
+const DOUBLE_CLICK_SLOP = 4;
+
+function charUnderPointer(host, x, y) {
+  const pos = document.caretPositionFromPoint?.(x, y);
+  const range = pos ? null : document.caretRangeFromPoint?.(x, y);
+  const node = pos ? pos.offsetNode : range?.startContainer;
+  const offset = pos ? pos.offset : range?.startOffset;
+  if (node?.nodeType !== 3 || !host.contains(node)) return null;
+  const parent = node.parentElement;
+  if (!parent?.closest('.vditor-ir .vditor-reset .vditor-ir__node') || parent.closest('.vditor-ir__marker')) return null;
+  const box = document.createRange();
+  for (const i of [offset, offset - 1]) {
+    if (i < 0 || i >= node.length) continue;
+    box.setStart(node, i);
+    box.setEnd(node, i + 1);
+    const r = box.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return { node, i };
+  }
+  return null;
+}
+
+function attachWordDoubleClick(host) {
+  if (!WORD_SEGMENTS) return;
+  let press = null;
+  host.addEventListener('mousedown', (e) => {
+    const was = press;
+    press = null;
+    if (e.button !== 0 || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.detail === 1) {
+      const at = charUnderPointer(host, e.clientX, e.clientY);
+      if (at) press = { x: e.clientX, y: e.clientY, ...at };
+      return;
+    }
+    if (e.detail !== 2 || !was?.node.isConnected) return;
+    if (Math.hypot(e.clientX - was.x, e.clientY - was.y) > DOUBLE_CLICK_SLOP) return;
+    const seg = WORD_SEGMENTS.segment(was.node.data).containing(was.i);
+    if (!seg?.isWordLike) return;
+    e.preventDefault();
+    const word = document.createRange();
+    word.setStart(was.node, seg.index);
+    word.setEnd(was.node, seg.index + seg.segment.length);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(word);
+  }, { capture: true });
+}
+
 const tbIcon = (name) => (window.LUCIDE_MOVING?.[name] ?? '').replace(/ data-mi="[^"]*"/g, '');
 const WV_TB_ICONS = {
   headings: tbIcon('heading'), bold: tbIcon('bold'), italic: tbIcon('italic'), strike: tbIcon('strikethrough'),
@@ -501,6 +549,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachTabKeys(host);
   attachCodeFenceReturn(host);
   attachListMarkers(host);
+  attachWordDoubleClick(host);
   attachHintClamp(host);
   holdDocFrames(host);
   const editor = new Vditor(host, {
