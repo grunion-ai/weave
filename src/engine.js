@@ -154,6 +154,7 @@ export function sniffImage(bytes) {
 const fileBlobIds = (f) => (f.preview?.id ? [f.id, f.preview.id] : [f.id]);
 export const PREVIEW_MAX_BYTES = 256 * 1024;
 export const FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const SCHEDULE_ROW_BUDGET = 200;
 export const mbText = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
 export const workspaceFileMaxBytes = (env = process.env) => {
   const mb = Number(env.WEAVE_WORKSPACE_FILE_MAX_MB);
@@ -10509,8 +10510,10 @@ export class Weave {
     const owner = this.#undoOwner;
     this.#undoOwner = run.owner ??= owner ?? person;
     this.actor = workflowActor(rule.row.id);
+    const budgetEnd = r + SCHEDULE_ROW_BUDGET;
     try {
       for (; r < run.rows.length; r++, i = 0) {
+        if (r >= budgetEnd && answer === undefined) { this.#yieldRun(run, r); return; }
         run.ran[r] ??= { e: this.#liveRow(run.rows[r]), steps: {}, outs: [] };
         const step = run.ran[r];
         for (; i < rule.actions.length; i++) {
@@ -10537,6 +10540,18 @@ export class Weave {
       this.#undoOwner = owner;
     }
     this.#finishRun(run, failure);
+  }
+
+  #chunkedRules = new Set();
+
+  #yieldRun(run, r) {
+    run.waited = true;
+    this.#chunkedRules.add(run.rule.row.id);
+    const job = new Promise((resolve) => setImmediate(() => {
+      try { unrestricted(() => this.#stepRun(run, r, 0)); }
+      finally { resolve(); this.#pendingRuns.delete(job); }
+    }));
+    this.#pendingRuns.add(job);
   }
 
   #awaitStep(run, r, i, request) {
@@ -10575,6 +10590,7 @@ export class Weave {
     });
     const waiting = failure == null ? (this.state.meta.deliveries ?? []).filter((d) => d.workflow === rule.row.id).at(-1)?.reason ?? null : null;
     const note = rule.trigger?.type === 'listener-changed' ? this.#pollWords(rule.row.id) : rule.trigger?.type === 'webhook-inbound' ? this.#hookWords(rule.row.id) : null;
+    this.#chunkedRules.delete(rule.row.id);
     reg.#stampRun(own(reg.state.entities, rule.row.id) ?? rule.row, failure, run.at, waiting, note);
     if (run.waited) this.save();
     if (reg !== this) reg.save();
@@ -10916,6 +10932,7 @@ export class Weave {
       this.#scheduleSince.set(row.id, seen ?? now.getTime());
       if (seen === undefined && lastRun == null) continue;
       const since = new Date(Math.max(lastRun ? Date.parse(lastRun) : 0, seen ?? 0));
+      if (this.#chunkedRules.has(row.id)) continue;
       if (!dueBetween(parseCron(rule.trigger.cron), rule.trigger.zone, since, now)) continue;
       const db = this.state.tables[rule.dbId];
       const rows = this.query(db.id, { where: rule.trigger.where ?? [], relations: 'chip' }).items
