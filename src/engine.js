@@ -11479,7 +11479,7 @@ export class Weave {
     if (this.state.meta.detachedRegistry?.files.includes(id)) return;
     if (this.state.fileBlobs) delete this.state.fileBlobs[id];
     if (this.state.meta.logo?.id === id) return;
-    for (const e of Object.values(this.state.entities)) if (e.files.some((f) => f.id === id)) return;
+    if (this.#fileHolder(id)) return;
     const p = this.#blobPath(id);
     if (p && !this.store.siblingNames(id)) rmSync(p, { force: true });
   }
@@ -11595,11 +11595,35 @@ export class Weave {
     return file;
   }
 
-  readFileMeta(fileId) {
+  #fileHolders = null;
+
+  #indexFiles() {
+    const map = new Map();
     for (const e of Object.values(this.state.entities)) {
-      const meta = e.files.find((f) => f.id === fileId);
-      if (meta && !this.#rowHidden(e)) return meta;
+      for (const f of e.files ?? []) {
+        const held = map.get(f.id);
+        if (held) held.push(e.id);
+        else map.set(f.id, [e.id]);
+      }
     }
+    this.#fileHolders = map;
+  }
+
+  #fileHolder(fileId, admit = () => true) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (const id of this.#fileHolders?.get(fileId) ?? []) {
+        const e = own(this.state.entities, id);
+        const meta = e?.files?.find((f) => f.id === fileId);
+        if (meta && admit(e)) return { e, meta };
+      }
+      if (pass === 0) this.#indexFiles();
+    }
+    return null;
+  }
+
+  readFileMeta(fileId) {
+    const held = this.#fileHolder(fileId, (e) => !this.#rowHidden(e));
+    if (held) return held.meta;
     throw new WeaveError(`File '${fileId}' not found`, 'not-found');
   }
 
@@ -11613,10 +11637,8 @@ export class Weave {
   }
 
   #fileMeta(fileId) {
-    for (const e of Object.values(this.state.entities)) {
-      const meta = e.files.find((f) => f.id === fileId);
-      if (meta) return meta;
-    }
+    const held = this.#fileHolder(fileId);
+    if (held) return held.meta;
     throw new WeaveError(`File '${fileId}' not found`, 'not-found');
   }
 
@@ -11627,7 +11649,7 @@ export class Weave {
   }
 
   writeFileStorage(fileId, items) {
-    const holder = Object.values(this.state.entities).find((x) => x.files?.some((f) => f.id === fileId));
+    const holder = this.#fileHolder(fileId)?.e;
     if (holder) this.#mayWriteRow(holder.id);
     const meta = this.#fileMeta(fileId);
     if (!isHtmlFile(meta)) throw new WeaveError(`'${meta.name}' is not an HTML file; only an HTML file keeps page storage`, 'invalid');
