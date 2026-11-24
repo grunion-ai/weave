@@ -465,6 +465,9 @@ CI and PR gates name it in their aggregate and annotate the run, and after every
 main run the sheriff workflow's `flakes` job appends a line to that file's
 `Error: <test file> flakes on main` row (Issue #1671). A row that keeps growing
 is a test to fix.
+A file still red after its retry goes to the `stillRed` list beside it, so a
+file whose process crashed on both runs, and so wrote no `test:summary`, still
+reaches the sheriff as a failing file (Issue #1748).
 
 ### Sheriff
 

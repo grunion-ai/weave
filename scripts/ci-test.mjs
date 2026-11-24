@@ -58,7 +58,7 @@ export function aggregate(manifest, results, commit) {
 
 export function shardResult(shard, events, run) {
   const records = (type) => events.filter(e => e.type === type).map(e => e.data);
-  return { ...shard, ...run, summaries: records('summary'), skips: records('skip'), cases: records('case'), retried: records('retried').map(r => r.file) };
+  return { ...shard, ...run, summaries: records('summary'), skips: records('skip'), cases: records('case'), retried: records('retried').map(r => r.file), stillRed: records('still-red').map(r => r.file) };
 }
 
 export const ONBOARDING = [

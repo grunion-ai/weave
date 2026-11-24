@@ -115,6 +115,8 @@ test('a file whose shard died before its retry answered is unresolved, never nam
   assert.deepEqual(unresolvedFiles(killed), ['test/feedback-budget-browser.test.mjs', 'test/status-browser.test.mjs']);
   assert.deepEqual(unresolvedFiles([{ summaries: [s('test/a.test.mjs', false), s('test/a.test.mjs', false)] }]), []);
   assert.deepEqual(unresolvedFiles([{ summaries: [s('test/a.test.mjs', true)] }]), []);
+  assert.deepEqual(failingFiles([{ summaries: [s('test/a.test.mjs', true)], stillRed: ['test/crash.test.mjs'] }]), ['test/crash.test.mjs'], 'a file the shard names still red after its retry fails like any other, with no summary behind it (Issue #1748)');
+  assert.deepEqual(failingFiles([{ attempt: 1, stillRed: ['test/crash.test.mjs'] }, { attempt: 2, summaries: [s('test/crash.test.mjs', true), s('test/crash.test.mjs', true)] }]), [], 'a later attempt that passes the file clears it');
 });
 
 test('a bisect probe red on a different file than the run under investigation is no evidence: escalate, never narrow (Issue #1282)', async () => {
