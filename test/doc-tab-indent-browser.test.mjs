@@ -82,4 +82,34 @@ if (s) {
       assert.equal(await inEditor(surface), false, 'Tab after Escape moves focus out of the document');
     } finally { await page.close(); }
   });
+
+  test('Return on an empty nested list item moves it up one level instead of leaving a loose paragraph (Issue #1889)', async () => {
+    const { id, page, surface } = await open();
+    try {
+      await surface.click();
+      await page.keyboard.type('- alpha');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Tab');
+      await page.keyboard.type('beta');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Enter');
+      assert.ok(await inEditor(surface), 'focus stays in the editor after Return');
+      await page.keyboard.type('X');
+      const want = '- alpha\n  - beta\n- X\n';
+      assert.equal(await saved(page, surface, id, want), want);
+    } finally { await page.close(); }
+  });
+
+  test('Return on an empty top-level list item still ends the list (Issue #1889)', async () => {
+    const { id, page, surface } = await open();
+    try {
+      await surface.click();
+      await page.keyboard.type('- alpha');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('X');
+      const want = '- alpha\n\nX\n';
+      assert.equal(await saved(page, surface, id, want), want);
+    } finally { await page.close(); }
+  });
 }
