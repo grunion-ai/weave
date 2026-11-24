@@ -1,0 +1,1 @@
+- An OAuth MCP request no longer rewrites the workspace meta and the Users table on every call: the account is touched at most once a minute and Last Seen at most once an hour, as sessions already were (Issue #1574).
