@@ -65,7 +65,9 @@ if (s) {
         const popup = page.waitForEvent('popup');
         await inner.locator('a').click();
         const opened = await popup;
-        await opened.waitForURL(`**/e/${ids.destination}*`);
+        const title = opened.locator('.entity-head textarea.name-edit');
+        await title.waitFor();
+        assert.equal(await eventually(() => title.inputValue(), 'Native guide destination'), 'Native guide destination');
         assert.match(opened.url(), new RegExp(ids.destination));
         await opened.close();
         if (process.env.WEAVE_DOCS_SCREENSHOTS) await page.screenshot({ path: `${process.env.WEAVE_DOCS_SCREENSHOTS}/record-${width}-${theme}.png`, fullPage: true });
