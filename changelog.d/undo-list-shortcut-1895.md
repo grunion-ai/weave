@@ -1,1 +1,0 @@
-- Cmd+Z right after a list shortcut such as `- ` or `1. ` gives back the typed characters as text instead of keeping the list item (Issue #1895).

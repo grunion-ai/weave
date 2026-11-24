@@ -1,1 +1,0 @@
-- Picking Divider from the slash menu puts the caret on a new paragraph below the rule, so typing continues under it instead of above it (Issue #1891).

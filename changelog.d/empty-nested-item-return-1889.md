@@ -1,1 +1,0 @@
-- Return on an empty nested list item moves it up one level instead of leaving a loose paragraph inside the item above (Issue #1889).
