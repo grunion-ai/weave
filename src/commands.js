@@ -86,7 +86,8 @@ function fieldUpdate(w, a) {
   return {
     ...guided(w, 'field', field, patch.type == null ? patch.config : {}),
     activity: entry?.id ?? null,
-    lossy: !!entry?.detail.lossy,
+    lossy: !!(entry?.detail.lossy || entry?.detail.orphaned),
+    ...(entry?.detail.orphaned ? { orphaned: entry.detail.orphaned } : {}),
     ...(entry?.detail.formulas ? { formulas: entry.detail.formulas } : {}),
     ...(entry?.detail.rewritten ? { rewritten: entry.detail.rewritten } : {}),
   };

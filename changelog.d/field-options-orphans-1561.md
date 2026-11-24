@@ -1,0 +1,1 @@
+- Removing a select or multiselect option, or a workflow state, that records still hold now answers `lossy: true` with an `orphaned` count per removed id, and the compact MCP reply keeps `lossy`, `orphaned`, `activity` and `formulas` when a change loses something (Issue #1561).
