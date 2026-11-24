@@ -306,3 +306,16 @@ for (const app of Object.values(CHAT_APPS)) test(`Issue #948: ${app.name} connec
     assert.equal((await s.rpc('/mcp', renewed.access_token, 'tools/list')).res.status, 403, 'refresh grants no new workspace');
   } finally { s.stop(); }
 });
+
+test('Issue #1574: repeated OAuth MCP reads write the account once, not on every request', async () => {
+  const s = await serve();
+  try {
+    const token = s.idp.mint(KYLE);
+    assert.equal((await s.rpc('/mcp', token, 'tools/list')).res.status, 200);
+    let saves = 0;
+    const save = s.w.save.bind(s.w);
+    s.w.save = (...a) => { saves += 1; return save(...a); };
+    for (let n = 0; n < 5; n += 1) assert.equal((await s.rpc('/mcp', token, 'tools/list')).res.status, 200);
+    assert.equal(saves, 0, 'a read-only call inside the minute rewrites no meta');
+  } finally { s.stop(); }
+});

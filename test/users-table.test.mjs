@@ -312,3 +312,35 @@ test('engine: Last Seen follows a signed-in session, at most once an hour per ac
   assert.ok(w.verifySession(token));
   assert.equal(lastSeen(), new Date(t0 + 185 * 60_000).toISOString(), 'past the hour it moves again');
 });
+
+test('engine: an identity sign-in touches the account at most once a minute and Last Seen at most once an hour (Issue #1574)', (t) => {
+  const t0 = Date.parse('2026-11-24T09:00:00.000Z');
+  t.mock.timers.enable({ apis: ['Date'], now: t0 });
+  const w = fresh();
+  w.createAccount({ name: 'kyle', role: 'architect' });
+  w.redeemIdentityInvite(w.linkIdentity('kyle', { issuer: ISS }).code, { issuer: ISS, subject: 'u1' });
+  const who = { issuer: ISS, subject: 'u1' };
+  const lastSeen = () => row(w, 'kyle').raw['Last Seen'];
+  const used = () => w.listAccounts().find((a) => a.name === 'kyle').identities[0].lastUsedAt;
+  let saves = 0;
+  const save = w.save.bind(w);
+  w.save = (...a) => { saves += 1; return save(...a); };
+  assert.equal(w.accountForIdentity(who).name, 'kyle');
+  assert.equal(lastSeen(), new Date(t0).toISOString(), 'the first sign-in writes Last Seen');
+  const first = saves;
+  t.mock.timers.tick(30_000);
+  for (let n = 0; n < 5; n += 1) w.accountForIdentity(who);
+  assert.equal(saves, first, 'calls inside the minute save nothing');
+  assert.equal(used(), new Date(t0).toISOString());
+  t.mock.timers.tick(60_000);
+  w.accountForIdentity(who);
+  assert.equal(used(), new Date(t0 + 90_000).toISOString(), 'past the minute lastUsedAt moves');
+  assert.equal(lastSeen(), new Date(t0).toISOString(), 'inside the hour Last Seen stays');
+  t.mock.timers.tick(10_000);
+  w.accountForIdentity({ ...who, email: 'Kyle@Example.com' });
+  assert.equal(w.listAccounts()[0].identities[0].verifiedEmail, 'kyle@example.com', 'a new address is still written at once');
+  assert.equal(row(w, 'kyle').raw.Email, 'kyle@example.com');
+  t.mock.timers.tick(60 * 60_000);
+  w.accountForIdentity(who);
+  assert.equal(lastSeen(), new Date(t0 + 100_000 + 60 * 60_000).toISOString(), 'past the hour Last Seen moves');
+});

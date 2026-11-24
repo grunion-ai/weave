@@ -4786,11 +4786,14 @@ export class Weave {
       const i = (a.identities ?? []).find((x) => x.issuer === issuer && x.subject === String(subject));
       if (!i) continue;
       if (touch) {
-        i.lastUsedAt = nowISO();
+        const now = Date.now();
+        const stale = !(now - Date.parse(i.lastUsedAt ?? '') < 60 * 1000);
         const mail = String(email ?? '').trim().toLowerCase();
-        if (mail) i.verifiedEmail = mail;
-        this.save();
-        this.#syncUsers();
+        const newMail = !!mail && i.verifiedEmail !== mail;
+        if (stale) i.lastUsedAt = new Date(now).toISOString();
+        if (newMail) i.verifiedEmail = mail;
+        if (stale || newMail) this.save();
+        if (newMail || (stale && this.#lastSeenStale(a.id, now))) this.#syncUsers();
       }
       const { tokenHash, ...pub } = a;
       return pub;
