@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 export const APT_CONF = 'Acquire::http::Timeout "20";\nAcquire::https::Timeout "20";\nAcquire::Retries "3";\nDPkg::Lock::Timeout "300";\nAPT::Keep-Downloaded-Packages "true";\n';
 export const ATTEMPTS = 3;
+export const ATTEMPT_SECONDS = 210;
 export const LOCK_WAIT_SECONDS = 300;
 const LOCK_POLL_SECONDS = 10;
 
@@ -35,7 +36,7 @@ export function install(browsers, { run, log, wait, cache, archives, conf }) {
   }
 
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
-    if (playwright('install', '--with-deps', ...browsers) && ready()) {
+    if (ok('timeout', '--kill-after=15', String(ATTEMPT_SECONDS), 'npx', '--no-install', 'playwright', 'install', '--with-deps', ...browsers) && ready()) {
       const kept = debsIn(archives);
       if (kept.length) {
         rmSync(cache, { recursive: true, force: true });
@@ -45,7 +46,7 @@ export function install(browsers, { run, log, wait, cache, archives, conf }) {
       log(`kept ${kept.length} downloaded packages in ${cache} for the next run`);
       return { source: 'mirror', kept: kept.length };
     }
-    log(`browser install attempt ${attempt} failed`);
+    log(`browser install attempt ${attempt} failed or ran past ${ATTEMPT_SECONDS}s`);
     if (attempt < ATTEMPTS) {
       log(ok('sudo', 'dpkg', '--configure', '-a') ? 'dpkg is configured again' : `dpkg --configure -a failed after attempt ${attempt}; another process still holds the lock`);
     }

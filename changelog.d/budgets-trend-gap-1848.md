@@ -1,0 +1,1 @@
+- The budgets lane retries a stalled browser install inside its step budget, and a run that kept no trend reading now writes a gap point the next runs count and name, instead of shortening every streak in silence (Issue #1848).

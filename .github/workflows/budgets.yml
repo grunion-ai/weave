@@ -48,6 +48,7 @@ jobs:
           path: ~/.cache/weave-apt
           key: apt-${{ steps.image.outputs.version }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium-webkit
       - name: Install browsers and system dependencies
+        id: install
         timeout-minutes: 14
         run: node scripts/ci/install-browsers.mjs chromium webkit
       - name: Series from the earlier budget runs
@@ -56,7 +57,11 @@ jobs:
         run: |
           runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow budgets.yml --branch main --event push --status completed --limit 6 --json databaseId -q '.[].databaseId' || true)
           for run in $runs; do
-            gh run download "$run" -R "$GITHUB_REPOSITORY" -n trend-series -D "trend-history/$run" || echo "run $run kept no trend series"
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n trend-series -D "trend-history/$run" || {
+              echo "run $run kept no trend series"
+              mkdir -p "trend-history/$run"
+              printf '{"run":"%s","readings":[],"gap":"kept no trend series"}\n' "$run" > "trend-history/$run/series.json"
+            }
           done
           echo "series: $(find trend-history -name '*.json' 2>/dev/null | wc -l) earlier points"
       - name: Run the timing budgets and judge the trend
@@ -67,6 +72,11 @@ jobs:
           SHERIFF_ALERT_URL: ${{ secrets.SHERIFF_ALERT_URL }}
           SHERIFF_ALERT_TOKEN: ${{ secrets.SHERIFF_ALERT_TOKEN }}
         run: node scripts/ci-trend.mjs
+      - name: Name a run that kept no trend reading
+        if: failure()
+        env:
+          WEAVE_TREND_SERIES: trend-series
+        run: node scripts/ci-trend.mjs --gap "${{ steps.install.outcome == 'failure' && 'browser install' || 'the run stopped before its readings' }}"
       - name: Keep this run's readings for the next runs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

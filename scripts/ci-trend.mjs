@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TREND } from './ci-test.mjs';
@@ -23,7 +23,8 @@ const RESULT = /^(not )?ok \d+ - (.+?)(?: # (?:SKIP|TODO)\b.*)?$/;
 const idOf = (r) => `${r.suite} ${r.key}`;
 const over = (value, budget) => budget === null || value > budget;
 const missed = (r) => over(r.value, r.budget);
-const runOf = (m) => (m.streak === 1 ? 'a new miss' : `${m.streak} main pushes in a row`);
+const pushes = (n) => `${n} push${n === 1 ? '' : 'es'}`;
+const runOf = (m) => `${m.streak === 1 ? 'a new miss' : `${m.streak} main pushes in a row`}${m.gaps ? `, across ${pushes(m.gaps)} that kept no reading` : ''}`;
 
 export function readingOf(line) {
   const { suite, key, value, budget, runs } = (READING.exec(line) ?? RATIO.exec(line))?.groups ?? {};
@@ -50,16 +51,23 @@ export function readTap(text) {
   return { tests: [...tests.values()], readings };
 }
 
-export function streakOf(reading, history, run) {
-  let n = 1;
-  for (const point of history.filter((p) => String(p.run) !== String(run)).sort((a, b) => Number(b.run) - Number(a.run))) {
+const newestFirst = (history, run) => history.filter((p) => String(p.run) !== String(run)).sort((a, b) => Number(b.run) - Number(a.run));
+
+function walk(reading, history, run) {
+  let streak = 1;
+  let gaps = 0;
+  for (const point of newestFirst(history, run)) {
+    if (point.gap) { gaps++; continue; }
     const past = (point.readings ?? []).find((r) => idOf(r) === idOf(reading));
     if (!past) continue;
     if (!over(past.value, reading.budget)) break;
-    n++;
+    streak++;
   }
-  return n;
+  return { streak, gaps };
 }
+
+export const streakOf = (reading, history, run) => walk(reading, history, run).streak;
+export const gapsWithin = (reading, history, run) => walk(reading, history, run).gaps;
 
 export function judge({ tests, readings }, { code = 0, history = [], run } = {}) {
   const best = new Map();
@@ -70,7 +78,7 @@ export function judge({ tests, readings }, { code = 0, history = [], run } = {})
     ...tests.filter((t) => !t.pass && !t.readings.some(missed)).map((t) => `${t.name} failed without a budget miss`),
   ];
   if (code && !tests.some((t) => !t.pass)) faults.push(`the trend suites exited ${code} with no failing test`);
-  return { readings: kept, misses: kept.filter(missed).map((r) => ({ ...r, streak: streakOf(r, history, run) })), faults };
+  return { readings: kept, misses: kept.filter(missed).map((r) => ({ ...r, ...walk(r, history, run) })), faults };
 }
 
 export const noteSymptom = (r) => (r.suite === 'renders' || r.key.endsWith('|cls') ? 'Looks broken' : 'Slow');
@@ -82,7 +90,8 @@ export async function trend(io) {
   const point = { commit: io.commit, run: io.run, attempt: io.attempt, at: io.now() };
   const tap = readTap(text);
   const edge = await io.edge();
-  const { readings, misses, faults } = judge({ ...tap, readings: [...tap.readings, ...edge.readings] }, { code, history: io.history(), run: io.run });
+  const history = io.history();
+  const { readings, misses, faults } = judge({ ...tap, readings: [...tap.readings, ...edge.readings] }, { code, history, run: io.run });
   io.write({ ...point, readings });
   for (const line of edge.skipped) io.log(`::warning::edge probe recorded nothing: ${line}`);
   const tail = io.url ? ` ${io.url}` : '';
@@ -90,6 +99,13 @@ export async function trend(io) {
   const verdict = faults.length ? `trend lane broken (${faults.length} fault${faults.length === 1 ? '' : 's'}): ${counted}` : `timing budgets: ${counted}`;
   io.log(verdict);
   io.summary(`${verdict}${tail}`);
+  const earlier = newestFirst(history, io.run);
+  const gaps = earlier.filter((p) => p.gap);
+  if (gaps.length) {
+    const said = `${gaps.length} of the last ${earlier.length} main pushes kept no trend reading (${gaps.map((p) => `${p.run}: ${p.gap}`).join(', ')})`;
+    io.log(`::warning title=Trend gap::${said}`);
+    io.summary(`- ${said}`);
+  }
   for (const m of misses) {
     const said = `${idOf(m)} read ${m.value} against a budget of ${m.budget ?? 'none'}, ${runOf(m)}`;
     io.log(`::warning title=Trend note::${said}`);
@@ -118,6 +134,14 @@ export async function trend(io) {
     io.summary(`- trend lane fault: ${fault}`);
   }
   return faults.length ? 1 : 0;
+}
+
+export function gap(io, reason) {
+  if (io.kept()) return 0;
+  io.write({ commit: io.commit, run: io.run, attempt: io.attempt, at: io.now(), readings: [], gap: reason });
+  io.log(`::error title=Trend gap::this run kept no trend reading: ${reason}. The next runs count it as a gap in every streak.`);
+  io.summary(`- trend gap: this run kept no trend reading (${reason})${io.url ? ` ${io.url}` : ''}`);
+  return 0;
 }
 
 export async function fileNote(env, { name, symptom, line, quiet }, fetchImpl = fetch) {
@@ -171,6 +195,7 @@ export function realIO(env = process.env) {
     suites: () => runSuites(env),
     edge: () => probe(edgeIO()),
     history: () => readHistory(env.WEAVE_TREND_HISTORY),
+    kept: () => !!env.WEAVE_TREND_SERIES && existsSync(join(env.WEAVE_TREND_SERIES, 'series.json')),
     write: (point) => {
       if (!env.WEAVE_TREND_SERIES) return;
       mkdirSync(env.WEAVE_TREND_SERIES, { recursive: true });
@@ -185,4 +210,4 @@ export function realIO(env = process.env) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) trend(realIO()).then((code) => { process.exitCode = code; }, (error) => { console.error(error); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) (process.argv[2] === '--gap' ? Promise.resolve(gap(realIO(), process.argv[3] || 'the run stopped before its readings')) : trend(realIO())).then((code) => { process.exitCode = code; }, (error) => { console.error(error); process.exitCode = 1; });
