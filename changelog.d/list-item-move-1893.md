@@ -1,1 +1,0 @@
-- Ctrl+Cmd+Up and Ctrl+Cmd+Down (Ctrl+Alt on keyboards without Cmd) move the list item at the caret above or below its sibling in the document editor, carrying its nested items and keeping the caret where it was (Issue #1893).
