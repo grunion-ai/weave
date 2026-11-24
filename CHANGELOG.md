@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.172 (2026-11-24)
+
+- Removing a select or multiselect option, or a workflow state, that records still hold now answers `lossy: true` with an `orphaned` count per removed id, and the compact MCP reply keeps `lossy`, `orphaned`, `activity` and `formulas` when a change loses something (Issue #1561).
+- System/Fields keeps a field's Type current after a type change, trashes, restores and drops the rows of a relation's lookups and rollups with the relation, and registryReport now names a row whose Type or Definition differs from its field, read in the form the Definition column stores (Issue #1626).
+
 ## v0.4.171 (2026-11-23)
 
 - A budgets run that kept no trend reading now writes a gap point the next runs count and name on the run page, instead of shortening every streak that crosses it in silence (Issue #1848).
