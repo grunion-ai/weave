@@ -1,1 +1,0 @@
-- **A chip tapped right after closing a record on a phone keeps its picker** (Issue #1837): Close drops `?e=` from the address in place before it steps back, so the back navigation lands on the same address, fires no `hashchange`, and no longer closes a picker the person opened in the gap.

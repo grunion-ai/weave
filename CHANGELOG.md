@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.179 (2026-11-24)
+
+- **A chip tapped right after closing a record on a phone keeps its picker** (Issue #1837): Close drops `?e=` from the address in place before it steps back, so the back navigation lands on the same address, fires no `hashchange`, and no longer closes a picker the person opened in the gap.
+- **The date popover fits a 320 px phone** (Issue #1853): the popover width is capped at the screen width less its 8 px margins, so the seven day columns share the room they have and the Today link and the last day column stay whole in both the date and the range picker.
+- **The filter popover keeps its record count on a short or narrow phone** (Issue #1852): the filter strip stays one column when the popover runs out of height, so the list scrolls and the "N of M records" footer stays inside the box instead of wrapping into a hidden second column.
+
 ## v0.4.178 (2026-11-24)
 
 - **Every MCP action property lists its actions as an enum** (Issue #1567): the eight family tools (views, shares, automations, workspace, accounts, keys, files, registry) now declare `action` with an enum derived from the same registry rows the dispatcher reads for its "Unknown ... action" error, minus refused actions, so a schema-validating client catches a typo before the call. `weave_stats` `where` now carries a type and a description.
