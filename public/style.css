@@ -2282,7 +2282,7 @@ body:has(#fsv-back > .fsv-frame, #side:not([hidden]) > .wv-file-panel, #view-pan
 .table-density-popover .seg-opt { border: 0; border-radius: var(--wv-radius-control); text-align: left; padding: 8px 10px; }
 .table-density-popover .seg-opt.on { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .table-filter-count { border-radius: var(--wv-radius-chip); min-width: 18px; padding: 0 4px; font-size: var(--fs-meta); line-height: 18px; background: var(--tblr-primary); color: var(--tblr-primary-fg, #fff); }
-.table-filter-popover .filter-strip, #view-pane .filter-strip { display: flex; flex-direction: column; align-items: stretch; margin: 0; gap: 0; min-height: 0; flex: 0 1 auto; }
+.table-filter-popover .filter-strip, #view-pane .filter-strip { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; margin: 0; gap: 0; min-height: 0; flex: 0 1 auto; }
 .table-filter-popover .filter-group, #view-pane .filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 12px 8px 18px; }
 .table-filter-popover .filter-group + .filter-group, #view-pane .filter-group + .filter-group { border-top: 1px solid var(--tblr-border-color); }
 .table-filter-popover .filter-label, #view-pane .filter-label { display: flex; align-items: center; gap: 8px; font-size: var(--fs-grid); text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--tblr-body-color); }
