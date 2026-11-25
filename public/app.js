@@ -928,6 +928,8 @@ function dockDismiss() {
   crumbNav = null;
   if (history.state?.wvDock) {
     dockClose();
+    const base = location.hash.match(/^#\/(?:table|db)\/[^/?]+(?:\/view\/[^/?]+)?/)?.[0];
+    if (base) history.replaceState(history.state, '', base);
     history.back();
     return;
   }
