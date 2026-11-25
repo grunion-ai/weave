@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.181 (2026-11-25)
+
+- **Clicking into a document shows a block bar** (Issue #1883): on a desktop a caret with no selection now shows undo, redo, checklist, list, heading and insert in a bar just above the caret's block, which follows the caret and hides on Escape or when focus leaves. Selecting text still shows the full formatting bubble.
+- **Dictation into a document has a browser guard** (Issue #1882): composition, a revised hypothesis, a replacement-range correction and `insertReplacementText` each reach the saved markdown through autosave, in paragraphs and list items. Current Vditor glue passes every case.
+
 ## v0.4.180 (2026-11-25)
 
 - **Local affected selection narrows its unit lane** (Issue #1676):
