@@ -1857,7 +1857,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .date-day.in-range, .date-pick-cell.in-range { background: var(--tblr-active-bg, var(--tblr-bg-surface-secondary)); border-radius: 0; }
 .date-pick-btn { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid transparent; border-radius: var(--wv-radius-control); background: none; color: var(--tblr-secondary); cursor: pointer; }
 .date-pick-btn:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); border-color: var(--tblr-border-color); }
-.date-pop { position: fixed; z-index: 1200; width: 252px; padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--wv-radius-surface); box-shadow: var(--wv-pop-shadow); font-size: var(--fs-grid); }
+.date-pop { position: fixed; z-index: 1200; width: min(252px, calc(100vw - 16px)); padding: 8px; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--wv-radius-surface); box-shadow: var(--wv-pop-shadow); font-size: var(--fs-grid); }
 .date-pop-smart { margin-bottom: 6px; }
 .date-smart-preview { min-height: 14px; font-size: var(--fs-meta); color: var(--tblr-secondary); padding: 2px 2px 0; }
 .date-pop-head { display: flex; align-items: center; gap: 4px; padding: 2px 2px 6px; }
@@ -1881,7 +1881,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .date-pop-foot { display: flex; justify-content: space-between; padding: 8px 2px 0; }
 .date-pop-link { background: none; border: none; color: var(--tblr-primary); font-size: var(--fs-grid); cursor: pointer; padding: 2px 2px; }
 @media (pointer: coarse) {
-  .date-pop { width: 336px; }
+  .date-pop { width: min(336px, calc(100vw - 16px)); }
   .date-pop-arrow { padding-bottom: 0; }
   .date-pop-title { padding-inline: 8px; }
   .date-pop-link { padding-inline: 8px; }
