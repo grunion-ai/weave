@@ -2,6 +2,41 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.180 (2026-11-25)
+
+- **Local affected selection narrows its unit lane** (Issue #1676):
+  `npm test -- --affected` ran all 620 gating unit files for any source change,
+  so the local answer to "which tests does my diff reach" was the whole unit
+  suite. It now keeps the unit files that reach a changed `src/`, `bin/` or
+  `scripts/` file through the relative-import graph, name it, or read the
+  directory it sits in: 33 files for a leaf script, 468 for a module the engine
+  imports. A change the graph cannot follow still runs every gating unit file,
+  and the `PR gate` and `CI gate` are unchanged.
+- **Build trial skipped after a passing dry run** (Issue #1606): `weave_build`
+  cloned the whole workspace state for a trial run on every call, so a dry run
+  followed by the real build of the same spec cloned 20 MB twice. A real build
+  that follows a passing dry run of a byte-identical spec, with no write in
+  between, now runs straight through. Any change to the workspace, a different
+  spec, a different viewer, or a red dry run brings the trial back.
+- **One command moves the byte budget** (Issue #1680): `test/byte-budget.json`
+  took 57 commits in 90 days, and every one of them was an agent reading a red
+  unit test, parsing the numbers out of the message and editing the JSON by
+  hand. `node scripts/byte-budget.mjs` now measures every first-party asset
+  against the ledger and prints the edit it wants; `--write` applies it, and a
+  raise is refused unless `--why "<reason>"` gives the reason that
+  `unexplainedRaises` demands. The command keeps the file's existing key order,
+  so a single raise is a one-line diff rather than a reordered file, and a
+  revert that leaves the ledger ahead of the code is one run away from the
+  truth again.
+- **Reach selection spends its cap on the changed lines first** (Issue #1679):
+  the PR gate reads changed blocks with `git diff -W`, so a one-line edit inside
+  a 1,481-line function offered the whole function's class names and routes as
+  evidence, and the 60-file cap filled with suites the edit never named. The
+  cap now goes first to the literals the added and removed lines name, then to
+  the rest of the block, rarest first. Recall is unchanged: every token of the
+  `-W` block still reaches. Of the last 80 commits touching `public`, `src` or
+  `bin`, 49 filled the cap and 22 of those select a different set.
+
 ## v0.4.179 (2026-11-24)
 
 - **A chip tapped right after closing a record on a phone keeps its picker** (Issue #1837): Close drops `?e=` from the address in place before it steps back, so the back navigation lands on the same address, fires no `hashchange`, and no longer closes a picker the person opened in the gap.
