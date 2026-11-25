@@ -3488,6 +3488,7 @@ const MENU_ROWS = {
   field: (f, { db }) => ({
     settings: f.system ? null : { label: 'Field settings…', icon: FIELD_MENU_ICONS.edit, run: () => editFieldDialog(db, f) },
     insert: f.system ? null : { label: 'Insert field…', icon: FIELD_MENU_ICONS.insert, run: () => addFieldDialog(db) },
+    hide: db.view?.blank || !visibleCols(db).includes(f.name) ? null : { label: 'Hide field', icon: FIELD_MENU_ICONS.hide, run: () => hideGridColumn(db, f.name) },
     delete: f.role !== 'name' && !f.system ? {
       ...trashRow({
         remove: () => api('DELETE', `/tables/${db.id}/fields/${encodeURIComponent(f.id)}`),
@@ -8434,8 +8435,24 @@ function columnResizeGrip(db, f, grid) {
 const FIELD_MENU_ICONS = {
   edit: 'lucide:pencil', insert: '+',
   asc: '↑', desc: '↓', clear: '✕',
-  delete: 'lucide:trash-2',
+  delete: 'lucide:trash-2', hide: 'lucide:eye-off',
 };
+
+async function hideGridColumn(db, name) {
+  const painted = dropDrawnColumn(db.id, name);
+  const table = allTables().find((d) => d.id === db.id) ?? db;
+  try {
+    await gridConfigWrite(db, { hiddenFields: [...new Set([...(table.hiddenFields ?? []), name])] }, { hide: [name] });
+    const live = allTables().find((d) => d.id === db.id) ?? table;
+    const now = db.view ? viewed(live, (live.views ?? []).find((v) => v.id === db.view.id) ?? db.view) : live;
+    if (state.route?.page === 'db' && state.route.dbId === db.id && !(painted && drawnMatches(now))) await keepScroll(() => showDatabase(db.id, state.route.view));
+    if (dock?.db.id === db.id) { dock.db = live; await drawDock(); }
+    if (viewPane.fields?.eyeOf === db.id && viewPane.fields.isConnected) viewPane.fields.relearnEye();
+  } catch (err) {
+    toast(err.message, true);
+    if (painted && state.route?.dbId === db.id) await keepScroll(() => showDatabase(db.id, state.route.view));
+  }
+}
 
 function lookupTargetOf(db, f) {
   if (f?.type !== 'lookup' || !f.via || !f.targetField) return null;

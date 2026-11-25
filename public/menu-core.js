@@ -65,7 +65,7 @@
     space: { organize: ['trash'], delete: ['delete'] },
     'share-page': { delete: ['delete'] },
     workspace: { delete: ['delete'] },
-    field: { settings: ['settings'], organize: ['insert'], delete: ['delete'] },
+    field: { settings: ['settings'], organize: ['insert', 'hide'], delete: ['delete'] },
   };
 
   const kinds = () => Object.keys(KINDS);

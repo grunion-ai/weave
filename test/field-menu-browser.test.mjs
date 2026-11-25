@@ -64,7 +64,7 @@ if (s) {
     try {
       await openMenu(page);
       const rows = await rowMetrics(page);
-      assert.deepEqual(rows.map((r) => r.text), ['Field settings…', 'Insert field…', 'Move to trash'], 'Settings, Organize, Delete (Feature #296)');
+      assert.deepEqual(rows.map((r) => r.text), ['Field settings…', 'Insert field…', 'Hide field', 'Move to trash'], 'Settings, Organize, Delete (Feature #296, Issue #1872)');
       const lefts = new Set(rows.map((r) => r.labelLeft));
       assert.equal(lefts.size, 1,
         `labels must share one left edge, found ${[...lefts].join(', ')} — ${rows.map((r) => r.text).join(' | ')}`);
@@ -187,6 +187,20 @@ if (s) {
           `${theme}: the destructive row does not read as destructive`);
         await page.keyboard.press('Escape');
       }
+    } finally { await page.close(); }
+  });
+
+  test('Hide field takes the column out of the view, keeps the field, and survives a reload (Issue #1872)', async () => {
+    const page = await grid();
+    try {
+      const pop = await openMenu(page, 'Estimate');
+      await pop.locator('.wv-menu-row', { hasText: 'Hide field' }).click();
+      await page.waitForSelector('.wv-grid thead th.col-head[data-col="Estimate"]', { state: 'detached' });
+      assert.ok(hasField('Estimate'), 'hiding keeps the field on the table');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      assert.equal(await page.locator('.wv-grid thead th.col-head[data-col="Estimate"]').count(), 0, 'the view remembers the hidden column');
+      assert.equal(await page.locator('.wv-grid thead th.col-head[data-col="Priority"]').count(), 1, 'the other columns stay');
     } finally { await page.close(); }
   });
 }

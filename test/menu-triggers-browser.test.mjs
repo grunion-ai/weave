@@ -25,7 +25,7 @@ const ROWS = {
   space: ['Open trash', 'Move to trash'],
   'share-page': ['Move to trash'],
   workspace: ['Delete workspace…'],
-  field: ['Field settings…', 'Insert field…', 'Move to trash'],
+  field: ['Field settings…', 'Insert field…', 'Hide field', 'Move to trash'],
 };
 
 if (s) {
