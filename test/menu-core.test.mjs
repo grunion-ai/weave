@@ -120,7 +120,7 @@ test('the definitions match the target menu table', () => {
   assert.deepEqual(shape('space'), { organize: ['trash'], delete: ['delete'] });
   assert.deepEqual(shape('share-page'), { delete: ['delete'] });
   assert.deepEqual(shape('workspace'), { delete: ['delete'] });
-  assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert'], delete: ['delete'] });
+  assert.deepEqual(shape('field'), { settings: ['settings'], organize: ['insert', 'hide'], delete: ['delete'] });
 });
 
 test('the workspace menu holds one row, Delete workspace…; invite and link preview live elsewhere (Feature #347)', () => {

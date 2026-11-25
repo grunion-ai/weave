@@ -40,7 +40,7 @@ Sections run in a fixed order with a thin separator between them. Only Export sh
 | Space | | | | | Move to trash |
 | Share page | | | | | Move to trash |
 | Workspace | | | | | Delete workspace… (Feature #347) |
-| Field (column header) | Field settings… | Insert field… | | | Move to trash |
+| Field (column header) | Field settings… | Insert field…, Hide field | | | Move to trash |
 
 Share is never a menu row: every shareable page carries the Share button in its header, beside the ⋮, and it opens the one share pane (Issue #765).
 

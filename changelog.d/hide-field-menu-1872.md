@@ -1,0 +1,1 @@
+- **Hide a column from its header menu** (Issue #1872): the ⋮ menu and right-click menu on a grid column header now carry **Hide field**, which takes the column out of the current view the same way the Fields list does. The field and its values stay, and the Fields list shows it again. The raw read-only table does not offer the row.

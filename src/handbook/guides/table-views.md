@@ -61,7 +61,7 @@ A view's link is `#/table/<table>/view/<view id>`. An old `…/view/blank` link 
 
 ## Fields
 
-Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls.
+Click a field's visibility control to show or hide its column. **Show all** and **Hide all** apply to the whole list. Drag the grip at a field's right edge to move it; a dashed placeholder opens where it will land and the other fields slide aside. With the grip focused, **↑ / ↓** moves it one place. System columns such as Created At use the same controls. To hide one column without opening the list, choose **Hide field** in its header's ⋮ menu or right-click menu; the list shows it again.
 
 These changes save into the current view. Hiding a column does not delete its data. **New field** opens the same field tray as the **+** at the end of the grid's field headers. Deleted records moved to the **Include deleted** switch in Filters, and the Σ row to **Σ Rollups** in Display; each saves into the current view, so another view keeps its own.
 
