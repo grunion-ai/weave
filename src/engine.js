@@ -1647,6 +1647,7 @@ export class Weave {
   #detachedStorage = null;
 
   #schemaVersion = null;
+  #buildProven = null;
   #rows = null;
   #query = null;
   #cutoffs = 0;
@@ -2089,6 +2090,7 @@ export class Weave {
       this.#forgetPending();
     }
     this.#schemaVersion = null;
+    this.#buildProven = null;
   }
 
   #rolledBack(err, loaded) {
@@ -2138,6 +2140,7 @@ export class Weave {
     }
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
+    this.#buildProven = null;
     for (const w of this.#engines()) w.#forgetDerived(e?.dbId ?? null);
     this.#touching?.add(id);
     if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; this.#reg.#scheduleArmed.set(id, this.now().getTime()); }
@@ -2154,6 +2157,7 @@ export class Weave {
 
   maybeRefresh() {
     if (!this.store.changedExternally?.()) return false;
+    this.#buildProven = null;
     const loaded = this.store.reload(this.state);
     if (loaded) {
       this.state = loaded;
@@ -3625,12 +3629,24 @@ export class Weave {
 
   build(spec, { dryRun = false, skipExistingRows = false } = {}) {
     const viewer = viewerOf(this);
-    const copy = this.#buildCopy();
-    const tryOut = () => copy.#buildRun(spec, { keepGoing: true, skipExistingRows });
-    const trial = viewer ? withViewers({ of: (w) => (w === copy ? viewer : undefined) }, tryOut) : tryOut();
-    if (dryRun || trial.errors.length) return { ok: !trial.errors.length, ...(dryRun ? { dryRun: true } : {}), ...trial };
+    const proof = this.#buildProof(spec, { skipExistingRows, viewer });
+    const proven = !dryRun && proof != null && this.#buildProven === proof;
+    this.#buildProven = null;
+    if (!proven) {
+      const copy = this.#buildCopy();
+      const tryOut = () => copy.#buildRun(spec, { keepGoing: true, skipExistingRows });
+      const trial = viewer ? withViewers({ of: (w) => (w === copy ? viewer : undefined) }, tryOut) : tryOut();
+      if (dryRun || trial.errors.length) {
+        if (dryRun && !trial.errors.length) this.#buildProven = proof;
+        return { ok: !trial.errors.length, ...(dryRun ? { dryRun: true } : {}), ...trial };
+      }
+    }
     const run = this.#buildRun(spec, { keepGoing: false, skipExistingRows });
     return { ok: !run.errors.length, ...run };
+  }
+
+  #buildProof(spec, { skipExistingRows, viewer }) {
+    try { return JSON.stringify([spec, skipExistingRows, viewer ?? null]); } catch { return null; }
   }
 
   #buildCopy() {
@@ -8906,6 +8922,7 @@ export class Weave {
 
   #adoptRolledBack(loaded) {
     if (!loaded) return;
+    this.#buildProven = null;
     this.state = loaded;
     this.#schemaVersion = null;
     this.#forgetDerived();

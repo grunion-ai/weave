@@ -293,3 +293,75 @@ test('the trial pass of a build keeps the caller\'s role: an observer is still r
   assert.match(built.errors[0].error, /needs an architect of that space/);
   assert.equal(w.findTable('Training/Athlete'), undefined);
 });
+
+const watchStateClones = (w) => {
+  const real = globalThis.structuredClone;
+  let whole = 0;
+  globalThis.structuredClone = (value, ...rest) => {
+    if (value === w.state) whole += 1;
+    return real(value, ...rest);
+  };
+  return { count: () => whole, stop: () => { globalThis.structuredClone = real; } };
+};
+
+test('a real build with no passing dry run behind it clones the whole state for its trial', () => {
+  const w = new Weave();
+  const spy = watchStateClones(w);
+  try {
+    assert.equal(w.build(SPEC()).ok, true);
+  } finally { spy.stop(); }
+  assert.ok(spy.count() >= 1, 'the trial copy clones the whole state');
+});
+
+test('a real build right after a passing dry run of the same spec skips the trial clone', () => {
+  const w = new Weave();
+  assert.equal(w.build(SPEC(), { dryRun: true }).ok, true);
+  const spy = watchStateClones(w);
+  let r;
+  try {
+    r = w.build(SPEC());
+  } finally { spy.stop(); }
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.created, { spaces: 1, tables: 3, fields: 6, relations: 2, rows: 5 });
+  assert.equal(spy.count(), 0, 'the dry run already proved this spec against this state');
+  assert.deepEqual(userSpaces(w), ['Budget']);
+});
+
+test('a dry run does not license a second real build', () => {
+  const w = new Weave();
+  assert.equal(w.build(SPEC(), { dryRun: true }).ok, true);
+  assert.equal(w.build(SPEC()).ok, true);
+  const spy = watchStateClones(w);
+  try { w.build(SPEC(), { skipExistingRows: true }); } finally { spy.stop(); }
+  assert.ok(spy.count() >= 1, 'the second real build runs its own trial');
+});
+
+test('a state change between the dry run and the real build brings the trial back', () => {
+  const w = new Weave();
+  w.build({ workspace: 'personal-finance', spaces: [{ name: 'Notes', tables: [{ name: 'Note' }] }] });
+  assert.equal(w.build(SPEC(), { dryRun: true }).ok, true);
+  w.createEntity('Note', { Name: 'Changed' });
+  const spy = watchStateClones(w);
+  try { assert.equal(w.build(SPEC()).ok, true); } finally { spy.stop(); }
+  assert.ok(spy.count() >= 1, 'the memo does not survive a write');
+});
+
+test('a dry run of one spec does not license a real build of another', () => {
+  const w = new Weave();
+  assert.equal(w.build(SPEC(), { dryRun: true }).ok, true);
+  const other = SPEC();
+  other.spaces[0].tables[0].fields.push({ name: 'Nickname', type: 'text' });
+  const spy = watchStateClones(w);
+  try { assert.equal(w.build(other).ok, true); } finally { spy.stop(); }
+  assert.ok(spy.count() >= 1, 'a different spec runs its own trial');
+});
+
+test('a failing dry run does not license a real build', () => {
+  const w = new Weave();
+  const bad = SPEC();
+  bad.spaces[0].tables[0].fields.push({ name: 'Score', type: 'nonsense' });
+  assert.equal(w.build(bad, { dryRun: true }).ok, false);
+  const spy = watchStateClones(w);
+  try { w.build(bad); } finally { spy.stop(); }
+  assert.ok(spy.count() >= 1, 'a red dry run licenses nothing');
+});
