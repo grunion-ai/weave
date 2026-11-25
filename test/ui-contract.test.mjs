@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, APP, HTML, CSS, rulesFor, px, fnBody, read } from './lib/source.mjs';
+import { ROOT, APP, HTML, CSS, rulesFor, px, zOf, fnBody, read } from './lib/source.mjs';
 const SETTINGS_VIEW = read('public/settings-view.js');
 
 
@@ -10,7 +10,7 @@ test('#ws-rail carries a positive z-index so #main never paints over it', () => 
   const rail = rulesFor('#ws-rail');
   assert.ok(['relative', 'sticky'].includes(rail.position), `rail is positioned — with its z-index it is a stacking context, got ${rail.position}`);
   assert.ok(rail['z-index'], '#ws-rail must declare a z-index or #main paints over it');
-  assert.ok(px(rail['z-index']) > 0, `#ws-rail z-index must be > 0, got ${rail['z-index']}`);
+  assert.ok(zOf(rail['z-index']) > 0, `#ws-rail z-index must be > 0, got ${rail['z-index']}`);
 });
 
 test('the floating show button leaves no rules behind (Issue #927)', () => {
@@ -1155,7 +1155,7 @@ test('dates: one smart control everywhere, a calendar popover with month/year gr
   assert.match(dlg, /dc\.defaultKind\(state\.default\)/, 'the default chooser: none / today() / specific');
   const HTML = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
   assert.ok(HTML.indexOf('date-core.js') < HTML.indexOf('"/app.js"'));
-  assert.ok(px(rulesFor('.date-pop')['z-index']) >= px(rulesFor('.chip-pop')['z-index']), 'the popover stacks with the other popovers');
+  assert.ok(zOf(rulesFor('.date-pop')['z-index']) >= zOf(rulesFor('.chip-pop')['z-index']), 'the popover stacks with the other popovers');
 });
 
 test('field dialogs open in the right-hand tray and popovers stack above it', () => {
@@ -1163,8 +1163,8 @@ test('field dialogs open in the right-hand tray and popovers stack above it', ()
   assert.match(dlg, /\n  tray\(/, 'the field dialog is a tray, not a centered modal');
   const back = rulesFor('#tray-back');
   const pop = rulesFor('.chip-pop');
-  assert.ok(px(pop['z-index']) > px(back['z-index']), 'a picker opened inside the tray must render above it');
-  assert.ok(px(pop['z-index']) > px(rulesFor('#modal-back')['z-index']), 'and above the modal backdrop (the old nesting bug)');
+  assert.ok(zOf(pop['z-index']) > zOf(back['z-index']), 'a picker opened inside the tray must render above it');
+  assert.ok(zOf(pop['z-index']) > zOf(rulesFor('#modal-back')['z-index']), 'and above the modal backdrop (the old nesting bug)');
 });
 
 test('the type grid has both-theme styling via tabler tokens', () => {

@@ -46,6 +46,10 @@ export function rulesFor(selector, css = CSS) {
 }
 
 const STEP = Object.fromEntries([...CSS.matchAll(/--fs-([a-z0-9]+):\s*([\d.]+px)/g)].map((m) => [m[1], m[2]]));
+export const zOf = (v) => {
+  const layer = String(v ?? '').trim().match(/^var\((--wv-z-[a-z-]+)\)$/)?.[1];
+  return Number(layer ? rulesFor(':root')[layer] : v);
+};
 export const px = (v) => Number.parseFloat(String(v).trim().replace(/^var\(--fs-([a-z0-9]+)\)/, (m, k) => STEP[k] ?? m));
 
 export function fnBody(name, src = APP) {

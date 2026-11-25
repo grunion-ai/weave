@@ -7,7 +7,7 @@ import {
   LOADER_CYCLE_MS, VARIANTS, PALETTE, ROPE, loaderDraw, loaderStill, loaderRopeHtml, loaderRopeCss,
   loaderBootHtml, ropePose, ropeStops, strandPose, dashOffset,
 } from '../brand/build-logos.mjs';
-import { APP, HTML, CSS, px, rulesFor, fnBody } from './lib/source.mjs';
+import { APP, HTML, CSS, px, zOf, rulesFor, fnBody } from './lib/source.mjs';
 import { touchFloor } from './lib/touch.mjs';
 import { FLASH_MS } from './lib/flicker.mjs';
 
@@ -220,8 +220,8 @@ test('the loader overlays the page without swallowing clicks', () => {
   }
   assert.equal(rules.position, 'fixed');
   assert.equal(rules['pointer-events'], 'none');
-  const railZ = Number((CSS.match(/#ws-rail \{[^}]*z-index: (\d+)/) ?? [])[1]);
-  assert.ok(Number(rules['z-index']) > railZ, `loader z-index must beat #ws-rail (${railZ})`);
+  const railZ = zOf(rulesFor('#ws-rail')['z-index']);
+  assert.ok(zOf(rules['z-index']) > railZ, `loader z-index must beat #ws-rail (${railZ})`);
   assert.match(CSS, /#page-loader\[hidden\] \{ display: none; \}/,
     'display:flex would otherwise beat the hidden attribute — the .hidden defect again');
 });
