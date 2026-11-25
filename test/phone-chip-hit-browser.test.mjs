@@ -127,5 +127,33 @@ if (s) {
         }
       } finally { await page.close(); }
     });
+
+    test(`on a 375x812 phone a chip tapped while Close is still going back keeps its picker, and one Back leaves the table (${engine}, Issue #1837)`, async () => {
+      const page = await open(b);
+      try {
+        const before = await page.evaluate(() => history.length);
+        const g = await geometry(page, 0);
+        await page.touchscreen.tap((g.drawn.link.left + g.drawn.link.right) / 2, (g.drawn.link.top + g.drawn.link.bottom) / 2);
+        await page.waitForURL(/\?e=/);
+        await page.waitForSelector('#dock button[aria-label="Close"]');
+        await page.evaluate(() => {
+          const back = history.back.bind(history);
+          history.back = () => setTimeout(back, 400);
+        });
+        await page.click('#dock button[aria-label="Close"]');
+        await page.waitForSelector('#dock', { state: 'hidden' });
+        const ms = (await geometry(page, 1)).hit.milestone;
+        await page.touchscreen.tap((ms.left + ms.right) / 2, (ms.top + ms.bottom) / 2);
+        await page.waitForSelector('.picker-pop .picker-title');
+        await page.waitForTimeout(800);
+        assert.equal(await page.locator('.picker-pop .picker-title').count(), 1, 'the picker opened after Close is still open once the back navigation lands');
+        assert.ok(!(await page.evaluate(() => location.hash)).includes('?e='), 'the record is gone from the address');
+        assert.equal(await page.evaluate(() => history.length), before + 1, 'Close leaves the one entry the record pushed, to step forward into');
+        await page.click('.picker-pop button:has(.chip-pop-check)');
+        await page.waitForSelector('.picker-pop', { state: 'detached' });
+        await page.goBack();
+        assert.ok(!(await page.evaluate(() => location.hash)).includes(id), 'one Back leaves the table: Close left no dead entry behind it');
+      } finally { await page.close(); }
+    });
   }
 }
