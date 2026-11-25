@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.178 (2026-11-24)
+
+- **Every MCP action property lists its actions as an enum** (Issue #1567): the eight family tools (views, shares, automations, workspace, accounts, keys, files, registry) now declare `action` with an enum derived from the same registry rows the dispatcher reads for its "Unknown ... action" error, minus refused actions, so a schema-validating client catches a typo before the call. `weave_stats` `where` now carries a type and a description.
+- **A misspelt where or sort field fails the same way on an empty table** (Issue #1618): query now checks every where and sort field name before it reads a row, so a typo answers `Field 'X' not found` with its nearest names on an empty or one-row table too, and a bare condition or a malformed group names the [path, operator, value] shape it expected.
+
 ## v0.4.177 (2026-11-24)
 
 - **The cold-open test waits for the fresh page before it counts draws** (Issue #1810): `test/table-cold-open-browser.test.mjs` counted grid draws a fixed 500 ms after the cached page appeared, so a fresh query slower than that left one draw and took main CI red with "the reader was left looking at the cached cell". The test now waits for the fresh query's response and for the edited cell to show its value, then counts, and the lost-cell case holds the fresh query for 1.5 s on every run.
