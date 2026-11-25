@@ -329,7 +329,7 @@ const KEYS_TOOL = {
 
 const WORKSPACE_TOOL = {
   name: 'weave_workspace',
-  description: 'The workspace record itself. action: get | update (name: any text, kept as the title; its slug, lowercase letters, digits and -, is the /w/<slug>/ address and the <slug>.<base domain> host, description, linkPreview) | logo (contentBase64 + name; type read from the bytes) | clear-logo | order | move (name, position: 0 first).',
+  description: 'The workspace record. update: name (any text, kept as the title; its slug, a-z 0-9 and -, is the /w/<slug>/ address and the <slug>.<base domain> host), description, linkPreview. logo: contentBase64 + name, type read from the bytes. move: name, position (0 first).',
   inputSchema: {
     type: 'object',
     properties: { action: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, linkPreview: { type: 'boolean' }, contentBase64: { type: 'string' }, position: { type: 'number' } },
@@ -1255,7 +1255,7 @@ export const COMMANDS = [
     tool: {
       name: 'weave_stats',
       description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
-      inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: {}, field: { type: 'string' } }, required: ['table'] },
+      inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: { type: ['array', 'object', 'null'], description: 'The same clauses as weave_query: [[path, op, value], ...] (AND) or an {and} or {or} tree' }, field: { type: 'string' } }, required: ['table'] },
     },
     cli: {
       command: 'stats', positional: ['table'],
@@ -2186,6 +2186,11 @@ export const FAMILIES = new Map();
 for (const c of COMMANDS.filter((x) => x.action !== undefined)) {
   if (!FAMILIES.has(c.tool.name)) FAMILIES.set(c.tool.name, { tool: c.tool, noun: c.tool.name.replace(/^weave_/, ''), commands: [] });
   FAMILIES.get(c.tool.name).commands.push(c);
+}
+for (const { tool, commands } of FAMILIES.values()) {
+  const action = tool.inputSchema?.properties?.action;
+  if (!action || !commands.every((c) => (c.actionArg ?? 'action') === 'action')) continue;
+  action.enum = commands.filter((c) => !c.toolRefusal && typeof c.action === 'string').map((c) => c.action);
 }
 
 export const registeredTool = (name) => BY_TOOL.has(name) || FAMILIES.has(name);
