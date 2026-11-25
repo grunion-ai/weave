@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, painted } from './lib/browser.mjs';
+import { engineOf, launch, painted } from './lib/browser.mjs';
 
 let sprints;
 const s = await launch('date pop arrows', (weave) => {
@@ -67,4 +67,34 @@ if (s) {
       assert.deepEqual(await page.locator('.date-pop.range .date-pop-foot .date-pop-link').allTextContents(), ['Clear', 'Today']);
     } finally { await page.close(); }
   });
+
+  for (const engine of ['chromium', 'webkit']) {
+    for (const [field, theme] of [['Due', 'light'], ['Window', 'dark']]) {
+      test(`on a 320 px phone the ${field} popover fits the screen and every day number and footer link keeps its whole text (${engine}, ${theme}, Issue #1853)`, async () => {
+        const b = engine === 'webkit' ? await engineOf('webkit') : browser;
+        if (!b) return;
+        const page = await b.newPage({ viewport: { width: 320, height: 568 }, isMobile: engine === 'chromium', hasTouch: true, colorScheme: theme });
+        try {
+          page.setDefaultTimeout(8000);
+          await page.goto(`${base}/#/table/${sprints.id}?e=${fresh()}`, { waitUntil: 'networkidle' });
+          await page.evaluate((t) => document.documentElement.setAttribute('data-bs-theme', t), theme);
+          const pick = page.locator(`#dock .fieldrow[data-field="${field}"] .date-pick-btn`);
+          await pick.waitFor();
+          await pick.tap();
+          await painted(page, '.date-pop .date-pop-head', { timeout: 8000 });
+          const m = await page.evaluate(() => {
+            const pop = document.querySelector('.date-pop').getBoundingClientRect();
+            const out = [...document.querySelectorAll('.date-pop .date-day, .date-pop .date-pop-link')].filter((n) => {
+              const r = n.getBoundingClientRect();
+              return r.left < pop.left - 0.5 || r.right > pop.right + 0.5 || n.scrollWidth > n.clientWidth + 0.5;
+            }).map((n) => n.textContent.trim());
+            return { left: pop.left, right: pop.right, vw: document.documentElement.clientWidth, out, theme: document.documentElement.dataset.bsTheme };
+          });
+          assert.equal(m.theme, theme);
+          assert.ok(m.left >= 0 && m.right <= m.vw, `the popover [${m.left}, ${m.right}] sits inside the ${m.vw} px screen`);
+          assert.deepEqual(m.out, [], 'no day number or footer link spills out of its box or the popover');
+        } finally { await page.close(); }
+      });
+    }
+  }
 }
