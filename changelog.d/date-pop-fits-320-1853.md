@@ -1,1 +1,0 @@
-- **The date popover fits a 320 px phone** (Issue #1853): the popover width is capped at the screen width less its 8 px margins, so the seven day columns share the room they have and the Today link and the last day column stay whole in both the date and the range picker.
