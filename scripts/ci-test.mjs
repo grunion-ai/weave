@@ -85,14 +85,17 @@ export const REACH_SPREAD = 8;
 const TOKEN = /[a-z][a-z0-9]*(?:[-/][a-z0-9]+)+/g;
 const DIFF_HEADER = /^(diff --git|index |\+\+\+|---|@@|new file|deleted file|old mode|new mode|similarity|rename|Binary)/;
 
-export function reachTokens(diff) {
+const tokensOf = (diff, keep) => {
   const tokens = new Set();
   for (const line of String(diff).split('\n')) {
-    if (DIFF_HEADER.test(line)) continue;
+    if (DIFF_HEADER.test(line) || !keep(line)) continue;
     for (const [token] of line.matchAll(TOKEN)) if (token.length >= 6) tokens.add(token);
   }
   return [...tokens].sort();
-}
+};
+
+export const reachTokens = (diff) => tokensOf(diff, () => true);
+export const reachNamed = (diff) => tokensOf(diff, (line) => line.startsWith('+') || line.startsWith('-'));
 
 export function touchedBrowser(changed, browser, read, diff = '') {
   for (const file of SMOKE) if (!browser.includes(file)) throw new Error(`Missing required journey suite ${file}`);
@@ -108,10 +111,11 @@ export function touchedBrowser(changed, browser, read, diff = '') {
     }
   }
   const named = picked.size;
+  const edited = new Set(reachNamed(diff));
   const groups = reachTokens(diff)
     .map(token => [token, browser.filter(file => source.get(file).includes(token))])
     .filter(([, files]) => files.length && files.length <= REACH_SPREAD)
-    .sort((a, b) => a[1].length - b[1].length || a[0].localeCompare(b[0]));
+    .sort((a, b) => Number(edited.has(b[0])) - Number(edited.has(a[0])) || a[1].length - b[1].length || a[0].localeCompare(b[0]));
   for (const [, files] of groups) {
     const adds = files.filter(file => !picked.has(file));
     if (picked.size + adds.length > named + REACH_CAP) continue;

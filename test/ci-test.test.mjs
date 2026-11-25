@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, unitReach, prPlan, eagerAssets, planNotice, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, unitReach, prPlan, eagerAssets, planNotice, reachTokens, reachNamed, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -603,4 +603,33 @@ test('a source change narrows the real unit lane and keeps the suite that covers
   assert.ok(reached.length >= 1, 'a narrowed lane is never empty');
   const missing = unitReach(unit, ['src/formula.js', 'docs/graph.md'], file => readFileSync(join(root, file), 'utf8'));
   assert.deepEqual(missing, unit, 'a documentation change beside it keeps every unit file');
+});
+
+test('a token the edit itself names outranks the enclosing function it sits in, and the whole-function tokens still reach (Issue #1679)', () => {
+  const wide = Array.from({ length: 120 }, (_, i) => `test/w${String(i).padStart(3, '0')}-browser.test.mjs`);
+  const edited = Array.from({ length: REACH_SPREAD }, (_, i) => `test/e${i}-browser.test.mjs`);
+  const browser = [...wide, ...edited, ...SMOKE];
+  const read = (file) => {
+    if (wide.includes(file)) return `const token = 'wv-token-${file.slice(6, 9)}';`;
+    if (edited.includes(file)) return "const token = 'wv-edited-token';";
+    return '';
+  };
+  const context = wide.map((file) => `   const token = 'wv-token-${file.slice(6, 9)}';`).join('\n');
+  const diff = ['@@ -1,1 +1,1 @@ function enclosing() {', "+  el('div', { class: 'wv-edited-token' });", context].join('\n');
+  assert.deepEqual(reachNamed(diff), ['wv-edited-token'], 'the named tokens come from the changed lines alone');
+  assert.equal(reachTokens(diff).length, wide.length + 1, 'the whole -W block still yields every token, so recall is unchanged');
+  const picked = touchedBrowser(['public/app.js'], browser, read, diff);
+  assert.equal(picked.length, SMOKE.length + REACH_CAP, 'the cap is still spent in full');
+  assert.deepEqual(edited.filter((file) => !picked.includes(file)), [], 'every suite naming the edited token is selected before the cap closes');
+  assert.ok(picked.some((file) => wide.includes(file)), 'the enclosing function still reaches suites with what is left of the cap');
+});
+
+test('a diff with no changed-line tokens still reaches through its context, as Issue #1075 intended (Issue #1679)', () => {
+  assert.deepEqual(reachNamed(sheetDiff), [], 'the sheet diff names its tokens only on context lines');
+  assert.deepEqual(
+    touchedBrowser(['public/app.js'], sheetBrowser, sheetRead, sheetDiff),
+    [...SMOKE, 'test/phone-new-row-sheet-browser.test.mjs', 'test/phone-picker-sheet-browser.test.mjs'].sort(),
+  );
+  assert.deepEqual(reachNamed(''), []);
+  assert.deepEqual(reachNamed('--- a/public/app.js\n+++ b/public/app.js'), [], 'the file headers are not changed lines');
 });
