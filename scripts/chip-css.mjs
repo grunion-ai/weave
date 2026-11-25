@@ -60,6 +60,10 @@ export function radiusScale(css = readFileSync(join(ROOT, 'public/style.css'), '
   return `:root { ${[...css.matchAll(/(--wv-radius-[a-z]+):\s*([^;}]+);/g)].map((m) => `${m[1]}: ${m[2]};`).join(' ')} }`;
 }
 
+export function zScale(css = readFileSync(join(ROOT, 'public/style.css'), 'utf8')) {
+  return `:root { ${[...css.matchAll(/(--wv-z-[a-z-]+):\s*([^;}]+);/g)].map((m) => `${m[1]}: ${m[2]};`).join(' ')} }`;
+}
+
 export function chipCss(css = [readFileSync(join(ROOT, 'public/chip.css'), 'utf8'), readFileSync(join(ROOT, 'public/style.css'), 'utf8')].join('\n')) {
   const out = [];
   for (const { at, sels, body } of cssRules(css)) {

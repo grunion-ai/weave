@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { chipCss, radiusScale, cssRules, scoped, selectorList } from './chip-css.mjs';
+import { chipCss, radiusScale, zScale, cssRules, scoped, selectorList } from './chip-css.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'mockups', 'card-view-options.html');
@@ -250,6 +250,7 @@ const cfg = (c) => `{ shape: 'card', link: ${c.link}, state: ${c.state}, descrip
 
 const TOKENS = `
 ${radiusScale()}
+${zScale()}
 :root { --bg: #ecebe6; --fg: #1a1d23; --muted: #6b7280; --line: #d9d6ce; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
 [data-bs-theme="light"] {
   --tblr-border-color: #e6e3dc; --tblr-body-color: #1a1d23; --tblr-secondary: #6b7280;
