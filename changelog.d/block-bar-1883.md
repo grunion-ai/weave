@@ -1,0 +1,1 @@
+- **Clicking into a document shows a block bar** (Issue #1883): on a desktop a caret with no selection now shows undo, redo, checklist, list, heading and insert in a bar just above the caret's block, which follows the caret and hides on Escape or when focus leaves. Selecting text still shows the full formatting bubble.
