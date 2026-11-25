@@ -1,0 +1,1 @@
+- **The filter popover keeps its record count on a short or narrow phone** (Issue #1852): the filter strip stays one column when the popover runs out of height, so the list scrolls and the "N of M records" footer stays inside the box instead of wrapping into a hidden second column.

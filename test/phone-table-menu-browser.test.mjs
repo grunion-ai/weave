@@ -172,6 +172,31 @@ if (s) {
     }
   }
 
+  for (const [engine, b, profile] of engines) {
+    for (const height of [568, 300]) {
+      test(`on a 320x${height} phone the filter popover keeps its record count whole inside the box (${engine}, Issue #1852)`, async () => {
+        const page = await open(b, { profile: { ...profile, viewport: { width: 320, height } } });
+        try {
+          await page.click('#main .table-tools-btn');
+          await settled(page.locator('#main .crumb-actions'));
+          await page.click('#main .crumb-actions .table-filter-btn');
+          await page.waitForSelector('.table-filter-popover .filter-total');
+          await settled(page.locator('.table-filter-popover'));
+          const m = await page.evaluate(() => {
+            const box = (q) => document.querySelector(q).getBoundingClientRect();
+            const pop = box('.table-filter-popover');
+            const total = box('.table-filter-popover .filter-total');
+            const strip = document.querySelector('.table-filter-popover .filter-strip');
+            return { pop: [pop.left, pop.top, pop.right, pop.bottom], total: [total.left, total.top, total.right, total.bottom], text: document.querySelector('.table-filter-popover .filter-total').textContent, wide: strip.scrollWidth - strip.clientWidth };
+          });
+          assert.match(m.text, /of \d+/);
+          assert.ok(m.wide <= 0, `the strip stays one column (${m.wide}px past its width)`);
+          assert.ok(m.total[0] >= m.pop[0] && m.total[2] <= m.pop[2] && m.total[1] >= m.pop[1] && m.total[3] <= m.pop[3], `the count ${JSON.stringify(m.total)} sits inside the popover ${JSON.stringify(m.pop)}`);
+        } finally { await page.close(); }
+      });
+    }
+  }
+
   test('on a desktop the toolbar is Search, View and the kebab, inline, with no sliders button (Feature #271, Issue #723, Feature #296, Feature #340)', async () => {
     const page = await open(browser);
     try {
