@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { selectTests, affectedTests } from '../scripts/test-selection.mjs';
 import { lanes, testFiles } from '../scripts/test.mjs';
-import { gating, prSelection, SMOKE } from '../scripts/ci-test.mjs';
+import { gating, prSelection, unitReach, SMOKE } from '../scripts/ci-test.mjs';
 import { tempDir } from './lib/temp.mjs';
 
 const files = ['test/core.test.mjs', 'test/editor-browser.test.mjs', 'test/other.test.mjs'];
@@ -37,20 +37,31 @@ for (const changed of [['scripts/test-selection.mjs'], ['src/field-hints.js'], [
     const result = selectTests({ files: real, changed, read });
     assert.equal(result.mode, 'pr');
     const pick = prSelection(groups, changed, read);
-    assert.deepEqual(result.files, [...pick.unit, ...pick.browser].sort());
-    for (const file of groups.unit) assert.ok(result.files.includes(file), `${file}: every unit file runs, as on the PR gate`);
+    const unit = unitReach(pick.unit, changed, read);
+    assert.deepEqual(result.files, [...new Set([...unit, ...pick.browser, ...changed.filter((file) => real.includes(file))])].sort());
     for (const file of SMOKE) assert.ok(result.files.includes(file), `${file}: the smoke journeys run`);
+    assert.ok(unit.length, `${JSON.stringify(changed)}: the unit lane is never empty`);
     assert.ok(result.files.length < real.length, `${result.files.length} of ${real.length}: the browser lane is narrowed`);
-    assert.match(result.reasons.join(' '), /PR gate selection: \d+ unit and \d+ of \d+ browser suites/);
+    assert.match(result.reasons.join(' '), /PR gate selection: \d+ of \d+ unit and \d+ of \d+ browser suites/);
   });
 }
 for (const changed of [['src/routes.js'], ['public/app.js'], ['public/style.css'], ['test/lib/browser.mjs']]) {
   test(`a shared-code change runs every gating browser suite, as the PR gate does: ${JSON.stringify(changed)}`, () => {
     const result = selectTests({ files: real, changed, read });
     assert.equal(result.mode, 'pr');
-    for (const file of [...groups.unit, ...groups.browser]) assert.ok(result.files.includes(file), file);
+    for (const file of groups.browser) assert.ok(result.files.includes(file), file);
+    for (const file of unitReach(groups.unit, changed, read)) assert.ok(result.files.includes(file), file);
   });
 }
+
+test('a source change runs the unit files it reaches and leaves the rest to the CI gate (Issue #1676)', () => {
+  const result = selectTests({ files: real, changed: ['src/field-hints.js'], read });
+  assert.ok(result.files.includes('test/field-hints.test.mjs'), 'the suite named for the changed module runs');
+  const unit = result.files.filter((file) => groups.unit.includes(file));
+  assert.ok(unit.length < groups.unit.length, `${unit.length} of ${groups.unit.length} unit files: a source change no longer runs every one`);
+  assert.deepEqual(selectTests({ files: real, changed: ['package.json'], read }).files.filter((file) => groups.unit.includes(file)), groups.unit,
+    'a change the import graph cannot follow still runs every gating unit file');
+});
 test('empty discovered test list fails closed', () => {
   assert.throws(() => selectTests({ files: [], changed: [] }), /No test files/);
 });

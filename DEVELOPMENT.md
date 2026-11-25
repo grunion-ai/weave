@@ -193,12 +193,20 @@ before Node starts. File lists must name existing files; use
 | Bound one job, milliseconds | `npm test -- --timeout=120000 test/formula.test.mjs` |
 
 Affected selection includes staged, unstaged and untracked files relative to the
-base. When only tests changed it runs those tests. Any other change runs what the
-`PR gate` would (`prSelection` in `scripts/ci-test.mjs`, Verification, below):
-every gating unit file, the smoke journeys and the browser suites the diff maps
-to, or every gating browser suite when shared code changed (Issue #1641). The
-printed plan names the counts, and the `CI gate` still runs the whole inventory
-on main.
+base. When only tests changed it runs those tests. Any other change takes the
+browser lane the `PR gate` would run (`prSelection` in `scripts/ci-test.mjs`,
+Verification, below): the smoke journeys and the browser suites the diff maps
+to, or every gating browser suite when shared code changed (Issue #1641). Its
+unit lane is narrower than the gate's: `unitReach` keeps the unit files that
+reach a changed `src/`, `bin/` or `scripts/` file through the relative-import
+graph, name it, or read the directory it sits in, which is 33 of 620 for a leaf
+script and 468 for a module the engine imports (Issue #1676). A unit file that names no
+`src/`, `bin/`, `scripts/` or `public/` path at all is kept whatever changed,
+since nothing says what it covers. A change anywhere else, a `package.json` or
+a `public/` asset among them, maps to nothing and so keeps every gating unit
+file. The printed plan names both counts, the `PR gate`
+still runs every gating unit file, and the `CI gate` still runs the whole
+inventory on main.
 
 ### Browser suites
 

@@ -162,6 +162,31 @@ export function browserHelpers(browser, read) {
   return [...seen].filter(file => file.startsWith('test/lib/')).sort();
 }
 
+const GRAPHED = /^(?:src|bin|scripts)\//;
+const CODE_PATH = /(?:src|bin|scripts|public)\//;
+
+export function unitReach(unit, changed, read) {
+  const sources = changed.filter(file => !file.startsWith('test/'));
+  if (!sources.length || !sources.every(file => GRAPHED.test(file))) return unit;
+  const text = file => { try { return String(read(file)); } catch { return ''; } };
+  const closure = file => {
+    const seen = new Set([file]);
+    for (const next of seen) {
+      for (const [, specifier] of text(next).matchAll(RELATIVE_IMPORT)) seen.add(posix.join(posix.dirname(next), specifier));
+    }
+    return seen;
+  };
+  const roots = [...new Set(sources.map(file => file.split('/')[0]))]
+    .map(root => new RegExp(`['\"\`]${root}/?['\"\`]`));
+  return unit.filter(file => {
+    const reached = closure(file);
+    if (sources.some(path => reached.has(path))) return true;
+    const body = [...reached].map(text).join('\n');
+    if (!CODE_PATH.test(body)) return true;
+    return sources.some(path => body.includes(basename(path))) || roots.some(root => root.test(body));
+  });
+}
+
 export function prSelection({ unit, browser }, changed, read, diff = '') {
   const shared = [...MONOLITHS, ...eagerAssets(read), ...browserHelpers(browser, read)];
   if (changed.some(file => shared.includes(file))) return { unit, browser: touchedBrowser(browser, browser, read), shared: true };
