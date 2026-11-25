@@ -675,6 +675,12 @@ function attachToolbarBubble(host) {
   st.place = () => placeToolbarBubble(st);
   st.schedule = () => queueMicrotask(st.place);
   for (const ev of ['focusin', 'focusout']) host.addEventListener(ev, st.schedule);
+  host.addEventListener('keydown', (e) => {
+    const was = !!st.escaped;
+    st.escaped = e.key === 'Escape' && !editorHintOpen(host);
+    if (was !== st.escaped) st.schedule();
+  }, { capture: true });
+  for (const ev of ['pointerdown', 'focusout']) host.addEventListener(ev, () => { if (st.escaped) { st.escaped = false; st.schedule(); } }, { capture: true });
   docBubbles.add(st);
   st.place();
 }
@@ -690,10 +696,13 @@ function placeToolbarBubble(st) {
   const docked = dockCoversScreen.matches;
   const inRoot = range && root.contains(range.startContainer) && root.contains(range.endContainer);
   const picked = inRoot && !range.collapsed;
-  const caret = docked && !picked && root.contains(document.activeElement);
-  const on = picked || caret || (inBar && bar.classList.contains('wv-show'));
+  const focused = !picked && root.contains(document.activeElement);
+  const caret = docked && focused;
+  const block = !docked && focused && inRoot && !st.escaped;
+  const on = picked || caret || block || (inBar && bar.classList.contains('wv-show'));
   bar.classList.toggle('wv-show', !!on);
   bar.classList.toggle('wv-bar-caret', !!caret);
+  if (!inBar) bar.classList.toggle('wv-bar-block', !!block);
   bar.classList.toggle('wv-bar-dock', docked);
   if (docked) {
     const keyboard = keyboardInset();
@@ -704,13 +713,22 @@ function placeToolbarBubble(st) {
   }
   bar.style.bottom = '';
   if (!on || inBar) return;
-  const r = range.getBoundingClientRect();
+  const r = block ? caretBlock(root, range.startContainer).getBoundingClientRect() : range.getBoundingClientRect();
   const base = st.host.getBoundingClientRect();
   const barW = bar.offsetWidth, barH = bar.offsetHeight;
-  const left = Math.max(0, Math.min(base.width - barW, r.left - base.left + r.width / 2 - barW / 2));
+  const want = block ? r.left - base.left : r.left - base.left + r.width / 2 - barW / 2;
+  const left = Math.max(0, Math.min(base.width - barW, want));
   const above = r.top - base.top - barH - 8;
   bar.style.left = `${left}px`;
   bar.style.top = `${above >= 0 ? above : r.bottom - base.top + 8}px`;
+}
+
+function caretBlock(root, node) {
+  let at = node instanceof Element ? node : node?.parentElement;
+  const named = at?.closest('li, p, h1, h2, h3, h4, h5, h6');
+  if (named && root.contains(named) && named !== root) return named;
+  while (at && at.parentElement && at.parentElement !== root) at = at.parentElement;
+  return at && root.contains(at) && at !== root ? at : root;
 }
 
 document.addEventListener('selectionchange', () => {

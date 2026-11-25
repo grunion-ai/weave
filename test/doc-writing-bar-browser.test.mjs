@@ -121,14 +121,17 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('on a desktop a caret alone shows no bar', async () => {
+  test('on a desktop a caret shows the block bar, never the phone writing bar (Issue #1883)', async () => {
     const id = weave.createEntity(notes, { name: 'Desktop caret', doc: 'First line.\n' }).id;
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     try {
       await page.goto(`${base}/#/entity/${id}`, { waitUntil: 'networkidle' });
       await page.click('.vditor-ir .vditor-reset > p');
-      await page.waitForTimeout(300);
-      assert.equal((await bar(page)).on, false);
+      await page.waitForSelector('.doc-editor .vditor-toolbar.wv-show.wv-bar-block', { timeout: 5000 });
+      const b = await bar(page);
+      assert.equal(b.on, true, 'a caret in the text shows the block bar');
+      assert.equal(b.caret, false, 'the phone writing bar stays on the phone');
+      assert.ok(!b.order.includes('wv-done'), 'hide keyboard stays on the phone');
     } finally { await page.close(); }
   });
 }
