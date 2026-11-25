@@ -1,1 +1,0 @@
-- **A misspelt where or sort field fails the same way on an empty table** (Issue #1618): query now checks every where and sort field name before it reads a row, so a typo answers `Field 'X' not found` with its nearest names on an empty or one-row table too, and a bare condition or a malformed group names the [path, operator, value] shape it expected.
