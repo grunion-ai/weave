@@ -1,0 +1,1 @@
+- **Dictation into a document has a browser guard** (Issue #1882): composition, a revised hypothesis, a replacement-range correction and `insertReplacementText` each reach the saved markdown through autosave, in paragraphs and list items. Current Vditor glue passes every case.
