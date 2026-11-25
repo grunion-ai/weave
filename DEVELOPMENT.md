@@ -360,6 +360,12 @@ byte size only where a file has no recorded duration (Issue #1673).
   literal more than `REACH_SPREAD` browser tests name is too common to place a
   change and is dropped, and the reached tier stops at `REACH_CAP` files beyond
   the name matches, which holds the gate inside its twenty-minute job timeout.
+  The cap is spent on the literals the edit itself names first (`reachNamed`,
+  the added and removed lines), then on the rest of the `-W` block, rarest
+  first, so the enclosing function's vocabulary never crowds out the suites that
+  name the changed line: 49 of the last 80 commits to `public`, `src` and `bin`
+  filled the cap, and 22 of them selected a different set under this order
+  (Issue #1679).
 - A fixed smoke set (`SMOKE` in `scripts/ci-test.mjs`) and the onboarding
   inventory (`ONBOARDING`) always run, so a diff nothing maps to still boots the
   app in a browser.
