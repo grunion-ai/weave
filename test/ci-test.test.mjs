@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, prPlan, eagerAssets, planNotice, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, unitReach, prPlan, eagerAssets, planNotice, reachTokens, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -556,4 +556,51 @@ test('the main plan spreads the browser lane over eight shards and runs every sh
   const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
   const parallel = Number(workflow.match(/max-parallel: (\d+)/)[1]);
   assert.ok(parallel >= manifest.length, `max-parallel ${parallel} runs every one of ${manifest.length} shards at once`);
+});
+
+const reachFiles = ['test/formula.test.mjs', 'test/grid.test.mjs', 'test/cli.test.mjs', 'test/docs-drift.test.mjs'];
+const reachSources = {
+  'test/formula.test.mjs': "import { evaluate } from '../src/formula.js';",
+  'test/grid.test.mjs': "import { rows } from './lib/grid.mjs';",
+  'test/lib/grid.mjs': "import { Weave } from '../../src/engine.js';",
+  'test/cli.test.mjs': "spawnSync(process.execPath, ['bin/weave.js', 'query']);",
+  'test/docs-drift.test.mjs': "readdirSync('src/').filter((f) => f.endsWith('.js'));",
+};
+const reachRead = (file) => reachSources[file] ?? '';
+
+test('a changed source module selects the unit files that import it, directly or through a helper (Issue #1676)', () => {
+  assert.deepEqual(unitReach(reachFiles, ['src/formula.js'], reachRead), ['test/formula.test.mjs', 'test/docs-drift.test.mjs']);
+  assert.deepEqual(unitReach(reachFiles, ['src/engine.js'], reachRead), ['test/grid.test.mjs', 'test/docs-drift.test.mjs']);
+});
+
+test('a unit file that names a changed file it never imports is selected, so a read or a spawn is not missed (Issue #1676)', () => {
+  assert.deepEqual(unitReach(reachFiles, ['bin/weave.js'], reachRead), ['test/cli.test.mjs']);
+  assert.ok(unitReach(reachFiles, ['src/formula.js'], reachRead).includes('test/docs-drift.test.mjs'),
+    'a gate that reads the whole src directory runs for any change inside it');
+});
+
+test('a unit file that names no code path at all is kept, since nothing says what it covers (Issue #1676)', () => {
+  const blind = { 'test/repo.test.mjs': "readFileSync('CHANGELOG.md', 'utf8');" };
+  assert.deepEqual(unitReach(['test/repo.test.mjs', ...reachFiles], ['src/formula.js'], (file) => blind[file] ?? reachRead(file)),
+    ['test/repo.test.mjs', 'test/formula.test.mjs', 'test/docs-drift.test.mjs'],
+    'a gate that reads the repo without naming src, bin, scripts or public runs for every change');
+});
+
+test('a change the import graph cannot follow keeps every unit file (Issue #1676)', () => {
+  for (const changed of [['README.md'], ['package.json'], ['public/sw.js'], ['.github/workflows/test.yml'], ['src/formula.js', 'README.md'], []]) {
+    assert.deepEqual(unitReach(reachFiles, changed, reachRead), reachFiles, JSON.stringify(changed));
+  }
+  assert.deepEqual(unitReach(reachFiles, ['src/formula.js', 'test/grid.test.mjs'], reachRead), ['test/formula.test.mjs', 'test/docs-drift.test.mjs'],
+    'a changed test beside a changed source does not widen the lane: the selection adds changed tests itself');
+});
+
+test('a source change narrows the real unit lane and keeps the suite that covers it (Issue #1676)', () => {
+  const root = join(import.meta.dirname, '..');
+  const unit = gating(lanes(testFiles(root), root)).unit;
+  const reached = unitReach(unit, ['src/formula.js'], file => readFileSync(join(root, file), 'utf8'));
+  assert.ok(reached.includes('test/formula.test.mjs'), 'the suite named for the changed module runs');
+  assert.ok(reached.length < unit.length, `${reached.length} of ${unit.length} unit files: the lane is narrower than every gating unit file`);
+  assert.ok(reached.length >= 1, 'a narrowed lane is never empty');
+  const missing = unitReach(unit, ['src/formula.js', 'docs/graph.md'], file => readFileSync(join(root, file), 'utf8'));
+  assert.deepEqual(missing, unit, 'a documentation change beside it keeps every unit file');
 });

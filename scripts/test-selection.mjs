@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { lanes } from './lanes.mjs';
-import { gating, prSelection } from './ci-test.mjs';
+import { gating, prSelection, unitReach } from './ci-test.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 
@@ -15,19 +15,22 @@ export function selectTests({ files, changed, read, root = ROOT, diff = '' }) {
   }
   const full = (reasons) => ({ files: all, mode: 'full', reasons });
   if (!changes.length) return full(['No changed files found; full suite required rather than an empty pass.']);
-  const split = lanes(all, root);
+  const groups = gating(lanes(all, root));
+  const reader = read ?? (file => readFileSync(join(root, file), 'utf8'));
   let pick;
+  let unit;
   try {
-    pick = prSelection(gating(split), changes, read ?? (file => readFileSync(join(root, file), 'utf8')), diff);
+    pick = prSelection(groups, changes, reader, diff);
+    unit = unitReach(pick.unit, changes, reader);
   } catch (error) {
     return full([`PR gate selection unavailable (${error.message}); full suite required.`]);
   }
-  const selected = [...new Set([...pick.unit, ...pick.browser, ...changes.filter(file => all.includes(file))])].sort();
+  const selected = [...new Set([...unit, ...pick.browser, ...changes.filter(file => all.includes(file))])].sort();
   return {
     files: selected,
     mode: 'pr',
     reasons: [
-      `${changes.filter(file => !all.includes(file)).length} non-test change(s); PR gate selection: ${pick.unit.length} unit and ${pick.browser.length} of ${split.browser.length} browser suites${pick.shared ? ' (shared code changed: every gating browser suite)' : ''}.`,
+      `${changes.filter(file => !all.includes(file)).length} non-test change(s); PR gate selection: ${unit.length} of ${groups.unit.length} unit and ${pick.browser.length} of ${groups.browser.length} browser suites${pick.shared ? ' (shared code changed: every gating browser suite)' : ''}.`,
       'CI gate runs the full inventory on main.',
     ],
   };
