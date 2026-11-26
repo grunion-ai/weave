@@ -2,6 +2,15 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.182 (2026-11-26)
+
+- **Clip marks follow only the rows that changed** (Issue #1697): a cell commit re-checks only the row it wrote, and a scroll checks only the rows it brings in, instead of re-reading every drawn cell in the grid. A width or density change still re-checks the whole grid.
+- **Hide a column from its header menu** (Issue #1872): the ⋮ menu and right-click menu on a grid column header now carry **Hide field**, which takes the column out of the current view the same way the Fields list does. The field and its values stay, and the Fields list shows it again. The raw read-only table does not offer the row.
+- **The lazy file list comes from the loader calls** (Issue #1706): `test/lib/source.mjs` now builds `LAZY` from every `lazyScript('/x.js')` call under `public/`, so the cold-load gate and the source readers see all 17 lazy files instead of a hand-kept 7. Settings, invite, board, both launchers, the starter gallery and the Workflows cells were missing; a new lazy file joins the list the day its loader call lands.
+- **Phone field dialog keeps the keyboard down** (Issue #1399): tapping a field label on a phone opens Edit field with the dialog itself focused instead of the Name input, so the software keyboard no longer covers the Result preview and the Views as row, and Escape still cancels a reorder drag before it closes the dialog. A desktop pointer still opens the dialog with Name focused, and New field still focuses Name on every device.
+- **Quality scorecard counts escapes and reopens** (Issue #1464): `scripts/quality-scorecard.mjs --issues` now adds Escapes, the Issue rows the in-app bug report filed in the window, and Reopens, the rows whose Status moved from Fixed back to Open in the window, so defects the gates missed show beside Reverts each week.
+- **UI catalog names the tray for its jobs** (Issue #1491): the catalog no longer lists the retired phone new-row sheet, and it labels the tray "New row and field editor tray", since Shift+Enter and the phone + create rows there as well as editing fields. Landmarks, harvest selectors and function rules that named classes the app no longer carries are gone, and a test now fails when one of them names a class no file in `public/` carries.
+
 ## v0.4.181 (2026-11-25)
 
 - **Clicking into a document shows a block bar** (Issue #1883): on a desktop a caret with no selection now shows undo, redo, checklist, list, heading and insert in a bar just above the caret's block, which follows the caret and hides on Escape or when focus leaves. Selecting text still shows the full formatting bubble.
