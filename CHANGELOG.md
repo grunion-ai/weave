@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.185 (2026-11-26)
+
+- **The persistence contract is written down** (Issue #1665): `docs/persistence.md` states the rules a write path must keep: every changed record is marked or it is never saved, one save per call, a refresh before each request reads, the undo and revision caps, the shared `files/` folder and its delete check, and the backup format and operator rules. CLAUDE.md and DEVELOPMENT.md link it, and `test/persistence-doc.test.mjs` fails when a symbol or value it cites leaves the file it names.
+- **Schema writes commit once per call instead of once per step** (Issue #1627): addField, addRelation, duplicateTable, build, applySchema and opening a new workspace file each ran five or more store saves per verb, one for the change and more for each System/Tables and System/Fields registry row. They now hold the saves and write once at the end, in hub mode on both the member and the hub. A 20-table, 12-field build went from 1,483 saves and 565 ms to 1 save and 232 ms, and a fresh workspace file from 291 saves to 1; `test/schema-save-count.test.mjs` holds the ceilings and checks the registry rows on reopen.
+
 ## v0.4.184 (2026-11-26)
 
 - **Boot loads three fewer scripts, and the whole boot payload has a budget** (Issue #1704): `history-core.js` and `field-diff-core.js` now load with the activity panel and activity log, and `nl-date.js` with the date picker, since nothing at boot reads them; `test/lazy-list.test.mjs` refuses any eager core whose only readers are lazy, and `test/byte-budget.json` gains a `boot` row that caps the summed gzip and Brotli bytes of every script and stylesheet `index.html` loads at boot (about 340,080 gzip and 281,978 Brotli bytes served, down from about 344,940 and 286,463).
