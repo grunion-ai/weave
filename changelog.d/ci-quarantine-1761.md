@@ -1,0 +1,1 @@
+- **Quarantine list for known flaky test files** (Issue #1761): a file on `QUARANTINE` in `scripts/ci-test.mjs` still runs and still logs its flake line, but its red after the retry no longer fails the CI gate or the PR gate; the gate summary lists it with its Issue. The first entry is `test/entity-dock-default-browser.test.mjs` (Issue #1778).

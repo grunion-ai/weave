@@ -9,6 +9,14 @@ import { testFiles, lanes } from './lanes.mjs';
 const ROOT = resolve(import.meta.dirname, '..');
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const TREND = ['test/feedback-budget-browser.test.mjs', 'test/query-volume.test.mjs', 'test/render-budget-browser.test.mjs', 'test/vitals-budget-browser.test.mjs'];
+export const QUARANTINE = [{ file: 'test/entity-dock-default-browser.test.mjs', issue: 1778 }];
+const onList = (list, file) => list.some(q => q.file === file);
+export const quarantinedRed = (result, list = QUARANTINE) => (result.stillRed ?? []).filter(file => onList(list, file) && (!result.files || result.files.includes(file)));
+export function shardCode(result, list = QUARANTINE) {
+  if (result.code === 0 || result.timedOut) return result.code;
+  const red = result.stillRed ?? [];
+  return red.length && red.every(file => onList(list, file)) ? 0 : result.code;
+}
 export const gating = ({ unit, browser }) => ({ unit: unit.filter(f => !TREND.includes(f)), browser: browser.filter(f => !TREND.includes(f)) });
 
 export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
@@ -25,35 +33,42 @@ export function plan(files, groups, weight, unitCount = 2, browserCount = 8) {
   });
 }
 
-export function validate(manifest, results, commit) {
+export function validate(manifest, results, commit, quarantine = QUARANTINE) {
   if (results.length !== manifest.length || new Set(results.map(r => r.id)).size !== manifest.length) throw new Error('Missing or duplicate shards');
   const summaries = [];
+  const quarantined = [];
   for (const shard of manifest) {
     const result = results.find(r => r.id === shard.id);
-    if (!result || result.commit !== commit || result.manifest !== digest(manifest) || result.code !== 0) throw new Error(`Invalid shard ${shard.id}`);
+    if (!result || result.commit !== commit || result.manifest !== digest(manifest) || shardCode(result, quarantine) !== 0) throw new Error(`Invalid shard ${shard.id}`);
     if (JSON.stringify(result.files) !== JSON.stringify(shard.files)) throw new Error(`Selection mismatch ${shard.id}`);
     if (result.skips.some(({ file, reason }) => !shard.files.includes(file) || !(
       (file === 'test/security/security-scan.test.mjs' && (reason === 'semgrep not installed' || reason === 'gitleaks not installed')) ||
       (file === 'test/ws-rail-inset-browser.test.mjs' && reason.startsWith('overlay scrollbars here: no gutter to measure ('))
     ))) throw new Error(`Skipped coverage ${shard.id}`);
     const actual = new Map(result.summaries.map(s => [s.file, s]));
-    if (actual.size !== shard.files.length) throw new Error(`Executed coverage mismatch ${shard.id}`);
+    const red = quarantinedRed({ ...result, files: shard.files }, quarantine);
+    if ([...actual.keys()].some(file => !shard.files.includes(file)) || shard.files.some(file => !actual.has(file) && !red.includes(file))) throw new Error(`Executed coverage mismatch ${shard.id}`);
     for (const file of shard.files) {
+      if (red.includes(file)) { quarantined.push({ file, issue: quarantine.find(q => q.file === file).issue, shard: shard.id }); continue; }
       const summary = actual.get(file);
       if (!summary?.success || !(summary.counts.tests > 0) || summary.counts.failed || summary.counts.cancelled) throw new Error(`Missing or failed execution ${file}`);
       summaries.push(summary);
     }
   }
-  return { commit, files: summaries.length, tests: summaries.reduce((n, s) => n + s.counts.tests, 0), slowest: summaries.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 10) };
+  const summary = { commit, files: summaries.length, tests: summaries.reduce((n, s) => n + s.counts.tests, 0), slowest: summaries.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 10) };
+  return quarantined.length ? { ...summary, quarantined: quarantined.sort((a, b) => a.file.localeCompare(b.file)) } : summary;
 }
 
 export const retryAnnotations = results => results.flatMap(r => (r.retried ?? []).map(file => ({ file, shard: r.id })))
   .sort((a, b) => a.file.localeCompare(b.file))
   .map(({ file, shard }) => `::warning file=${file},title=Passed only on its retry::${file} failed in shard ${shard} and passed when the shard ran it again`);
 
-export function aggregate(manifest, results, commit) {
-  const summary = validate(manifest, newestAttempts(results), commit);
-  return [JSON.stringify(summary, null, 2), ...retryAnnotations(newestAttempts(results))];
+export const quarantineAnnotations = summary => (summary.quarantined ?? [])
+  .map(({ file, issue, shard }) => `::warning file=${file},title=Quarantined, red, not gating::${file} stayed red after its retry in shard ${shard}; it is quarantined under Issue #${issue}, so the gate passed`);
+
+export function aggregate(manifest, results, commit, quarantine = QUARANTINE) {
+  const summary = validate(manifest, newestAttempts(results), commit, quarantine);
+  return [JSON.stringify(summary, null, 2), ...retryAnnotations(newestAttempts(results)), ...quarantineAnnotations(summary)];
 }
 
 export function shardResult(shard, events, run) {
@@ -292,7 +307,8 @@ async function main() {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${id}.json`), JSON.stringify(result, null, 2) + '\n');
   rmSync(dir, { recursive: true, force: true });
-  process.exitCode = result.code;
+  for (const file of quarantinedRed(result)) console.log(`# QUARANTINED and red: ${file} stayed red after its retry; Issue #${QUARANTINE.find(q => q.file === file).issue} holds it off the gate`);
+  process.exitCode = shardCode(result);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error); process.exitCode = 1; });

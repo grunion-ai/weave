@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, validate, digest, touchedBrowser, unitReach, prPlan, eagerAssets, planNotice, reachTokens, reachNamed, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan } from '../scripts/ci-test.mjs';
+import { plan, validate, digest, touchedBrowser, unitReach, prPlan, eagerAssets, planNotice, reachTokens, reachNamed, SMOKE, ONBOARDING, REACH_CAP, REACH_SPREAD, newestAttempts, durationsFrom, weightWith, TREND, gating, currentPlan, QUARANTINE, shardCode, aggregate } from '../scripts/ci-test.mjs';
 import { testFiles, lanes } from '../scripts/test.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -483,7 +483,7 @@ test('the main tests gate judges each shard by its newest attempt, so Re-run fai
   assert.match(workflow, /name: ci-\$\{\{ matrix.id \}\}-\$\{\{ github.run_attempt \}\}\n/);
   assert.match(workflow, /pattern: ci-\*\n/);
   const source = readFileSync('scripts/ci-test.mjs', 'utf8');
-  assert.ok(source.includes('const summary = validate(manifest, newestAttempts(results), commit);'), 'aggregate keeps the newest attempt for main and PR runs alike');
+  assert.ok(source.includes('const summary = validate(manifest, newestAttempts(results), commit, quarantine);'), 'aggregate keeps the newest attempt for main and PR runs alike');
   assert.doesNotMatch(source, /pr \? newestAttempts/);
   const failed = { ...evidence()[0], attempt: 1, code: 1 };
   const rerun = { ...evidence()[0], attempt: 2 };
@@ -632,4 +632,70 @@ test('a diff with no changed-line tokens still reaches through its context, as I
   );
   assert.deepEqual(reachNamed(''), []);
   assert.deepEqual(reachNamed('--- a/public/app.js\n+++ b/public/app.js'), [], 'the file headers are not changed lines');
+});
+
+const quarantine = [{ file: 'test/c-browser.test.mjs', issue: 1778 }];
+const quarantinedRun = ({ crash = false } = {}) => evidence().map(shard => {
+  if (!shard.files.includes('test/c-browser.test.mjs')) return shard;
+  const red = ['test/c-browser.test.mjs'];
+  const summaries = shard.files.flatMap(file => red.includes(file)
+    ? (file === 'test/c-browser.test.mjs' && crash ? [] : [{ file, success: false, counts: { tests: 2, passed: 1, failed: 1, cancelled: 0, skipped: 0 }, duration_ms: 3 }])
+    : [{ file, success: true, counts: { tests: 1, passed: 1, failed: 0, cancelled: 0, skipped: 0 }, duration_ms: 1 }]);
+  return { ...shard, code: 1, summaries, retried: [], stillRed: red.sort() };
+});
+
+test('a quarantined file still red after its retry leaves the gate green and is named with its Issue in the summary (Issue #1761)', () => {
+  const results = quarantinedRun();
+  const red = results.find(r => r.stillRed?.length);
+  assert.equal(shardCode(red, quarantine), 0, 'the shard job passes when only quarantined files stayed red');
+  assert.equal(shardCode(red, []), 1, 'with no quarantine the same shard fails');
+  const summary = validate(manifest, results, 'abc', quarantine);
+  assert.equal(summary.files, 3);
+  assert.deepEqual(summary.quarantined, [{ file: 'test/c-browser.test.mjs', issue: 1778, shard: red.id }]);
+  const printed = aggregate(manifest, results, 'abc', quarantine);
+  assert.deepEqual(JSON.parse(printed[0]).quarantined, summary.quarantined, 'the gate summary lists the file under its own key');
+  assert.ok(printed.includes(`::warning file=test/c-browser.test.mjs,title=Quarantined, red, not gating::test/c-browser.test.mjs stayed red after its retry in shard ${red.id}; it is quarantined under Issue #1778, so the gate passed`));
+  assert.throws(() => validate(manifest, results, 'abc', []), /Invalid shard/, 'an empty list gates the same red');
+});
+
+test('a quarantine never hides another red, a timeout or a missing file (Issue #1761)', () => {
+  const crashed = quarantinedRun({ crash: true });
+  assert.deepEqual(validate(manifest, crashed, 'abc', quarantine).quarantined.map(q => q.file), ['test/c-browser.test.mjs'], 'a quarantined file whose process crashed on both runs is listed too');
+  const mixed = { code: 1, files: ['test/c-browser.test.mjs', 'test/d-browser.test.mjs'], stillRed: ['test/c-browser.test.mjs', 'test/d-browser.test.mjs'] };
+  assert.equal(shardCode(mixed, quarantine), 1, 'a red file off the list keeps the shard red');
+  const both = quarantinedRun().map(r => r.files.includes('test/d-browser.test.mjs')
+    ? { ...r, code: 1, stillRed: ['test/d-browser.test.mjs'], summaries: [{ file: 'test/d-browser.test.mjs', success: false, counts: { tests: 1, passed: 0, failed: 1, cancelled: 0, skipped: 0 }, duration_ms: 1 }] }
+    : r);
+  assert.throws(() => validate(manifest, both, 'abc', quarantine), /Invalid shard/, 'another shard red off the list fails the gate');
+  const timedOut = quarantinedRun().map(r => r.stillRed?.length ? { ...r, timedOut: true, code: 124 } : r);
+  assert.equal(shardCode(timedOut.find(r => r.timedOut), quarantine), 124, 'a timed out shard stays red');
+  assert.throws(() => validate(manifest, timedOut, 'abc', quarantine), /Invalid shard/);
+  const silent = quarantinedRun().map(r => r.stillRed?.length ? { ...r, stillRed: [] } : r);
+  assert.throws(() => validate(manifest, silent, 'abc', quarantine), /Invalid shard/, 'a red shard that names no still-red file stays red');
+  const other = evidence().map(r => r.files.includes('test/a.test.mjs') ? { ...r, summaries: r.summaries.filter(s => s.file !== 'test/a.test.mjs') } : r);
+  assert.throws(() => validate(manifest, other, 'abc', quarantine), /coverage/, 'a missing summary off the list still fails coverage');
+  assert.equal(Object.hasOwn(validate(manifest, evidence(), 'abc', quarantine), 'quarantined'), false, 'a green run prints the summary keys it had');
+});
+
+test('every QUARANTINE entry names its flake Issue and a gating test file that exists (Issue #1761)', () => {
+  const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+  const all = testFiles(root);
+  for (const entry of QUARANTINE) {
+    assert.deepEqual(Object.keys(entry).sort(), ['file', 'issue']);
+    assert.ok(Number.isInteger(entry.issue) && entry.issue > 0, `${entry.file} names an Issue number`);
+    assert.match(entry.file, /^test\/.+\.test\.mjs$/);
+    assert.ok(existsSync(join(root, entry.file)), `${entry.file} exists`);
+    assert.ok(all.includes(entry.file), `${entry.file} is a test file the lanes run`);
+    assert.ok(!TREND.includes(entry.file), `${entry.file} is not already outside the gate`);
+  }
+  assert.equal(new Set(QUARANTINE.map(q => q.file)).size, QUARANTINE.length, 'one entry per file');
+});
+
+test('the CI gate and the PR gate both take their shard exit code and their verdict from the quarantine-aware functions (Issue #1761)', () => {
+  const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+  const source = readFileSync(join(root, 'scripts/ci-test.mjs'), 'utf8');
+  assert.ok(source.includes('process.exitCode = shardCode(result);'), 'the shard job exits by shardCode');
+  assert.ok(source.includes('shardCode(result, quarantine) !== 0'), 'validate reads the shard code through the quarantine');
+  assert.match(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'), /node scripts\/ci-test\.mjs run "\$SHARD"[\s\S]*node scripts\/ci-test\.mjs aggregate ci-results/);
+  assert.match(readFileSync(join(root, '.github/workflows/pr.yml'), 'utf8'), /node scripts\/ci-test\.mjs pr-run "\$SHARD"[\s\S]*node scripts\/ci-test\.mjs pr-aggregate ci-results/);
 });

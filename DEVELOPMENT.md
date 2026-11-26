@@ -482,6 +482,16 @@ is a test to fix.
 A file still red after its retry goes to the `stillRed` list beside it, so a
 file whose process crashed on both runs, and so wrote no `test:summary`, still
 reaches the sheriff as a failing file (Issue #1748).
+A file on the `QUARANTINE` list in `scripts/ci-test.mjs` still runs in its
+shard and still writes its `retried` and `stillRed` records, but its red does
+not gate (Issue #1761). Each entry names the file and its
+`Error: <test file> flakes on main` Issue. A shard whose only still-red files
+are quarantined exits green, the CI and PR gates list each one under
+`quarantined` in the aggregate with a `Quarantined, red, not gating`
+annotation, the sheriff's `flakes` job appends a line to its flake row, and the
+sheriff never weighs it as a failing file. A timed out shard, or a red that
+names no still-red file, stays red. Take a file off the list when its flake row
+is Fixed.
 
 ### Sheriff
 

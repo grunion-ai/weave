@@ -278,3 +278,20 @@ test('the sheriff workflow records retried files after every completed main test
   assert.match(flakes, /SHERIFF_RUN_ATTEMPT: \$\{\{ github\.event\.workflow_run\.run_attempt \}\}/);
   assert.match(flakes, /WEAVE_TRACKER_TOKEN: \$\{\{ secrets\.WEAVE_TRACKER_TOKEN \}\}/);
 });
+
+test('a quarantined file still red writes a flake line on its row and never counts as a failing file for the sheriff (Issue #1761)', () => {
+  const quarantine = [{ file: 'test/q-browser.test.mjs', issue: 1778 }];
+  const results = [{ id: 'browser-2', attempt: 1, files: ['test/q-browser.test.mjs', 'test/x-browser.test.mjs'], retried: ['test/x-browser.test.mjs'], stillRed: ['test/q-browser.test.mjs'],
+    summaries: [{ file: 'test/q-browser.test.mjs', success: false, counts: { failed: 1 } }, { file: 'test/x-browser.test.mjs', success: true, counts: { failed: 0 } }],
+    cases: [{ file: 'test/q-browser.test.mjs', name: 'a modifier click', pass: false }] }];
+  assert.deepEqual(retriedFlakes(results, 1, quarantine), [
+    { file: 'test/q-browser.test.mjs', shard: 'browser-2', cases: ['a modifier click'], outcome: 'quarantined-red' },
+    { file: 'test/x-browser.test.mjs', shard: 'browser-2', cases: [] },
+  ]);
+  assert.deepEqual(retriedFlakes(results, 1, []).map((f) => f.file), ['test/x-browser.test.mjs'], 'off the list a still-red file is the red path, not a flake line');
+  assert.deepEqual(failingFiles(results, quarantine), [], 'the sheriff never weighs a quarantined red, since the gate did not');
+  assert.deepEqual(failingFiles(results, []), ['test/q-browser.test.mjs']);
+  assert.deepEqual(unresolvedFiles([{ summaries: [{ file: 'test/q-browser.test.mjs', success: false, counts: { failed: 1 } }] }], quarantine), []);
+  assert.match(flakeLine({ at: '2026-11-26', sha: '22ce71ce25aa', url: 'https://github.com/grunion-ai/weave/actions/runs/1', outcome: 'quarantined-red', shard: 'browser-2', cases: ['a modifier click'] }),
+    /^2026-11-26 22ce71ce25 failed on both tries while quarantined, so it did not gate the run, in browser-2 \(failing case: a modifier click\): https:/);
+});
