@@ -1,1 +1,0 @@
-- **The attachments field warns as a workspace nears its file limit** (Issue #1879): while `WEAVE_WORKSPACE_FILE_MAX_MB` is set and the workspace holds 80% or more of it, an attachments field on a record page carries a quiet line naming what the workspace holds and what it may hold, before a file is picked. It reads the `/api/health` fetch the page already makes.

@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.187 (2026-11-26)
+
+- **Quarantine list for known flaky test files** (Issue #1761): a file on `QUARANTINE` in `scripts/ci-test.mjs` still runs and still logs its flake line, but its red after the retry no longer fails the CI gate or the PR gate; the gate summary lists it with its Issue. The first entry is `test/entity-dock-default-browser.test.mjs` (Issue #1778).
+- **An invited member's empty workspace names who to ask** (Issue #1341): an editor or observer who opens a workspace with no tables sees the start card naming the architect who sent the invite (or the first architect, for an older account), and the home no longer lists the system tables or the Schema section until a table exists. `GET /api/auth/me` carries `inviter`.
+- **The attachments field warns as a workspace nears its file limit** (Issue #1879): while `WEAVE_WORKSPACE_FILE_MAX_MB` is set and the workspace holds 80% or more of it, an attachments field on a record page carries a quiet line naming what the workspace holds and what it may hold, before a file is picked. It reads the `/api/health` fetch the page already makes.
+
 ## v0.4.186 (2026-11-26)
 
 - **A backslash escape reads as its punctuation everywhere** (Issue #1902): `\- X`, `7\) X` and `\*not em\*` now show as `- X`, `7) X` and `*not em*` in HTML exports and share pages, PDFs, description previews and chip and card descriptions, as the editor already showed them. A backslash before a letter or digit, and any escape inside a code span, stays as written.
