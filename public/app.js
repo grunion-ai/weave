@@ -8964,14 +8964,19 @@ async function showSpace(spaceId) {
       ],
     }),
   );
-  await appendRegistryPresentation(main.querySelector('.view-header'), 'spaces', spaceId, space.space);
+  const presented = appendRegistryPresentation(main.querySelector('.view-header'), 'spaces', spaceId, space.space);
   kindContext(main.querySelector('.view-header'), 'space', space, () => ({}), { skip: `${OWN_CONTEXT}, .crumb-path a` });
+  const desk = !dockCoversScreen.matches;
+  const home = desk ? api('GET', `/spaces/${spaceId}/home`) : null;
+  home?.catch(() => {});
+  const homeView = desk ? lazyScript('/space-home-view.js').then(() => true, () => false) : null;
+  await presented;
   if (!navOwns(gen)) return;
-  if (dockCoversScreen.matches && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return navOwns(gen) ? showSpaceLauncher(main, space) : undefined;
-  if (!dockCoversScreen.matches) {
-    const loaded = await lazyScript('/space-home-view.js').then(() => true, () => false);
+  if (!desk && await lazyScript('/space-launcher-view.js').then(() => true, () => false)) return navOwns(gen) ? showSpaceLauncher(main, space) : undefined;
+  if (desk) {
+    const loaded = await homeView;
     if (!navOwns(gen)) return;
-    if (loaded) return mountSpaceHome(main, space, gen);
+    if (loaded) return mountSpaceHome(main, space, gen, home);
   }
   await appendSpaceDetails(main, space);
 }

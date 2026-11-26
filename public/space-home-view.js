@@ -162,11 +162,11 @@ function spaceHomePage(sections, { lead, space, runsNote, overview }) {
   return page;
 }
 
-async function mountSpaceHome(main, space, gen = navDraw) {
+async function mountSpaceHome(main, space, gen = navDraw, home = api('GET', `/spaces/${space.spaceId}/home`)) {
   const stillHere = () => navOwns(gen) && state.route?.page === 'space' && state.route.spaceId === space.spaceId;
   let payload;
   try {
-    payload = await api('GET', `/spaces/${space.spaceId}/home`);
+    payload = await home;
   } catch {
     payload = {
       space: { id: space.spaceId, name: space.space, icon: space.icon ?? null, description: space.description ?? '' },
