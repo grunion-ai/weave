@@ -140,6 +140,19 @@ export function probeAnswers(rows, { since }) {
   };
 }
 
+export const isBugReport = (createdBy) => createdBy === 'bug-report' || String(createdBy ?? '').startsWith('reporter: ');
+
+export function escapes(rows, { since }) {
+  if (!rows) return { Escapes: null };
+  return { Escapes: rows.filter((r) => isBugReport(r.createdBy) && new Date(r.createdAt) >= since).length };
+}
+
+export function reopens(rows, { since }) {
+  if (!rows) return { Reopens: null };
+  const reopened = (a) => a.kind === 'state-changed' && a.detail?.field === 'Status' && a.detail.from === 'Fixed' && a.detail.to === 'Open' && new Date(a.ts) >= since;
+  return { Reopens: rows.filter((r) => (r.activity ?? []).some(reopened)).length };
+}
+
 export function isoWeek(date) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -168,6 +181,8 @@ export async function scorecard(root, { now = new Date(), days = 7, issues = nul
     'Spacing on tokens': share(tokens.spacing.onTokens, tokens.spacing.declarations),
     'Z-index on tokens': share(tokens.zIndex.onTokens, tokens.zIndex.declarations),
     ...probeAnswers(issues, { since }),
+    ...escapes(issues, { since }),
+    ...reopens(issues, { since }),
   };
 }
 
