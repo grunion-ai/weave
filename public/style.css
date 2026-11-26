@@ -1825,6 +1825,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 #tray { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 94vw); background: var(--tblr-bg-surface); border-left: 1px solid var(--tblr-border-color); box-shadow: -8px 0 24px rgba(0,0,0,.12); display: flex; flex-direction: column; animation: wv-tray-in .18s ease-out; }
 @keyframes wv-tray-in { from { transform: translateX(var(--wv-tray-from, 24px)); } }
 @media (prefers-reduced-motion: reduce) { #tray { animation: none; } }
+#tray:focus { outline: none; }
 @media (max-width: 719px) {
   #tray { --wv-tray-from: 100%; width: 100%; bottom: var(--wv-keyboard, 0px); border-left: 0; box-shadow: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
   .tray-actions { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
