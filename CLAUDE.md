@@ -48,6 +48,7 @@ Shipped, and every Guide the change contradicts, after landing.
 | The Node floor | [CONTRIBUTING.md › Setup](CONTRIBUTING.md#setup) | `engines` in `package.json` |
 | A new `src/` or `bin/` module goes on the architecture map | [DEVELOPMENT.md › Architecture map](DEVELOPMENT.md#architecture-map) | `test/architecture-map.test.mjs` |
 | Where a grid behaviour lives in `public/app.js` | [docs/grid.md](docs/grid.md) | `test/grid-map.test.mjs` |
+| How a write reaches the `.db`: the dirty set, one save per call, refresh, caps, backups | [docs/persistence.md](docs/persistence.md) | `test/persistence-doc.test.mjs` |
 | The code graph agents query before reading files, and how to refresh it | [docs/graph.md](docs/graph.md) | `test/code-graph.test.mjs` |
 | Brand assets come from the kit, never drawn by hand | [brand/kit/README.md](brand/kit/README.md) | `test/brand-kit.test.mjs` |
 | The agent surface: primer, tool map, CLI and generated blocks | [AGENTS.md › Using weave](AGENTS.md#using-weave) | `test/agent-front-door.test.mjs`, `test/docs-drift.test.mjs` |

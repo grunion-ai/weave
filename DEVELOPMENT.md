@@ -784,6 +784,10 @@ Releasing step 5 re-pins it too, so every tagged version carries a map of the
 code it shipped. archify is a dev tool, found at `$ARCHIFY` or
 `~/.claude/skills/archify/bin/archify.mjs`; weave never depends on it.
 
+The map shows where the store sits. The rules a write path must keep (mark every
+changed record, one save per call, refresh before a read, the log caps, shared
+`files/`, backup) are in [docs/persistence.md](docs/persistence.md).
+
 ## Theme loops
 
 A browser case runs in both themes only when it reads paint: a computed colour, a
