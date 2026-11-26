@@ -150,3 +150,14 @@ test('a page with neither a diagram nor a code block says nothing about bundles 
   const page = renderDocumentPage({ title: 'T', markdown: '# Hi\n\nJust prose.' });
   assert.doesNotMatch(page, /class="wv-export-note"/, 'a share page and a legal page carry no notice');
 });
+
+test('a backslash before ASCII punctuation renders the punctuation alone (Issue #1902)', () => {
+  assert.equal(renderMarkdown('\\- X\n').trim(), '<p>- X</p>');
+  assert.equal(renderMarkdown('7\\) X\n').trim(), '<p>7) X</p>');
+  assert.equal(renderMarkdown('\\*not em\\*').trim(), '<p>*not em*</p>');
+  assert.equal(renderMarkdown('a \\\\ b').trim(), '<p>a \\ b</p>');
+  assert.equal(renderMarkdown('\\<b\\>').trim(), '<p>&lt;b&gt;</p>');
+  assert.equal(renderMarkdown('C:\\dir and \\9').trim(), '<p>C:\\dir and \\9</p>', 'a backslash before a letter or digit stays');
+  assert.equal(renderMarkdown('`\\*x\\*`').trim(), '<p><code>\\*x\\*</code></p>', 'escapes inside a code span stay literal');
+  assert.match(renderMarkdown('line one\\\nline two'), /line one<br>\nline two/, 'a trailing backslash is still a hard break');
+});

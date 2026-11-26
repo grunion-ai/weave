@@ -287,3 +287,9 @@ test('GET /api/entities/:ref/view serves the chip or card, under ?config= when t
     assert.equal(bad.status, 400);
   });
 });
+
+test('a backslash escape in the description reads as the punctuation in the card (Issue #1902)', () => {
+  const { w } = build();
+  const t = w.createEntity('Task', { name: 'Escaped', doc: '\\- X and 7\\) Y \\*not em\\*' });
+  assert.equal(w.renderView(t.id, 'card').description, '- X and 7) Y *not em*');
+});

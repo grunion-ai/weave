@@ -267,3 +267,11 @@ test('a table cell too wide for its column ends in an ellipsis, and a cell that 
   assert.match(s, /\(Notes\) Tj/, 'the header that fits its column is whole');
   assert.doesNotMatch(s, /\(Notes\\205\) Tj/);
 });
+
+test('stripInline drops a backslash escape and keeps the punctuation (Issue #1902)', () => {
+  assert.equal(stripInline('\\- X and 7\\) Y'), '- X and 7) Y');
+  assert.equal(stripInline('\\*a\\*'), '*a*');
+  assert.equal(stripInline('\\_a\\_ and \\`b\\`'), '_a_ and `b`');
+  assert.equal(stripInline('C:\\dir'), 'C:\\dir');
+  assert.equal(stripInline('`\\*x\\*`'), '\\*x\\*', 'escapes inside a code span stay literal');
+});

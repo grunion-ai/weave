@@ -75,3 +75,13 @@ test('the kind is the one the chips already agreed on', () => {
     assert.equal(LIB.docPreview(src).kind, LIB.docKind(src));
   }
 });
+
+test('a backslash escape previews as the punctuation, not a mark (Issue #1902)', () => {
+  const tokens = LIB.inlineTokens('\\*a\\*');
+  assert.ok(!tokens.some((t) => t.mark === 'em'), 'an escaped asterisk opens no emphasis');
+  assert.equal(tokens.map((t) => t.text).join(''), '*a*');
+  assert.equal(LIB.inlineTokens('C:\\dir').map((t) => t.text).join(''), 'C:\\dir');
+  const line = LIB.docPreview('\\- X').lines[0];
+  assert.equal(LIB.inlineTokens(line).map((t) => t.text).join(''), '- X');
+  assert.deepEqual(LIB.inlineTokens('`\\*x\\*`'), [{ text: '\\*x\\*', mark: 'code' }]);
+});
