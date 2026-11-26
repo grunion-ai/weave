@@ -872,6 +872,8 @@ node scripts/quality-scorecard.mjs --issues issues.json    # plus the probe answ
 | Cut-off instances and fingerprints, A11y entries, Touch holds, Touch baseline entries, Held states | `test/cutoff-baseline.json` (linux), `test/a11y-baseline.json`, the catalog's holds | Falls |
 | Spacing and Z-index on tokens | Declarations in `public/*.css` whose value reads a `var(--…)`, comments stripped | Rises |
 | Probe answers, Probe answers none | The bug report's "Which probe would have caught this?" section on Issue rows updated in the window | None falls |
+| Escapes | Issue rows created in the window by the in-app bug report (`createdBy` is `bug-report` or `reporter: <name>`): defects a person met after merge that no gate caught | Falls |
+| Reopens | Issue rows whose activity moves Status from Fixed to Open in the window | Falls |
 
 The class-wide test reads file paths, and the repeat classes read subject
 keywords, so small counts are approximate.

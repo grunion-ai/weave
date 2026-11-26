@@ -5,8 +5,8 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  answerOf, bandsCovered, ceilings, commitsSince, coverage, entriesOf, history, isoWeek,
-  parseLog, probeAnswers, scorecard, seededTypes, tokenShares, widthsIn,
+  answerOf, bandsCovered, ceilings, commitsSince, coverage, entriesOf, escapes, history, isoWeek,
+  parseLog, probeAnswers, reopens, scorecard, seededTypes, tokenShares, widthsIn,
 } from '../scripts/quality-scorecard.mjs';
 import { PROBE_QUESTION, renderBugReport } from '../src/bugreport.js';
 import { tempDir } from './lib/temp.mjs';
@@ -122,6 +122,34 @@ test('the scorecard counts probe answers on rows touched in the window, and how 
   assert.deepEqual(probeAnswers(null, { since: new Date(0) }), { 'Probe answers': null, 'Probe answers none': null });
 });
 
+test('escapes count rows a person filed through the in-app bug report inside the window', () => {
+  const since = new Date('2026-11-18T00:00:00Z');
+  const rows = [
+    { createdBy: 'reporter: kyle', createdAt: '2026-11-20T17:05:36Z' },
+    { createdBy: 'bug-report', createdAt: '2026-11-19T00:00:00Z' },
+    { createdBy: 'agents', createdAt: '2026-11-20T00:00:00Z' },
+    { createdBy: 'weave-sheriff', createdAt: '2026-11-21T00:00:00Z' },
+    { createdBy: 'reporter: kyle', createdAt: '2026-11-16T22:00:07Z' },
+  ];
+  assert.deepEqual(escapes(rows, { since }), { Escapes: 2 });
+  assert.deepEqual(escapes(null, { since }), { Escapes: null });
+});
+
+test('reopens count rows whose Status moved from Fixed back to Open inside the window', () => {
+  const since = new Date('2026-11-18T00:00:00Z');
+  const move = (ts, from, to, field = 'Status') => ({ ts, kind: 'state-changed', detail: { field, from, to } });
+  const rows = [
+    { activity: [move('2026-11-10T00:00:00Z', 'Open', 'Fixed'), move('2026-11-20T00:00:00Z', 'Fixed', 'Open')] },
+    { activity: [move('2026-11-20T00:00:00Z', 'Open', 'Fixed')] },
+    { activity: [move('2026-11-12T00:00:00Z', 'Fixed', 'Open')] },
+    { activity: [move('2026-11-20T00:00:00Z', 'Fixed', 'Open', 'Stage')] },
+    { activity: [move('2026-11-19T00:00:00Z', 'Fixed', 'Open'), move('2026-11-21T00:00:00Z', 'Fixed', 'Open')] },
+    {},
+  ];
+  assert.deepEqual(reopens(rows, { since }), { Reopens: 2 });
+  assert.deepEqual(reopens(null, { since }), { Reopens: null });
+});
+
 test('the row is named by its ISO week', () => {
   assert.equal(isoWeek(new Date('2026-10-25T12:00:00Z')), '2026-W43');
   assert.equal(isoWeek(new Date('2026-10-19T00:00:00Z')), '2026-W43');
@@ -158,4 +186,6 @@ test('the scorecard of this repo is one row of numbers for every metric', async 
     assert.ok(v === null || Number.isFinite(v), `${k} is a number, got ${JSON.stringify(v)}`);
   }
   assert.equal(row['Probe answers'], null, 'no tracker rows were handed in');
+  assert.equal(row.Escapes, null);
+  assert.equal(row.Reopens, null);
 });

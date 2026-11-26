@@ -1,0 +1,1 @@
+- **Quality scorecard counts escapes and reopens** (Issue #1464): `scripts/quality-scorecard.mjs --issues` now adds Escapes, the Issue rows the in-app bug report filed in the window, and Reopens, the rows whose Status moved from Fixed back to Open in the window, so defects the gates missed show beside Reverts each week.
