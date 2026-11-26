@@ -1648,6 +1648,8 @@ export class Weave {
 
   #schemaVersion = null;
   #buildProven = null;
+  #saveHold = 0;
+  #saveOwed = false;
   #rows = null;
   #query = null;
   #cutoffs = 0;
@@ -1676,10 +1678,12 @@ export class Weave {
       entities: {},
       automations: {},
     };
-    this.#migrate();
-    if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
-    this.#repairDoubledInverses();
-    if (this.#settlePositions() | this.#landBlobs()) this.save();
+    this.#oneSave(() => {
+      this.#migrate();
+      if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
+      this.#repairDoubledInverses();
+      if (this.#settlePositions() | this.#landBlobs()) this.save();
+    });
     HELD?.add(this);
   }
 
@@ -2053,7 +2057,24 @@ export class Weave {
     return this.documentFields(db)[0] ?? null;
   }
 
+  #oneSave(fn) {
+    const engines = [...new Set([this, this.#reg])];
+    for (const w of engines) w.#saveHold++;
+    try { return fn(); } finally {
+      for (const w of engines) {
+        if (--w.#saveHold || !w.#saveOwed) continue;
+        w.#saveOwed = false;
+        w.save();
+      }
+    }
+  }
+
   save() {
+    if (this.#saveHold) {
+      this.#saveOwed = true;
+      this.#schemaVersion = null;
+      return;
+    }
     if (this.#wfQueue.size && !this.#stamping) {
       const ids = [...this.#wfQueue];
       this.#wfQueue.clear();
@@ -2492,6 +2513,10 @@ export class Weave {
   }
 
   duplicateTable(ref) {
+    return this.#oneSave(() => this.#duplicateTable(ref));
+  }
+
+  #duplicateTable(ref) {
     this.#mayShape(ref);
     const src = this.getTable(ref);
     if (src.system) throw new WeaveError(`Table '${src.name}' is part of the system registry`, 'invalid');
@@ -3288,7 +3313,7 @@ export class Weave {
     if (!Array.isArray(doc)) throw new WeaveError('A schema document is the array describeSchema() returns', 'invalid');
     const plan = this.#buildCopy().#applySchemaPass(doc, { allowDestructive, partial });
     if (dryRun) return plan;
-    return this.#atomically(() => this.#applySchemaPass(doc, { allowDestructive, partial }));
+    return this.#atomically(() => this.#oneSave(() => this.#applySchemaPass(doc, { allowDestructive, partial })));
   }
 
   #atomically(fn) {
@@ -3641,7 +3666,7 @@ export class Weave {
         return { ok: !trial.errors.length, ...(dryRun ? { dryRun: true } : {}), ...trial };
       }
     }
-    const run = this.#buildRun(spec, { keepGoing: false, skipExistingRows });
+    const run = this.#oneSave(() => this.#buildRun(spec, { keepGoing: false, skipExistingRows }));
     return { ok: !run.errors.length, ...run };
   }
 
@@ -6448,7 +6473,11 @@ export class Weave {
     return this.addField(dbRef, { name, type: def.type, config: def.config ?? {} });
   }
 
-  addField(dbRef, { name, type, config = {} }) {
+  addField(dbRef, spec) {
+    return this.#oneSave(() => this.#addField(dbRef, spec));
+  }
+
+  #addField(dbRef, { name, type, config = {} }) {
     this.#mayShape(dbRef);
     const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Field name is required', 'invalid');
@@ -6515,7 +6544,11 @@ export class Weave {
     return field;
   }
 
-  addRelation(dbRef, { name, targetDb, targetDbs, cardinality = 'many-to-one', inverseName }) {
+  addRelation(dbRef, spec) {
+    return this.#oneSave(() => this.#addRelation(dbRef, spec));
+  }
+
+  #addRelation(dbRef, { name, targetDb, targetDbs, cardinality = 'many-to-one', inverseName }) {
     this.#mayShape(dbRef);
     const db = this.getTable(dbRef);
     if (!name) throw new WeaveError('Relation field name is required', 'invalid');
