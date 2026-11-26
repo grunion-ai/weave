@@ -1,0 +1,1 @@
+- **Crepe keeps a dollar amount as written** (Issue #1898): editing a block under Crepe no longer stores a plain `$939` in that block as `\$939`. The edited blocks drop the escape Crepe's math feature adds before `$` unless the author's own text in those blocks already held a `\$`, which then stays as written.

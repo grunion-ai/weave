@@ -132,4 +132,26 @@ if (s) {
       assert.match(got, /\| DirectX/, 'the letter lands after the clicked text and the cell keeps it');
     } finally { await page.close(); }
   });
+  test('a cell edit keeps a plain dollar amount in that table unescaped (Issue #1898)', async () => {
+    const { page, id } = await open('Dollar cell edit', DOC);
+    try {
+      await page.click(`${ROOT} td >> text=Direct`);
+      await page.keyboard.press('End');
+      await page.keyboard.type(' shop', { delay: 30 });
+      const got = await saved(page, id, /Direct shop/);
+      assert.match(got, /\| Direct shop \| \$939 +\|/);
+      assert.doesNotMatch(got, /\\\$/);
+    } finally { await page.close(); }
+  });
+  test('a cell edit keeps an author-written escaped dollar as written (Issue #1898)', async () => {
+    const doc = '| Merchant | Price |\n| --- | --- |\n| Direct | \\$5 |\n';
+    const { page, id } = await open('Escaped dollar cell edit', doc);
+    try {
+      await page.click(`${ROOT} td >> text=Direct`);
+      await page.keyboard.press('End');
+      await page.keyboard.type(' shop', { delay: 30 });
+      const got = await saved(page, id, /Direct shop/);
+      assert.match(got, /\| Direct shop \| \\\$5 +\|/);
+    } finally { await page.close(); }
+  });
 }
