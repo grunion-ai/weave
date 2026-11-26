@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { QUARANTINE, quarantinedRed } from './ci-test.mjs';
 
 export const REPO = 'grunion-ai/weave';
 export const BISECT_CAP = 4;
@@ -46,6 +47,7 @@ const FLAKE_OUTCOMES = {
   'retried-green': 'failed, then passed on the in-shard retry',
   'rerun-green': 'failed, then passed on rerun',
   'stayed-red': 'failed and stayed red after a rerun; the sheriff escalated instead of reverting',
+  'quarantined-red': 'failed on both tries while quarantined, so it did not gate the run',
   'no-verdict': 'failed with no retry verdict, because the shard ended before its retry answered; the sheriff escalated instead of convicting a commit',
 };
 
@@ -73,14 +75,13 @@ export function flakeLine({ at, sha, url, outcome = 'rerun-green', step = null, 
 
 export const FLAKE_LOG = 'Flake log kept by the sheriff. Each line is one main run: what failed there, whether a retry or a rerun of its jobs passed, and the run link.';
 
-export function retriedFlakes(results, attempt) {
+export function retriedFlakes(results, attempt, quarantine = QUARANTINE) {
   const flakes = [];
+  const failedCases = (result, file) => [...new Set((result.cases ?? []).filter((c) => c.file === file && !c.pass).map((c) => c.name))];
   for (const result of results) {
     if (attempt && Number(result.attempt ?? 1) !== Number(attempt)) continue;
-    for (const file of (result.retried ?? []).filter((f) => (result.files ?? []).includes(f))) {
-      const cases = [...new Set((result.cases ?? []).filter((c) => c.file === file && !c.pass).map((c) => c.name))];
-      flakes.push({ file, shard: result.id, cases });
-    }
+    for (const file of (result.retried ?? []).filter((f) => (result.files ?? []).includes(f))) flakes.push({ file, shard: result.id, cases: failedCases(result, file) });
+    for (const file of quarantinedRed({ ...result, files: result.files ?? [] }, quarantine)) flakes.push({ file, shard: result.id, cases: failedCases(result, file), outcome: 'quarantined-red' });
   }
   return flakes.sort((a, b) => a.file.localeCompare(b.file));
 }
@@ -178,21 +179,22 @@ export function culpritsOf(body = '') {
   return [...String(body).matchAll(/^Sheriff-Culprit: ([0-9a-f]{40})$/gm)].map((m) => m[1]);
 }
 
-function fileRuns(results) {
+function fileRuns(results, quarantine = QUARANTINE) {
   const seen = new Map();
+  const held = (file) => quarantine.some((q) => q.file === file);
   for (const result of [...results].sort((a, b) => Number(a.attempt ?? 1) - Number(b.attempt ?? 1))) {
-    for (const s of result.summaries ?? []) if (s.file) seen.set(s.file, { red: s.success === false || s.counts?.failed > 0, runs: (seen.get(s.file)?.runs ?? 0) + 1 });
-    for (const file of result.stillRed ?? []) seen.set(file, { red: true, runs: Math.max(2, seen.get(file)?.runs ?? 0) });
+    for (const s of result.summaries ?? []) if (s.file && !held(s.file)) seen.set(s.file, { red: s.success === false || s.counts?.failed > 0, runs: (seen.get(s.file)?.runs ?? 0) + 1 });
+    for (const file of (result.stillRed ?? []).filter((f) => !held(f))) seen.set(file, { red: true, runs: Math.max(2, seen.get(file)?.runs ?? 0) });
   }
   return seen;
 }
 
-export function failingFiles(results) {
-  return [...fileRuns(results)].filter(([, v]) => v.red && v.runs > 1).map(([file]) => file).sort();
+export function failingFiles(results, quarantine = QUARANTINE) {
+  return [...fileRuns(results, quarantine)].filter(([, v]) => v.red && v.runs > 1).map(([file]) => file).sort();
 }
 
-export function unresolvedFiles(results) {
-  return [...fileRuns(results)].filter(([, v]) => v.red && v.runs === 1).map(([file]) => file).sort();
+export function unresolvedFiles(results, quarantine = QUARANTINE) {
+  return [...fileRuns(results, quarantine)].filter(([, v]) => v.red && v.runs === 1).map(([file]) => file).sort();
 }
 
 export function timedOutShards(results) {
@@ -660,7 +662,7 @@ export function realIO(env = process.env, { cwd = process.cwd(), sleep = (ms) =>
       const line = flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome, step: flakeStep(jobs) });
       for (const name of flakeRows({ files, jobs })) await upsertFlake({ name: flakeName(name), line });
     },
-    logRetried: async ({ run: r, file, shard, cases }) => upsertFlake({ name: flakeName(file), line: flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome: 'retried-green', shard, cases }) }),
+    logRetried: async ({ run: r, file, shard, cases, outcome = 'retried-green' }) => upsertFlake({ name: flakeName(file), line: flakeLine({ at: new Date().toISOString().slice(0, 10), sha: r.head_sha, url: r.html_url, outcome, shard, cases }) }),
     alert: async (line) => {
       console.log(`::warning::${line}`);
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
