@@ -1,6 +1,6 @@
 export const FUNCTIONS = [
   { id: 'object-actions', title: "Open an object's actions", blurb: 'The ⋮ buttons, header menus and right-click menus that list what you can do to a row, table, space or workspace.', match: [
-    { cat: 'button', sig: /dots-btn|nav-menu-btn|more-btn|crumb-more|field-menu|nav-identity-more/ },
+    { cat: 'button', sig: /dots-btn|crumb-more|field-menu|nav-identity-more/ },
     { cat: 'menu' },
     { cat: 'colmenu' },
     { cat: 'button', text: /^More\b|actions$/i },
@@ -24,7 +24,7 @@ export const FUNCTIONS = [
     { cat: 'button', sig: /date-pick/ },
   ] },
   { id: 'collapse-section', title: 'Collapse a section', blurb: 'Disclosure toggles that fold a group of rows, fields, headings or the sidebar. Issue #766 asks for one control here.', match: [
-    { sig: /nav-caret|doc-caret|doc-fold|view-desc-more|fold|nav-expand|nav-collapse|summary/ },
+    { sig: /nav-caret|doc-caret|doc-fold|view-desc-more|fold|nav-collapse|summary/ },
     { cat: 'button', sig: /^(?!.*mention)/, text: /^(collapse|expand|show more|show less|fold)\b|^[‹›]$/i },
   ] },
   { id: 'search', title: 'Search', blurb: 'Every way to search: the ⌘K palette, the sidebar search, the table search and the search fields inside pickers.', match: [
@@ -32,7 +32,7 @@ export const FUNCTIONS = [
     { cat: 'dialog', sig: /cmdk/ },
     { cat: 'empty', sig: /cmdk-empty|table-search-empty|picker-empty/ },
   ] },
-  { id: 'create-row', title: 'Create a row', blurb: 'Every surface that starts a new row: the table button, the phone bar, the new-row sheet and the picker that chooses its table.', match: [
+  { id: 'create-row', title: 'Create a row', blurb: 'Every surface that starts a new row: the table button, the phone bar, the tray that Shift+Enter and the phone + open, and the picker that chooses its table.', match: [
     { sig: /add-entity|phone-new|new-row/ },
     { text: /^\+ ?new (row|bug|example|deal|task|item|record)|^new row in /i },
     { cat: 'card', text: /\+ New row/ },
@@ -42,13 +42,13 @@ export const FUNCTIONS = [
     { text: /^\+ ?new (space|table|field|workspace)|^new (table|field|workspace|space)\b/i },
     { cat: 'dialog', text: /^New (table|field|workspace|space)/ },
   ] },
-  { id: 'configure-field', title: 'Configure a field', blurb: 'The field editor tray, its type tiles and the controls that rename, describe and set up a field.', match: [
-    { land: /Field editor tray/ },
+  { id: 'configure-field', title: 'Configure a field', blurb: 'The field editor in the tray, its type tiles and the controls that rename, describe and set up a field.', match: [
+    { land: /field editor tray/i },
     { cat: 'dialog', sig: /tray/ },
     { sig: /term-|field-desc|Field kind tag|Term tag/ },
   ] },
   { id: 'dismiss', title: 'Dismiss', blurb: 'Close, cancel and back buttons that put a dialog, tray, panel or toast away.', match: [
-    { cat: ['button', 'popover'], sig: /close|cancel|new-row-back|tray-close|wv-toast-close/ },
+    { cat: ['button', 'popover'], sig: /close|cancel|tray-close|wv-toast-close/ },
     { cat: 'button', text: /^(close|cancel|dismiss|done)\b|^×$|^✕$/i },
   ] },
   { id: 'report-problem', title: 'Report a problem', blurb: 'The bug button and the report panel with its symptom chips, note field and send button.', match: [
@@ -73,7 +73,7 @@ export const FUNCTIONS = [
     { text: /sort by|smallest to largest|a → z|z → a|oldest|newest/i },
   ] },
   { id: 'change-view', title: 'Change the view or row height', blurb: 'The view switcher, its view tabs and the row density control.', match: [
-    { sig: /table-view|view-tab|view-row|density|seg-ctl|list-segs|table-tools|table-control/ },
+    { sig: /table-view|view-tab|view-row|density|seg-ctl|table-tools|table-control/ },
   ] },
   { id: 'select-rows', title: 'Select rows and act on them', blurb: 'Row checkboxes and the selection bar with its bulk actions.', match: [
     { sig: /sel-box|sel-act|sel-puck|glass/ },
@@ -91,7 +91,7 @@ export const FUNCTIONS = [
   { id: 'navigate', title: 'Navigate back and forward', blurb: 'Breadcrumbs, sidebar rows, the back and forward arrows and the phone navigation button.', match: [
     { cat: 'nav' },
     { cat: 'bar', sig: /view-header/ },
-    { sig: /crumb|dock-back|dock-forward|nav-menu\b|nav-db|nav-space|new-row-back/ },
+    { sig: /crumb|dock-back|dock-forward|nav-menu\b|nav-db|nav-space/ },
     { text: /^(back|forward)\b|open navigation/i },
   ] },
   { id: 'switch-workspace', title: 'Switch workspace', blurb: 'The workspace rail and its tiles.', match: [
@@ -155,7 +155,7 @@ export const FUNCTIONS = [
   ] },
   { id: 'phone-bar', title: 'Reach the main actions on a phone', blurb: 'The phone bottom bar and its buttons.', match: [
     { sig: /phone-/ },
-    { land: /Phone bottom bar|New row sheet/ },
+    { land: /Phone bottom bar/ },
   ] },
 ];
 

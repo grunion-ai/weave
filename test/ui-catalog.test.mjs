@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCatalog, readPageData, VIEWS } from '../tools/ui-catalog/build.mjs';
+import { buildCatalog, LAND, readPageData, VIEWS } from '../tools/ui-catalog/build.mjs';
 import { FUNCTIONS, functionsOf } from '../tools/ui-catalog/functions.mjs';
+import { PAGE_LIB } from '../tools/ui-catalog/harvest.mjs';
 import { catalogRoutes, seedCatalogWorkspace } from '../tools/ui-catalog/run.mjs';
 import { tempDir } from './lib/temp.mjs';
 import { catalogNames, harvestedRoutes, harvestedTriggers, stateRoutes, surfaceGaps } from './lib/ui-surfaces.mjs';
@@ -146,6 +147,48 @@ test('the functions map names each job once and every rule can match', () => {
     assert.ok(f.title && !/unsorted|other|misc/i.test(f.title), `${f.id} names a job`);
     assert.ok(f.match.length, `${f.id} has rules`);
   }
+});
+
+const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
+const publicNames = () => {
+  const names = new Set();
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(m?js|css|html)$/.test(e.name)) for (const m of readFileSync(p, 'utf8').matchAll(/[A-Za-z_][\w-]*/g)) names.add(m[0]);
+    }
+  };
+  walk(PUBLIC);
+  return names;
+};
+const selectorNames = (src) => [...new Set([...src.matchAll(/(?<![\w-])[.#]([a-z][\w-]*)/g)].map((m) => m[1]))];
+
+test('every landmark, harvest selector and function rule names a class or id public/ still carries (Issue #1491)', () => {
+  const names = publicNames();
+  const pageTpl = readFileSync(fileURLToPath(new URL('../tools/ui-catalog/page.html', import.meta.url)), 'utf8');
+  const panelSelector = pageTpl.match(/querySelector\('(:scope > [^']*)'\)/)?.[1] ?? '';
+  assert.ok(panelSelector.includes('#tray'), 'page.html picks the full-screen panel by selector');
+  const dead = [
+    ...LAND.map(([k]) => k.replace(/^#/, '')).filter((k) => !names.has(k)).map((k) => `landmark ${k}`),
+    ...selectorNames(PAGE_LIB.toString()).filter((k) => !names.has(k)).map((k) => `harvest selector ${k}`),
+    ...selectorNames(panelSelector).filter((k) => !names.has(k)).map((k) => `page.html panel selector ${k}`),
+    ...FUNCTIONS.flatMap((f) => f.match.flatMap((r) => (r.sig ? r.sig.source.split('|') : []))
+      .filter((frag) => /^[a-z][a-z0-9]*-[a-z0-9-]*$/.test(frag) && ![...names].some((n) => n.includes(frag)))
+      .map((frag) => `${f.id} rule ${frag}`)),
+  ];
+  assert.deepEqual(dead, [], `the catalog names classes no file in public/ carries:\n${dead.join('\n')}`);
+});
+
+test('the tray landmark names its create and edit jobs, never the field editor alone (Issue #1491)', () => {
+  const tray = LAND.find(([k]) => k === '#tray')?.[1] ?? '';
+  assert.match(tray, /new row/i, 'Shift+Enter and the phone + create in the tray');
+  assert.match(tray, /field/i, 'the field editor opens in the tray');
+  assert.ok(!/^Field editor tray$/.test(tray));
+  const configure = FUNCTIONS.find((f) => f.id === 'configure-field');
+  const create = FUNCTIONS.find((f) => f.id === 'create-row');
+  assert.ok(configure.match.some((r) => r.land?.test(tray)), 'configure-field still claims tray controls');
+  assert.doesNotMatch(create.blurb, /new-row sheet/, 'create-row names the tray, not the retired sheet');
 });
 
 const page = existsSync(PAGE) ? readFileSync(PAGE, 'utf8') : '';

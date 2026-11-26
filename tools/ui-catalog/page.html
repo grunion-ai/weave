@@ -170,7 +170,7 @@ section.fn > p { margin: 0 0 14px; color: var(--muted); max-width: 72ch; }
     let r = parent.lastElementChild;
     if (!r) return null;
     if (v.full) {
-      const panel = r.querySelector(':scope > [role=dialog], :scope > #modal, :scope > #tray, :scope > #cmdk, :scope > .new-row-sheet, :scope > [class$=-sheet]') || [...r.children].sort((a, b) => b.innerHTML.length - a.innerHTML.length)[0];
+      const panel = r.querySelector(':scope > [role=dialog], :scope > #modal, :scope > #tray, :scope > #cmdk, :scope > [class$=-sheet]') || [...r.children].sort((a, b) => b.innerHTML.length - a.innerHTML.length)[0];
       if (panel) {
         r.style.cssText = 'display:contents!important';
         r.classList.add('anc');

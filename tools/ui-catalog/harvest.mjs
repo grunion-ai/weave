@@ -1,21 +1,21 @@
 export const PAGE_LIB = () => {
   const CONTAINERS = [
-    ['dialog', '.modal-dialog, dialog[open], [role=dialog], [role=alertdialog], .attach-sheet, .new-row-sheet, .key-sheet, .cmdk, .bug-sheet, [class$=-sheet], [class*="-sheet "]'],
+    ['dialog', 'dialog[open], [role=dialog], [role=alertdialog], .attach-sheet, .key-sheet, .cmdk, [class$=-sheet], [class*="-sheet "]'],
     ['popover', '[class*=popover], [role=tooltip], .tooltip'],
-    ['menu', '[role=menu], [role=listbox]:not(select), .wv-menu, .nav-menu, .field-menu, .dl-menu, .dropdown-menu, .crumb-fold-menu, .nav-account-menu'],
+    ['menu', '[role=menu], [role=listbox]:not(select), .wv-menu, .nav-menu, .field-menu, .crumb-fold-menu'],
     ['picker', '.picker-pop, .chip-pop, .date-pop, .cell-pop, .value-pop'],
     ['toast', '.wv-toast'],
   ];
   const LEAVES = [
-    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .share-chip, .doc-chip, .picker-chip, .list-chip, .fx-chip, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
-    ['toggle', 'input[type=checkbox], input[type=radio], [role=switch], .wv-toggle, .switch, .form-check, .form-switch'],
-    ['tabs', '[role=tablist], .seg-ctl, .list-segs, .new-row-seg, .view-tab'],
+    ['chip', '.chip, .chip-trigger, .k-select, .k-state, .k-multi, .wv-tag, .filter-chip, .auto-pill, .doc-chip, .picker-chip, .fx-chip, .badge, .list-group-chip, .nav-account-chip, .wv-chip-id, .opt-dot, .wv-card-state'],
+    ['toggle', 'input[type=checkbox], input[type=radio], [role=switch], .wv-toggle, .switch, .form-check'],
+    ['tabs', '[role=tablist], .seg-ctl, .new-row-seg, .view-tab'],
     ['button', 'button, a.btn, [role=button], summary, input[type=button], input[type=submit]'],
     ['input', 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=button]):not([type=submit]), textarea, select'],
     ['card', '.wv-card, .card, .sk-card, .fx-sigcard, .wv-act-card'],
     ['empty', '.wv-empty, .is-empty, .empty-note, .k-empty, .picker-empty, .table-search-empty, .wv-members-empty, .cmdk-empty, .view-desc-empty'],
     ['nav', '.crumb-row, .nav-space-row, .nav-db, .ws-icon, .nav-foot, .nav-account, .nav-identity, .nav-menu-row, .crumb-nav'],
-    ['bar', '.wv-toolbar, .table-tools, .view-header, .sk-toolbar, .vditor-toolbar, .wv-act-bar, .wv-bar-dock, .phone-bar, .file-viewer-bar, .fsv-bar, .doc-expand-bar'],
+    ['bar', '.wv-toolbar, .view-header, .sk-toolbar, .vditor-toolbar, .wv-act-bar, .wv-bar-dock, .phone-bar, .file-viewer-bar, .fsv-bar, .doc-expand-bar'],
     ['cell', '.table-wrap tbody td, .table-wrap thead th, .table-wrap tfoot td, .fieldrow'],
   ];
   const ROWISH = '[role=menuitem], [role=option], .wv-menu-row, .nav-menu-row, .picker-row, .chip-pop-row, .dropdown-item';
