@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.184 (2026-11-26)
+
+- **Boot loads three fewer scripts, and the whole boot payload has a budget** (Issue #1704): `history-core.js` and `field-diff-core.js` now load with the activity panel and activity log, and `nl-date.js` with the date picker, since nothing at boot reads them; `test/lazy-list.test.mjs` refuses any eager core whose only readers are lazy, and `test/byte-budget.json` gains a `boot` row that caps the summed gzip and Brotli bytes of every script and stylesheet `index.html` loads at boot (about 340,080 gzip and 281,978 Brotli bytes served, down from about 344,940 and 286,463).
+- **A copied list line pasted into a bullet joins that bullet** (Issue #1873): when the clipboard holds one list item with inline content only, as Safari and Chrome put there for a whole line copied from a rendered list, the document editor inserts its text at the caret instead of starting a new bullet, the way Google Docs and Notion paste one line; two or more items, and any paste outside a list, keep the editor's own paste, and `test/doc-paste-browser.test.mjs` checks both engines.
+- **A space opens in one server round trip instead of two or three** (Issue #1414): clicking a space in the nav rail used to wait for the space's cover and introduction read, then fetch the space home, so the skeleton stayed up for every read in turn. The cover read, the home read and the space home script now start together, and the cover still lands above the home before it paints; `test/space-home-paint-browser.test.mjs` holds the paint under 1.6 round trips with every API call slowed to 400 ms, warm and cold.
+
 ## v0.4.183 (2026-11-26)
 
 - **The phone workspace home shows one search entry** (Issue #1869): the workspace launcher drops its inline "Find in" field, since the pinned "Search" bar at the bottom of every phone screen opens the same search; a space home keeps its field because it searches that space only, and `test/workspace-launcher-browser.test.mjs` checks one visible search entry at 390 and 566 px.
