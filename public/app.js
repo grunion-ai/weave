@@ -2864,8 +2864,9 @@ function readWeaveCells(html) {
   } catch { return null; }
 }
 
-function fitChips(grid) {
-  for (const box of grid.querySelectorAll('tbody td > .wv-cb > .ms-box')) {
+const inRows = (grid, rows, sel) => (rows ? rows.flatMap((tr) => [...tr.querySelectorAll(sel)]) : [...grid.querySelectorAll(`tbody ${sel}`)]);
+function fitChips(grid, rows = null) {
+  for (const box of inRows(grid, rows, 'td > .wv-cb > .ms-box')) {
     const cb = box.parentElement;
     const chips = [...box.children].filter((n) => n.matches('.k:not(.k-more):not(.k-add), .mention-wrap'));
     let more = box.querySelector(':scope > .k-more');
@@ -2927,11 +2928,12 @@ function foldValueCounters(td) {
   }
   return folded;
 }
-function fitPhoneChipLines(grid) {
+function fitPhoneChipLines(grid, only = null) {
   const phone = dockCoversScreen.matches && grid.closest('#main > .table-wrap');
-  const rows = [...grid.querySelectorAll('tbody tr.entity-row')].map((tr) => [tr, [...tr.querySelectorAll(':scope > td[data-field]')]]);
+  const rows = (only ? only.filter((tr) => tr.matches('tr.entity-row')) : [...grid.querySelectorAll('tbody tr.entity-row')])
+    .map((tr) => [tr, [...tr.querySelectorAll(':scope > td[data-field]')]]);
   for (const [, cells] of rows) for (const td of cells) { td.classList.remove('list-hide', 'phone-count-only'); delete td.dataset.more; }
-  fitChips(grid);
+  fitChips(grid, only);
   if (!phone) return;
   for (const [tr, cells] of rows) {
     const drawn = cells.filter((td) => td.getClientRects().length).sort((a, b) => Number(a.dataset.phoneChip) - Number(b.dataset.phoneChip));
@@ -2959,17 +2961,19 @@ function fitPhoneChipLines(grid) {
     if (hidden) shown[n - 1].dataset.more = `+${hidden}`;
   }
 }
-function markClippedCells(grid) {
-  fitPhoneChipLines(grid);
+function markClippedCells(grid, only = null) {
+  const rows = only && only.filter((tr) => tr.isConnected && grid.contains(tr));
+  if (rows && !rows.length) return;
+  fitPhoneChipLines(grid, rows);
   const cutOff = new Set();
-  for (const c of grid.querySelectorAll(`tbody td :is(${CLIPPABLE_CONTROLS})`)) {
+  for (const c of inRows(grid, rows, `td :is(${CLIPPABLE_CONTROLS})`)) {
     if (overflowsX(c)) cutOff.add(c.closest('td'));
   }
-  for (const n of grid.querySelectorAll('tbody td .num-dressed[data-compact]')) {
+  for (const n of inRows(grid, rows, 'td .num-dressed[data-compact]')) {
     n.textContent = n.title;
     if (overflowsX(n)) n.textContent = n.dataset.compact;
   }
-  for (const label of grid.querySelectorAll('tbody td .k > .k-label')) {
+  for (const label of inRows(grid, rows, 'td .k > .k-label')) {
     const chip = label.parentElement;
     chip.dataset.fieldTitle ??= chip.getAttribute('title') ?? '';
     if (overflowsX(label)) { cutOff.add(label.closest('td')); chip.title = label.textContent; }
@@ -2977,7 +2981,7 @@ function markClippedCells(grid) {
     else chip.removeAttribute('title');
   }
   const lines = parseInt(getComputedStyle(grid).getPropertyValue('--wv-lines'), 10) || 1;
-  for (const td of grid.querySelectorAll('tbody td')) {
+  for (const td of inRows(grid, rows, 'td')) {
     const hasHiddenLines = td.querySelectorAll('.doc-preview-line').length > lines;
     if (td.querySelector('.cg-wrap')) { td.classList.remove('clipped'); continue; }
     const cb = td.matches('[data-field], .sys-cell') ? td.querySelector(':scope > .wv-cb') : null;
@@ -7478,6 +7482,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
   };
   const paint = (w) => {
     let changed = false;
+    const added = [];
     for (const [i, tr] of live) {
       if (i < w.start || i >= w.end || (tr.classList.contains('entity-row-pending') && itemAt(i))) {
         tr.remove(); live.delete(i); changed = true;
@@ -7490,12 +7495,12 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     setPad(topSpacer, w.topPad - (pinTr ? rowH() : 0)); setPad(bottomSpacer, w.bottomPad);
     let cursor = topSpacer.isConnected ? topSpacer : null;
     if (pinTr) {
-      if (!pinTr.isConnected || pinTr.previousElementSibling !== cursor) { cursor ? cursor.after(pinTr) : tbody.prepend(pinTr); changed = true; }
+      if (!pinTr.isConnected || pinTr.previousElementSibling !== cursor) { cursor ? cursor.after(pinTr) : tbody.prepend(pinTr); changed = true; added.push(pinTr); }
       cursor = pinTr;
     }
     for (let i = w.start; i < w.end; i++) {
       let tr = live.get(i);
-      if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; }
+      if (!tr) { tr = rowFor(i); live.set(i, tr); cursor ? cursor.after(tr) : tbody.prepend(tr); changed = true; added.push(tr); }
       cursor = tr;
     }
     win.start = w.start; win.end = w.end;
@@ -7507,7 +7512,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (loadedNote.textContent !== note) loadedNote.textContent = note;
     }
     if (!changed) return;
-    requestAnimationFrame(() => markClippedCells(table));
+    if (added.length) requestAnimationFrame(() => markClippedCells(table, added));
     paintSelection(); markDockedRow(); repaintRange();
   };
   const rewindow = () => {
@@ -7573,6 +7578,7 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       if (stale.some((x) => !back.has(x))) return false;
       rows.push(...read.items.filter((r) => r.id !== fresh.id));
     }
+    const patched = [];
     for (const item of rows) {
       const i = at(item.id);
       if (i < 0) continue;
@@ -7581,9 +7587,9 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
       const j = items.findIndex((r) => r && r.id === item.id);
       if (j >= 0) items[j] = item;
       const tr = built.get(item.id);
-      if (tr) repaintRow(tr, item, was);
+      if (tr) { repaintRow(tr, item, was); patched.push(tr); }
     }
-    requestAnimationFrame(() => markClippedCells(table));
+    requestAnimationFrame(() => markClippedCells(table, patched));
     return true;
   };
   const topEdge = (g) => g.viewTop + g.headH;

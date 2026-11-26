@@ -1,0 +1,1 @@
+- **Clip marks follow only the rows that changed** (Issue #1697): a cell commit re-checks only the row it wrote, and a scroll checks only the rows it brings in, instead of re-reading every drawn cell in the grid. A width or density change still re-checks the whole grid.
