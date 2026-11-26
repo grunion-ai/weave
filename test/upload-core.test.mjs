@@ -139,3 +139,12 @@ test('the api() fallback names the cause and the next step (Issue #1413)', () =>
   assert.equal(U.serverError(507, 'The weave server is out of storage'), null);
   assert.equal(U.serverError(400, 'Name is required'), 'Name is required');
 });
+
+test('a workspace at 80% or more of its file limit gets a quiet line naming what it holds and may hold', () => {
+  assert.equal(U.nearFull({ fileBytes: 160 * MB, fileLimitBytes: 200 * MB }), 'This workspace holds 160 MB of files and can hold 200 MB.');
+  assert.equal(U.nearFull({ fileBytes: 210 * MB, fileLimitBytes: 200 * MB }), 'This workspace holds 210 MB of files and can hold 200 MB.');
+  assert.equal(U.nearFull({ fileBytes: 159 * MB, fileLimitBytes: 200 * MB }), null, 'under 80% says nothing');
+  assert.equal(U.nearFull({ fileBytes: 500 * MB, fileLimitBytes: 0 }), null, 'no limit set says nothing');
+  assert.equal(U.nearFull({ ok: true, version: '0.4.186' }), null, 'a health read without the numbers says nothing');
+  assert.equal(U.nearFull(null), null);
+});

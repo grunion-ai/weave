@@ -1624,6 +1624,7 @@ body.dock-resizing { user-select: none; cursor: col-resize; }
 :root:not([data-bs-theme="dark"]) .attach-item > a { color: var(--tblr-primary-darken); }
 .attach-up-name, .attach-fail-name { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attach-up-name { color: var(--tblr-body-color); }
+.attach-near-full { display: block; width: 100%; margin-top: 4px; font-size: var(--fs-meta); color: var(--tblr-warning-text-emphasis, var(--tblr-secondary)); }
 .attach-fail-why, .attach-up-what { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .attach-up-bar { position: relative; flex: 0 0 48px; height: 4px; border-radius: var(--wv-radius-pill); background: var(--tblr-border-color); overflow: hidden; }
 .attach-up-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--tblr-primary); transition: width .2s linear; }
