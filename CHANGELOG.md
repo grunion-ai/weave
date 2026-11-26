@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.183 (2026-11-26)
+
+- **The phone workspace home shows one search entry** (Issue #1869): the workspace launcher drops its inline "Find in" field, since the pinned "Search" bar at the bottom of every phone screen opens the same search; a space home keeps its field because it searches that space only, and `test/workspace-launcher-browser.test.mjs` checks one visible search entry at 390 and 566 px.
+- **Shadows and scrims drop the retired navy ink** (Issue #1717): six shadows and scrims in `public/style.css` (the phone sheet scrim, the nav peek scrim, the toast, the toggle knob and the phone tools popover) read a per-theme `--wv-shade-rgb` instead of `rgba(12, 27, 51, ...)`, so dark mode shades with black like the other dark shadows, and the card view and chip anatomy mockups carry the token; the 20 px editor dock icons read `--wv-icon-lg`; and `test/surface-palette.test.mjs` now refuses the rgb form of the retired ink and unread `--wv-*` tokens across eleven surface files.
+
 ## v0.4.182 (2026-11-26)
 
 - **Clip marks follow only the rows that changed** (Issue #1697): a cell commit re-checks only the row it wrote, and a scroll checks only the rows it brings in, instead of re-reading every drawn cell in the grid. A width or density change still re-checks the whole grid.

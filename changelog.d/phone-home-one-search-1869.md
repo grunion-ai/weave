@@ -1,1 +1,0 @@
-- **The phone workspace home shows one search entry** (Issue #1869): the workspace launcher drops its inline "Find in" field, since the pinned "Search" bar at the bottom of every phone screen opens the same search; a space home keeps its field because it searches that space only, and `test/workspace-launcher-browser.test.mjs` checks one visible search entry at 390 and 566 px.
