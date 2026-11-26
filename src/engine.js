@@ -1218,6 +1218,41 @@ const FIELD_TYPE_CONFIG = {
   },
 };
 
+const numberEnums = () => ({ format: ['number', 'currency', 'percent', 'compact'], display: [...NUMBER_DISPLAYS, 'sparkline'], style: SPARKLINE_STYLES });
+const dateEnums = () => ({ clock: DG.CLOCKS, zone: DG.ZONES });
+const computedEnums = () => ({ display: numberEnums().display, style: SPARKLINE_STYLES, ...dateEnums() });
+const CONFIG_ENUMS = {
+  number: numberEnums,
+  formula: computedEnums,
+  rollup: computedEnums,
+  lookup: computedEnums,
+  date: dateEnums,
+  daterange: dateEnums,
+  attachments: () => ({ preview: ATTACHMENT_PREVIEWS, size: ATTACHMENT_SIZES, fit: ATTACHMENT_FITS }),
+  avatar: () => ({ shape: AVATAR_SHAPES }),
+  document: () => ({ kind: DOCUMENT_KINDS }),
+  key: () => ({ kind: CREDENTIAL_KINDS, keystore: KEYSTORES }),
+};
+
+export function tolerateConfig(type, config) {
+  const dropped = [];
+  if (!config || typeof config !== 'object') return dropped;
+  for (const [key, list] of Object.entries(CONFIG_ENUMS[type]?.() ?? {})) {
+    const value = config[key];
+    if (value == null || value === '' || list.includes(value)) continue;
+    dropped.push({ key, value });
+    delete config[key];
+  }
+  if (type === 'workflow') {
+    for (const s of Array.isArray(config.states) ? config.states : []) {
+      if (!s || typeof s !== 'object' || s.category == null || STATE_CATEGORIES.includes(s.category) || RETIRED_STATE_CATEGORIES[s.category]) continue;
+      dropped.push({ key: 'category', value: s.category, state: s.name });
+      s.category = 'in-progress';
+    }
+  }
+  return dropped;
+}
+
 function normalizeSelfContainedConfig(type, config = {}, options = {}) {
   return FIELD_TYPE_CONFIG[type]?.build?.(config, options) ?? {};
 }
@@ -1687,6 +1722,15 @@ export class Weave {
     HELD?.add(this);
   }
 
+  #tolerateConfigs(db) {
+    for (const f of Object.values(db.fields ?? {})) {
+      for (const d of tolerateConfig(f.type, f.config)) {
+        console.warn(`weave: ${db.name}.${f.name} ${d.key} '${d.value}' is unknown to this build; using the default`);
+        this.store.audit({ at: nowISO(), actor: this.actor, action: 'field-config-tolerated', detail: { table: db.name, field: f.name, ...d } });
+      }
+    }
+  }
+
   #migrate() {
     const s = this.state;
     refuseBeforeFloor(s);
@@ -1694,6 +1738,7 @@ export class Weave {
     s.tables = s.tables ?? {};
     let changed = false;
     for (const db of Object.values(s.tables)) {
+      this.#tolerateConfigs(db);
       if (this.#reconcileFieldOrder(db)) changed = true;
       if (!db.system) {
         if (this.#ensureDescriptionField(db)) changed = true;
