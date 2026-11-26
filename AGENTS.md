@@ -428,7 +428,10 @@ brings those values back. A roll back is a schema write, with the same rung.
 back — with `dryRun` first for the plan. Everything the description emits
 survives the apply, including option colors, column widths, icons, nouns,
 hidden columns and column order. Omitted spaces, tables and fields are
-deletions, which is why they need `allowDestructive`.
+deletions, which is why they need `allowDestructive`. A field whose `type`
+the document changes plans a `migrate-field` step for any pair
+`weave_update_field` converts, and needs `allowDestructive` too because the
+conversion can lose values; a pair it cannot convert is refused.
 
 ### Views over a table
 

@@ -1839,7 +1839,7 @@ export const COMMANDS = [
     writes: 'schema', minRole: 'architect', annotations: REMOVE,
     tool: {
       name: 'weave_apply_schema',
-      description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
+      description: 'Apply a whole schema document — the array weave_schema returns — creating, updating and (with allowDestructive) deleting spaces, tables and fields so the workspace matches it. A field whose type the document changes converts in place (a migrate-field step) for any pair weave_update_field converts, and needs allowDestructive because the conversion can lose values. dryRun returns the plan without writing; partial adds or updates only what the document names and leaves every other space alone. Everything weave_schema emits round-trips, including option colors, widths, icons, nouns, hidden columns and column order.',
       inputSchema: {
         type: 'object',
         properties: { document: { type: 'array' }, dryRun: { type: 'boolean' }, allowDestructive: { type: 'boolean' }, partial: { type: 'boolean' } },

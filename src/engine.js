@@ -3479,7 +3479,17 @@ export class Weave {
             continue;
           }
           if (existing.type !== fDoc.type) {
-            throw new WeaveError(`'${qualified}.${fDoc.name}' cannot change type ('${existing.type}' → '${fDoc.type}') — delete the field and create it anew`, 'invalid');
+            const subject = `${qualified}.${fDoc.name}`;
+            const allowed = TYPE_MIGRATIONS[existing.type] ?? [];
+            const elsewhere = `weave_update_field {type}, or weave field update ${qualified} ${fDoc.name} --type <type>`;
+            if (!allowed.includes(fDoc.type)) {
+              throw new WeaveError(`'${subject}' cannot change type ('${existing.type}' → '${fDoc.type}'): a ${existing.type} field can become ${allowed.length ? allowed.join(', ') : 'nothing else'} (${elsewhere})`, 'invalid');
+            }
+            if (!allowDestructive) {
+              throw new WeaveError(`Applying this document would convert '${subject}' from ${existing.type} to ${fDoc.type}, which can lose values: a lossy change needs allowDestructive, or run ${elsewhere}`, 'invalid');
+            }
+            act('migrate-field', subject, () => this.updateField(db.id, existing.id, { type: fDoc.type, config: configFromDescriptor(fDoc, existing, fDoc.type) }));
+            continue;
           }
           const nextCfg = configFromDescriptor(fDoc, existing);
           const have = current.get(qualified)?.fields.find((x) => x.name === fDoc.name);
