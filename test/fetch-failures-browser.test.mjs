@@ -22,7 +22,7 @@ test('no new silent catch in app.js: a new one toasts or rethrows (Issues #265, 
   const storage = /try \{ (?:open = localStorage\.getItem\(key\) === 'true'|localStorage\.setItem\(key, String\(open\)\)); \} catch \{\}/g;
   assert.equal([...fnBody('descToggle').matchAll(storage)].length, 2, 'Feature #302 permits only its two optional preference operations to fail quietly');
   const silent = bareCatches(APP.replace(storage, '')).filter(({ text }) => !/toast\(|throw /.test(text));
-  assert.ok(silent.length <= 50, `${silent.length} catches neither toast nor rethrow; 50 did when comments went (Issue #661), each with its reason reviewed. A new catch toasts or rethrows:\n${silent.map((c) => `app.js:${c.line} ${c.text.split('\n')[0].trim()}`).join('\n')}`);
+  assert.ok(silent.length <= 54, `${silent.length} catches neither toast nor rethrow; 50 did when comments went (Issue #661), each with its reason reviewed, and 54 once the readers saw space-home-view.js (Issue #1706). A new catch toasts or rethrows:\n${silent.map((c) => `app.js:${c.line} ${c.text.split('\n')[0].trim()}`).join('\n')}`);
 });
 
 test('schema loading awaits the local API and lets a failure reach its caller', () => {
