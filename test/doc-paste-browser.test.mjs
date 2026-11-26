@@ -51,6 +51,17 @@ for (const engine of ['chromium', 'webkit']) {
       } finally { await page.close(); }
     });
 
+    test(`${engine}: the list markup Safari copies for a whole rendered line joins the bullet (Issue #1873)`, async () => {
+      const { id, page, surface } = await open('- alpha bravo\n- charlie\n');
+      try {
+        await item(page, 'charlie').click();
+        await page.keyboard.press('End');
+        await paste(surface, 'delta echo', '<body dir="ltr"><ul style="caret-color: rgb(0, 0, 0); color: rgb(0, 0, 0); font-family: -webkit-standard; text-align: start;"><li>delta echo</li></ul></body>');
+        const want = '- alpha bravo\n- charliedelta echo\n';
+        assert.equal(await saved(page, surface, id, want), want);
+      } finally { await page.close(); }
+    });
+
     test(`${engine}: undo after an inline list-line paste takes the pasted text back out (Issue #1873)`, async () => {
       const { id, page, surface } = await open('- alpha bravo\n- charlie\n');
       try {
@@ -92,7 +103,7 @@ for (const engine of ['chromium', 'webkit']) {
       } finally { await page.close(); }
     });
 
-    test(`${engine}: a whole bullet copied from a rendered list outside the editor and pasted at the end of a bullet joins it (Issue #1873)`, async () => {
+    if (engine === 'chromium') test(`${engine}: a whole bullet copied from a rendered list outside the editor and pasted at the end of a bullet joins it (Issue #1873)`, async () => {
       const { id, page, surface } = await open('- alpha bravo\n- charlie\n');
       try {
         await page.context().grantPermissions?.(['clipboard-read', 'clipboard-write']).catch(() => {});
