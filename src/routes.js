@@ -1224,7 +1224,7 @@ async function authRoutes(c, fromRequest) {
       const { credentials, ...pub } = engine.listAccounts().find((a) => a.id === account.id) ?? account;
       const ids = pub.identities ?? [];
       const user = posthog ? (ids.find((i) => i.issuer === oidc?.issuer) ?? ids[0])?.subject : null;
-      return out(200, { account: pub, role: account.role, sessions, ...(user ? { analytics: { user } } : {}) }, { 'Cache-Control': 'no-store' });
+      return out(200, { account: pub, role: account.role, inviter: engine.inviterOf(account.id), sessions, ...(user ? { analytics: { user } } : {}) }, { 'Cache-Control': 'no-store' });
     }
     if ((m = path.match(/^\/api\/auth\/sessions\/([^/]+)$/)) && rx.method === 'DELETE') {
       const account = who();

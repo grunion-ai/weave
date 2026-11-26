@@ -1040,6 +1040,7 @@ if (openHub) {
         const w = openHub.opened(`invite-${suffix}`);
         const email = `invited-${suffix}@example.com`;
         const invite = w.inviteMember({ email, role, issuer: openHub.idp.issuer });
+        const architect = w.listAccounts().find((a) => a.role === 'architect').name;
         w.store.close();
         const p = await page({ phone, theme: phone ? 'dark' : 'light' });
         person(openHub, { email });
@@ -1052,7 +1053,9 @@ if (openHub) {
           else if (role === 'architect') assert.equal(await p.locator('.wv-start-new').count(), 1);
           else {
             assert.equal(await p.locator('.wv-start-new, .wv-start-template').count(), 0);
-            assert.match(await p.locator('.wv-start').textContent(), /Ask a workspace architect/);
+            await p.waitForLoadState('networkidle');
+            assert.equal(await p.locator('#main .system-tables, #main .wv-schema').count(), 0, 'an empty workspace shows a member no system tables');
+            assert.match(await p.locator('.wv-start').textContent(), new RegExp(`Ask ${architect} to add the first table`));
             assert.match(await p.locator('.wv-start').textContent(), new RegExp(`As an ${role}`));
             assert.equal(await p.locator('.nav-add-table:visible').count(), 0);
           }

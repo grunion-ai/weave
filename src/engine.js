@@ -4407,7 +4407,16 @@ export class Weave {
   }
 
   listAccounts() {
-    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => ({ ...pub, seatRole: seatRole(this, pub) }));
+    return Object.values(this.state.meta.accounts ?? {}).map(({ tokenHash, credentials, ...pub }) => ({ ...pub, ...(pub.invitedBy ? { invitedBy: this.actorName(pub.invitedBy) } : {}), seatRole: seatRole(this, pub) }));
+  }
+
+  inviterOf(accountId) {
+    const accounts = Object.values(this.state.meta.accounts ?? {});
+    const by = accounts.find((a) => a.id === accountId)?.invitedBy;
+    const named = String(by ?? '').includes('account:') ? this.actorName(by) : null;
+    if (named && named !== REMOVED_ACCOUNT) return named;
+    return accounts.filter((a) => a.id !== accountId && Weave.roleName(a.role) === 'architect')
+      .sort((x, y) => String(x.createdAt ?? '').localeCompare(String(y.createdAt ?? '')))[0]?.name ?? null;
   }
 
   noteTokenWrite(accountId, { method, path, status }) {
@@ -4809,6 +4818,7 @@ export class Weave {
       const row = this.state.meta.accounts[account.id];
       row.identities = [stamp({ issuer: iss, subject: sub, createdAt: at, lastUsedAt: at })];
       row.onboardedAt = at;
+      if (i.invitedBy) row.invitedBy = i.invitedBy;
       this.save();
       this.#audit('member-joined', { name: row.name, role: row.role, invitedBy: i.invitedBy ?? null });
       this.#syncUsers();
