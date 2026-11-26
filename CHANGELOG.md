@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.186 (2026-11-26)
+
+- **A backslash escape reads as its punctuation everywhere** (Issue #1902): `\- X`, `7\) X` and `\*not em\*` now show as `- X`, `7) X` and `*not em*` in HTML exports and share pages, PDFs, description previews and chip and card descriptions, as the editor already showed them. A backslash before a letter or digit, and any escape inside a code span, stays as written.
+- **Crepe keeps a dollar amount as written** (Issue #1898): editing a block under Crepe no longer stores a plain `$939` in that block as `\$939`. The edited blocks drop the escape Crepe's math feature adds before `$` unless the author's own text in those blocks already held a `\$`, which then stays as written.
+- **A schema document can change a field's type** (Issue #1633): `weave_apply_schema` now converts a field in place when the document changes its type to one `weave_update_field` converts, as a `migrate-field` plan step that needs `allowDestructive` because the conversion can lose values. The values convert the way `weave_update_field` converts them, and the field's type-change Activity entry rolls them back. A type pair no conversion covers is still refused, and the refusal now names what the field can become and the `weave_update_field` and `weave field update` route, instead of advising to delete the field and lose its values.
+
 ## v0.4.185 (2026-11-26)
 
 - **The persistence contract is written down** (Issue #1665): `docs/persistence.md` states the rules a write path must keep: every changed record is marked or it is never saved, one save per call, a refresh before each request reads, the undo and revision caps, the shared `files/` folder and its delete check, and the backup format and operator rules. CLAUDE.md and DEVELOPMENT.md link it, and `test/persistence-doc.test.mjs` fails when a symbol or value it cites leaves the file it names.
