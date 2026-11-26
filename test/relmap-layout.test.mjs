@@ -107,8 +107,8 @@ test('the map is one renderer, used by the page, the home and a space', () => {
   assert.match(APP, /function relationMapView\(/, 'one renderer');
   assert.equal((APP.match(/relationMapView\(/g) ?? []).length, 3,
     'defined once, drawn full-page and inside the card');
-  assert.equal((APP.match(/relationMapCard\(/g) ?? []).length, 3,
-    'the card is defined once and drawn on the home and on a space');
+  assert.equal((APP.match(/relationMapCard\(/g) ?? []).length, 4,
+    'the card is defined once and drawn on the home, on a space and in the phone space launcher');
   assert.match(APP, /relationMapCard\('Relation map', \{ spaceId \}\)/, 'the space card is scoped to the space');
 });
 

@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const read = (file) => readFileSync(join(ROOT, file), 'utf8');
 
-export const LAZY = ['public/field-dialog.js', 'public/activity-log.js', 'public/command-palette.js', 'public/date-picker.js', 'public/activity-panel.js', 'public/forms-dialog.js', 'public/automation-map.js'];
-export const ROUTED = ['public/relation-map.js', 'public/doc-editor.js'];
+const LAZY_CALL = /(?<!function )\blazyScript\(\s*(?:'([^']*)'|"([^"]*)"|(\S))/g;
+export const LAZY_CALLS = readdirSync(join(ROOT, 'public')).filter((f) => f.endsWith('.js')).sort().flatMap((f) =>
+  [...read(`public/${f}`).matchAll(LAZY_CALL)].map((m) => ({ file: f, src: m[1] ?? m[2] ?? null, arg: m[3] })));
+export const ROUTED = ['public/relation-map.js', 'public/relmap-layout.js', 'public/doc-editor.js', 'public/space-home-view.js'];
+export const LAZY = [...new Set(LAZY_CALLS.filter((c) => c.src).map((c) => `public${c.src}`))].sort().filter((file) => !ROUTED.includes(file));
 export const APP = ['public/app.js', ...LAZY, ...ROUTED].map(read).join('\n');
 export const HTML = read('public/index.html');
 export const CHIP_CSS = read('public/chip.css');

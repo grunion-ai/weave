@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP as APP_JS, HTML, CSS, fnBody as fnBodyIn, read } from './lib/source.mjs';
+import { APP, HTML, CSS, fnBody, read } from './lib/source.mjs';
 import { touchFloor } from './lib/touch.mjs';
-const APP = [APP_JS, read('public/settings-view.js'), read('public/invite-dialog.js')].join('\n');
-const fnBody = (name, src = APP) => fnBodyIn(name, src);
 
 test('the retired menu markup is gone from app.js (Feature #296, Issue #762)', () => {
   for (const gone of ['dl-menu', 'tools-row', 'tools-group', 'tableSheetGroup', 'contextMenu(', 'dropdown-divider']) {
@@ -116,7 +114,7 @@ test('workspace delete runs through one typed dialog, from the workspace menu ro
   assert.equal(APP.split('Delete workspace').length - 1, dialog.split('Delete workspace').length - 1 + 1, 'outside the dialog only the menu row names Delete workspace');
   assert.match(ROWS_SRC, /delete: w\.deletable \? \{ label: 'Delete workspace…', danger: true, run: \(\) => openDeleteWorkspace\(w, after\) \} : null/, 'the workspace menu row opens the dialog, and only where the workspace is deletable');
   assert.equal(APP.split('deleteWorkspaceDialog(').length - 1, 3, 'the dialog has two callers');
-  assert.match(APP_JS, /const openDeleteWorkspace = \(w, after\) => settingsView\(\(\) => deleteWorkspaceDialog\(w, after\)\)/, 'the menu row loads settings-view.js first');
+  assert.match(APP, /const openDeleteWorkspace = \(w, after\) => settingsView\(\(\) => deleteWorkspaceDialog\(w, after\)\)/, 'the menu row loads settings-view.js first');
   assert.match(fnBody('showSettings'), /deleteWorkspaceDialog\(w\)/, 'Settings is the other');
   for (const fn of ['menu', 'dotsMenu', 'buildWsRail', 'personalMenu']) assert.doesNotMatch(fnBody(fn), /deleteWorkspaceDialog|Delete workspace/, `${fn} reaches workspace delete only through the menu definition`);
   assert.doesNotMatch(dialog, /\?hard=1/, 'the dialog trashes, never purges');

@@ -318,7 +318,7 @@ test('the entity menu moves to trash with an undo, not a hold-to-confirm', () =>
 test('purging keeps the hold-to-confirm and is the only hard delete in the UI', () => {
   assert.match(fnBody('showSettings', SETTINGS_VIEW), /label: 'Delete forever', hold: true/, 'the purge is a hold row from the menu builder, in Settings (Feature #295)');
   assert.doesNotMatch(fnBody('showTrash', SETTINGS_VIEW), /hard=1|holdToConfirm/, 'the Trash page restores and never purges');
-  const hard = [...(APP + SETTINGS_VIEW).matchAll(/\?hard=1/g)];
+  const hard = [...APP.matchAll(/\?hard=1/g)];
   assert.equal(hard.length, 1, 'exactly one call site may purge');
   assert.match(SETTINGS_VIEW, /function showTrash/);
   assert.match(APP, /#\\?\/trash\\?\/\(\[\^\/\?\]\+\)/, 'trash needs a route');
