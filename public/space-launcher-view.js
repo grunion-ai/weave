@@ -131,7 +131,7 @@ function launcherHome(main, place, sections) {
   const home = el('div', { class: 'launcher-home' });
   const leadIcon = (icon) => el('span', { class: 'launcher-row-icon' }, iconEl(icon, 'wv-icon'));
   home.append(...[
-    launcherSearch(place.name, sections.tables ?? []),
+    place.space ? launcherSearch(place.name, sections.tables ?? []) : null,
     launcherTiles(place.tiles),
     launcherSection({
       part: 'views', title: 'Recent views', note: 'Opened by you', more: 'More recent views',

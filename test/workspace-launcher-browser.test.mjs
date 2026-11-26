@@ -70,13 +70,11 @@ if (s) {
           header: !!main.querySelector(':scope > .view-header'),
           kids: [...main.querySelector('.launcher-home').children].map((n) => n.dataset.part),
           desktop: main.querySelectorAll(':scope > .system-tables, :scope > .home-map, :scope > .card.list-rows').length,
-          search: main.querySelector('.launcher-search').textContent,
         };
       });
       assert.ok(read.header, 'the workspace header stays');
-      assert.deepEqual(read.kids, ['search', 'spaces', 'views', 'rows', 'runs', 'about']);
+      assert.deepEqual(read.kids, ['spaces', 'views', 'rows', 'runs', 'about']);
       assert.equal(read.desktop, 0, 'the desktop cards do not render on a phone');
-      assert.match(read.search, /^Find in /);
       assert.deepEqual(page.failures, []);
       await page.close();
     });
@@ -209,6 +207,19 @@ if (s) {
       await loaded;
       await page.waitForLoadState('networkidle');
       assert.equal(await page.locator('.launcher').count(), 0);
+      await page.close();
+    });
+  }
+
+  const searchEntries = (page) => page.evaluate(() => [...document.querySelectorAll('.launcher-search, .phone-bar .phone-search')]
+    .filter((n) => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden')
+    .map((n) => n.className.split(' ')[0]));
+
+  for (const [label, profile] of [['390 x 844', { viewport: { width: 390, height: 844 } }], ['566 x 900', { viewport: { width: 566, height: 900 } }]]) {
+    test(`chromium ${label}: the workspace home shows one search entry, the pinned bar, and no inline field (Issue #1869)`, async () => {
+      const page = await open(browser, profile);
+      await painted(page, '.launcher[data-ready]');
+      assert.deepEqual(await searchEntries(page), ['phone-search']);
       await page.close();
     });
   }
