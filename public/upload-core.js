@@ -11,6 +11,12 @@
     return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
   };
   const tooBig = (file, limit = LIMIT) => !!file && file.size > limit;
+  const NEAR_FULL = 0.8;
+  const nearFull = (health) => {
+    const held = health?.fileBytes, limit = health?.fileLimitBytes;
+    if (!(limit > 0) || !(held >= limit * NEAR_FULL)) return null;
+    return `This workspace holds ${sizeText(held)} of files and can hold ${sizeText(limit)}.`;
+  };
 
   function shortName(name, max = NAME_MAX) {
     const chars = Array.from(String(name));
@@ -90,5 +96,5 @@
   }
   const serverError = (status, error) => (!error || status === 507 || (status >= 500 && /^Internal error\b/.test(error)) ? null : error);
 
-  root.uploadCore = { LIMIT, NAME_MAX, RESTART_WAIT_MS, RESTARTING, sizeText, tooBig, shortName, reasonOf, failure, emptyText, summary, statusText, serverError };
+  root.uploadCore = { LIMIT, NAME_MAX, RESTART_WAIT_MS, RESTARTING, sizeText, tooBig, nearFull, shortName, reasonOf, failure, emptyText, summary, statusText, serverError };
 })(typeof window !== 'undefined' ? window : globalThis);

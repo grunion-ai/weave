@@ -4477,6 +4477,14 @@ function editorFor(f, item, db, onSaved, { compact = false, fit = false, locked 
       onclick: () => input.click(),
     }, '+ file'));
     uploadHost(box, upKey, { slot: chips, before: input });
+    if (!locked) {
+      const nearFull = el('span', { class: 'attach-near-full', hidden: '' });
+      box.append(nearFull);
+      healthNow().then((h) => {
+        const text = uploadCore.nearFull(h);
+        if (text) { nearFull.textContent = text; nearFull.hidden = false; }
+      }, () => {});
+    }
     return fileDropZone(box, upload);
   }
   if (f.type === 'date') {
