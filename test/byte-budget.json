@@ -345,5 +345,9 @@
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
     "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
     "/doc-editor.js": "Issue #1896: mountTiptapEditor with its slash menu, selection toolbar, raw HTML node and LCS source keeper sits beside the Crepe and Vditor mounts while the three run side by side behind weave.editor: gzip 17,610 budget to 20,898 served, br 15,670 to 18,535, budget set 5% above. Removing the editors that lose takes it back down. Issue #1893: attachListMove (Ctrl+Cmd+Up/Down moves a list item) served gzip 22,029 and br 19,539, budget set about 2% above. Issue #1873: attachInlineListPaste (one copied list line pasted into a bullet joins it) served gzip 22,575 and br 19,985, budget set about 2% above."
+  },
+  "boot": {
+    "gzip": 357084,
+    "br": 296077
   }
 }

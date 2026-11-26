@@ -8652,9 +8652,10 @@ function lazyScript(src) {
   return lazyScripts.get(src);
 }
 
-const warmDatePicker = () => { lazyScript('/date-picker.js').catch(() => {}); };
+const datePickerReady = () => Promise.all([lazyScript('/nl-date.js'), lazyScript('/date-picker.js')]);
+const warmDatePicker = () => { datePickerReady().catch(() => {}); };
 function withDatePicker(run, undo = () => {}) {
-  lazyScript('/date-picker.js').then(run, () => { undo(); toast('The calendar did not load. Check the connection and try again.', true); });
+  datePickerReady().then(() => run(), () => { undo(); toast('The calendar did not load. Check the connection and try again.', true); });
 }
 function openForms(db) {
   lazyScript('/forms-dialog.js').then(() => formsDialog(db), () => toast('Forms did not load. Check the connection and try again.', true));
@@ -10125,7 +10126,7 @@ async function renderEntityView(entity, { mount, refresh, refs = [[], []], inPee
 
 const activityPanel = (() => {
   let core = null;
-  const load = () => lazyScript('/activity-panel.js').then(() => (core = activityPanelCore), (err) => {
+  const load = () => Promise.all([lazyScript('/history-core.js'), lazyScript('/activity-panel.js')]).then(() => (core = activityPanelCore), (err) => {
     toast('Activity did not load. Check the connection and try again.', true);
     throw err;
   });
@@ -10582,7 +10583,7 @@ function subtablePopover(anchor, ownerId, f, target, eligible, shown, redraw) {
 const ACTIVITY_PAGE = 500;
 
 async function openActivityLog(param) {
-  await lazyScript('/activity-log.js');
+  await Promise.all([lazyScript('/history-core.js'), lazyScript('/field-diff-core.js'), lazyScript('/activity-log.js')]);
   return showActivity(param);
 }
 

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './lib/source.mjs';
-import { BUDGET_FILE, CODINGS, budgetUpdate, fit, firstPartyAssets, judge, servedBytes, unexplainedRaises } from './lib/bytes.mjs';
+import { BUDGET_FILE, CODINGS, bootAssets, budgetUpdate, fit, firstPartyAssets, judge, judgeBoot, servedBytes, unexplainedRaises } from './lib/bytes.mjs';
 import { withServer } from './lib/fixtures.mjs';
 
 const budget = JSON.parse(readFileSync(join(ROOT, BUDGET_FILE), 'utf8'));
@@ -54,6 +54,41 @@ test('the budget file covers every first-party script and stylesheet, and no ven
   assert.deepEqual(Object.keys(budget.bytes).sort(), ASSETS);
   for (const sizes of Object.values(budget.bytes)) assert.deepEqual(Object.keys(sizes).sort(), [...CODINGS].sort());
   for (const k of Object.keys(budget.raised)) assert.ok(k in budget.bytes, `raised["${k}"] names no asset`);
+  assert.deepEqual(Object.keys(budget.boot ?? {}).filter((k) => k !== 'why').sort(), [...CODINGS].sort(), 'the boot sum has a budget per coding (Issue #1704)');
+});
+
+test('the boot list is every script and stylesheet the shell names outside its lazy templates (Issue #1704)', () => {
+  const html = '<script src="/theme-boot.js"></script><link rel="stylesheet" href="/vendor/t.css"><template id="lazy-assets"><script src="/late.js"></script><link rel="stylesheet" href="/late.css"></template><link rel="icon" href="/brand/f.svg"><link rel="stylesheet" href="/style.css?v=1"><script src="/app.js" defer></script>';
+  assert.deepEqual(bootAssets(html), ['/theme-boot.js', '/vendor/t.css', '/style.css', '/app.js']);
+});
+
+test('the boot sum is judged against its own budget, over and well under alike (Issue #1704)', () => {
+  assert.equal(judgeBoot('gzip', 1000, 40, { gzip: 1000 }), null);
+  assert.match(judgeBoot('gzip', 1001, 40, { gzip: 1000 }), /boot \(gzip\) serves 1,001 bytes over 40 eager assets, budget 1,000 bytes: .*lazyScript.*boot\.gzip.*boot\.why/);
+  assert.match(judgeBoot('br', 800, 40, { br: 1000 }), new RegExp(`lower boot\\.br .* to ${fit(800)}`));
+  assert.match(judgeBoot('br', 800, 40, {}), /add "boot": \{ "br": 840 \}/);
+});
+
+test('a raised boot budget needs a fresh reason under boot.why (Issue #1704)', () => {
+  const was = { bytes: {}, raised: {}, boot: { gzip: 1000, br: 900 } };
+  assert.deepEqual(unexplainedRaises(was, { ...was, boot: { gzip: 900, br: 900 } }), []);
+  assert.deepEqual(unexplainedRaises(was, { ...was, boot: { gzip: 1100, br: 900 } }), ['boot (gzip) rose from 1000 to 1100 bytes with no reason: write one under boot.why']);
+  const why = { ...was, boot: { gzip: 1100, br: 900, why: 'Feature #900: the board loads at boot' } };
+  assert.deepEqual(unexplainedRaises(was, why), []);
+  assert.equal(unexplainedRaises(why, { ...why, boot: { ...why.boot, gzip: 1200 } }).length, 1, 'an old reason does not cover a second raise');
+});
+
+test('the eager boot assets together serve within the boot budget after compression, so a sum no per-file row sees cannot creep (Issue #1704)', { timeout: 300_000 }, async () => {
+  const boot = bootAssets(readFileSync(join(ROOT, 'public/index.html'), 'utf8'));
+  assert.ok(boot.includes('/app.js') && boot.includes('/style.css'));
+  await withServer(async ({ port }) => {
+    const sum = { gzip: 0, br: 0 };
+    for (const path of boot) {
+      const n = await servedBytes(port, path);
+      for (const c of CODINGS) sum[c] += n[c];
+    }
+    assert.deepEqual(CODINGS.map((c) => judgeBoot(c, sum[c], boot.length, budget.boot ?? {})).filter(Boolean), []);
+  });
 });
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
