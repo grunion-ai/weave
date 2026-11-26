@@ -65,12 +65,44 @@ test('omissions are deletions — refused unless allowed, and audited when done'
   assert.equal(Object.values(w.getTable('Task').fields).find((f) => f.name === 'Old'), undefined);
 });
 
-test('a type change is never applied — the document cannot mean that', () => {
+function retyped(w, name, type) {
+  const doc = w.describeSchema();
+  doc.find((s) => s.space === 'Dev').tables[0].fields.find((f) => f.name === name).type = type;
+  return doc;
+}
+
+test('a type change TYPE_MIGRATIONS allows plans migrate-field and needs allowDestructive (Issue #1633)', () => {
   const w = fresh();
   w.addField('Task', { name: 'Estimate', type: 'number' });
-  const doc = w.describeSchema();
-  doc.find((s) => s.space === 'Dev').tables[0].fields.find((f) => f.name === 'Estimate').type = 'text';
-  assert.throws(() => w.applySchema(doc, { allowDestructive: true }), /type/i);
+  const row = w.createEntity('Task', { name: 'one', values: { Estimate: 5 } });
+  const doc = retyped(w, 'Estimate', 'text');
+
+  assert.throws(() => w.applySchema(doc, { dryRun: true }), (err) => /allowDestructive/.test(err.message)
+    && /weave_update_field/.test(err.message) && /weave field update/.test(err.message) && !/delete the field/.test(err.message));
+  const plan = w.applySchema(doc, { dryRun: true, allowDestructive: true });
+  assert.deepEqual(plan, [{ action: 'migrate-field', subject: 'Dev/Task.Estimate' }]);
+  assert.equal(w.getField('Task', 'Estimate').type, 'number', 'the dry run wrote nothing');
+
+  w.applySchema(doc, { allowDestructive: true });
+  assert.equal(w.getField('Task', 'Estimate').type, 'text');
+  assert.equal(w.readEntity(row.id).fields.Estimate, '5', 'values convert the way updateField converts them');
+  assert.deepEqual(w.applySchema(w.describeSchema(), { dryRun: true }), [], 'the migrated schema round-trips');
+
+  const [entry] = w.activityFeed({ kinds: ['field-config-updated'] }).items.filter((a) => a.detail?.changed?.includes('type'));
+  assert.equal(entry.detail.lossy, true, 'recorded as lossy, the way updateField records it');
+  w.rollbackFieldConfig(entry.id);
+  assert.equal(w.getField('Task', 'Estimate').type, 'number');
+  assert.equal(w.readEntity(row.id).fields.Estimate, 5, 'the rollback brings the values back');
+});
+
+test('a type change TYPE_MIGRATIONS refuses still throws and names what the field can become (Issue #1633)', () => {
+  const w = fresh();
+  w.addField('Task', { name: 'Done', type: 'checkbox' });
+  assert.throws(() => w.applySchema(retyped(w, 'Done', 'number'), { allowDestructive: true }),
+    (err) => /cannot change type/.test(err.message) && /toggle, text/.test(err.message) && /weave_update_field/.test(err.message));
+  w.createTable({ space: 'Dev', name: 'Project' });
+  w.addRelation('Task', { name: 'Project', targetDb: 'Project' });
+  assert.throws(() => w.applySchema(retyped(w, 'Project', 'number'), { allowDestructive: true }), /cannot change type/);
 });
 
 test('the system registry is not the document business', () => {
