@@ -3642,7 +3642,7 @@ export class Weave {
         if (existing.type !== 'rollup' || !existing.config.via) continue;
         if (wantedRollups.some((f) => f.name === existing.name)) continue;
         if (!allowDestructive) throw new WeaveError(`Applying this document would delete 'System/Spaces.${existing.name}' — a destructive change needs allowDestructive`, 'invalid');
-        act('delete-field', `System/Spaces.${existing.name}`, () => this.deleteField(spacesT.id, existing.id));
+        act('delete-field', `System/Spaces.${existing.name}`, () => reg.deleteField(spacesT.id, existing.id));
       }
     }
     for (const sp of partial ? [] : this.listSpaces()) {
