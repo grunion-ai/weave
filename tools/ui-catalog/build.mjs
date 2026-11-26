@@ -62,7 +62,7 @@ export const stateOf = (s) => [...new Set([
   ...(/^<button[^>]*\sdisabled/.test(s.html) ? ['disabled'] : []),
 ])].join(' · ');
 
-const LAND = [['#tray', 'Field editor tray'], ['#modal', 'Dialog'], ['#cmdk', 'Command palette'], ['#bug-panel', 'Bug report panel'], ['sel-puck', 'Selection bar'], ['new-row-sheet', 'New row sheet (phone)'], ['phone-bar', 'Phone bottom bar'], ['doc-rail', 'Document outline rail'], ['vditor', 'Document editor'], ['doc-body', 'Document body'], ['wv-activity', 'Activity panel'], ['chip-pop', 'Popover'], ['dl-menu', 'Menu'], ['crumb-row', 'Breadcrumb bar'], ['table-tools', 'Table toolbar'], ['view-header', 'Page header'], ['fieldrow', 'Record field row'], ['entity-fields', 'Record fields'], ['table-wrap', 'Table'], ['#ws-rail', 'Workspace rail'], ['#sidebar', 'Sidebar'], ['wv-members', 'Members box'], ['wv-toasts', 'Toast stack'], ['#main', 'Main page']];
+export const LAND = [['#tray', 'New row and field editor tray'], ['#modal', 'Dialog'], ['#cmdk', 'Command palette'], ['#bug-panel', 'Bug report panel'], ['sel-puck', 'Selection bar'], ['phone-bar', 'Phone bottom bar'], ['doc-rail', 'Document outline rail'], ['vditor', 'Document editor'], ['wv-activity', 'Activity panel'], ['chip-pop', 'Popover'], ['crumb-row', 'Breadcrumb bar'], ['view-header', 'Page header'], ['fieldrow', 'Record field row'], ['entity-fields', 'Record fields'], ['table-wrap', 'Table'], ['#ws-rail', 'Workspace rail'], ['#sidebar', 'Sidebar'], ['wv-members', 'Members box'], ['wv-toasts', 'Toast stack'], ['#main', 'Main page']];
 export const landOf = (chain) => {
   for (let i = chain.length - 1; i >= 0; i--) {
     const a = chain[i].a, cls = ' ' + (a.class || '') + ' ';
