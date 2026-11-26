@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ROOT_TOKENS = /--wv-chip-|--fs-|--wv-hit:|--wv-cg-|--wv-pop-|--wv-icon-rest:|--tblr-border-radius:/;
+const ROOT_TOKENS = /--wv-chip-|--fs-|--wv-hit:|--wv-cg-|--wv-pop-|--wv-icon-rest:|--wv-shade-rgb:|--tblr-border-radius:/;
 const CHIP_SELECTORS = /^(:root|\.k\b|\.k-|\.k\.|\.av\b|\.hue-|\.mention|\.wv-card|\.wv-prose|\.cg-|\.wv-rat|\[data-bs-theme="dark"\] \.(k|hue|av))/;
 
 export function selectorList(sels) {
