@@ -1,0 +1,1 @@
+- **Phone field dialog keeps the keyboard down** (Issue #1399): tapping a field label on a phone opens Edit field with no input focused, so the software keyboard no longer covers the Result preview and the Views as row. A desktop pointer still opens the dialog with Name focused, and New field still focuses Name on every device.
