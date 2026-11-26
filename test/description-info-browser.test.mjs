@@ -103,4 +103,18 @@ if (s) {
       assert.equal(await note.isVisible(), true);
     } finally { await page.close(); }
   });
+
+  test('the desktop field dialog opens with Name focused, so typing renames the field (Issue #1399)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    try {
+      await page.goto(`${base}/#/entity/${row.id}`, { waitUntil: 'networkidle' });
+      await page.locator('.fieldrow[data-field="Stage"] .fieldrow-label').click();
+      await page.waitForSelector('#tray-back #tray .tray-form textarea.field-desc');
+      const focused = await page.evaluate(() => {
+        const a = document.activeElement;
+        return a?.closest('#tray') && a.matches('input') ? a.value : null;
+      });
+      assert.equal(focused, 'Stage', 'a pointer click on the field label opens Edit field with the Name input focused');
+    } finally { await page.close(); }
+  });
 }

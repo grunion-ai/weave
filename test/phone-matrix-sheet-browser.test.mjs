@@ -134,7 +134,7 @@ if (s) {
     });
   });
 
-  test('the phone field dialog opens with no field focused, so the keyboard stays down (Issue #1399)', { todo: 'Issue #1399' }, async (t) => {
+  test('the phone field dialog opens with no field focused, so the keyboard stays down (Issue #1399)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openFieldDialog(page);
       const focused = await page.evaluate(() => {

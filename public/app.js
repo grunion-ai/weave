@@ -600,7 +600,7 @@ function modal(title, bodyNodes, onSubmit, submitLabel = 'Create', submitClass =
   if (first) first.focus();
 }
 
-function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false } = {}) {
+function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false, autofocus = true } = {}) {
   document.querySelector('#tray-back')?.remove();
   document.querySelector('#modal-back')?.remove();
   const opener = document.activeElement;
@@ -645,8 +645,9 @@ function tray(title, bodyNodes, onSubmit, submitLabel = 'Create', { stay = false
   whileConnected(back, 'keydown', (e) => {
     if (e.target === document.body && !document.querySelector('#modal-back, #cmdk-back')) esc(e);
   }, true);
-  const first = form.querySelector('input:not([type=hidden]),select,textarea');
-  if (first) first.focus();
+  const first = autofocus ? form.querySelector('input:not([type=hidden]),select,textarea') : box;
+  if (!autofocus) box.tabIndex = -1;
+  first?.focus({ preventScroll: !autofocus });
   return back;
 }
 

@@ -1077,5 +1077,5 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
     await loadSchema();
     after();
     fieldConfigToast(db, saved, after);
-  }, isEdit ? 'Save changes' : 'Create');
+  }, isEdit ? 'Save changes' : 'Create', { autofocus: !isEdit || !matchMedia('(pointer: coarse)').matches });
 }
