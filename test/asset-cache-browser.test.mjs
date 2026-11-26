@@ -1,13 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { launch } from './lib/browser.mjs';
-import { HTML, ROOT, read } from './lib/source.mjs';
+import { HTML, LAZY_CALLS as lazyCalls } from './lib/source.mjs';
 
-const LAZY_CALL = /(?<!function )\blazyScript\(\s*(?:'([^']*)'|"([^"]*)"|(\S))/g;
-const lazyCalls = readdirSync(join(ROOT, 'public')).filter((f) => f.endsWith('.js')).flatMap((f) =>
-  [...read(`public/${f}`).matchAll(LAZY_CALL)].map((m) => ({ file: f, src: m[1] ?? m[2] ?? null, arg: m[3] })));
 const lazyCalled = [...new Set(lazyCalls.filter((c) => c.src).map((c) => c.src))].sort();
 const lazyListed = [...(/<template id="lazy-assets">([^]*?)<\/template>/.exec(HTML)?.[1] ?? '').matchAll(/<script src="([^"?]+)"><\/script>/g)].map((m) => m[1]).sort();
 
