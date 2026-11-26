@@ -1,1 +1,0 @@
-- **A backslash escape reads as its punctuation everywhere** (Issue #1902): `\- X`, `7\) X` and `\*not em\*` now show as `- X`, `7) X` and `*not em*` in HTML exports and share pages, PDFs, description previews and chip and card descriptions, as the editor already showed them. A backslash before a letter or digit, and any escape inside a code span, stays as written.
