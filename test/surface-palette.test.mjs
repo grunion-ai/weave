@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -13,7 +13,11 @@ const SURFACES = {
   divider: { light: '#d9dee6', dark: '#2a2f38' },
 };
 const RETIRED = ['#f3f1ec', '#fafaf8', '#132444', '#1a2d54', '#24375e', '#e6e3dc', '#0f1e39', '#efece5'];
-const APP_FILES = ['public/style.css', 'src/applet.js', 'src/auth-page.js'];
+const APP_FILES = [
+  'public/style.css', 'public/chip.css', 'public/status.css', 'public/status.html', 'public/billing.html', 'public/404.html', 'public/start.html',
+  'src/applet.js', 'src/auth-page.js', 'src/markdown.js', 'src/mail.js',
+];
+const RETIRED_INK_RGB = /rgba?\(\s*12\s*,\s*27\s*,\s*51\b/i;
 
 const themeBlock = (css, theme) => {
   const start = css.indexOf(theme === 'light' ? ':root, [data-bs-theme="light"] {' : '[data-bs-theme="dark"] {');
@@ -60,6 +64,28 @@ test('no app file paints a retired Kami surface hex', () => {
     const src = read(file).toLowerCase();
     for (const hex of RETIRED) assert.ok(!src.includes(hex), `${file} still carries ${hex}`);
   }
+});
+
+test('no app file paints the retired Kami ink #0c1b33 in its rgb form (Issue #1717)', () => {
+  assert.ok(RETIRED_INK_RGB.test('box-shadow: 0 1px 2px rgba(12, 27, 51, .25)'));
+  assert.ok(RETIRED_INK_RGB.test('rgb(12,27,51)'));
+  assert.ok(!RETIRED_INK_RGB.test('rgba(15, 23, 42, .25)'));
+  for (const file of APP_FILES) {
+    const lines = read(file).split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => RETIRED_INK_RGB.test(l));
+    assert.deepEqual(lines.map(([n]) => `${file}:${n}`), [], `${file} still carries the retired ink as rgba`);
+  }
+});
+
+test('every --wv-* custom property defined in public/style.css is read by the app (Issue #1717)', () => {
+  const css = read('public/style.css');
+  const defined = new Set([...css.matchAll(/(--wv-[\w-]+)\s*:/g)].map((m) => m[1]));
+  const spacingStep = /^--wv-space-\d+$/;
+  const walk = (dir) => readdirSync(join(ROOT, dir), { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
+  const sources = [...walk('public'), ...walk('src')].filter((f) => /\.(css|js|mjs|html)$/.test(f)).map(read).join('\n');
+  const readers = (name) => sources.includes(`var(${name})`) || sources.includes(`var(${name},`) || sources.includes(`'${name}'`) || sources.includes(`"${name}"`);
+  const unread = [...defined].filter((name) => !spacingStep.test(name) && !readers(name));
+  assert.deepEqual(unread, [], 'tokens defined but never read');
 });
 
 test('the rope keeps its strands on every surface', () => {
