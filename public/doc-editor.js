@@ -1470,7 +1470,9 @@ function crepeSourceKeeper(M, ctx, source) {
     const mid = now.slice(head, now.length - tail);
     const parts = [];
     if (head) parts.push(source.slice(0, spans[head - 1][1]));
-    if (mid.length) parts.push(clean(serialize(next.type.create(null, mid))).replace(/\n+$/, ''));
+    const wasMid = was.length - tail > head ? source.slice(spans[head][0], spans[was.length - tail - 1][1]) : '';
+    const dollars = (md) => (wasMid.includes('\\$') ? md : md.replace(/\\\$/g, '$'));
+    if (mid.length) parts.push(dollars(clean(serialize(next.type.create(null, mid)))).replace(/\n+$/, ''));
     if (tail) parts.push(source.slice(spans[was.length - tail][0]));
     const end = tail ? '' : (was.length ? source.slice(spans[was.length - 1][1]) : '\n') || '\n';
     return parts.join('\n\n') + end;
