@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { uuid, slug } from './ids.js';
-import { stripEmptyEmbeds } from './markdown.js';
+import { stripEmptyEmbeds, hideEscapes, showEscapes } from './markdown.js';
 import { sharedGlobal } from './public-globals.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal } from './workspace-name.js';
 import { Store, WeaveError, writeFileDurable, streamToFileDurable } from './store.js';
@@ -373,12 +373,12 @@ function plainLines(md, budget = 12) {
   const { kind, lines, label } = sharedGlobal('WeaveEditorLib').docPreview(md, { lines: budget });
   if (!kind) return [];
   if (!lines.length) return label ? [label] : [];
-  return lines.map((l) => l
+  return lines.map((l) => showEscapes(hideEscapes(l)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
     .replace(/(\*|_)(.+?)\1/g, '$2')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`([^`]+)`/g, (_, code) => showEscapes(code, true))
+    .replace(/~~(.+?)~~/g, '$1'))
     .trim()).filter(Boolean);
 }
 const GRID_SYSTEM_COLUMNS = ['Created At', 'Modified At', 'Created By', 'Modified By'];

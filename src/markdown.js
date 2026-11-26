@@ -72,11 +72,26 @@ function linkTarget(href) {
   return /^https?:\/\//i.test(String(href)) ? ' target="_blank" rel="noopener"' : '';
 }
 
+const ASCII_PUNCT = /^[!-/:-@[-`{-~]$/;
+
+export function hideEscapes(text) {
+  return String(text).replace(/\\([!-/:-@[-`{-~])/g, (_, c) => String.fromCharCode(0xE000 + c.charCodeAt(0)));
+}
+
+export function showEscapes(text, keepBackslash = false) {
+  return String(text).replace(/[\uE000-\uE07F]/g, (c) => (keepBackslash ? '\\' : '') + String.fromCharCode(c.charCodeAt(0) - 0xE000));
+}
+
 function renderInline(text, resolveMention) {
   let out = '';
   let i = 0;
   const src = String(text).replace(/[ \t]*$/, '').replace(/(?: {2,}|\\)\n/g, '\u0000\n');
   while (i < src.length) {
+    if (src[i] === '\\' && ASCII_PUNCT.test(src[i + 1] ?? '')) {
+      out += escapeHtml(src[i + 1]);
+      i += 2;
+      continue;
+    }
     if (src.startsWith('[[', i)) {
       const end = src.indexOf(']]', i);
       if (end > 0) {

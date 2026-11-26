@@ -130,6 +130,7 @@ globalThis.WeaveEditorLib = {
     const src = String(md ?? '');
     if (!src) return [];
     const RULES = [
+      [/^\\([!-/:-@[-`{-~])/, (m) => ({ text: m[1], mark: null })],
       [/^\[\[([^[\]\n|]+)(?:\|([^[\]\n]+))?\]\]/, (m) => ({ text: (m[2] ?? m[1]).trim(), mark: 'ref' })],
       [new RegExp('^' + this.ICON_TOKEN.source), (m) => { const icon = accept?.(m[1]) ?? null; return icon ? { text: m[1], mark: 'icon', icon } : null; }],
       [/^\[([^\]\n]+)\]\([^)\s]*\)/, (m) => ({ text: m[1], mark: 'link' })],
@@ -147,7 +148,10 @@ globalThis.WeaveEditorLib = {
       const rest = src.slice(i);
       const hit = RULES.map(([re, make]) => [re.exec(rest), make]).find(([m]) => m);
       const tok = hit && !(hit[0][0][0] === '_' && /\w$/.test(plain)) ? hit[1](hit[0]) : null;
-      if (tok) {
+      if (tok && !tok.mark) {
+        plain += tok.text;
+        i += hit[0][0].length;
+      } else if (tok) {
         flush();
         out.push(tok);
         i += hit[0][0].length;
