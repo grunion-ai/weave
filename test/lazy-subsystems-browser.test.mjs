@@ -109,12 +109,12 @@ if (s) {
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
       await page.evaluate(() => { location.hash = '#/activity'; });
       await page.waitForSelector('tr.activity-row');
-      assert.deepEqual(fetched, ['/activity-log.js']);
+      assert.deepEqual(fetched, ['/history-core.js', '/field-diff-core.js', '/activity-log.js']);
       await page.locator('tr.activity-row').first().click();
       await page.waitForSelector('.activity-title');
       await page.evaluate(() => { location.hash = '#/activity'; });
       await page.waitForSelector('tr.activity-row');
-      assert.deepEqual(fetched, ['/activity-log.js'], 'later visits reuse the loaded file');
+      assert.deepEqual(fetched, ['/history-core.js', '/field-diff-core.js', '/activity-log.js'], 'later visits reuse the loaded file');
     } finally { await page.close(); }
   });
 
@@ -134,7 +134,7 @@ if (s) {
       await page.keyboard.press('Escape');
       const row = page.locator('aside.wv-activity .wv-act-row').first();
       await row.waitFor();
-      assert.deepEqual(fetched, ['/activity-panel.js']);
+      assert.deepEqual(fetched, ['/history-core.js', '/activity-panel.js']);
       assert.equal(await btn.getAttribute('aria-pressed'), 'true');
       await row.focus();
       await page.keyboard.press('Enter');
@@ -144,7 +144,7 @@ if (s) {
       assert.equal(await btn.getAttribute('aria-pressed'), 'false');
       await toggleActivity(page, '#main');
       await row.waitFor();
-      assert.deepEqual(fetched, ['/activity-panel.js'], 'the second open reuses the loaded file');
+      assert.deepEqual(fetched, ['/history-core.js', '/activity-panel.js'], 'the second open reuses the loaded file');
     } finally { await page.close(); }
   });
 
@@ -154,7 +154,7 @@ if (s) {
       const fetched = watch(page);
       await page.goto(`${base}/#/table/${deals.id}?e=${big.id}&side=activity`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#side:not([hidden]) aside.wv-activity .wv-act-row');
-      assert.deepEqual(fetched, ['/activity-panel.js']);
+      assert.deepEqual(fetched, ['/history-core.js', '/activity-panel.js']);
       assert.equal(await page.locator('#dock .activity-btn').getAttribute('aria-pressed'), 'true');
       assert.match(await page.evaluate(() => location.hash), /[?&]side=activity\b/, 'the URL still names the pane');
     } finally { await page.close(); }
@@ -238,7 +238,7 @@ if (s) {
       await text.press('Enter');
       assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-10-02'), '2026-10-02');
       assert.equal(await text.inputValue(), '2026-10-02');
-      assert.deepEqual(fetched, ['/date-picker.js']);
+      assert.deepEqual(fetched, ['/nl-date.js', '/date-picker.js']);
       await due.locator('.date-pick-btn').click();
       const pop = page.locator('.date-pop');
       const smart = pop.locator('.date-smart:focus');
@@ -252,7 +252,7 @@ if (s) {
       await page.locator('.date-pop.range .date-day.in', { hasText: /^22$/ }).click();
       const span = { start: '2026-09-20', end: '2026-09-22' };
       assert.deepEqual(await eventually(() => weave.readEntity(big.id).raw.Window, span), span);
-      assert.deepEqual(fetched, ['/date-picker.js'], 'every later use reuses the loaded file');
+      assert.deepEqual(fetched, ['/nl-date.js', '/date-picker.js'], 'every later use reuses the loaded file');
     } finally { await page.close(); }
   });
 
@@ -268,7 +268,7 @@ if (s) {
       await text.press('Enter');
       assert.equal(await eventually(() => weave.readEntity(big.id).raw.Due, '2026-11-03'), '2026-11-03');
       assert.equal(await text.inputValue(), '2026-11-03');
-      assert.deepEqual(fetched, ['/date-picker.js']);
+      assert.deepEqual(fetched, ['/nl-date.js', '/date-picker.js']);
     } finally { await page.close(); }
   });
 }

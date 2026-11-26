@@ -965,7 +965,8 @@ test('the filter strip drives the engine where-language, not a client sort (Feat
 test('a date cell is type-or-pick: parsed text beside a calendar (Feature #44, popover since 2026-08-23)', () => {
   const app = readFileSync(join(ROOT, 'public/app.js'), 'utf8');
   const html = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
-  assert.ok(html.includes('nl-date.js'), 'the parser loads before the app');
+  assert.ok(html.includes('<script src="/nl-date.js"></script><script src="/date-picker.js"></script>'), 'the shell lists the parser beside the picker that reads it (Issue #1704)');
+  assert.ok(app.includes("Promise.all([lazyScript('/nl-date.js'), lazyScript('/date-picker.js')])"), 'the parser loads with the picker');
   assert.ok(readFileSync(join(ROOT, 'public/date-picker.js'), 'utf8').includes('parseNaturalDate('), 'typed phrases go through the parser');
   const ctl = fnBody('dateControl');
   assert.ok(ctl.includes('datePopover({'), 'the calendar button opens the popover');

@@ -28,10 +28,30 @@ export function judge(path, coding, n, budget) {
 export function unexplainedRaises(before, after) {
   const was = before?.bytes ?? {};
   const why = after.raised ?? {};
-  return Object.entries(after.bytes).flatMap(([path, sizes]) => CODINGS
+  const files = Object.entries(after.bytes).flatMap(([path, sizes]) => CODINGS
     .filter((c) => was[path]?.[c] !== undefined && sizes[c] > was[path][c])
     .filter(() => !String(why[path] ?? '').trim() || why[path] === before?.raised?.[path])
     .map((c) => `${path} (${c}) rose from ${was[path][c]} to ${sizes[c]} bytes with no reason: write one under raised["${path}"]`));
+  const bootWas = before?.boot ?? {};
+  const boot = after.boot ?? {};
+  const bootWhy = String(boot.why ?? '').trim();
+  return [...files, ...CODINGS
+    .filter((c) => bootWas[c] !== undefined && boot[c] > bootWas[c])
+    .filter(() => !bootWhy || boot.why === bootWas.why)
+    .map((c) => `boot (${c}) rose from ${bootWas[c]} to ${boot[c]} bytes with no reason: write one under boot.why`)];
+}
+
+export function bootAssets(html) {
+  const shell = html.replace(/<template[^]*?<\/template>/g, '');
+  return [...shell.matchAll(/<script[^>]*\ssrc="(\/[^"?]+)|<link[^>]*rel="stylesheet"[^>]*\shref="(\/[^"?]+)/g)].map((m) => m[1] ?? m[2]);
+}
+
+export function judgeBoot(coding, n, assets, boot) {
+  const cap = boot?.[coding];
+  if (cap === undefined) return `boot (${coding}) has no byte budget: add "boot": { "${coding}": ${fit(n)} } to ${BUDGET_FILE}`;
+  if (n > cap) return `boot (${coding}) serves ${sized(n)} over ${assets} eager assets, budget ${sized(cap)}: load a core nothing at boot reads through lazyScript, or raise boot.${coding} in ${BUDGET_FILE} and write why under boot.why`;
+  if (cap > n * 1.1) return `boot (${coding}) serves ${sized(n)} over ${assets} eager assets, budget ${sized(cap)}: lower boot.${coding} in ${BUDGET_FILE} to ${fit(n)} in this change so the saving holds`;
+  return null;
 }
 
 export function budgetUpdate(before, measured, { why = '' } = {}) {
