@@ -1612,7 +1612,7 @@ test('dock: a repaint releases what the last pass mounted, and the docked row ta
   assert.match(draw, /dockControls \}\)/, 'and the dock hands its controls to the crumb row');
   assert.doesNotMatch(APP + CSS, /dock-head/, 'the separate .dock-head row and its rule are gone');
   const grid = APP.match(/function renderTable\([^]*?\n\}\n/)[0];
-  assert.match(grid, /requestAnimationFrame\(\(\) => markClippedCells\(table\)\);[\s\S]{0,200}markDockedRow\(\);/, 'a grid redraw re-marks the docked row');
+  assert.match(grid, /requestAnimationFrame\(\(\) => markClippedCells\(table, added\)\);[\s\S]{0,200}markDockedRow\(\);/, 'a grid redraw re-marks the docked row');
   const mark = fnBody('markDockedRow');
   assert.match(mark, /weaveEntitySurface\.selectionId\(dock\.state\)/, 'which row is lit is the core\'s selection rule');
   const close = fnBody('dockClose');
