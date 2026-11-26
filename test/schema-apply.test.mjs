@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fresh } from './lib/fixtures.mjs';
+import { Weave } from '../src/engine.js';
 
 test('a round-trip is a no-op', () => {
   const w = fresh();
@@ -117,4 +118,26 @@ test('a refused apply writes nothing (Issue #996)', () => {
   const before = w.listSpaces().map((s) => s.name);
   assert.throws(() => w.applySchema([{ space: 'Design', tables: [] }]), /would delete space/);
   assert.deepEqual(w.listSpaces().map((s) => s.name), before, 'the refused document created no space');
+});
+
+test('a hub member retires a space rollup through applySchema (Issue #1630)', () => {
+  const root = new Weave();
+  root.updateWorkspace({ name: 'root' });
+  const member = new Weave();
+  member.updateWorkspace({ name: 'uno' });
+  member.createSpace({ name: 'Agent' });
+  const t = member.createTable({ space: 'Agent', name: 'Sessions' });
+  member.addField(t.id, { name: 'Cost', type: 'number' });
+  member.joinRegistry(root);
+  const docWith = (edit) => {
+    const system = root.describeSchema().find((sp) => sp.system === 'workspace');
+    const spaces = system.tables.find((x) => x.system === 'spaces');
+    spaces.fields = edit(spaces.fields);
+    return [...member.describeSchema(), system];
+  };
+  const rollups = () => root.describeSchema().flatMap((sp) => sp.tables).find((x) => x.system === 'spaces').fields.filter((f) => f.type === 'rollup').map((f) => f.name);
+  member.applySchema(docWith((fields) => [...fields, { name: 'Cost sum', type: 'rollup', viaTable: 'Agent/Sessions', targetField: 'Cost', aggregate: 'sum' }]));
+  assert.ok(rollups().includes('Cost sum'), 'the rollup landed');
+  member.applySchema(docWith((fields) => fields.filter((f) => f.name !== 'Cost sum')), { allowDestructive: true });
+  assert.ok(!rollups().includes('Cost sum'), 'the rollup is gone');
 });
