@@ -1108,7 +1108,7 @@ function registryWorkflows(dbId) {
 
 async function loadSchema() {
   const idRead = state.wsId ? null : bootRead('/workspace').then((w) => w.id, () => null);
-  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), bootRead('/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
+  const formPermission = state.canManageForms === undefined ? Promise.all([accountNow().catch(() => null), bootRead('/workspace')]).then(([me, workspace]) => { state.accountRole = me?.role; state.inviter = me?.inviter ?? null; return state.canManageForms = me ? ['architect', 'admin'].includes(me.role) : !workspace.requireAuth; }).catch(() => state.canManageForms = false) : null;
   schemaLoading = true;
   try {
     state.schema = await api('GET', '/schema');
@@ -10257,7 +10257,7 @@ async function runStarter(template) {
 function emptyWorkspace() {
   if (!state.canManageForms) return el('div', { class: 'card wv-start' }, el('div', { class: 'card-body' },
     el('h2', {}, 'You’re in the workspace'),
-    el('p', { class: 'wv-start-lead' }, 'There are no tables here yet. Ask a workspace architect to add the first table or template.'),
+    el('p', { class: 'wv-start-lead' }, `There are no tables here yet. Ask ${state.inviter ?? 'a workspace architect'} to add the first table or template.`),
     el('p', {}, state.accountRole === 'editor' ? 'As an editor, you can add and edit records once a table is ready.' : 'As an observer, you can read and comment once your team adds content.')));
   return el('div', { class: 'card wv-start' },
     el('div', { class: 'card-body' },
@@ -10690,6 +10690,7 @@ async function showHome() {
     if (loaded) return mountWorkspaceHome(main, { name: here.title, description: ws.description }, gen);
   }
   if (!mine.length) maybeOnboard();
+  if (!mine.length && !state.canManageForms) return;
   await appendWorkspaceDetails(main, { withMap: mine.length > 0 });
 }
 

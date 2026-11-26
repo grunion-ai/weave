@@ -1,0 +1,1 @@
+- **An invited member's empty workspace names who to ask** (Issue #1341): an editor or observer who opens a workspace with no tables sees the start card naming the architect who sent the invite (or the first architect, for an older account), and the home no longer lists the system tables or the Schema section until a table exists. `GET /api/auth/me` carries `inviter`.

@@ -54,6 +54,24 @@ test('engine: redeeming makes the account at the invited role, de-duplicates the
   assert.throws(() => w.redeemIdentityInvite(second.code, { issuer: 'https://other.example', subject: 'user_ann' }), /another provider/);
 });
 
+test('engine: an invited account names the person who sent the invite, and an older one names the first architect', () => {
+  const w = new Weave();
+  const boss = w.createAccount({ name: 'boss', role: 'architect' });
+  w.createAccount({ name: 'later', role: 'architect' });
+  const lead = w.createAccount({ name: 'lead', role: 'architect' });
+  const old = w.createAccount({ name: 'old', role: 'editor' });
+  const inv = w.inviteMember({ email: 'dylan@example.com', issuer: ISS });
+  w.state.meta.identityInvites[inv.id].invitedBy = `account:${lead.account.id}`;
+  const made = w.redeemIdentityInvite(inv.code, { issuer: ISS, subject: 'user_dylan' });
+  assert.equal(w.inviterOf(made.id), 'lead');
+  assert.equal(w.listAccounts().find((a) => a.id === made.id).invitedBy, 'lead', 'the list shows a name, never an actor id');
+  assert.equal(w.inviterOf(old.account.id), 'boss', 'an account with no inviter names the first architect');
+  const local = w.inviteMember({ email: 'ann@example.com', issuer: ISS });
+  assert.equal(w.inviterOf(w.redeemIdentityInvite(local.code, { issuer: ISS, subject: 'user_ann' }).id), 'boss', 'an invite from the command line names an architect, never the local actor');
+  assert.equal(w.inviterOf(boss.account.id), 'later', 'an architect never names itself');
+  assert.equal(new Weave().inviterOf('nobody'), null);
+});
+
 test('engine: a revoked or expired invite opens nothing', () => {
   const w = new Weave();
   const inv = w.inviteMember({ email: 'ann@example.com', issuer: ISS });
@@ -160,6 +178,8 @@ test('routes: the invited person opens the link, signs in once, and lands with a
     assert.equal(res.headers.get('location'), '/#/home');
     const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
     assert.deepEqual([me.account.name, me.role], ['dylan', 'observer']);
+    assert.equal(me.inviter, 'kyle', 'the invited person learns who to ask');
+    assert.equal((await (await s.call('GET', '/api/auth/me', { token: s.editor })).json()).inviter, 'kyle', 'an account made before invites names an architect');
     assert.equal((await s.call('GET', '/api/spaces', { cookie })).status, 200);
     assert.deepEqual(await (await s.call('GET', '/api/invites', { token: s.architect })).json(), [], 'the invite is spent');
     assert.equal((await s.call('GET', path(inv.url))).status, 410);
