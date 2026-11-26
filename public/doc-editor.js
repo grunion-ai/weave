@@ -478,6 +478,39 @@ function attachListMove(host) {
   }, { capture: true });
 }
 
+const PASTE_BLOCKS = 'address, article, blockquote, dd, details, div, dl, dt, figure, footer, h1, h2, h3, h4, h5, h6, header, hr, li, ol, p, pre, section, table, ul';
+
+function singleListLine(html) {
+  if (!html) return null;
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  const tops = [...body.childNodes].filter((n) => n.nodeType === 1 || (n.nodeType === 3 && n.data.trim()));
+  if (tops.length !== 1 || !/^(UL|OL)$/.test(tops[0].tagName ?? '')) return null;
+  const items = [...tops[0].childNodes].filter((n) => n.nodeType === 1 || (n.nodeType === 3 && n.data.trim()));
+  if (items.length !== 1 || items[0].tagName !== 'LI' || items[0].querySelector(PASTE_BLOCKS)) return null;
+  const text = items[0].textContent.replace(/\s+/g, ' ').trim();
+  return text || null;
+}
+
+function attachInlineListPaste(host) {
+  host.addEventListener('paste', (e) => {
+    const data = e.clipboardData;
+    if (!data || data.files?.length) return;
+    const sel = document.getSelection();
+    if (!sel?.rangeCount) return;
+    const node = sel.getRangeAt(0).startContainer;
+    const at = node instanceof Element ? node : node?.parentElement;
+    const root = host.querySelector('.vditor-ir .vditor-reset');
+    if (!at || !root?.contains(at) || at.closest('td, th, pre') !== root) return;
+    const li = at.closest('li');
+    if (!li || !root.contains(li)) return;
+    const text = singleListLine(data.getData('text/html'));
+    if (!text) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    document.execCommand('insertText', false, text);
+  }, { capture: true });
+}
+
 const WORD_SEGMENTS = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
 const DOUBLE_CLICK_SLOP = 4;
 
@@ -585,6 +618,7 @@ function mountDocEditor(host, { value, placeholder, onInput: hand, onBlur, autoF
   attachCodeFenceReturn(host);
   attachListMarkers(host);
   attachListMove(host);
+  attachInlineListPaste(host);
   attachWordDoubleClick(host);
   attachHintClamp(host);
   holdDocFrames(host);
