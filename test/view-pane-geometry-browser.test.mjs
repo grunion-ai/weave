@@ -47,8 +47,8 @@ if (s) {
 
   const footCount = (page, sel) => page.locator(sel).first().evaluate((n) => Number(n.textContent.replace(/[^\d]/g, '')));
   const TOTALS = [
-    ['an ungrouped filtered view', 'Standard', { filters: { Workstream: ['Home', 'Startup'] }, rollups: true }, 'Issue #1911'],
-    ['an ungrouped view whose filter matches nothing', 'Standard', { filters: { Assignee: ['Guest'] }, rollups: true }, 'Issue #1911'],
+    ['an ungrouped filtered view', 'Standard', { filters: { Workstream: ['Home', 'Startup'] }, rollups: true }],
+    ['an ungrouped view whose filter matches nothing', 'Standard', { filters: { Assignee: ['Guest'] }, rollups: true }],
     ['a grouped filtered view', 'Work', { subtotals: 'top' }],
     ['a grouped view whose filter matches nothing', 'Work', { filters: { Assignee: ['Guest'] } }],
   ];
