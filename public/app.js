@@ -5501,7 +5501,7 @@ function sortWords(db, name) {
   return [w.asc, w.desc];
 }
 function paneSwitch({ label, hint = null, on, data = {}, onChange }) {
-  const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': label, ...(on ? { checked: '' } : {}) });
+  const input = el('input', { type: 'checkbox', role: 'switch', class: 'wv-toggle-input', 'aria-label': label, dataset: { vpKey: `switch:${Object.keys(data)[0] ?? label}` }, ...(on ? { checked: '' } : {}) });
   const wrap = el('label', { class: 'wv-toggle vp-switch' + (on ? ' on' : ''), dataset: data },
     el('span', { class: 'vp-switch-text' }, label, hint ? el('small', {}, hint) : null),
     input, el('span', { class: 'wv-toggle-track', 'aria-hidden': 'true' }, el('span', { class: 'wv-toggle-knob' })));
@@ -5542,6 +5542,7 @@ function levelsBlock(db, kind, save) {
     const pick = pickerSelect({ name: `${kind}-${i}`, title: isSort ? VP.SORT_LEVELS[i] : `Level ${i + 1}`, value: l.field,
       options: pool.filter((o) => o.id === l.field || free(o)) });
     pick.classList.add(`${kind}-field`, 'vp-field');
+    pick.querySelector('.picker-face').dataset.vpKey = `${kind}:${i}:field`;
     pick.input.addEventListener('change', () => { const next = copy(); next[i] = isSort ? { field: pick.input.value, dir: 'asc' } : { field: pick.input.value }; write(next); });
     const seg = segCtl([{ id: 'asc', label: words[0] }, { id: 'desc', label: words[1] }], dir, (d) => put({ dir: d }));
     seg.classList.add(`${kind}-dir`, 'vp-dir');
@@ -5550,11 +5551,13 @@ function levelsBlock(db, kind, save) {
     if (!isSort && f?.type === 'date') {
       grain = pickerSelect({ name: `grain-${i}`, title: 'Grain', value: l.grain ?? 'month', options: listCore.GRAINS.map((g) => ({ id: g, label: `By ${g}` })) });
       grain.classList.add('group-grain');
+      grain.querySelector('.picker-face').dataset.vpKey = `group:${i}:grain`;
       grain.input.addEventListener('change', () => put({ grain: grain.input.value }));
     }
     if (!isSort && f?.type === 'relation') {
       heading = segCtl([{ id: 'label', label: 'Label' }, { id: 'chip', label: 'Chip', title: "The linked record's Chip heads the group" }], l.heading ?? 'label', (h) => put({ heading: h }));
       heading.classList.add('group-heading');
+      keyedSeg(heading, `group:${i}:heading`);
     }
     const act = (cls, icon, label, run, off = false) => el('button', {
       class: `btn btn-sm btn-icon btn-ghost-secondary vp-act ${cls}`, type: 'button', 'aria-label': label, title: label,
@@ -5601,8 +5604,8 @@ function levelsBlock(db, kind, save) {
   if (isSort) out.push(el('p', { class: 'vp-hint' }, last ? `Groups order the records first. These levels order records inside each ${last} group. Ties fall back to #.` : 'Ties after the last level fall back to #.'));
   else if (levels.length) {
     out.push(el('div', { class: 'vp-links' },
-      el('button', { class: 'btn btn-sm btn-ghost-primary vp-collapse-all', type: 'button', onclick: () => save({ collapsed: drawnGroupKeys(db) }) }, 'Collapse all'),
-      el('button', { class: 'btn btn-sm btn-ghost-primary vp-expand-all', type: 'button', onclick: () => save({ collapsed: [] }) }, 'Expand all')));
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-collapse-all', type: 'button', dataset: { vpKey: 'group:collapse-all' }, onclick: () => save({ collapsed: drawnGroupKeys(db) }) }, 'Collapse all'),
+      el('button', { class: 'btn btn-sm btn-ghost-primary vp-expand-all', type: 'button', dataset: { vpKey: 'group:expand-all' }, onclick: () => save({ collapsed: [] }) }, 'Expand all')));
     const multi = levels.map((l) => fieldOf(l.field)).find((f) => f?.type === 'multiselect');
     if (multi) out.push(el('p', { class: 'vp-hint' }, `A ${db.term.singular} with several ${multi.name} values appears under each one. Totals above that level count it once.`));
   }
@@ -5618,6 +5621,7 @@ function listRowPrefs(db, save) {
     return sel;
   };
   const doneSel = pick('completed', 'Completed by', v.completedBy, db.fields.filter((f) => f.type === 'checkbox' || f.type === 'toggle'));
+  doneSel.querySelector('.picker-face').dataset.vpKey = 'group:completed';
   doneSel.input.addEventListener('change', () => save({ completedBy: doneSel.input.value || null }));
   const hide = v.group?.length ? [paneSwitch({ label: 'Hide empty groups', on: !!v.hideEmpty, data: { hideEmpty: '' }, onChange: (on) => save({ hideEmpty: on }) })] : [];
   return [...hide, el('div', { class: 'eye-head' }, 'Rows'),
@@ -6334,14 +6338,14 @@ function boardControls(db, put) {
   const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
   return [
     row('board-presets', 'Start from', el('span', { class: 'board-preset-row' },
-      el('button', { class: 'btn btn-sm board-preset', type: 'button', title: 'Kanban: columns side by side, no picture, Manual order', onclick: () => put(columns) }, 'Columns'),
-      el('button', { class: 'btn btn-sm board-preset', type: 'button', title: 'Gallery: groups stacked, each card headed by its cover picture', onclick: () => put({ groups: 'stacked', picture: cover?.size ?? 'medium' }) }, 'Gallery'))),
-    row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
-    row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
-      picture, (size) => put({ picture: size }))),
-    picture === 'off' ? null : row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
-    picture !== 'off' && (fit === 'crop' || fit === 'fit') ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
-    picture !== 'off' && (fit === 'original' || fit === 'capped') ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
+      el('button', { class: 'btn btn-sm board-preset', type: 'button', dataset: { vpKey: 'preset:Columns' }, title: 'Kanban: columns side by side, no picture, Manual order', onclick: () => put(columns) }, 'Columns'),
+      el('button', { class: 'btn btn-sm board-preset', type: 'button', dataset: { vpKey: 'preset:Gallery' }, title: 'Gallery: groups stacked, each card headed by its cover picture', onclick: () => put({ groups: 'stacked', picture: cover?.size ?? 'medium' }) }, 'Gallery'))),
+    row('board-groups', 'Groups', keyedSeg(segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups })), 'board-groups')),
+    row('board-picture', 'Picture', keyedSeg(segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
+      picture, (size) => put({ picture: size })), 'board-picture')),
+    picture === 'off' ? null : row('board-fit', 'Fit', keyedSeg(segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next })), 'board-fit')),
+    picture !== 'off' && (fit === 'crop' || fit === 'fit') ? row('board-frame', 'Card shape', keyedSeg(segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame })), 'board-frame')) : null,
+    picture !== 'off' && (fit === 'original' || fit === 'capped') ? row('board-flow', 'Uneven cards', keyedSeg(segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow })), 'board-flow')) : null,
   ].filter(Boolean);
 }
 function groupFieldOptions(db) {
