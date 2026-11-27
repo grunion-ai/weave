@@ -1,1 +1,0 @@
-- Relation values given by name resolve through a per-table name index instead of scanning the target table, keeping exact-then-any-case matching and the first-row pick for duplicate names (Issue #1620).
