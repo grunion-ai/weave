@@ -1,1 +1,2 @@
-- A view whose filters match nothing says so above the empty grid or board ("No tasks match this view's filters.") with a Clear filters button, and an empty board no longer reads "Drop a card here" in that state (Issue #1913).
+- A view whose filters match nothing says so above the empty grid or board ("No tasks match this view's filters.") with a Clear filters button (Issue #1913).
+- While that note shows, the board hides its drop placeholders, so an empty board no longer reads "Drop a card here" (Issue #1913).
