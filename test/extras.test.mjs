@@ -32,6 +32,19 @@ test('CSV import names each header that matches no field and still imports the k
   assert.equal(w.query('Item', {}).items[0].fields.Points, 5);
   assert.equal('ignored' in w.importCSV(db, 'Name,Points\nSecond,1\n'), false);
 });
+test('CSV import reports each error at its file line past blank lines and multi-line cells (Issue #1621)', () => {
+  const { w, db } = smallWorkspace();
+  const result = w.importCSV(db, 'Name,Points\nGood,1\n\n\nBad,notanumber\n"Two\nlines",2\nWorse,nope\n');
+  assert.equal(result.created, 2);
+  assert.deepEqual(result.errors.map((e) => e.row), [5, 8]);
+});
+test('CSV import names a header that matches a computed field among the ignored (Issue #1621)', () => {
+  const { w, db } = smallWorkspace();
+  w.addField(db, { name: 'Double', type: 'formula', config: { expression: 'Points * 2' } });
+  const result = w.importCSV(db, 'Name,Points,Double,Kidn,Public Id\nFirst,5,99,x,7\n');
+  assert.equal(result.created, 1);
+  assert.deepEqual(result.ignored, ['Double', 'Kidn']);
+});
 test('CSV import creates entities with typed values', () => {
   const { w, db } = smallWorkspace();
   const result = w.importCSV(db, 'Name,Points,Tags,Ready\nFirst,5,a; b,true\nSecond,3,c,\nBadNum,notanumber,,\n');
