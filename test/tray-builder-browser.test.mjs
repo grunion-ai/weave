@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, phoneBrowser, phonePage, toggleActivity } from './lib/browser.mjs';
+import { atRest, launch, phoneBrowser, phonePage, toggleActivity } from './lib/browser.mjs';
 
 let orders, order;
 const s = await launch('tray builder', (weave) => {
@@ -134,7 +134,8 @@ if (s) {
       await page.goto(`${base}/#/table/${orders.id}`, { waitUntil: 'networkidle' });
       await page.evaluate(() => tray('New field', [document.createElement('input')], async () => {}));
       await page.waitForSelector('#tray');
-      await page.waitForFunction(() => document.querySelector('#tray').getAnimations().every((a) => a.playState === 'finished'));
+      await page.evaluate(() => { const t = document.querySelector('#tray'); t.style.animation = 'none'; void t.offsetWidth; t.style.animation = ''; });
+      await atRest(page.locator('#tray'));
       const box = await page.evaluate(() => {
         const t = document.querySelector('#tray');
         const r = t.getBoundingClientRect();
