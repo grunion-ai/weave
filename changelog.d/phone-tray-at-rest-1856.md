@@ -1,0 +1,1 @@
+- The phone tray test waits for the tray to come to rest before it measures it, instead of a check that passes on an empty animation list, so a slide-in still running under shard load no longer fails the case (Issue #1856).
