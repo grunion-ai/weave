@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { atRest, launch } from './lib/browser.mjs';
+import { atRest, engineOf, launch } from './lib/browser.mjs';
 
 const ROWS = 2000;
 const NODE_BUDGET = 6000;
@@ -140,6 +140,51 @@ if (s) {
       await more.click();
       assert.equal(await page.locator('.board-cards > .tile').count(), BOARD_CAP + 5);
       assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+  });
+
+  test('Safari lays out and grows a masonry gallery with no ResizeObserver loop error (Issue #1369)', async () => {
+    layout({ layout: 'board', group: null, groups: 'stacked', picture: 'medium', fit: 'original', fields: ['Name', 'Photo'] }, gallery);
+    const webkit = await engineOf('webkit');
+    const page = await webkit.newPage({ viewport: { width: 700, height: 600 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    try {
+      await page.goto(`${base}/#/table/${gallery.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-board .tile');
+      await atRest(page.locator('.wv-board'));
+      assert.deepEqual(errors, [], 'the first draw raises no error');
+      await page.locator('.board-cards > .wv-more').click();
+      assert.equal(await page.locator('.board-cards > .tile').count(), BOARD_CAP + 5);
+      await atRest(page.locator('.wv-board'));
+      assert.deepEqual(errors, [], 'Show more raises no error');
+    } finally { await page.close(); }
+  });
+
+  test('a masonry gallery paints no frame with an unspanned card, on load or Show more (Issue #1369)', async () => {
+    layout({ layout: 'board', group: null, groups: 'stacked', picture: 'medium', fit: 'original', fields: ['Name', 'Photo'] }, gallery);
+    const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
+    await page.addInitScript(() => {
+      window.bareFrames = 0;
+      const frame = () => {
+        const probe = document.documentElement.appendChild(document.createElement('i'));
+        const watch = new ResizeObserver(() => {
+          if ([...document.querySelectorAll('.board-cards > .tile, .board-cards > .wv-more')].some((t) => !t.style.gridRowEnd)) window.bareFrames++;
+          watch.disconnect();
+          probe.remove();
+        });
+        watch.observe(probe);
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    try {
+      await page.goto(`${base}/#/table/${gallery.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('.wv-board .tile');
+      await atRest(page.locator('.wv-board'));
+      await page.locator('.board-cards > .wv-more').click();
+      await atRest(page.locator('.wv-board'));
+      assert.equal(await page.evaluate(() => window.bareFrames), 0, 'every painted card already carries its row span');
     } finally { await page.close(); }
   });
 

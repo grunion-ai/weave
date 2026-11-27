@@ -1,11 +1,31 @@
 'use strict';
+const masonryDue = new Set();
+let masonryFrame = 0;
+const spanMasonry = () => {
+  masonryFrame = 0;
+  const due = [...masonryDue];
+  masonryDue.clear();
+  const spans = due.map((t) => {
+    if (!t.isConnected) return null;
+    const gap = parseFloat(getComputedStyle(t.parentElement).columnGap) || 0;
+    return `span ${Math.ceil((t.getBoundingClientRect().height + gap) / 2)}`;
+  });
+  due.forEach((t, i) => { if (spans[i] && t.style.gridRowEnd !== spans[i]) t.style.gridRowEnd = spans[i]; });
+};
+const respan = (t) => {
+  masonryDue.add(t);
+  masonryFrame ||= requestAnimationFrame(spanMasonry);
+};
 const masonryRows = new ResizeObserver((entries) => {
   for (const { target: t } of entries) {
-    if (!t.isConnected) { masonryRows.unobserve(t); continue; }
-    const gap = parseFloat(getComputedStyle(t.parentElement).columnGap) || 0;
-    t.style.gridRowEnd = `span ${Math.ceil((t.getBoundingClientRect().height + gap) / 2)}`;
+    if (t.isConnected) respan(t);
+    else { masonryRows.unobserve(t); masonryDue.delete(t); }
   }
 });
+const masonryWatch = (t) => {
+  masonryRows.observe(t);
+  respan(t);
+};
 const coverSize = (e) => {
   e.target.style.setProperty('--nw', `${e.target.naturalWidth}px`);
   e.target.style.setProperty('--nh', `${e.target.naturalHeight}px`);
@@ -144,7 +164,7 @@ function renderBoard(main, db, items, ctx) {
           el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, edited, { compact: true }))))) : null));
     card.wvPath = path;
     card.wvItem = node;
-    if (masonry) masonryRows.observe(card);
+    if (masonry) masonryWatch(card);
     RO().guard(card);
     fileDropZone(card, (files) => dropCover(it, files));
     card.addEventListener('click', (e) => {
@@ -174,7 +194,7 @@ function renderBoard(main, db, items, ctx) {
     const items = node.items.flatMap(function out(i) { return [i, ...i.children.flatMap(out)]; });
     const cards = el('div', { class: 'board-cards', role: 'list' }, ...cappedEls(db, listCore.BOARD_CAP, node.key, items, (i) => [tileEl(i, completed ? null : node.path)]));
     const more = cards.querySelector(':scope > .wv-more');
-    if (masonry && more) masonryRows.observe(more);
+    if (masonry && more) masonryWatch(more);
     cards.append(el('div', { class: 'board-empty board-tail' }, 'Drop a card here'));
     return cards;
   };
