@@ -1,1 +1,0 @@
-- A board on a table with no picture field draws no picture slots: Picture Small, Medium or Large no longer adds an empty grey slot to every card or narrows the cards until chips wrap one letter per line. A table with a cover field keeps its placeholder for cards with no picture (Issue #1917).

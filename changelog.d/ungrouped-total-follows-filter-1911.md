@@ -1,1 +1,0 @@
-- The Σ row of an ungrouped view counts and sums the records the view shows: its filter and its search now narrow the space rollups, as a grouped view's All row already did, and `weave stats` / `weave_stats` / `GET /api/tables/:ref/stats` take `search` beside `where` and roll each rollup over the records kept (Issue #1911).
