@@ -1,0 +1,1 @@
+- The sorted-column cell commit test waits for the fallback table re-read itself instead of two animation frames, so a slow client no longer counts zero re-reads (Issue #1825).
