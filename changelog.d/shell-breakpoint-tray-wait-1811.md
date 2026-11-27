@@ -1,1 +1,0 @@
-- The shell breakpoint test waits for the tray button to reach its desktop size after the resize to 720 px instead of reading it two frames later, so a width transition still running under shard load no longer fails the case (Issue #1811).

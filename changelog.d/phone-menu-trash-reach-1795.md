@@ -1,1 +1,0 @@
-- The phone menu touch test polls the Trash hit test after scrolling it into view instead of reading it once, and names what covers Trash when it fails, so a scroll still settling under shard load no longer fails the case (Issue #1795).

@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.193 (2026-11-27)
+
+- CSV import reports each rejected row at its line in the file, counting blank lines and multi-line quoted cells, and the reply's `ignored` now also names a header that matches a computed field, so a misspelled or read-only column no longer imports as an empty column without a word (Issue #1621).
+- A chain of computed fields more than eight steps deep reads `#DEPTH:` and the path from the field down to where the chain stopped instead of an empty cell; the marker travels through formulas, lookups and rollups the way `#CYCLE:` does, the formula check's scan counts it as an error, and the formula, lookup and rollup guides name the limit (Issue #1607).
+- The phone menu touch test polls the Trash hit test after scrolling it into view instead of reading it once, and names what covers Trash when it fails, so a scroll still settling under shard load no longer fails the case (Issue #1795).
+- The shell breakpoint test waits for the tray button to reach its desktop size after the resize to 720 px instead of reading it two frames later, so a width transition still running under shard load no longer fails the case (Issue #1811).
+
 ## v0.4.192 (2026-11-27)
 
 - The entity Activity cap test waits for the second record's page before it reads the note, so a slow feed no longer reads the first record's count (Issue #1780).
