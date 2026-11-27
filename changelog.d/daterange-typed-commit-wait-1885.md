@@ -1,0 +1,1 @@
+- The date range browser tests wait for a typed range to reach the server instead of reading it once after a flush, since the commit runs only after the lazily loaded date picker arrives, so a slow picker load under shard load no longer fails the grid case (Issue #1885).
