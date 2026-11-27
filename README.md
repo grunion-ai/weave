@@ -332,6 +332,8 @@ node bin/weave.js query Task --where '[["Status","=","Open"]]' --data ./my-works
 node bin/weave.js mcp --data ./my-workspace.db
 ```
 
+REST answers compact JSON. Add `?pretty=1` to any API path for indented output.
+
 Entity refs accept UUIDs, `#12`, `Table#12`, or `Space/Table#12`, in the UI, in
 the API, in documents and in agent tool calls. See [AGENTS.md](AGENTS.md) for
 the full agent-facing map of the repo, including the one place the qualified

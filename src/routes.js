@@ -1911,7 +1911,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
           ...(schemaVersion ? { 'X-Weave-Schema-Version': schemaVersion } : {}),
           ...headers,
         },
-        body: isBin || isStr ? data : JSON.stringify(data, null, 1),
+        body: isBin || isStr ? data : JSON.stringify(data, null, rx.searchParams?.get('pretty') === '1' ? 1 : undefined),
       };
     };
 
