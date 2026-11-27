@@ -1930,7 +1930,7 @@ body:has(#cmdk-back) #tray-back { z-index: 1070; }
 .table-search-input::placeholder { color: var(--tblr-tertiary); opacity: 1; }
 .table-search.open .table-search-input { display: block; }
 :is(.table-search-empty, .view-filter-empty) { margin: 8px 0; color: var(--tblr-secondary); }
-#main:has(> .view-filter-empty) .board-empty { display: none; }
+#main.filtered-out .board-empty { display: none; }
 .crumb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .crumb-path { flex: 1 1 8rem; min-width: 0; white-space: nowrap; overflow: hidden; display: flex; align-items: center; gap: 2px; }
 #main .view-header .crumb-row > .crumb-path { flex-basis: auto; max-width: 100%; }
