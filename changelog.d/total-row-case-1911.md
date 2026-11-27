@@ -1,0 +1,1 @@
+- The two ungrouped total-row cases in test/view-pane-geometry-browser.test.mjs are hard assertions now that the Σ row follows the view's filter (Issue #1911).
