@@ -45,7 +45,17 @@ if (s) {
       assert.equal(phone.crumbHeight, 36, 'crumbs are 36px chips in phone format');
       assert.equal(phone.trayButtonWidth, 44, 'the navigation button is a 44px target');
       assert.equal(await page.evaluate(() => matchMedia('(max-width: 719px)').matches), true);
+      await page.addStyleTag({ content: '#main .view-header .nav-menu.held { min-width: 44px !important; }' });
+      await page.evaluate(() => {
+        const menu = document.querySelector('#main .view-header .nav-menu');
+        menu.classList.add('held');
+        addEventListener('resize', () => setTimeout(() => menu.classList.remove('held'), 300), { once: true });
+      });
       await resize(page, DESKTOP_MIN);
+      await page.waitForFunction(() => {
+        const menu = document.querySelector('#main .view-header .nav-menu');
+        return !!menu && menu.getBoundingClientRect().width < 44 && menu.getAnimations().every((a) => a.playState !== 'running');
+      }, null, { timeout: 5000 }).catch(() => {});
       const desk = await shell(page);
       assert.equal(desk.workspaceCrumb, true, 'desktop format shows the workspace crumb');
       assert.ok(desk.crumbHeight < 36, `desktop crumbs are text, not chips: ${desk.crumbHeight}px`);
