@@ -57,7 +57,7 @@ if (s) {
       const page = await open(name, patch, { height: 4000, count: true });
       try {
         const grouped = !!weave.tableView(`${tasks.id}/${name}`).group;
-        const cell = grouped ? '#main tr.group-sum.grand td[data-col="Name"] .foot-val' : '#main tr.wv-foot td.foot-cell[data-col="Name"] .foot-val';
+        const cell = grouped ? '#main tr.group-sum.grand .group-sum-label' : '#main tr.wv-foot td.foot-cell[data-col="Name"] .foot-val';
         await page.waitForSelector(cell);
         const want = shown(weave.tableView(`${tasks.id}/${name}`).id);
         assert.equal(await page.locator('#main tr.entity-row').count(), want, 'the grid draws every row the view holds');
@@ -65,6 +65,26 @@ if (s) {
       } finally { await page.close(); }
     });
   }
+
+  test('with Rollups on, each group states its row count once, in its head (Issue #1932)', async () => {
+    const page = await open('Work', { subtotals: 'all' }, { height: 4000, count: true });
+    try {
+      await page.waitForSelector('#main tr.group-sum.grand td[data-col="Name"]');
+      const rows = await page.locator('#main tr.group-sum').evaluateAll((trs) => trs.map((t) => ({
+        grand: t.classList.contains('grand'),
+        label: t.querySelector('.group-sum-label')?.textContent ?? null,
+        counts: [...t.querySelectorAll('.foot-stat .foot-agg')].filter((a) => a.textContent === 'n').length,
+      })));
+      const heads = await page.locator('#main tr.group-head .group-count').allTextContents();
+      assert.ok(heads.length > 1 && heads.every((t) => /^\d+ tasks?$/.test(t)), `each head carries its count: ${heads}`);
+      const groups = rows.filter((r) => !r.grand);
+      assert.equal(groups.length, heads.length, 'one subtotal row per group');
+      assert.deepEqual(groups.filter((r) => r.label || r.counts), [], 'a subtotal row repeats neither the group name nor its count');
+      const grand = rows.find((r) => r.grand);
+      assert.match(grand.label, /^All · \d+ tasks?$/, 'the grand total names its count once');
+      assert.equal(grand.counts, 0, 'and draws no n cell beside it');
+    } finally { await page.close(); }
+  });
 
   for (const layout of ['table', 'board']) {
     test(`a ${layout} whose filter matches nothing says so (Issue #1913)`, { todo: 'Issue #1913' }, async () => {
