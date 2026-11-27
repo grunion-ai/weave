@@ -83,6 +83,10 @@ export const ENV = [
     doc: 'Set to `1` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from the last `X-Forwarded-For` entry, the one the proxy appended. Unset behind a proxy, every visitor shares the proxy\'s address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header.',
   },
   {
+    name: 'WEAVE_ACCESS_LOG', section: 'deploy', readBy: '`weave serve`', default: 'unset',
+    doc: 'Set to `1` and the server writes one access-log JSON line to stdout per finished response: method, path, status, ms, actor, workspace, and on a 4xx or 5xx the `X-Request-Id` the answer carried. The path drops its query string and masks `wv*_` tokens; headers and cookies are never written. Unset, no line is written; error answers carry `X-Request-Id` either way.',
+  },
+  {
     name: 'WEAVE_BACKUP_DEST', section: 'deploy', readBy: '`weave serve`, `weave backup`', default: 'unset',
     doc: '`s3://bucket/prefix`, or `weave://host/account` for a weave cloud account (the **Backup to weave cloud** guide). Set on `weave serve`, the server backs up in-process daily at 04:00 UTC and keeps thirty archives; unset, nothing leaves the machine and `/api/health` carries no `backup` field. Wrong bucket or credentials: the run fails, a `backup-failed` audit record and `lastStatus` on health say so, the server keeps serving. The endpoint, credentials and passphrase it needs are on the **Backup and restore** guide.',
   },
