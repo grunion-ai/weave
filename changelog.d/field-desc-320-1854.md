@@ -1,1 +1,0 @@
-- The field editor's Description box grows to its whole placeholder in Safari on a 320 px phone, where it cut off the last line (Issue #1854).
