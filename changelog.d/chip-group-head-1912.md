@@ -1,0 +1,1 @@
+- A table grouped by a link with the Chip heading keeps each group head one row tall: the chip's fields stay on one line and end in an ellipsis, where a long Tasks list wrapped the head to 821 px and pushed the rows off screen (Issue #1912).
