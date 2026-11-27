@@ -1,1 +1,0 @@
-- A geometry case guards the View pane accordion: opening a lower section in a 600 px window keeps its header inside the pane's visible box (Issue #1923).

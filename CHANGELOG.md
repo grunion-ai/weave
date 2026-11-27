@@ -2,6 +2,22 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.195 (2026-11-27)
+
+- On a board the View pane offers only controls the board draws: Σ Rollups, Subtotals and Per column give way to the line "Σ Rollups show in the Table layout.", Fit, Card shape and Uneven cards appear only when the table has a cover field and Picture is on, and a third group level on side-by-side columns says that it groups the Table layout only (Issue #1916).
+- A table grouped by a link with the Chip heading keeps each group head one row tall: the chip's fields stay on one line and end in an ellipsis, where a long Tasks list wrapped the head to 821 px and pushed the rows off screen (Issue #1912).
+- A view whose filters match nothing says so above the empty grid or board ("No tasks match this view's filters.") with a Clear filters button (Issue #1913).
+- While that note shows, the board hides its drop placeholders, so an empty board no longer reads "Drop a card here" (Issue #1913).
+- Folded groups belong to the view that folded them: Collapse all, Expand all and a fold in the grid or on a board no longer reach other views grouped the same way, and a view regrouped like another one adopts none of its folds; it keeps its own folds whose key path still exists (Issue #1909).
+- With Σ Rollups on, a group states its row count once, in its head: the subtotal row no longer repeats the group name and count ("Open · 3 tasks") or draws an n cell beside them, and the grand total row reads "All · N tasks" with no n cell. The ungrouped Σ row keeps its n cell. On a phone the subtotal rows, which showed only that repeated label, are hidden (Issue #1932).
+- Editing a Group level (Reversed, add, remove, reorder) keeps the folded groups whose key path still exists under the new levels instead of opening every group; a grouping another view already uses still takes that view's folds (Issue #1914).
+- A board on a table with no picture field draws no picture slots: Picture Small, Medium or Large no longer adds an empty grey slot to every card or narrows the cards until chips wrap one letter per line. A table with a cover field keeps its placeholder for cards with no picture (Issue #1917).
+- The View pane keeps keyboard focus on the control you used after a save redraws it: the Rollups, Include deleted and Hide empty groups switches, Collapse all, Expand all, the level pickers, the Chip heading, the board presets and the board Groups, Picture, Fit, Card shape and Uneven cards controls each carry a stable key, where focus fell to the page body before (Issue #1922).
+- A geometry case guards the View pane accordion: opening a lower section in a 600 px window keeps its header inside the pane's visible box (Issue #1923).
+- The two ungrouped total-row cases in test/view-pane-geometry-browser.test.mjs are hard assertions now that the Σ row follows the view's filter (Issue #1911).
+- The Σ row of an ungrouped view counts and sums the records the view shows: its filter and its search now narrow the space rollups, as a grouped view's All row already did, and `weave stats` / `weave_stats` / `GET /api/tables/:ref/stats` take `search` beside `where` and roll each rollup over the records kept (Issue #1911).
+- Three browser suites turn the 2026-11-27 View pane trial into regression tests over a Tasks-shaped table with four views: every pane control in Table and Board is clicked with the real mouse and must change only its own key of the current view, leave every other view and every other table's schema alone, and keep the open section; eight setup goals hold a click budget in test/view-pane-click-budget.json; group heads, total rows, empty views and covered controls are measured. The ruled couplings sit in one named list with their Feature or Issue, and the open defects run as todo cases naming Issues #1908 to #1914 until each fix flips its case.
+
 ## v0.4.194 (2026-11-27)
 
 - The date range browser tests wait for a typed range to reach the server instead of reading it once after a flush, since the commit runs only after the lazily loaded date picker arrives, so a slow picker load under shard load no longer fails the grid case (Issue #1885).

@@ -1,1 +1,0 @@
-- The View pane keeps keyboard focus on the control you used after a save redraws it: the Rollups, Include deleted and Hide empty groups switches, Collapse all, Expand all, the level pickers, the Chip heading, the board presets and the board Groups, Picture, Fit, Card shape and Uneven cards controls each carry a stable key, where focus fell to the page body before (Issue #1922).
