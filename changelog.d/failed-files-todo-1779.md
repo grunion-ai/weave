@@ -1,1 +1,0 @@
-- The test runner no longer retries or logs as a flake a file whose only failures are its todo or skipped cases, so test/phone-matrix-drawer-browser.test.mjs stops appearing in the flake log whenever another file in its shard fails (Issue #1779).

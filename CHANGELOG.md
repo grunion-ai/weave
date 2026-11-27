@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.194 (2026-11-27)
+
+- The date range browser tests wait for a typed range to reach the server instead of reading it once after a flush, since the commit runs only after the lazily loaded date picker arrives, so a slow picker load under shard load no longer fails the grid case (Issue #1885).
+- The test runner no longer retries or logs as a flake a file whose only failures are its todo or skipped cases, so test/phone-matrix-drawer-browser.test.mjs stops appearing in the flake log whenever another file in its shard fails (Issue #1779).
+- The phone tray test waits for the tray to come to rest before it measures it, instead of a check that passes on an empty animation list, so a slide-in still running under shard load no longer fails the case (Issue #1856).
+
 ## v0.4.193 (2026-11-27)
 
 - CSV import reports each rejected row at its line in the file, counting blank lines and multi-line quoted cells, and the reply's `ignored` now also names a header that matches a computed field, so a misspelled or read-only column no longer imports as an empty column without a word (Issue #1621).
