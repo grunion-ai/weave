@@ -2,6 +2,12 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.192 (2026-11-27)
+
+- The entity Activity cap test waits for the second record's page before it reads the note, so a slow feed no longer reads the first record's count (Issue #1780).
+- The sorted-column cell commit test waits for the fallback table re-read itself instead of two animation frames, so a slow client no longer counts zero re-reads (Issue #1825).
+- `weave serve` minifies every first-party script and stylesheet in the background right after it starts listening, so the first request for `/app.js` after a deploy reads the cache instead of paying the 30 to 90 ms minify (Issue #1646).
+
 ## v0.4.191 (2026-11-27)
 
 - API responses are compact JSON, about a third smaller before compression; add `?pretty=1` for indented output (Issue #1643).

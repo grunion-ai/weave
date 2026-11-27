@@ -2,7 +2,7 @@
 
 `public/app.js` (12,297 lines) and `src/engine.js` (12,328 lines) are too long to read whole. This page cuts each one into regions of at most 200 lines along its declarations and names what every region declares, so a change opens the right 200 lines first. The first table places each behaviour of the [grid map](grid.md) by line.
 
-`node scripts/region-index.mjs` generates this page at commit [`ff996b2`](https://github.com/grunion-ai/weave/tree/ff996b2a1fbfc626ef5b629551de7e9936b87925), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
+`node scripts/region-index.mjs` generates this page at commit [`f8089d9`](https://github.com/grunion-ai/weave/tree/f8089d936b649beba3ef3bf7c999c2889062026b), the commit the [architecture map](architecture/README.md) pins, so every line number is a line at that commit, and `node scripts/architecture.mjs` rewrites the page each time it re-pins the map. Code merged since the pin can shift a range by a few lines: `node scripts/region-index.mjs --now` prints these tables for your checkout. `test/region-index.test.mjs` fails when this page differs from what the script renders at the pin.
 
 ## Grid behaviours
 
