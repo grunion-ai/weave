@@ -6104,6 +6104,15 @@ function drawDatabase(db, items, trashCount = 0, pager = null, list = null) {
       }, 'Clear search')));
   }
 
+  const live = pager ? pager.total : items.filter((e) => !e.deleted).length;
+  const filteredOut = !searching && hasView(db) && VP.activeFilters(db.view) > 0 && !live;
+  main.classList.toggle('filtered-out', filteredOut);
+  if (filteredOut) {
+    main.append(el('div', { class: 'view-filter-empty wv-note', role: 'status' },
+      `No ${db.term.plural} match this view's filters. `,
+      ghostBtn({ class: 'view-filter-clear', type: 'button', onclick: () => paneWrite(db, { filters: {} }) }, 'Clear filters')));
+  }
+
   if (list) {
     state.inlineAdd = null;
     const groupKeys = renderBoard(main, db, items, list);

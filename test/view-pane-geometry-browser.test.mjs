@@ -87,13 +87,16 @@ if (s) {
   });
 
   for (const layout of ['table', 'board']) {
-    test(`a ${layout} whose filter matches nothing says so (Issue #1913)`, { todo: 'Issue #1913' }, async () => {
+    test(`a ${layout} whose filter matches nothing says so and offers to clear it (Issue #1913)`, async () => {
       const page = await open('Standard', { filters: { Assignee: ['Guest'] }, layout: layout === 'board' ? 'board' : null });
       try {
         await page.waitForSelector(layout === 'board' ? '#main .board-wrap' : '#main .wv-grid');
         const text = await page.locator('#main').innerText();
         assert.match(text, /No tasks match/i);
         assert.doesNotMatch(text, /Drop a card here/);
+        await page.click('#main .view-filter-clear');
+        await page.waitForFunction(() => !document.querySelector('#main .view-filter-empty'));
+        assert.deepEqual(weave.tableView(`${tasks.id}/Standard`).filters ?? {}, {}, 'Clear filters empties the view\'s filters');
       } finally { await page.close(); }
     });
   }
