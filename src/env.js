@@ -83,7 +83,7 @@ export const ENV = [
     doc: 'Set to `1` behind Railway, Fly, Render or any reverse proxy: the sign-in rate limits then read the client from the last `X-Forwarded-For` entry, the one the proxy appended. Unset behind a proxy, every visitor shares the proxy\'s address and ten sign-in attempts a minute lock everyone out; set with no proxy, a client can forge the header.',
   },
   {
-    name: 'WEAVE_ACCESS_LOG', section: 'deploy', readBy: '`weave serve`', default: 'unset',
+    name: 'WEAVE_ACCESS_LOG', section: 'tracker', readBy: '`weave serve`', default: 'unset',
     doc: 'Set to `1` and the server writes one access-log JSON line to stdout per finished response: method, path, status, ms, actor, workspace, and on a 4xx or 5xx the `X-Request-Id` the answer carried. The path drops its query string and masks `wv*_` tokens; headers and cookies are never written. Unset, no line is written; error answers carry `X-Request-Id` either way.',
   },
   {
