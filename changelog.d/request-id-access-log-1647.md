@@ -1,0 +1,1 @@
+- Every 4xx and 5xx answer carries an `X-Request-Id` header (the same id a 500 body names), and `WEAVE_ACCESS_LOG=1` on `weave serve` writes one access-log JSON line per response with method, path, status, ms, actor, workspace and the request id, never a query string or a path token (Issue #1647).

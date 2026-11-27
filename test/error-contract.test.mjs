@@ -9,6 +9,7 @@ import { ERROR_CONTRACT, ERROR_CODES, HTTP_ONLY_CODES, contractFor, errorBody } 
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
+import { request } from 'node:http';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'weave.js');
@@ -171,4 +172,63 @@ test('AGENTS.md names every HTTP-only code (Issue #1640)', () => {
   const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
   const missing = HTTP_ONLY_CODES.filter((c) => !agents.includes(`\`${c}\``));
   assert.deepEqual(missing, [], 'an agent reading AGENTS.md must find every code a weave answer can carry');
+});
+
+test('every 4xx and 5xx answer carries an X-Request-Id, and a 500 carries the id its body names (Issue #1647)', async () => {
+  const w = seed(new Weave());
+  w.universalSearch = () => { throw new Error('boom'); };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    await withServer(w, async ({ fetch, base }) => {
+      const ok = await fetch('/api/health');
+      assert.equal(ok.status, 200);
+      assert.equal(ok.headers.get('x-request-id'), null, 'a success carries no request id');
+      const missing = await fetch('/api/entities/nope');
+      assert.equal(missing.status, 404);
+      assert.match(missing.headers.get('x-request-id') ?? '', /^[0-9a-f]{8}$/);
+      const misdirected = await new Promise((done, fail) => {
+        const req = request(`${base}/api/health/x`, { headers: { Host: 'elsewhere.example' } }, (res) => { res.resume(); done(res); });
+        req.on('error', fail);
+        req.end();
+      });
+      assert.equal(misdirected.statusCode, 421);
+      assert.match(misdirected.headers['x-request-id'] ?? '', /^[0-9a-f]{8}$/);
+      const broken = await fetch('/api/search?q=x');
+      assert.equal(broken.status, 500);
+      const body = await broken.json();
+      assert.equal(broken.headers.get('x-request-id'), body.id, 'header and body name the same request');
+    });
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test('WEAVE_ACCESS_LOG writes one line per finished response with method, path, status, ms, actor and workspace, and never the query string or a share token (Issue #1647)', async () => {
+  const lines = [];
+  const log = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    await withServer(seed(new Weave()), { accessLog: true }, async ({ fetch }) => {
+      await fetch('/api/entities/nope?token=wv_secretvalue');
+      await fetch('/s/wvs_sharetokenvalue/api/spaces');
+      await fetch('/api/health');
+    });
+    await withServer(seed(new Weave()), async ({ fetch }) => { await fetch('/api/entities/nope'); });
+  } finally {
+    console.log = log;
+  }
+  const records = lines.filter((l) => l.startsWith('weave access ')).map((l) => JSON.parse(l.slice('weave access '.length)));
+  assert.equal(records.length, 3, 'one line per response, and none without the opt-in');
+  const [missing, share, health] = records;
+  assert.deepEqual({ method: missing.method, path: missing.path, status: missing.status }, { method: 'GET', path: '/api/entities/nope', status: 404 });
+  assert.equal(typeof missing.ms, 'number');
+  assert.equal(typeof missing.actor, 'string');
+  assert.equal(typeof missing.workspace, 'string');
+  assert.match(missing.id, /^[0-9a-f]{8}$/, 'an error line names the id its answer carries');
+  assert.equal(health.status, 200);
+  assert.equal(health.id, undefined);
+  const all = lines.join('\n');
+  assert.ok(!all.includes('secretvalue') && !all.includes('sharetokenvalue'), all);
+  assert.match(share.path, /^\/s\/wvs_…\//);
 });

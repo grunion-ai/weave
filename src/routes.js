@@ -708,6 +708,7 @@ async function buildAccessHelpers(c, fromRequest) {
   if (requestAccount?.space && localAccount(weave, requestAccount)) viewers.tokenWrite = { engine: weave, accountId: requestAccount.accountId ?? requestAccount.id };
   const actorForRequest = role || share || !guarded() ? actor : 'anonymous';
   weave.actor = actorForRequest;
+  viewers.actor = actorForRequest;
   const requestActor = role ? actorForRequest : 'anonymous';
   const targetHidden = !!targetSpace && !weave.canSee(targetSpace);
   const bulkRows = !!role && rx.method === 'POST' && path === '/api/bulk' && topRole(weave, viewer) !== 'observer';
@@ -1939,6 +1940,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
     }
     weave.maybeRefresh();
     versionOf = weave;
+    viewers.workspace = weave.state.meta.name;
     const step1 = await openHookDoor({ baseDomain, hostSuffix, hub, oidc, out, rx, scheme }, { hostOrigin, path, weave, wsPrefix });
     if ('hit' in step1) return step1.hit;
     const { updateWorkspace, member } = step1.next;
@@ -2310,6 +2312,7 @@ export function createRequestHandler(hub, { version = 'unknown', uptime = () => 
       res = await withViewers(viewers, () => respond(rx, jar, viewers));
     } finally {
       viewers.releaseUpload?.();
+      rx.trace = { actor: viewers.actor ?? null, workspace: viewers.workspace ?? null };
     }
     const wrote = viewers.tokenWrite;
     const reads = rx.method === 'POST' && (/^\/(api\/)?mcp$/.test(rx.path) || /\/query$/.test(rx.path) || rx.path === '/api/markdown');

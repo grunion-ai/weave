@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { pipeline } from 'node:stream/promises';
 import { join, dirname, extname, basename } from 'node:path';
 import { gzipSync, brotliCompress, constants as zlibConstants } from 'node:zlib';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Weave, WeaveError, detachHubRegistry } from './engine.js';
 import { workspaceName, workspaceSlug, nameFromFile, hostSlugRefusal, slugTaken, slugOfHost } from './workspace-name.js';
@@ -659,9 +659,25 @@ const IMMUTABLE = 'public, max-age=31536000, immutable';
 const VENDOR_CACHE = 'public, max-age=3600';
 const SHUTDOWN_DRAIN_MS = 5000;
 
+const accessLogFromEnv = (env = process.env) => env.WEAVE_ACCESS_LOG === '1';
+const requestId = () => randomUUID().slice(0, 8);
+const idOfBody = ({ headers, body }) => {
+  if (typeof body !== 'string' || !/json/.test(headers?.['Content-Type'] ?? '')) return null;
+  try { const { id, code } = JSON.parse(body); return ['internal', 'storage-full'].includes(code) && typeof id === 'string' ? id : null; } catch { return null; }
+};
+const TOKEN_IN_PATH = /\b(wv[a-z]*_)[A-Za-z0-9_-]+/g;
+const accessLine = (req, res, rx, began) => JSON.stringify({
+  method: req.method,
+  path: String(req.url ?? '').split('?')[0].replace(TOKEN_IN_PATH, '$1…'),
+  status: res.statusCode,
+  ms: Number((process.hrtime.bigint() - began) / 1000n) / 1000,
+  actor: rx?.trace?.actor ?? null,
+  workspace: rx?.trace?.workspace ?? null,
+  ...(res.requestId ? { id: res.requestId } : {}),
+});
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), paintLog = origin ? (line) => console.log(line) : null, warmAssets = false, scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), paintLog = origin ? (line) => console.log(line) : null, accessLog = accessLogFromEnv(), warmAssets = false, scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const schedules = armSchedules(() => {
     for (const { name } of hub.list()) {
@@ -753,7 +769,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   const fail = (res, status, error, code, id) => {
     if (res.headersSent) return res.destroy();
     const body = JSON.stringify({ error, code, ...(id ? { id } : {}) });
-    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }));
+    res.requestId = id ?? requestId();
+    res.writeHead(status, secure(res.req, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'X-Request-Id': res.requestId }));
     res.end(body);
   };
   const inflight = new Set();
@@ -761,6 +778,8 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   let settle = () => {};
   const server = createHttpServer(async (req, res) => {
     const began = process.hrtime.bigint();
+    let rx = null;
+    if (accessLog) res.once('close', () => console.log(`weave access ${accessLine(req, res, rx, began)}`));
     inflight.add(res);
     res.once('close', () => { inflight.delete(res); settle(); });
     if (stopping) res.shouldKeepAlive = false;
@@ -797,7 +816,7 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         res.writeHead(204, secure(req, { 'Cache-Control': 'no-store' }));
         return res.end();
       }
-      const outcome = await handle({
+      rx = {
         method: req.method,
         path,
         searchParams: url.searchParams,
@@ -806,10 +825,12 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
         readBytes: (max) => readBytes(req, max),
         bodyStream: () => req,
         remote: req.socket?.remoteAddress ?? null,
-      });
+      };
+      const outcome = await handle(rx);
       const fresh = revalidateApi(outcome, { method: req.method, path, ifNoneMatch: req.headers['if-none-match'] });
       const { headers, body } = gzipOutcome(fresh, req.headers['accept-encoding'], { cache: gzCache, path });
-      const timed = path === TIMED_PATH ? { ...headers, 'Server-Timing': appTiming(process.hrtime.bigint() - began) } : headers;
+      if (fresh.status >= 400) res.requestId = idOfBody(fresh) ?? requestId();
+      const timed = { ...headers, ...(path === TIMED_PATH ? { 'Server-Timing': appTiming(process.hrtime.bigint() - began) } : {}), ...(res.requestId ? { 'X-Request-Id': res.requestId } : {}) };
       res.writeHead(fresh.status, secure(req, sized(fresh.status, timed, body)));
       if (typeof body?.pipe === 'function') await pipeline(body, res);
       else res.end(body);
@@ -856,10 +877,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, paintLog, warmAssets, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, paintLog, accessLog, warmAssets, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(paintLog !== undefined ? { paintLog } : {}), ...(warmAssets !== undefined ? { warmAssets } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(paintLog !== undefined ? { paintLog } : {}), ...(accessLog !== undefined ? { accessLog } : {}), ...(warmAssets !== undefined ? { warmAssets } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });

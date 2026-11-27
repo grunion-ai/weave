@@ -226,6 +226,9 @@ and message whichever door it came through (Feature #179). HTTP answers
 `{error, code}` with the status for that code. An MCP tool error keeps its
 `Error: <message>` text and adds `structuredContent: {error, code, rpc}`. The
 CLI prints `weave: error [<code>]: <message>` and exits with the code's number.
+Every HTTP answer with a 4xx or 5xx status carries an `X-Request-Id` header,
+the same id a 500 body names; with `WEAVE_ACCESS_LOG=1`, `weave serve` writes
+one access-log JSON line per response that carries it too.
 
 | code | HTTP | MCP `rpc` | CLI exit |
 | --- | --- | --- | --- |
