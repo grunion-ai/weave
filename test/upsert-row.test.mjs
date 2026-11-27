@@ -32,6 +32,7 @@ const upsert = {
 };
 const rule = { name: 'Land deliveries', trigger: { type: 'entity-created' }, actions: [upsert] };
 const accounts = (w, account) => w.listEntities(account.id).filter((e) => !e.deletedAt);
+const keyRows = (w, account, key) => accounts(w, account).filter((e) => read(w, e.id).fields['External Id'] === key).sort((a, b) => a.publicId - b.publicId);
 
 test('upsert-row creates the target row on a key miss: select by option name, relation by target Name, event context', () => {
   const { w, delivery, account } = demo();
@@ -179,4 +180,62 @@ test('POST /api/automations takes an upsert-row action and GET lists it', async 
     w.createEntity(delivery.id, { Name: 'd1', Ext: 'cus_1', Who: 'Acme' });
     assert.equal(accounts(w, account).length, 1);
   });
+});
+
+test('upsert-row finds its key through an index: target size never adds a target table scan per fire', () => {
+  const { w, delivery, account } = demo();
+  for (let i = 0; i < 300; i++) w.createEntity(account.id, { Name: `a${i}`, 'External Id': `cus_${i}` });
+  w.createAutomation(delivery.id, rule);
+  const list = w.listEntities.bind(w);
+  let scans = 0;
+  w.listEntities = (dbId, opts) => { if (dbId === account.id) scans++; return list(dbId, opts); };
+  for (let i = 0; i < 20; i++) w.createEntity(delivery.id, { Name: `d${i}`, Ext: `cus_${i * 7}`, Who: `hit ${i}` });
+  for (let i = 0; i < 20; i++) w.createEntity(delivery.id, { Name: `n${i}`, Ext: `new_${i}`, Who: `miss ${i}` });
+  w.listEntities = list;
+  assert.equal(scans, 0, 'no fire lists the target table');
+  assert.equal(accounts(w, account).length, 320);
+  assert.equal(read(w, keyRows(w, account, 'cus_21')[0].id).name, 'hit 3');
+});
+
+test('upsert-row on a duplicated key updates the lowest PublicId, skips a trashed row, and matches it again once restored', () => {
+  const { w, delivery, account } = demo();
+  const first = w.createEntity(account.id, { Name: 'first', 'External Id': 'cus_1' });
+  const second = w.createEntity(account.id, { Name: 'second', 'External Id': 'cus_1' });
+  w.createAutomation(delivery.id, rule);
+  w.createEntity(delivery.id, { Name: 'd1', Ext: 'cus_1', Who: 'one' });
+  assert.equal(read(w, first.id).name, 'one');
+  assert.equal(read(w, second.id).name, 'second');
+  w.deleteEntity(first.id);
+  w.createEntity(delivery.id, { Name: 'd2', Ext: 'cus_1', Who: 'two' });
+  assert.equal(read(w, second.id).name, 'two');
+  w.restoreEntity(first.id);
+  w.createEntity(delivery.id, { Name: 'd3', Ext: 'cus_1', Who: 'three' });
+  assert.equal(read(w, first.id).name, 'three');
+  assert.equal(read(w, second.id).name, 'two');
+  w.deleteEntity(first.id, { hard: true });
+  w.createEntity(delivery.id, { Name: 'd4', Ext: 'cus_1', Who: 'four' });
+  assert.equal(read(w, second.id).name, 'four');
+  assert.equal(keyRows(w, account, 'cus_1').length, 1);
+});
+
+test('upsert-row follows a key value edited, undone and set by a later create', () => {
+  const { w, delivery, account } = demo();
+  const row = w.createEntity(account.id, { Name: 'kept', 'External Id': 'cus_1' });
+  w.createAutomation(delivery.id, rule);
+  w.createEntity(delivery.id, { Name: 'd1', Ext: 'cus_1', Who: 'one' });
+  w.updateEntity(row.id, { 'External Id': 'cus_2' });
+  w.createEntity(delivery.id, { Name: 'd2', Ext: 'cus_2', Who: 'two' });
+  assert.equal(read(w, row.id).name, 'two');
+  w.createEntity(delivery.id, { Name: 'd3', Ext: 'cus_1', Who: 'fresh' });
+  assert.equal(keyRows(w, account, 'cus_1').length, 1);
+  assert.notEqual(keyRows(w, account, 'cus_1')[0].id, row.id);
+  const later = w.createEntity(account.id, { Name: 'later', 'External Id': 'cus_3' });
+  w.createEntity(delivery.id, { Name: 'd4', Ext: 'cus_3', Who: 'four' });
+  assert.equal(read(w, later.id).name, 'four');
+  w.updateEntity(row.id, { 'External Id': 'cus_9' });
+  w.undo();
+  assert.equal(read(w, row.id).fields['External Id'], 'cus_2');
+  w.createEntity(delivery.id, { Name: 'd5', Ext: 'cus_2', Who: 'five' });
+  assert.equal(read(w, row.id).name, 'five');
+  assert.equal(keyRows(w, account, 'cus_9').length, 0);
 });
