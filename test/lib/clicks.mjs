@@ -4,11 +4,11 @@ export const clickKey = (journey, cell) => `${journey}|${cell}`;
 
 const clicks = (n) => `${n} click${n === 1 ? '' : 's'}`;
 
-export function judge(key, n, budget) {
-  if (!(key in budget)) return `${key} has no click budget: add "${key}": ${n} to ${BUDGET_FILE}`;
+export function judge(key, n, budget, file = BUDGET_FILE) {
+  if (!(key in budget)) return `${key} has no click budget: add "${key}": ${n} to ${file}`;
   const cap = budget[key];
-  if (n > cap) return `${key} took ${clicks(n)}, budget ${cap}: an action that takes more clicks is refused. Remove the extra click, or raise clicks["${key}"] in ${BUDGET_FILE} and write why under raised["${key}"]`;
-  if (n < cap) return `${key} took ${clicks(n)}, budget ${cap}: lower clicks["${key}"] in ${BUDGET_FILE} to ${n} in this change so the saving holds`;
+  if (n > cap) return `${key} took ${clicks(n)}, budget ${cap}: an action that takes more clicks is refused. Remove the extra click, or raise clicks["${key}"] in ${file} and write why under raised["${key}"]`;
+  if (n < cap) return `${key} took ${clicks(n)}, budget ${cap}: lower clicks["${key}"] in ${file} to ${n} in this change so the saving holds`;
   return null;
 }
 

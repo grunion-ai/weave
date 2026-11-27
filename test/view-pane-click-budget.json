@@ -1,0 +1,13 @@
+{
+  "clicks": {
+    "create a view": 3,
+    "filter one value": 2,
+    "three sort levels": 8,
+    "five group levels": 12,
+    "kanban by State": 7,
+    "first rollup total": 4,
+    "switch views": 3,
+    "reset a view": 2
+  },
+  "raised": {}
+}
