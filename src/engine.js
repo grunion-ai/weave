@@ -544,6 +544,22 @@ function stepBody(text) {
 const thenWords = (spec) => spec.actions.map(actionWords).join(', then ');
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
 const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
+function keyRow(keyed, fieldId, e, gone = false) {
+  const was = keyed.of.get(e.id);
+  const now = gone || e.values?.[fieldId] == null ? undefined : String(e.values[fieldId]);
+  if (was === now && (now === undefined || keyed.rows.get(now).get(e.id) === e)) return;
+  if (was !== undefined) {
+    const bucket = keyed.rows.get(was);
+    bucket.delete(e.id);
+    if (!bucket.size) keyed.rows.delete(was);
+  }
+  if (now === undefined) { keyed.of.delete(e.id); return; }
+  keyed.of.set(e.id, now);
+  let bucket = keyed.rows.get(now);
+  if (!bucket) keyed.rows.set(now, (bucket = new Map()));
+  bucket.set(e.id, e);
+}
+
 export function sourcePath(source, path) {
   let at = source;
   for (const part of String(path).split('.')) {
@@ -2151,7 +2167,7 @@ export class Weave {
             }
           }
         }
-        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) this.#rows?.byPublicId.clear();
+        if (this.store.save(this.state, { dirty: this.#dirty, all: this.#dirtyAll })) { this.#rows?.byPublicId.clear(); this.#rows?.byKey.clear(); }
       });
       this.#forgetPending();
     }
@@ -2207,6 +2223,7 @@ export class Weave {
     const id = typeof entityOrId === 'string' ? entityOrId : entityOrId.id;
     this.#dirty.add(id);
     this.#buildProven = null;
+    if (e?.dbId && own(this.state.entities, e.id) === e) this.#rekeyRow(e);
     for (const w of this.#engines()) w.#forgetDerived(e?.dbId ?? null);
     this.#touching?.add(id);
     if (db?.system === 'workflows' && !this.#stamping) { this.#wfQueue.add(id); this.#wfEpoch++; this.#reg.#scheduleArmed.set(id, this.now().getTime()); }
@@ -7624,7 +7641,7 @@ export class Weave {
   #rowIndex() {
     const entities = this.state.entities;
     if (this.#rows?.entities !== entities) {
-      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), scales: new Map(), cached: new Set(), schema: null, readers: null, reach: null, liveCounts: null };
+      this.#rows = { entities, byTable: new Map(), byPublicId: new Map(), byKey: new Map(), sortKeys: new Map(), sortOrders: new Map(), whereHits: new Map(), scales: new Map(), cached: new Set(), schema: null, readers: null, reach: null, liveCounts: null };
       for (const e of Object.values(entities)) this.#indexRow(e);
     }
     return this.#rows;
@@ -7646,6 +7663,7 @@ export class Weave {
     const index = this.#rows;
     if (!index) return;
     index.liveCounts = null;
+    if (dbId == null) index.byKey.clear();
     if (!index.cached.size) return;
     const maps = [index.sortKeys, index.sortOrders, index.whereHits, index.scales];
     if (dbId == null) {
@@ -7691,6 +7709,7 @@ export class Weave {
     if (!table) index.byTable.set(e.dbId, (table = new Map()));
     table.set(e.id, e);
     index.byPublicId.delete(e.dbId);
+    this.#rekeyRow(e);
   }
 
   #unindexRow(e) {
@@ -7698,6 +7717,26 @@ export class Weave {
     if (index?.entities !== this.state.entities) return;
     index.byTable.get(e.dbId)?.delete(e.id);
     index.byPublicId.delete(e.dbId);
+    this.#rekeyRow(e, true);
+  }
+
+  #rekeyRow(e, gone = false) {
+    const index = this.#rows;
+    if (index?.entities !== this.state.entities) return;
+    for (const [fieldId, keyed] of index.byKey.get(e.dbId) ?? []) keyRow(keyed, fieldId, e, gone);
+  }
+
+  #rowsByKey(dbId, fieldId, value) {
+    const index = this.#derived();
+    let fields = index.byKey.get(dbId);
+    if (!fields) index.byKey.set(dbId, (fields = new Map()));
+    let keyed = fields.get(fieldId);
+    if (!keyed) {
+      keyed = { rows: new Map(), of: new Map() };
+      for (const e of index.byTable.get(dbId)?.values() ?? []) keyRow(keyed, fieldId, e);
+      fields.set(fieldId, keyed);
+    }
+    return [...(keyed.rows.get(value)?.values() ?? [])];
   }
 
   #tableRows(dbId) {
@@ -11358,8 +11397,8 @@ export class Weave {
     }
     if (!key || values[key.name] === undefined) throw new WeaveError(`The upsert-row source has no value for the key field '${key?.name ?? action.keyFieldId}'`, 'invalid');
     const want = String(this.#validateValue(key, values[key.name]));
-    const hit = this.listEntities(target.id)
-      .filter((x) => x.values[key.id] != null && String(x.values[key.id]) === want)
+    const hit = this.#rowsByKey(target.id, key.id, want)
+      .filter((x) => !x.deletedAt && x.values[key.id] != null && String(x.values[key.id]) === want)
       .sort((x, y) => x.publicId - y.publicId)[0];
     if (!hit) return { e: this.createEntity(target.id, { values }, { depth: depth + 1 }), created: true };
     delete values[key.name];
