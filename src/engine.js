@@ -59,18 +59,23 @@ const SYSTEM_TERMS = { spaces: 'space', tables: 'table', fields: 'field', workfl
 const CSV_FORMULA_START = /^'*[=+\-@\t\r]/;
 const unquoteCSVCell = (cell) => (cell.startsWith("'") && CSV_FORMULA_START.test(cell.slice(1)) ? cell.slice(1) : cell);
 
-export function parseCSV(text) {
+function csvRecords(text) {
   const rows = [];
   let row = [];
   let cell = '';
   let inQuotes = false;
+  let line = 1;
+  let start = 1;
   const src = String(text ?? '');
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (inQuotes) {
       if (ch === '"' && src[i + 1] === '"') { cell += '"'; i++; }
       else if (ch === '"') inQuotes = false;
-      else cell += ch;
+      else {
+        if (ch === '\n' || (ch === '\r' && src[i + 1] !== '\n')) line++;
+        cell += ch;
+      }
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === ',') {
@@ -80,17 +85,23 @@ export function parseCSV(text) {
       if (ch === '\r' && src[i + 1] === '\n') i++;
       row.push(cell);
       cell = '';
-      rows.push(row);
+      rows.push({ cells: row, line: start });
       row = [];
+      line++;
+      start = line;
     } else {
       cell += ch;
     }
   }
   if (cell !== '' || row.length) {
     row.push(cell);
-    rows.push(row);
+    rows.push({ cells: row, line: start });
   }
-  return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+  return rows.filter((r) => !(r.cells.length === 1 && r.cells[0] === ''));
+}
+
+export function parseCSV(text) {
+  return csvRecords(text).map((r) => r.cells);
 }
 
 const VALUES_BLOCK = '@values';
@@ -11931,16 +11942,18 @@ export class Weave {
   importCSV(dbRef, csvText) {
     this.#mayWriteTable(dbRef);
     const db = this.getTable(dbRef);
-    const rows = parseCSV(csvText).map((row) => row.map(unquoteCSVCell));
+    const rows = csvRecords(csvText).map((r) => ({ cells: r.cells.map(unquoteCSVCell), line: r.line }));
     if (!rows.length) return { created: 0 };
-    const header = rows[0];
+    const header = rows[0].cells;
     const skip = new Set(['Public Id', 'Created At', 'Updated At', 'publicId', 'createdAt', 'updatedAt']);
     const ignored = [];
     const writable = header.map((name) => {
       if (skip.has(name)) return null;
       const f = this.findField(db, name);
-      if (!f) ignored.push(name);
-      if (!f || ['lookup', 'rollup', 'formula'].includes(f.type)) return null;
+      if (!f || ['lookup', 'rollup', 'formula'].includes(f.type)) {
+        ignored.push(name);
+        return null;
+      }
       return f;
     });
     return this.store.batch(() => this.#importRows(db, rows, writable, ignored));
@@ -11949,7 +11962,7 @@ export class Weave {
   #importRows(db, rows, writable, ignored = []) {
     let created = 0;
     const errors = [];
-    for (const row of rows.slice(1)) {
+    for (const { cells: row, line } of rows.slice(1)) {
       if (row.every((c) => c === '')) continue;
       const values = {};
       writable.forEach((f, i) => {
@@ -11969,7 +11982,7 @@ export class Weave {
         this.createEntity(db, { values });
         created++;
       } catch (err) {
-        errors.push({ row: created + errors.length + 2, error: err.message });
+        errors.push({ row: line, error: err.message });
       }
     }
     this.#audit('csv-imported', { table: db.name, created });

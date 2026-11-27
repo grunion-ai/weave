@@ -1,0 +1,1 @@
+- CSV import reports each rejected row at its line in the file, counting blank lines and multi-line quoted cells, and the reply's `ignored` now also names a header that matches a computed field, so a misspelled or read-only column no longer imports as an empty column without a word (Issue #1621).
