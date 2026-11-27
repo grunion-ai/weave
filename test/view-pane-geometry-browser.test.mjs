@@ -89,6 +89,19 @@ if (s) {
     }
   }
 
+  test('a board on a table with no picture field draws no picture slot and keeps its card width at every Picture size (Issue #1917)', async () => {
+    const widths = {};
+    for (const picture of ['off', 'small', 'medium', 'large']) {
+      const page = await open('Kanban', { picture });
+      try {
+        await page.waitForSelector('#main .wv-board .tile');
+        assert.equal(await page.locator('#main .wv-board .tile-cover').count(), 0, `${picture}: no picture slot on a table with no picture field`);
+        widths[picture] = await page.locator('#main .wv-board .tile').first().evaluate((n) => Math.round(n.getBoundingClientRect().width));
+      } finally { await page.close(); }
+    }
+    assert.deepEqual(new Set(Object.values(widths)).size, 1, `card widths ${JSON.stringify(widths)}`);
+  });
+
   test('the Report a problem button overlaps no View pane button (Issue #1926)', async () => {
     const page = await open('Work', {}, { section: 'filters' });
     try {
