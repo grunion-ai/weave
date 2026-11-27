@@ -1051,7 +1051,7 @@ function fieldDialog(db, existing, after, { pickTables = null } = {}) {
   tray(isEdit ? `Edit ${existing.name}` : 'New field', [
     tableSel ? dsection('Table', tableSel) : '',
     dsection('Name', nameInput),
-    describable ? dsection('Description', descInput) : '',
+    describable ? dsection('Description', el('div', { class: 'field-desc-fit', 'data-placeholder': descInput.placeholder }, descInput)) : '',
     gridWrap, cfgWrap,
   ], async () => {
     const def = fdc.definitionFromState(state);
