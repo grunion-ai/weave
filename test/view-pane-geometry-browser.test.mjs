@@ -31,7 +31,7 @@ if (s) {
     ['a multiselect', [{ field: 'Tags' }]],
     ['a date', [{ field: 'Captured', grain: 'week' }]],
     ['a relation with the Label heading', [{ field: 'Project', heading: 'label' }]],
-    ['a relation with the Chip heading', [{ field: 'Project', heading: 'chip' }], 'Issue #1912'],
+    ['a relation with the Chip heading', [{ field: 'Project', heading: 'chip' }]],
   ];
   for (const [what, group, todo] of HEADS) {
     test(`a group head for ${what} stays one row tall${todo ? ` (${todo})` : ''}`, todo ? { todo } : {}, async () => {
