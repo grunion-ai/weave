@@ -125,7 +125,13 @@
   }
 
   function nextCollapsed(prev, next, collapsed) {
-    return core().groupSig(prev) === core().groupSig(next) ? collapsed : null;
+    if (!Array.isArray(collapsed)) return null;
+    const key = (l) => (typeof l === 'string' ? `${l}:` : `${l?.field}:${l?.grain ?? ''}`);
+    const a = (prev ?? []).map(key), b = (next ?? []).map(key);
+    let same = 0;
+    while (same < a.length && same < b.length && a[same] === b[same]) same++;
+    const kept = collapsed.filter((p) => String(p).split(core().SEP).length <= same);
+    return kept.length ? kept : null;
   }
 
   function crumbs(node) {
