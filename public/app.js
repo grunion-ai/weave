@@ -1016,6 +1016,8 @@ function applyPaneWidth(panel, pane) {
   const px = Number(WeavePrefs.read(pane.key));
   pinPane(panel, Number.isFinite(px) && px > 0 ? Math.max(pane.min, px) : 0);
 }
+const GRID_FLOOR = 480;
+const gridUnderFloor = () => $('#main').getBoundingClientRect().width < GRID_FLOOR;
 function fitPanes() {
   const app = $('#app');
   app.classList.remove('pane-over', 'table-yield');
@@ -1024,7 +1026,7 @@ function fitPanes() {
     const tight = () => app.scrollWidth > app.clientWidth;
     if (tight()) app.classList.add('table-yield');
     if (tight() && floats) app.classList.add('pane-over');
-  }
+  } else if (floats && !dockCoversScreen.matches && gridUnderFloor()) app.classList.add('pane-over');
   const home = saveMarkHome();
   if (home && saveMark.parentNode !== home) {
     home.append(saveMark);
@@ -5798,6 +5800,7 @@ function setPaneOpen(on, { focus = true } = {}) {
   writePref(PANE_KEY, on ? 'open' : '');
   const drawn = $('#main')?.wvDraw;
   paneSync(drawn?.db ?? null);
+  if (on && tightShell.matches && !$('#app').classList.contains('nav-collapsed') && gridUnderFloor()) showNavCollapsed(true);
   const btn = document.querySelector('#main .table-view-btn');
   btn?.label?.();
   if (!focus) return;
