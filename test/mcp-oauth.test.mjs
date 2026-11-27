@@ -121,7 +121,7 @@ test('Issue #1195: every request that is not a browser page view keeps the JSON 
       const text = await res.text();
       const body = JSON.parse(text);
       assert.match(body.error, /^Sign in with .+ to use this MCP server$/, label);
-      assert.equal(text, JSON.stringify({ error: body.error, code: 'unauthorized' }, null, 1), label);
+      assert.equal(text, JSON.stringify({ error: body.error, code: 'unauthorized' }), label);
     };
     await exact(await s.call('POST', '/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'initialize' } }), 'POST initialize');
     await exact(await s.call('POST', '/mcp', { body: { jsonrpc: '2.0', id: 1, method: 'initialize' }, headers: { Accept: BROWSER_ACCEPT } }), 'POST with an html Accept');
@@ -137,7 +137,7 @@ test('Issue #1195: every request that is not a browser page view keeps the JSON 
     });
     assert.equal(bare.status, 401);
     assert.equal(bare.type, 'application/json', 'GET with no Accept');
-    assert.equal(bare.body, JSON.stringify({ error: JSON.parse(bare.body).error, code: 'unauthorized' }, null, 1));
+    assert.equal(bare.body, JSON.stringify({ error: JSON.parse(bare.body).error, code: 'unauthorized' }));
   } finally { s.stop(); }
 });
 

@@ -1,0 +1,1 @@
+- API responses are compact JSON, about a third smaller before compression; add `?pretty=1` for indented output (Issue #1643).
