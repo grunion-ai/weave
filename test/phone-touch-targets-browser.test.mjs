@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { engineOf, launch, phoneProfile } from './lib/browser.mjs';
+import { engineOf, eventually, launch, phoneProfile } from './lib/browser.mjs';
 import { HOLD_PLATFORMS, ROUTES, SEEDS, STATES, held, plan, readyOf, rootsOf, seedsOf, walked } from './lib/states.mjs';
 import { openViews } from './lib/view-pane.mjs';
 import { MIN, SPAN, SWEEP } from './lib/touch.mjs';
@@ -287,11 +287,19 @@ if (s) {
           assert.deepEqual(seen.hidden, [], `${seen.hidden.length} of ${seen.links} menu links are out of reach in the ${seen.menu}px menu:\n${seen.hidden.join('\n')}`);
           const trash = page.locator('#sidebar .nav-system a[href="#/trash"]');
           await trash.scrollIntoViewIfNeeded();
-          assert.equal(await trash.evaluate((n) => {
+          await page.evaluate(() => {
+            const menu = document.querySelector('#sidebar');
+            const top = menu.scrollTop;
+            menu.scrollTop = Math.max(0, top - 80);
+            setTimeout(() => { menu.scrollTop = top; }, 250);
+          });
+          const hitOf = (n) => {
             const r = n.getBoundingClientRect();
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return !!hit && (hit === n || n.contains(hit));
-          }), true, 'the sticky identity panel leaves Trash reachable');
+            if (hit && (hit === n || n.contains(hit))) return 'Trash';
+            return hit ? `${hit.tagName.toLowerCase()}.${hit.className}` : 'nothing';
+          };
+          assert.equal(await eventually(() => trash.evaluate(hitOf), 'Trash', { timeout: 5000 }), 'Trash', 'the sticky identity panel leaves Trash reachable');
           if (process.env.WEAVE_SHOTS) await page.screenshot({ path: `${process.env.WEAVE_SHOTS}/phone-menu-${engine}-${theme}.png` });
           await trash.click();
           await page.waitForFunction(() => location.hash === '#/trash' && !document.querySelector('#app').classList.contains('nav-peek'));
