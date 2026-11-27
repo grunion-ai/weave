@@ -13,15 +13,22 @@ const s = await launch('activity cap', (weave) => {
 });
 if (s) {
   const { base, browser } = s;
+  const showing = (page, name) => page.waitForFunction(
+    (title) => document.querySelector('#main')?.textContent.includes(title),
+    `Activity — ${name}`, { timeout: 10000 });
   test('the entity Activity table note carries the count', async () => {
     const page = await browser.newPage();
     try {
       await page.goto(`${base}/#/activity/${busy.id}`, { waitUntil: 'load' });
-      await page.waitForSelector('.activity-row');
+      await showing(page, 'busy');
       const note = await page.textContent('.wv-note');
       assert.match(note, /7 older entries not kept/);
+      await page.route(`**/api/activity?*entity=${quiet.id}*`, async (route) => {
+        await new Promise((r) => setTimeout(r, 400));
+        await route.continue();
+      });
       await page.goto(`${base}/#/activity/${quiet.id}`, { waitUntil: 'load' });
-      await page.waitForSelector('.activity-row');
+      await showing(page, 'quiet');
       assert.doesNotMatch(await page.textContent('.wv-note'), /not kept/);
     } finally { await page.close(); }
   });
