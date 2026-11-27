@@ -2,6 +2,10 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.190 (2026-11-27)
+
+- **One set of system tables when two processes open a new workspace file** (Issue #1624): the constructor now runs its migrate and system-table pass under the write lock and reloads when another process committed first, the WAL switch retries instead of failing with "database is locked", and `weave registry report` names any system kind with more than one live table. Two processes constructing one fresh file at 0, 8 and 20 ms stagger went from 8 of 12 files doubling all 11 system kinds (and 4 of 12 with one process dying on the lock) to 12 of 12 clean.
+
 ## v0.4.189 (2026-11-26)
 
 - **Phone controls reach the 44 px touch target** (Issue #1762): on a coarse pointer the views sheet Rename, Duplicate and Hold to delete buttons, the view names, Reset view and Clear filters, the activity panel buttons, the record page Close, a relation field "+ link" and the document downloads menu each take 44 px, a phone row checkbox hands its tap to the row, and test/touch-baseline.json records no short control on either platform.
