@@ -609,8 +609,9 @@ function normaliseOption(o, { strict = false } = {}) {
 const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max', 'join', 'median', 'stdev', 'distinct', 'filled', 'empty', 'range'];
 const MAX_COMPUTE_DEPTH = 8;
 const CYCLE_PREFIX = '#CYCLE: ';
-const isCycle = (v) => typeof v === 'string' && v.startsWith(CYCLE_PREFIX);
-class CycleSignal extends Error {
+const DEPTH_PREFIX = '#DEPTH: ';
+const isChainMarker = (v) => typeof v === 'string' && (v.startsWith(CYCLE_PREFIX) || v.startsWith(DEPTH_PREFIX));
+class ChainSignal extends Error {
   constructor(marker) { super(marker); this.marker = marker; }
 }
 const FORMULA_SCAN_CAP = 200;
@@ -7235,7 +7236,7 @@ export class Weave {
     if (!e) return { ok: true };
     const temp = { id: '__preview', name: '__preview', type: 'formula', config: { expression } };
     const nameOf = (row) => String(row.values[db.nameFieldId] ?? '');
-    const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && (v.startsWith('#ERR: ') || isCycle(v)) ? 'error'
+    const kindOf = (v) => (v == null ? 'null' : typeof v === 'string' && (v.startsWith('#ERR: ') || isChainMarker(v)) ? 'error'
       : Array.isArray(v) ? 'list' : Number.isNaN(v) ? 'error' : typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'boolean' : 'text');
     const preview = this.#resolve(e, db, temp, 0);
     const result = { ok: true, preview, previewEntity: nameOf(e), type: kindOf(preview) };
@@ -7247,7 +7248,7 @@ export class Weave {
       const v = this.#resolve(row, db, temp, 0);
       const kind = kindOf(v);
       if (kind === 'null') { out.nulls++; out.sampleByOutcome.null ??= { entity: nameOf(row), id: row.id }; }
-      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isCycle(v) ? v : Number.isNaN(v) ? 'not a number' : v.slice(6) }; }
+      else if (kind === 'error') { out.errors++; out.sampleByOutcome.error ??= { entity: nameOf(row), id: row.id, error: isChainMarker(v) ? v : Number.isNaN(v) ? 'not a number' : v.slice(6) }; }
       else { types[kind] = (types[kind] ?? 0) + 1; out.sampleByOutcome.ok ??= { entity: nameOf(row), id: row.id, value: v }; }
     }
     const dominant = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
@@ -8690,8 +8691,11 @@ export class Weave {
   }
 
   #resolve(e, db, field, depth) {
-    if (depth > MAX_COMPUTE_DEPTH) { this.#cutoffs++; return null; }
     if (this.#withheld(db)?.has(field.name)) return null;
+    if (depth > MAX_COMPUTE_DEPTH) {
+      this.#cutoffs++;
+      return DEPTH_PREFIX + this.#chainPath([...this.#computing, { name: field.name, row: e.id, rowName: this.#rawName(e, db) }]);
+    }
     if (field.type !== 'formula' && field.type !== 'lookup' && field.type !== 'rollup') {
       return this.#resolveValue(e, db, field, depth);
     }
@@ -8703,9 +8707,7 @@ export class Weave {
     const at = this.#computing.findIndex((c) => c.key === key);
     if (at >= 0) {
       this.#cutoffs++;
-      const loop = [...this.#computing.slice(at), frame];
-      const travels = new Set(loop.map((c) => c.row)).size > 1;
-      return CYCLE_PREFIX + loop.map((c) => (travels && c.rowName ? `${c.rowName} › ${c.name}` : c.name)).join(' → ');
+      return CYCLE_PREFIX + this.#chainPath([...this.#computing.slice(at), frame]);
     }
     this.#computing.push(frame);
     const cutoffs = this.#cutoffs;
@@ -8716,6 +8718,11 @@ export class Weave {
     } finally {
       this.#computing.pop();
     }
+  }
+
+  #chainPath(frames) {
+    const travels = new Set(frames.map((c) => c.row)).size > 1;
+    return frames.map((c) => (travels && c.rowName ? `${c.rowName} › ${c.name}` : c.name)).join(' → ');
   }
 
   #rawName(e, db) {
@@ -8736,7 +8743,7 @@ export class Weave {
           .map((id) => this.#liveEntity(id))
           .filter(Boolean)
           .map((t) => this.#resolve(t, targetDb, targetField, depth + 1));
-        const looped = vals.find(isCycle);
+        const looped = vals.find(isChainMarker);
         if (looped) return looped;
         return rel.config.many ? vals : (vals[0] ?? null);
       }
@@ -8755,8 +8762,8 @@ export class Weave {
         if (field.config.aggregate === 'count') return rows.length;
         if (!targetField) return null;
         const ticks = isBoolType(targetField.type) && NUMERIC_AGGREGATES.includes(field.config.aggregate);
-        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1)).map((v) => (ticks && !isCycle(v) ? (v ? 1 : 0) : v));
-        const looped = vals.find(isCycle);
+        const vals = rows.map((t) => this.#resolve(t, targetDb, targetField, depth + 1)).map((v) => (ticks && !isChainMarker(v) ? (v ? 1 : 0) : v));
+        const looped = vals.find(isChainMarker);
         if (looped) return looped;
         const display = ['distinct', 'join'].includes(field.config.aggregate)
           ? rows.map((t, i) => this.#displayValue(targetDb, targetField, vals[i], t)) : null;
@@ -8773,11 +8780,11 @@ export class Weave {
               throw new WeaveError(`Formula references unknown field '${name}'`, 'invalid');
             }
             const v = this.#resolve(e, db, f, depth + 1);
-            if (isCycle(v)) throw new CycleSignal(v);
+            if (isChainMarker(v)) throw new ChainSignal(v);
             return typeof v === 'number' || f.type === 'date' ? v : this.#displayValue(db, f, v, e);
           });
         } catch (err) {
-          if (err instanceof CycleSignal) return err.marker;
+          if (err instanceof ChainSignal) return err.marker;
           return `#ERR: ${err.message}`;
         }
       }
@@ -8794,7 +8801,7 @@ export class Weave {
 
   #displayValue(db, field, resolved, e = null) {
     if (resolved == null) return null;
-    if (isCycle(resolved)) return resolved;
+    if (isChainMarker(resolved)) return resolved;
     switch (field.type) {
       case 'select':
         return this.#findOption(field.config.options, resolved)?.name ?? resolved;
@@ -8892,7 +8899,7 @@ export class Weave {
     const target = rel && this.state.tables[rel.config.targetDb]?.fields[field.config.targetField];
     if (target?.type !== 'relation') return null;
     const lists = rel.config.many ? resolved : [resolved];
-    const ids = Array.isArray(lists) ? lists.flat().filter((id) => typeof id === 'string' && !isCycle(id)) : [];
+    const ids = Array.isArray(lists) ? lists.flat().filter((id) => typeof id === 'string' && !isChainMarker(id)) : [];
     return { ids: [...new Set(ids)], many: !!(rel.config.many || target.config.many) };
   }
 
@@ -9442,8 +9449,8 @@ export class Weave {
       if (agg === 'count') value = entities.length;
       else if (target) {
         const ticks = isBoolType(target.type) && NUMERIC_AGGREGATES.includes(agg);
-        const vals = (column(target) ?? entities.map((e) => this.#resolve(e, db, target, 1))).map((x) => (ticks && !isCycle(x) ? (x ? 1 : 0) : x));
-        if (!vals.some(isCycle)) {
+        const vals = (column(target) ?? entities.map((e) => this.#resolve(e, db, target, 1))).map((x) => (ticks && !isChainMarker(x) ? (x ? 1 : 0) : x));
+        if (!vals.some(isChainMarker)) {
           const display = ['distinct', 'join'].includes(agg) ? entities.map((e, i) => this.#displayValue(db, target, vals[i], e)) : null;
           value = aggregateValues(agg, vals, { display, separator: f.config.separator ?? ', ' });
         }
@@ -9485,7 +9492,7 @@ export class Weave {
   }
 
   #definitionRank(f, resolved) {
-    if (resolved == null || isCycle(resolved)) return null;
+    if (resolved == null || isChainMarker(resolved)) return null;
     const list = f.type === 'workflow' ? f.config.states : f.config.options;
     const at = f.type === 'workflow'
       ? list.findIndex((s) => s.id === resolved)
