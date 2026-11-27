@@ -1254,22 +1254,22 @@ export const COMMANDS = [
     writes: 'none', minRole: 'observer', annotations: READ,
     tool: {
       name: 'weave_stats',
-      description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
-      inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: { type: ['array', 'object', 'null'], description: 'The same clauses as weave_query: [[path, op, value], ...] (AND) or an {and} or {or} tree' }, field: { type: 'string' } }, required: ['table'] },
+      description: 'Summarise every column of a table in one read: numbers get filled/empty, sum, avg, median, min, max, p25, p75, range, stdev and a 10-bin histogram (raw and dressed in the column\'s costume); selects, multiselects, workflows, checkboxes and relations get a ranked distribution; dates get earliest, latest, the span in days and counts by month; text gets the distinct count. `rollups` lists the space rollups pointed at the table with their live values. `by` groups the numeric columns on one field (with group rollups) (a multiselect record counts in every chip it wears); `where` narrows the records with the same clauses as weave_query; `field` narrows the answer to one column and the rollups over it (the record count rides with the name column). `search` narrows the records like the search of weave_query; with `where` or `search`, each rollup is rolled over the records kept. Nothing is stored; to keep a figure, add a rollup on the System/Spaces record (weave_add_field, config.via).',
+      inputSchema: { type: 'object', properties: { table: { type: 'string' }, by: { type: 'string' }, where: { type: ['array', 'object', 'null'], description: 'The same clauses as weave_query: [[path, op, value], ...] (AND) or an {and} or {or} tree' }, field: { type: 'string' }, search: { type: 'string' } }, required: ['table'] },
     },
     cli: {
       command: 'stats', positional: ['table'],
       args: (a, flags) => {
-        if (!a.table) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F]');
-        return { table: a.table, by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null };
+        if (!a.table) throw new Error('Usage: stats <table> [--by Field] [--where json] [--field F] [--search text]');
+        return { table: a.table, by: flags.by ?? null, where: flags.where ? JSON.parse(flags.where) : null, field: flags.field ?? null, search: flags.search ?? null };
       },
     },
     http: {
       method: 'GET', path: '/api/tables/:table/stats',
-      args: (a, body, q) => ({ table: a.table, by: q.get('by') || null, field: q.get('field') || null, where: whereJson(q.get('where')) }),
+      args: (a, body, q) => ({ table: a.table, by: q.get('by') || null, field: q.get('field') || null, where: whereJson(q.get('where')), search: q.get('search') || null }),
       fail: (err) => (err?.whereJson ? [400, { error: err.message }] : null),
     },
-    run: (w, a) => w.tableStats(a.table, { by: a.by ?? null, where: a.where ?? null, field: a.field ?? null }),
+    run: (w, a) => w.tableStats(a.table, { by: a.by ?? null, where: a.where ?? null, field: a.field ?? null, search: a.search ?? null }),
   },
   {
     name: 'entity.bulk',

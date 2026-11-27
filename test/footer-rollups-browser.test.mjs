@@ -369,4 +369,23 @@ if (s) {
       await page.close();
     });
   }
+  test('an ungrouped view rolls its Σ row over the rows its filter and search keep (Issue #1911)', async () => {
+    const counted = () => Object.values(weave.getTable(spacesT.id).fields).some((f) => f.type === 'rollup' && f.config.via === sessions.id && f.config.aggregate === 'count' && !f.config.where);
+    if (!counted()) weave.addField(spacesT.id, { name: 'Sessions · count (1911)', type: 'rollup', config: { via: 'Agent/Sessions', aggregate: 'count' } });
+    const view = weave.tableView(`${sessions.id}/Scheduled 1911`, { filters: { Kind: ['scheduled'] } });
+    const page = await open(`/table/${sessions.id}/view/${view.id}`);
+    try {
+      await page.waitForSelector('thead tr.wv-foot td.foot-cell[data-col="Name"].has-stats');
+      assert.equal(await page.locator('tbody tr.entity-row').count(), 2, 'the filter keeps two rows');
+      assert.equal(await footCell(page, 'Name').locator('.foot-val').innerText(), '2', 'the count reads the rows the view shows');
+      assert.equal(await footCell(page, 'Cost').locator('.foot-val').innerText(), '$10.00', 'the sum reads them too');
+      await page.click('.table-search');
+      await page.fill('.table-search-input', 'd');
+      await page.waitForFunction(() => document.querySelectorAll('tbody tr.entity-row').length === 1);
+      await page.waitForFunction(() => document.querySelector('thead tr.wv-foot td.foot-cell[data-col="Name"] .foot-val')?.textContent === '1');
+    } finally {
+      await page.close();
+      weave.tableView(`${sessions.id}/Scheduled 1911`, { delete: true });
+    }
+  });
 }
