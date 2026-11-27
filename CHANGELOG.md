@@ -2,6 +2,13 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.188 (2026-11-26)
+
+- **A workspace opens when a newer release wrote an option value this build does not know** (Issue #1721): an unknown attachments preview, size or fit, avatar shape, document kind, credential kind or keystore, number display or format, date clock or zone, or workflow state category in a stored field config falls back to the type's default on open, with a console warning and a `field-config-tolerated` audit row naming the table, field, key and value. Adding or updating a field still refuses the unknown value.
+- **A hub member can retire a space rollup through `applySchema`** (Issue #1630): the removal step deleted the System/Spaces rollup on the member's own engine, which holds no Spaces table, so `weave_apply_schema` and `schema apply` with `allowDestructive` threw "Table not found" after the rest of the plan had run. It now deletes through the registry host, as the replace step already did.
+- **Safari grows a masonry gallery with no console error** (Issue #1369): a gallery with Original or Capped covers in Masonry flow sets each card's row span in an animation frame instead of inside its ResizeObserver callback, so the scrollbar that appears as the cards spread out no longer makes WebKit report "ResizeObserver loop completed with undelivered notifications". New cards still get their span before their first paint.
+- **upsert-row finds its target row through a key index** (Issue #1611): each fire looks the key up in a per-table, per-key-field map kept beside the row index instead of listing and filtering the whole target table, so a sync's cost no longer grows with the target's size. A duplicated key still updates the row with the lowest PublicId, and a trashed row is still skipped until it is restored.
+
 ## v0.4.187 (2026-11-26)
 
 - **Quarantine list for known flaky test files** (Issue #1761): a file on `QUARANTINE` in `scripts/ci-test.mjs` still runs and still logs its flake line, but its red after the retry no longer fails the CI gate or the PR gate; the gate summary lists it with its Issue. The first entry is `test/entity-dock-default-browser.test.mjs` (Issue #1778).
