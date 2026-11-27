@@ -1,0 +1,1 @@
+- The table and board keep a 480 px floor beside the View pane: opening the pane in a window under 1200 px hides a tray shown by hand, and a tray shown after the pane opens floats the pane over the table instead of squeezing it (Issue #1925).
