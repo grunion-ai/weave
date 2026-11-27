@@ -136,12 +136,21 @@ if (s) {
       }), cases.id);
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr.entity-row');
+      await page.evaluate(() => {
+        const fetched = window.fetch;
+        window.fetch = async (url, init) => {
+          const res = await fetched(url, init);
+          if (init?.method === 'PATCH' && /\/api\/entities\//.test(String(url))) await new Promise((r) => setTimeout(r, 300));
+          return res;
+        };
+      });
       arm(page);
       await page.click(`tr[data-eid="${ids[5]}"] td[data-field="Name"] .text-dressed`);
       await page.fill(`tr[data-eid="${ids[5]}"] td[data-field="Name"] input`, 'zzz last');
       const landed = commitLands(page);
+      const reread = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === `/api/tables/${cases.id}/query`, { timeout: 10000 });
       await page.keyboard.press('Tab');
-      await settle(page, landed);
+      await Promise.all([settle(page, landed), reread]);
       assert.ok(seen(page, /\/api\/tables\/.*\/query$/).length >= 1, `the fallback re-read fired: ${JSON.stringify(page.__seen)}`);
       const stored = await page.evaluate(async (e) => (await (await fetch(`/api/entities/${e}`)).json()).name, ids[5]);
       assert.equal(stored, 'zzz last', 'and the value landed');
