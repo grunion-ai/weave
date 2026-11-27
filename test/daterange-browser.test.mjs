@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { launch } from './lib/browser.mjs';
+import { eventually, launch } from './lib/browser.mjs';
 
 let sprints;
 
@@ -14,6 +14,7 @@ const s = await launch('daterange', (weave) => {
 if (s) {
   const landed = (page) => page.evaluate(() => window.weaveSaves.flush());
   const { base, browser, weave } = s;
+  const committed = (page, id, field, want) => eventually(async () => { await landed(page); return weave.readEntity(id).raw[field]; }, want);
   const freshSprint = (values) => weave.createEntity(sprints, { name: 'Range case', values }).id;
 
   async function rowText(id, label) {
@@ -156,6 +157,7 @@ if (s) {
     const id = freshSprint({ Window: { start: '2026-08-01', end: '2026-09-15' } });
     const page = await browser.newPage();
     try {
+      await page.route('**/date-picker.js*', async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
       await page.goto(`${base}/#/table/${sprints.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('.wv-grid tbody tr');
       const row = page.locator('.wv-grid tbody tr', { has: page.locator(`[data-eid="${id}"], [href*="${id}"]`) }).first();
@@ -168,8 +170,7 @@ if (s) {
       assert.equal(await row.locator('.k-range').count(), 0, 'the read-only chip is gone');
       await box.fill('2026-08-01 – 2026-08-30');
       await box.press('Enter');
-      await landed(page);
-      assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-01', end: '2026-08-30' }, 'a typed range commits from the grid');
+      assert.deepEqual(await committed(page, id, 'Window', { start: '2026-08-01', end: '2026-08-30' }), { start: '2026-08-01', end: '2026-08-30' }, 'a typed range commits from the grid');
       await cell.locator('.date-pick-btn').click();
       await page.locator('.date-pop.range').waitFor();
       assert.equal(await page.locator('.date-pop.range .date-day.sel').count(), 2, 'the same dialog, both ends lit');
@@ -190,8 +191,7 @@ if (s) {
 
     await box.fill('2026-08-01 to 2026-09-15');
     await box.press('Enter');
-    await landed(page);
-    assert.deepEqual(weave.readEntity(id).raw.Window, { start: '2026-08-01', end: '2026-09-15' });
+    assert.deepEqual(await committed(page, id, 'Window', { start: '2026-08-01', end: '2026-09-15' }), { start: '2026-08-01', end: '2026-09-15' });
     assert.equal(weave.readEntity(id).fields.Window, '2026-08-01 – 2026-09-15');
     await page.close();
   });
