@@ -544,9 +544,12 @@ function stepBody(text) {
 const thenWords = (spec) => spec.actions.map(actionWords).join(', then ');
 const UPSERT_KEY_TYPES = ['text', 'number', 'url', 'email'];
 const blankSource = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
-function keyRow(keyed, fieldId, e, gone = false) {
+const fieldKey = (fieldId) => (e) => (e.values?.[fieldId] == null ? undefined : String(e.values[fieldId]));
+const nameKey = (fieldId) => (e) => String(e.values?.[fieldId] ?? '');
+const foldedNameKey = (fieldId) => (e) => String(e.values?.[fieldId] ?? '').toLowerCase();
+function keyRow(keyed, e, gone = false) {
   const was = keyed.of.get(e.id);
-  const now = gone || e.values?.[fieldId] == null ? undefined : String(e.values[fieldId]);
+  const now = gone ? undefined : keyed.key(e);
   if (was === now && (now === undefined || keyed.rows.get(now).get(e.id) === e)) return;
   if (was !== undefined) {
     const bucket = keyed.rows.get(was);
@@ -7736,18 +7739,18 @@ export class Weave {
   #rekeyRow(e, gone = false) {
     const index = this.#rows;
     if (index?.entities !== this.state.entities) return;
-    for (const [fieldId, keyed] of index.byKey.get(e.dbId) ?? []) keyRow(keyed, fieldId, e, gone);
+    for (const keyed of index.byKey.get(e.dbId)?.values() ?? []) keyRow(keyed, e, gone);
   }
 
-  #rowsByKey(dbId, fieldId, value) {
+  #rowsByKey(dbId, slot, value, key = fieldKey(slot)) {
     const index = this.#derived();
     let fields = index.byKey.get(dbId);
     if (!fields) index.byKey.set(dbId, (fields = new Map()));
-    let keyed = fields.get(fieldId);
+    let keyed = fields.get(slot);
     if (!keyed) {
-      keyed = { rows: new Map(), of: new Map() };
-      for (const e of index.byTable.get(dbId)?.values() ?? []) keyRow(keyed, fieldId, e);
-      fields.set(fieldId, keyed);
+      keyed = { rows: new Map(), of: new Map(), key };
+      for (const e of index.byTable.get(dbId)?.values() ?? []) keyRow(keyed, e);
+      fields.set(slot, keyed);
     }
     return [...(keyed.rows.get(value)?.values() ?? [])];
   }
@@ -7985,9 +7988,22 @@ export class Weave {
       const byPid = this.#rowsByPublicId(db.id, pid).find((e) => !e.deletedAt);
       if (byPid) return byPid;
     }
-    const list = this.listEntities(db.id);
-    return list.find((e) => this.entityName(e) === ref)
-      ?? list.find((e) => this.entityName(e).toLowerCase() === String(ref).toLowerCase());
+    const nf = db.fields?.[db.nameFieldId];
+    if (!nf || nf.type === 'formula') {
+      const list = this.listEntities(db.id);
+      return list.find((e) => this.entityName(e) === ref)
+        ?? list.find((e) => this.entityName(e).toLowerCase() === String(ref).toLowerCase());
+    }
+    const folded = String(ref).toLowerCase();
+    return (typeof ref === 'string' ? this.#firstNamed(db, this.#rowsByKey(db.id, `name\n${nf.id}`, ref, nameKey(nf.id)), (n) => n === ref) : undefined)
+      ?? this.#firstNamed(db, this.#rowsByKey(db.id, `folded\n${nf.id}`, folded, foldedNameKey(nf.id)), (n) => n.toLowerCase() === folded);
+  }
+
+  #firstNamed(db, rows, named) {
+    const hits = rows.filter((e) => !e.deletedAt && named(this.entityName(e)));
+    if (hits.length < 2) return hits[0];
+    const held = new Set(hits);
+    return this.listEntities(db.id).find((e) => held.has(e));
   }
 
   entityName(e) {
