@@ -26,6 +26,18 @@ if (s) {
     });
   });
 
+  test('the field dialog fits the whole Description placeholder on a 320 px phone (Issue #1854)', async (t) => {
+    const narrow = matrix.filter((run) => run.phone.name.startsWith('iPhone SE')).map((run) => ({
+      ...run, label: `${run.label} at 320 px`,
+      open: (options = {}) => run.open({ viewport: { width: 320, height: 568 }, screen: { width: 320, height: 568 }, ...options }),
+    }));
+    await eachPhone(t, narrow, async (page) => {
+      await openBudget(page);
+      assert.equal(await page.locator('#tray-back textarea.field-desc').inputValue(), '', 'Project Budget has no description, so the placeholder shows');
+      assert.deepEqual(await descCut(page), [], 'the placeholder runs past the bottom of the Description box');
+    });
+  });
+
   test('a long description grows the box instead of hiding its lines (Issue #1397)', async (t) => {
     await eachPhone(t, matrix, async (page) => {
       await openBudget(page);
