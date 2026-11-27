@@ -6980,8 +6980,8 @@ function renderTable(main, db, items, onSaved, onAdd = null, pager = null) {
     return el('tr', { class: 'group-sum' + (grand ? ' grand' : ` lv-${s.node.level}`), dataset: grand ? { sum: 'all' } : { sum: s.node.key, level: String(s.node.level) } },
       el('td', { class: 'sel-cell' }), el('td', { class: 'pid-cell foot-mark' }, 'Σ'),
       ...cols.map((c, i) => el('td', { class: 'group-sum-cell', dataset: { col: c } },
-        i === 0 ? el('span', { class: 'group-sum-label', style: `--level:${grand ? 0 : s.node.level}` }, `${label} · ${VP.countText(s.rows, db.term)}`) : null,
-        ...rollupCells(from?.rollups, c).map(stat))),
+        i === 0 && grand ? el('span', { class: 'group-sum-label', style: '--level:0' }, `${label} · ${VP.countText(s.rows, db.term)}`) : null,
+        ...rollupCells(from?.rollups, c).filter((x) => x.agg !== 'count').map(stat))),
       ...sysTail.map(() => el('td')), el('td'));
   };
   const buildSlot = (s) => {

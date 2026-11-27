@@ -1,0 +1,1 @@
+- With Σ Rollups on, a group states its row count once, in its head: the subtotal row no longer repeats the group name and count ("Open · 3 tasks") or draws an n cell beside them, and the grand total row reads "All · N tasks" with no n cell. The ungrouped Σ row keeps its n cell. On a phone the subtotal rows, which showed only that repeated label, are hidden (Issue #1932).

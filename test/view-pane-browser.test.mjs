@@ -115,10 +115,10 @@ if (s) {
         for (const row of [...sums, dom.find((d) => d.key === 'all')]) {
           const g = row.key === 'all' ? q.groupTotal : q.groups.find((x) => x.path.map((p) => p.value).join(' › ') === row.key);
           for (const r of g.rollups) {
-            if (!view.fields.includes(r.field)) continue;
+            if (!view.fields.includes(r.field) || r.aggregate === 'count') continue;
             assert.ok(row.cells[r.field]?.includes(r.display ?? '—'), `${row.key} ${r.field} ${r.aggregate}: grid ${row.cells[r.field]} vs API ${r.display}`);
           }
-          assert.match(row.text, new RegExp(`· ${g.count} issues?`));
+          if (row.key !== 'all') assert.doesNotMatch(row.text, /· \d+ issues?/, 'the head above states the count; the subtotal does not repeat it (Issue #1932)');
         }
         assert.equal(dom.find((d) => d.key === 'all').text.includes(`All · ${q.groupTotal.count} issue`), true);
         const deleted = dom.filter((d) => d.kind === 'row' && d.deleted);
