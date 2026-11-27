@@ -122,22 +122,18 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('collapsed groups follow the grouping across views; a different order starts expanded', async () => {
+  test('a fold stays in the view that made it; another view grouped the same way opens expanded (Issue #1909, ruled per view 2026-11-27)', async () => {
     weave.tableView(`${issue.id}/Standard`, { collapsed: null });
     const a = view('Standard', { group: ['Severity', 'Area'], rollups: false, layout: null, collapsed: null });
-    const b = view('Triage', { group: ['Severity', 'Area'], layout: null });
-    const c = view('Reversed', { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], layout: null });
+    const b = view('Triage', { group: ['Severity', 'Area'], layout: null, collapsed: null });
     const page = await open(a, { height: 3000 });
     try {
       await page.click('#main tr.group-head[data-key="Medium"] .group-fold');
+      assert.deepEqual(await eventually(() => weave.tableView(`${issue.id}/Standard`).collapsed ?? [], ['Medium']), ['Medium'], 'the server remembers the fold for Standard');
       await page.goto(`${base}/#/table/${issue.id}/view/${b.id}`, { waitUntil: 'networkidle' });
       await page.waitForSelector('#main tr.group-head[data-key="Medium"]');
-      assert.equal(await page.locator('#main tr.group-head[data-key="Medium"].shut').count(), 1, 'Triage opens with Medium collapsed');
-      assert.equal(await page.locator('#main tr.group-head.shut').count(), 1);
-      assert.deepEqual(await eventually(() => weave.tableView(`${issue.id}/Triage`).collapsed ?? [], ['Medium']), ['Medium'], 'and the server remembers it for Triage');
-      await page.goto(`${base}/#/table/${issue.id}/view/${c.id}`, { waitUntil: 'networkidle' });
-      await firstGroupHead(page, 'High');
-      assert.equal(await page.locator('#main tr.group-head.shut').count(), 0, 'a different order starts expanded');
+      assert.equal(await page.locator('#main tr.group-head.shut').count(), 0, 'Triage opens with every group expanded');
+      assert.equal(weave.tableView(`${issue.id}/Triage`).collapsed, undefined, 'and stores no fold');
     } finally { await page.close(); }
   });
 

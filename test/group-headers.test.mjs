@@ -88,55 +88,53 @@ test('a group edit keeps the folds whose key path still exists and drops the res
   assert.equal(at({ group: ['Status'] }), undefined, 'nothing left to keep reads as no folds');
 });
 
-test('a group edit that lands on another view\'s grouping still takes that view\'s folds (Feature #348, Issue #1914)', () => {
+test('a group edit that lands on another view\'s grouping takes none of its folds (Issue #1909, ruled per view 2026-11-27)', () => {
   const { w, issue } = fresh();
   w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High'] });
   w.tableView(`${issue.id}/Desc`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], collapsed: ['Low'] });
-  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed, ['Low']);
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed, ['High'], 'Standard keeps its own fold');
+  assert.deepEqual(w.tableView(`${issue.id}/Desc`).collapsed, ['Low']);
 });
 
-test('collapsed groups follow the grouping across views: same signature restores', () => {
+test('folded groups belong to the view that folded them (Issue #1909, ruled per view 2026-11-27)', () => {
   const { w, issue } = fresh();
   w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'] });
-  w.tableView(`${issue.id}/Triage`, { layout: 'board' });
   w.tableView(`${issue.id}/Standard`, { collapsed: ['High', 'Low › Nav'] });
-  assert.equal(w.tableView(`${issue.id}/Triage`).collapsed, undefined, 'an ungrouped view keeps its own state');
   const triage = w.tableView(`${issue.id}/Triage`, { group: ['Severity', 'Area'] });
-  assert.deepEqual(triage.collapsed, ['High', 'Low › Nav'], 'grouping Triage the same way opens it with the same groups collapsed');
+  assert.equal(triage.collapsed, undefined, 'grouping another view the same way opens it expanded');
   w.tableView(`${issue.id}/Triage`, { collapsed: ['Medium'] });
-  assert.deepEqual(w.tableView(`${issue.id}/Standard`).collapsed, ['Medium'], 'a fold in one view reaches every view with the same grouping');
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`).collapsed, ['High', 'Low › Nav'], 'a fold in one view leaves the other alone');
   w.tableView(`${issue.id}/Standard`, { collapsed: null });
-  assert.equal(w.tableView(`${issue.id}/Triage`).collapsed, undefined, 'expanding every group does too');
+  assert.deepEqual(w.tableView(`${issue.id}/Triage`).collapsed, ['Medium'], 'and so does expanding every group');
 });
 
-test('a different grouping signature starts expanded: another order, another field order, another field', () => {
+test('a group edit keeps every fold whose path still names the same levels (Issue #1914)', () => {
   const { w, issue } = fresh();
-  w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High'] });
-  w.tableView(`${issue.id}/Desc`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] });
-  assert.equal(w.tableView(`${issue.id}/Desc`).collapsed, undefined, 'a different order does not restore');
-  w.tableView(`${issue.id}/Swap`, { group: ['Area', 'Severity'] });
-  assert.equal(w.tableView(`${issue.id}/Swap`).collapsed, undefined, 'the same fields in another level order do not');
-  w.tableView(`${issue.id}/Desc`, { collapsed: ['Low'] });
-  assert.deepEqual(w.tableView(`${issue.id}/Standard`).collapsed, ['High'], 'a fold under another signature leaves this one alone');
-  assert.equal(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed[0], 'Low', 'reordering a view picks up the memory of its new signature');
-  assert.equal(w.tableView(`${issue.id}/Standard`, { group: ['Status'] }).collapsed, undefined, 'a signature no view carries starts expanded');
+  w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High', 'Low › Nav'] });
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed, ['High', 'Low › Nav'], 'a new direction keeps every fold');
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Status'] }).collapsed, ['High'], 'a new second level keeps the first-level folds');
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Status', 'Area'] }).collapsed, ['High'], 'a level added below keeps them too');
+  assert.equal(w.tableView(`${issue.id}/Standard`, { group: ['Area', 'Severity'] }).collapsed, undefined, 'a new first level leaves no fold that still names its group');
+  w.tableView(`${issue.id}/Desc`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], collapsed: ['Low'] });
+  assert.equal(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed, undefined, 'regrouping like another view adopts none of its folds');
 });
 
-test('a copied view and weave_table_view keep the collapse memory', () => {
+test('a copied view starts with its source folds and then keeps its own (Issue #1909)', () => {
   const { w, issue } = fresh();
   w.tableView(`${issue.id}/Standard`, { group: ['Severity'], collapsed: ['High'] });
   assert.deepEqual(w.tableView(`${issue.id}/Copy`, { from: 'Standard' }).collapsed, ['High']);
   dispatchTool(w, 'weave_table_view', { view: 'Issue/Copy', collapsed: ['Low'] });
-  assert.deepEqual(w.tableView(`${issue.id}/Standard`).collapsed, ['Low']);
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`).collapsed, ['High']);
+  assert.deepEqual(w.tableView(`${issue.id}/Copy`).collapsed, ['Low']);
 });
 
-test('collapse memory survives export and import', () => {
+test('each view keeps its own folds through export and import', () => {
   const { w, issue } = fresh();
   w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High'] });
-  w.tableView(`${issue.id}/Board`, { layout: 'board', group: ['Severity', 'Area'] });
+  w.tableView(`${issue.id}/Board`, { layout: 'board', group: ['Severity', 'Area'], collapsed: ['Medium'] });
   const w2 = new Weave();
   w2.importJSON(w.exportJSON({ blobs: false }));
-  assert.deepEqual(w2.tableView(`${issue.id}/Board`).collapsed, ['High']);
+  assert.deepEqual(w2.tableView(`${issue.id}/Board`).collapsed, ['Medium']);
   w2.tableView(`${issue.id}/Board`, { collapsed: ['Low'] });
-  assert.deepEqual(w2.tableView(`${issue.id}/Standard`).collapsed, ['Low']);
+  assert.deepEqual(w2.tableView(`${issue.id}/Standard`).collapsed, ['High']);
 });

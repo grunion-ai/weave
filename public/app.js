@@ -6250,15 +6250,7 @@ async function readAndDrawBoard(db, dbId, search, gen = navDraw) {
   drawDatabase(db, items, result.trashCount ?? 0, null, { setup: s, all: result.all ?? result.total, everyone, domains, filtered, sorted: !!sort });
 }
 let listWrites = Promise.resolve();
-function shareCollapsed(db, collapsed) {
-  const sig = listCore.groupSig(db.view?.group);
-  if (!sig) return;
-  for (const v of allTables().find((t) => t.id === db.id)?.views ?? []) {
-    if (v.id !== db.view.id && listCore.groupSig(v.group) === sig) v.collapsed = Array.isArray(collapsed) ? [...collapsed] : undefined;
-  }
-}
 function listViewWrite(db, patch) {
-  if (patch.collapsed !== undefined) shareCollapsed(db, patch.collapsed);
   listWrites = listWrites.catch(() => {}).then(() => api('PATCH', `/tables/${db.id}/views/${encodeURIComponent(db.view.id)}`, patch))
     .then(() => loadSchema()).catch((err) => toast(err.message, true));
   return listWrites;
