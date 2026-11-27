@@ -1,0 +1,1 @@
+- Editing a Group level (Reversed, add, remove, reorder) keeps the folded groups whose key path still exists under the new levels instead of opening every group; a grouping another view already uses still takes that view's folds (Issue #1914).

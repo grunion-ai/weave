@@ -73,8 +73,26 @@ test('the grouping signature is the group fields with their orders, in level ord
   assert.notEqual(LC.groupSig([{ field: 'a', order: 'option' }]), LC.groupSig([{ field: 'a', order: 'az' }]));
   assert.equal(LC.groupSig([]), '');
   assert.equal(LC.groupSig(null), '');
-  assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area' }], ['Nav'])[0], 'Nav');
-  assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area', dir: 'desc' }], ['Nav']), null);
+});
+
+test('a group edit keeps the folds whose key path still exists and drops the rest (Issue #1914)', () => {
+  const { w, issue } = fresh();
+  w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High', 'Low › Nav', 'Completed'] });
+  const at = (patch) => w.tableView(`${issue.id}/Standard`, patch).collapsed;
+  assert.deepEqual(at({ group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }), ['High', 'Low › Nav', 'Completed'], 'Reversed keeps every fold');
+  assert.deepEqual(at({ group: [{ field: 'Severity', dir: 'desc' }, 'Area', 'Status'] }), ['High', 'Low › Nav', 'Completed'], 'a deeper level keeps every fold');
+  assert.deepEqual(at({ group: [{ field: 'Severity', dir: 'desc' }] }), ['High', 'Completed'], 'removing a level drops the folds under it');
+  assert.deepEqual(at({ group: ['Area', 'Severity'] }), ['Completed'], 'a reorder drops the folds whose first key is no Area');
+  w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High'] });
+  assert.deepEqual(at({ group: ['Severity', 'Area', 'Status'] }), ['High'], 'adding a level keeps a top fold');
+  assert.equal(at({ group: ['Status'] }), undefined, 'nothing left to keep reads as no folds');
+});
+
+test('a group edit that lands on another view\'s grouping still takes that view\'s folds (Feature #348, Issue #1914)', () => {
+  const { w, issue } = fresh();
+  w.tableView(`${issue.id}/Standard`, { group: ['Severity', 'Area'], collapsed: ['High'] });
+  w.tableView(`${issue.id}/Desc`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'], collapsed: ['Low'] });
+  assert.deepEqual(w.tableView(`${issue.id}/Standard`, { group: [{ field: 'Severity', dir: 'desc' }, 'Area'] }).collapsed, ['Low']);
 });
 
 test('collapsed groups follow the grouping across views: same signature restores', () => {
