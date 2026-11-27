@@ -54,4 +54,6 @@ Renders on a tinted background marked `Σ`, wearing the target column's costume:
 
 A rollup crosses a relation; a formula stays on the record. Reaching for a formula where a rollup does the job is the most common way to end up with a number that will not update.
 
+A rollup counts one step in a chain of computed fields, and a chain stops eight steps down: past that the rollup reads `#DEPTH:` and the path instead of a value, the way a loop reads `#CYCLE:`. The formula guide has the whole rule (Issue #1607).
+
 The `targetField` cannot be deleted while a rollup reads it — the delete is refused and names the rollup; delete the rollup first. A rollup that already lost its target (a workspace from before that refusal) reads `null`; `count` never had a target and keeps counting.

@@ -1,0 +1,1 @@
+- A chain of computed fields more than eight steps deep reads `#DEPTH:` and the path from the field down to where the chain stopped instead of an empty cell; the marker travels through formulas, lookups and rollups the way `#CYCLE:` does, the formula check's scan counts it as an error, and the formula, lookup and rollup guides name the limit (Issue #1607).

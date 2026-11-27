@@ -25,4 +25,6 @@ A lookup that returns null usually means the `relationField` name is wrong — i
 
 Across a to-many relation a lookup reads a list, one value per linked record in relation order; use a `rollup` with `join` when you want them as one string.
 
+A lookup counts one step in a chain of computed fields, and a chain stops eight steps down: past that the lookup reads `#DEPTH:` and the path instead of a value, the way a loop reads `#CYCLE:`. The formula guide has the whole rule (Issue #1607).
+
 The `targetField` cannot be deleted while a lookup reads it — the delete is refused and names the lookup; delete the lookup first. A lookup that already lost its target (a workspace from before that refusal) reads `null`.
