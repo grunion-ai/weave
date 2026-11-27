@@ -5588,6 +5588,9 @@ function levelsBlock(db, kind, save) {
   const out = [];
   if (viewPane.note) out.push(el('div', { class: 'vp-note', role: 'status' }, lucideEl('info'), el('span', {}, viewPane.note)));
   out.push(box);
+  if (!isSort && levels.length > 2 && isBoardLayout(db) && boardCore.groupsOf(v) === 'side') {
+    out.push(el('p', { class: 'vp-hint' }, 'Side by side shows levels 1 and 2. Level 3 and deeper group the Table layout only.'));
+  }
   if (levels.length < cap) {
     const add = el('button', { class: `vp-add-level ${kind}-add`, type: 'button', dataset: { vpKey: `${kind}:add` }, ...(left.length ? {} : { disabled: '' }) },
       lucideEl('plus'), el('span', {}, `Add ${word} level`), el('span', { class: 'vp-add-count' }, `${levels.length} of ${cap}`));
@@ -5657,6 +5660,10 @@ function displayBlock(db, save) {
     ...(isBoardLayout(db) ? boardControls(db, save) : []),
   ];
   if (db.system) return out;
+  if (isBoardLayout(db)) {
+    out.push(el('hr'), el('p', { class: 'vp-hint' }, 'Σ Rollups show in the Table layout.'));
+    return out;
+  }
   out.push(el('hr'), paneSwitch({ label: 'Σ Rollups', hint: 'Totals for every group and the whole table', on: rollups, data: { rollups: '' }, onChange: (on) => save({ rollups: on }) }));
   if (!rollups) return out;
   out.push(el('div', { class: 'vp-line vp-subtotals' }, el('span', { class: 'view-layout-label' }, 'Subtotals'),
@@ -6331,6 +6338,7 @@ function boardControls(db, put) {
   const fit = boardCore.fitOf(v);
   const picture = boardCore.pictureOf(db, v);
   const columns = { groups: 'side', picture: 'off', sort: [] };
+  const shaped = !!cover && picture !== 'off';
   const row = (cls, label, ctl) => el('div', { class: `view-layout ${cls}` }, el('span', { class: 'view-layout-label' }, label), ctl);
   return [
     row('board-presets', 'Start from', el('span', { class: 'board-preset-row' },
@@ -6339,9 +6347,9 @@ function boardControls(db, put) {
     row('board-groups', 'Groups', segCtl([{ id: 'stacked', label: 'Stacked' }, { id: 'side', label: 'Side by side' }], boardCore.groupsOf(v), (groups) => put({ groups }))),
     row('board-picture', 'Picture', segCtl(boardCore.PICTURES.map((id) => ({ id, label: PICTURE_LABELS[id], ...(id !== 'off' && !cover ? { title: 'Set an attachments field to Show as cover to give cards a picture' } : {}) })),
       picture, (size) => put({ picture: size }))),
-    picture === 'off' ? null : row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
-    picture !== 'off' && (fit === 'crop' || fit === 'fit') ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
-    picture !== 'off' && (fit === 'original' || fit === 'capped') ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
+    !shaped ? null : row('board-fit', 'Fit', segCtl(FIT_OPTIONS, fit, (next) => put({ fit: next }))),
+    shaped && (fit === 'crop' || fit === 'fit') ? row('board-frame', 'Card shape', segCtl(boardCore.FRAMES.map((id) => ({ id, label: id })), boardCore.frameOf(v), (frame) => put({ frame }))) : null,
+    shaped && (fit === 'original' || fit === 'capped') ? row('board-flow', 'Uneven cards', segCtl([{ id: 'masonry', label: 'Masonry', title: 'Cards stack into columns with no gaps' }, { id: 'rows', label: 'Rows', title: 'Cards line up in rows, left to right' }], boardCore.flowOf(v), (flow) => put({ flow }))) : null,
   ].filter(Boolean);
 }
 function groupFieldOptions(db) {

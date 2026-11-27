@@ -1,0 +1,1 @@
+- On a board the View pane offers only controls the board draws: Σ Rollups, Subtotals and Per column give way to the line "Σ Rollups show in the Table layout.", Fit, Card shape and Uneven cards appear only when the table has a cover field and Picture is on, and a third group level on side-by-side columns says that it groups the Table layout only (Issue #1916).

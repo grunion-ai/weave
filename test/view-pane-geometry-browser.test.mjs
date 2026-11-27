@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { seedTasks, resetTasks, spacesTable } from './lib/view-pane-tasks.mjs';
+import { seedTasks, resetTasks, spacesTable, useCover } from './lib/view-pane-tasks.mjs';
 import { tableDrawn, paneOnLoad } from './lib/view-pane.mjs';
 import { covering } from './lib/human.mjs';
 
@@ -88,6 +88,33 @@ if (s) {
       });
     }
   }
+
+  test('a board offers no control it ignores: no Σ Rollups, and no Fit or Card shape without a picture field (Issue #1916)', async () => {
+    const page = await open('Kanban', { picture: 'small', rollups: true }, { section: 'display' });
+    try {
+      for (const sel of ['label.vp-switch[data-rollups]', '.vp-subtotals', '.vp-aggs', '.board-fit', '.board-frame', '.board-flow']) {
+        assert.equal(await page.locator(`#view-pane #vp-body-display ${sel}`).count(), 0, `${sel} is not offered on this board`);
+      }
+      assert.match(await page.locator('#view-pane #vp-body-display').innerText(), /Σ Rollups show in the Table layout/);
+    } finally { await page.close(); }
+  });
+
+  test('a board with a cover field offers Fit, and a group level past the lanes says it groups the Table only (Issue #1916)', async () => {
+    resetTasks(weave, tasks.id);
+    useCover(weave, tasks.id, true);
+    weave.tableView(`${tasks.id}/Kanban`, { picture: 'small', group: [{ field: 'State' }, { field: 'Workstream' }, { field: 'Assignee' }] });
+    const id = weave.tableView(tasks.id).views.find((v) => v.name === 'Kanban').id;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await paneOnLoad(page, 'display');
+      await page.goto(`${base}/#/table/${tasks.id}/view/${id}`, { waitUntil: 'networkidle' });
+      await tableDrawn(page);
+      await page.waitForSelector('#view-pane #vp-body-display .board-fit');
+      await page.locator('#view-pane .vp-acc[data-section="group"]').click();
+      await page.waitForSelector('#view-pane #vp-body-group');
+      assert.match(await page.locator('#view-pane #vp-body-group').innerText(), /Level 3 and deeper group the Table layout only/);
+    } finally { await page.close(); }
+  });
 
   test('the Report a problem button overlaps no View pane button (Issue #1926)', async () => {
     const page = await open('Work', {}, { section: 'filters' });

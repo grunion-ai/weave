@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './lib/browser.mjs';
-import { seedTasks, resetTasks } from './lib/view-pane-tasks.mjs';
+import { seedTasks, resetTasks, useCover } from './lib/view-pane-tasks.mjs';
 import { trackWrites, isolated, violations } from './lib/view-isolation.mjs';
 import { human } from './lib/human.mjs';
 import { paneOnLoad, tableDrawn } from './lib/view-pane.mjs';
@@ -89,10 +89,9 @@ const BOARD = [
   { id: 'display: Start from Gallery', section: 'display', keys: ['groups', 'picture'], act: (h) => h.click(preset('Gallery')) },
   { id: 'display: Groups stacked', section: 'display', keys: ['groups'], act: (h) => h.click(boardSeg('board-groups', 'Stacked')) },
   { id: 'display: Picture', section: 'display', keys: ['picture'], act: (h) => h.click(boardSeg('board-picture', 'Small')) },
-  { id: 'display: Fit', section: 'display', keys: ['fit'], seed: { Kanban: { picture: 'small' } }, act: (h) => h.click(boardSeg('board-fit', 'Original')) },
-  { id: 'display: Card shape', section: 'display', keys: ['frame'], seed: { Kanban: { picture: 'small' } }, act: (h) => h.click(boardSeg('board-frame', '1:1')) },
-  { id: 'display: Uneven cards', section: 'display', keys: ['flow'], seed: { Kanban: { picture: 'small', fit: 'original' } }, act: (h) => h.click(boardSeg('board-flow', 'Rows')) },
-  { id: 'display: Rollups on', section: 'display', keys: ['rollups'], act: (h) => h.click('#view-pane label.vp-switch[data-rollups]') },
+  { id: 'display: Fit', section: 'display', keys: ['fit'], cover: true, seed: { Kanban: { picture: 'small' } }, act: (h) => h.click(boardSeg('board-fit', 'Original')) },
+  { id: 'display: Card shape', section: 'display', keys: ['frame'], cover: true, seed: { Kanban: { picture: 'small' } }, act: (h) => h.click(boardSeg('board-frame', '1:1')) },
+  { id: 'display: Uneven cards', section: 'display', keys: ['flow'], cover: true, seed: { Kanban: { picture: 'small', fit: 'original' } }, act: (h) => h.click(boardSeg('board-flow', 'Rows')) },
   { id: 'board footer: Manual', section: 'sort', keys: ['sort'], ruled: ['manual-clears-sort'], act: (h) => h.click('#main .board-manual') },
 ];
 
@@ -102,6 +101,7 @@ if (s) {
   const { base, browser, weave, tasks } = s;
   const run = async (layout, c) => {
     resetTasks(weave, tasks.id);
+    if (c.cover) useCover(weave, tasks.id, true);
     for (const [name, patch] of Object.entries(c.seed ?? {})) weave.tableView(`${tasks.id}/${name}`, patch);
     const view = layout === 'board' ? 'Kanban' : 'Work';
     const id = weave.tableView(tasks.id).views.find((v) => v.name === view).id;
