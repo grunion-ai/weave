@@ -34,7 +34,7 @@ Create and delete workspaces through the hub routes, `POST /api/workspaces` and 
 
 ## Structure and system records
 
-Each workspace's `state` holds its spaces, tables and fields. Structural changes update the corresponding system records in the same workspace. Editing a system record calls the same schema operation with the same validation. `weave registry report` reports drift, and `weave registry rebuild` restores the records from the structure.
+Each workspace's `state` holds its spaces, tables and fields. Structural changes update the corresponding system records in the same workspace. Editing a system record calls the same schema operation with the same validation. `weave registry report` reports drift, including a system kind such as Workspaces that has more than one live table, and `weave registry rebuild` restores the records from the structure. Rebuild does not merge doubled system tables.
 
 Table configuration, including Field Order, Hidden Fields, Filter, Sort and Hide Rollups, stays on the local Tables record. Space rollups live on the local Spaces table and name tables in that workspace. Relations can target the local System/Spaces and System/Tables records, and the workspace's own API reads and edits those records.
 

@@ -55,6 +55,13 @@ journal, so the reload reads only the records changed since this process last
 looked. The journal keeps the last `JOURNAL_CAP` rows; if this process fell
 further behind than that, the reload reads the whole file.
 
+Opening a workspace takes the write lock first: the constructor runs its
+migrate and system-table pass inside `store.batch` and reloads when
+`changedExternally()` reports a commit since load, so two processes opening
+one new file build one set of system tables between them (Issue #1624). The
+switch to WAL mode retries while another connection holds the fresh file,
+because SQLite does not run the busy handler for it.
+
 The HTTP handler in `src/routes.js` calls `maybeRefresh()` once per request,
 after it picks the workspace, and the MCP server calls it before each tool.
 The hub's `list()` and `entries()` refresh every open workspace. A new entry

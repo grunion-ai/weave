@@ -172,6 +172,18 @@ function isWorkspaceShape(data) {
 
 const sameRow = (a, b) => a?.seq === b?.seq && a?.id === b?.id;
 
+const WAL_SWITCH_MS = 5000;
+
+function walMode(db) {
+  const until = Date.now() + WAL_SWITCH_MS;
+  for (;;) {
+    try { return db.exec('PRAGMA journal_mode = WAL'); } catch (err) {
+      if (!/database is locked/.test(err.message) || Date.now() > until) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+}
+
 export class Store {
   #db = null;
   #dataVersion = null;
@@ -237,7 +249,7 @@ export class Store {
     try {
       db = new DatabaseSync(this.path);
       db.exec('PRAGMA busy_timeout = 5000');
-      db.exec('PRAGMA journal_mode = WAL');
+      walMode(db);
       db.exec('PRAGMA synchronous = FULL');
       db.exec('PRAGMA temp_store = MEMORY');
     } catch (err) {

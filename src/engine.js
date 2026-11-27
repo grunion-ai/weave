@@ -1717,11 +1717,13 @@ export class Weave {
     Object.defineProperty(this, 'keyStore', { get: () => this.#keyStore ?? openKeyStore({ path: this.keystorePath, env: this.keystoreEnv }) });
     this.store = store ?? new Store(path);
     this.store.onRollback = (err, loaded) => this.#rolledBack(err, loaded);
-    const loaded = this.store.load();
-    if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
-      throw new WeaveError(`'${path}' is not a Weave workspace file`, 'invalid');
-    }
-    this.state = loaded ?? {
+    const workspaceOf = (loaded) => {
+      if (loaded && (!loaded.meta || (loaded.tables == null && loaded.databases == null))) {
+        throw new WeaveError(`'${path}' is not a Weave workspace file`, 'invalid');
+      }
+      return loaded;
+    };
+    this.state = workspaceOf(this.store.load()) ?? {
       version: 2,
       meta: { name: name ?? nameFromFile(path) ?? workspaceName().slug, createdAt: nowISO(), percentFractional: true },
       spaces: {},
@@ -1729,11 +1731,14 @@ export class Weave {
       entities: {},
       automations: {},
     };
-    this.#oneSave(() => {
-      this.#migrate();
-      if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
-      this.#repairDoubledInverses();
-      if (this.#settlePositions() | this.#landBlobs()) this.save();
+    this.store.batch(() => {
+      if (this.store.changedExternally()) this.state = workspaceOf(this.store.reload()) ?? this.state;
+      this.#oneSave(() => {
+        this.#migrate();
+        if (this.state.meta.registry !== 'hub') this.#ensureMetaTables();
+        this.#repairDoubledInverses();
+        if (this.#settlePositions() | this.#landBlobs()) this.save();
+      });
     });
     HELD?.add(this);
   }
@@ -5819,8 +5824,16 @@ export class Weave {
     this.#settleWorkflows();
   }
 
+  #doubledSystemKinds() {
+    if (this.state.meta.registry === 'hub' && !this.registryHost) return [];
+    const live = Object.values(this.#reg.state.tables).filter((t) => t.system && !t.deletedAt);
+    return [...Map.groupBy(live, (t) => t.system)]
+      .filter(([, tables]) => tables.length > 1)
+      .map(([kind, tables]) => ({ kind: 'system table', name: kind, problem: `${tables.length} live tables of this system kind`, tables: tables.map((t) => t.id) }));
+  }
+
   registryReport() {
-    const problems = [];
+    const problems = this.#doubledSystemKinds();
     const rowOf = (kind, sysId) => this.#sysRow(kind, sysId);
     const relIds = (row, table, fieldName) => this.#relIds(row, table, fieldName);
     const tablesT = this.#sysTable('tables');
