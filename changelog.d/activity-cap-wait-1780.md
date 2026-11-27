@@ -1,0 +1,1 @@
+- The entity Activity cap test waits for the second record's page before it reads the note, so a slow feed no longer reads the first record's count (Issue #1780).
