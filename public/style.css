@@ -2393,7 +2393,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .table-view-popover .view-name-input, #view-pane .view-name-input { --wv-edit-pad: 2px 8px; --wv-edit-fs: var(--fs-grid); flex: 1; min-width: 0; height: 28px; color: var(--tblr-body-color); }
 .table-view-popover .view-edit-hint, #view-pane .view-edit-hint { font: var(--fs-meta) var(--tblr-font-monospace, ui-monospace, monospace); color: var(--tblr-secondary); padding: 0 6px; white-space: nowrap; }
 @media (pointer: coarse) { .table-view-popover .view-acts, #view-pane .view-acts { opacity: 1; }
-  .table-view-popover .view-grip, #view-pane .view-grip { position: relative; margin-inline: -8px -10px; } }
+  .table-view-popover .view-grip, #view-pane .view-grip { position: relative; margin-inline: -8px 0; } }
 
 .tray-body .tray-name-row { display: flex; align-items: center; gap: 6px; }
 .tray-body .tray-name-row .form-control { flex: 1; min-width: 0; }
@@ -2767,15 +2767,22 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
     .opt-row :is(.opt-grip, .opt-name, .opt-del, .opt-color), .opt-list .opt-add, .entity-body > .attach-block .opt-grip, .related-head .opt-grip,
     .table-control-popover :is(.chip-pop-row, .filter-chip, .seg-opt, .view-tab, .field-reorder-handle, .btn, .vp-add-level),
     .phone-row-popover :is(.phone-row-field, .field-reorder-handle, .chip-pop-row, .seg-opt),
-    :is(.table-view-popover, #view-pane) :is(.view-grip, .view-layout .seg-opt, .board-preset),
+    :is(.table-view-popover, #view-pane) :is(.view-grip, .view-name, .view-act, .view-layout .seg-opt, .board-preset),
     #sidebar :is(.search-like, .nav-db, .nav-space, .nav-caret, button.btn-icon, .nav-db-menu .dots-btn, .nav-space-menu .dots-btn, .nav-pinned .btn, .ws-wordmark),
     .tools-open > .crumb-actions > :is(.btn, .table-search), :is(.board-lane-head, .board-group-head) .list-fold, .board-picks .btn, .tile-title, .tile-field > :is(dt, dd),
     .wv-schema > summary, .entity-body :is(.block-head, .doc-section-head), .entity-files-make, .entity-fields .fieldrow, .entity-fields .fieldrow > .text-dressed,
     .entity-fields .fieldrow :is(.form-control, .form-select, .picker-face, input.inline-edit, select.inline-edit, .url-link, .url-edit),
+    .wv-act-tray .btn, .crumb-pane .page-close, .doc-section-head > .doc-dl > .dots-btn,
     .bug-cat, .bug-mail, .bug-send, .av-pick:has(.head-av), #page-loader .loader-retry, .doc-editor .vditor-toolbar.wv-bar-dock button,
     .document-inline-options .doc-anchor, #share-pane .btn, .share-link-actions button, #cmdk-results .result, #cmdk .copy-btn
   ):not(input[type="checkbox"], input[type="radio"]) { min-inline-size: var(--wv-hit); min-block-size: var(--wv-hit); }
   .date-grid .date-day { min-inline-size: auto; }
+  :is(.table-view-popover, #view-pane) .view-name { flex: 1 1 auto; align-content: center; min-inline-size: var(--wv-hit); }
+  :is(.table-view-popover, #view-pane) .view-first { flex-shrink: 8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :is(.table-view-popover, #view-pane) .view-acts { gap: 0; }
+  .doc-section-head > .doc-dl > .dots-btn { margin-block: calc((var(--wv-btn-sm-h) - var(--wv-hit)) / 2); }
+  .phone-row-popover label.eye-row > .form-check-input { pointer-events: none; }
+  .table-view-popover :is(.view-reset, .view-clear) { min-block-size: calc(var(--wv-hit) + 2px); }
   .mention-caret::after, .add-field-btn::after, #nav-collapse::after,
   .nav-db-menu .dots-btn::after, .nav-space-menu .dots-btn::after, td.pid-cell a.open-link::after { width: max(100%, var(--wv-hit)); height: max(100%, var(--wv-hit)); }
   .wv-disclosure::after { width: var(--wv-hit); height: var(--wv-hit); }
@@ -2809,7 +2816,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   .entity-fields .entity-values .fieldrow:has(.range-cell) > :nth-child(3) { grid-column: 1; }
 }
 
-.entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { min-height: 26px; }
+.entity-fields .entity-values .fieldrow[data-ftype="relation"] .ms-box > .btn.tiny { min-height: max(26px, var(--wv-hit)); }
 @media (max-width: 719px) {
   .entity-fields .entity-values .fieldrow { grid-template-columns: 100px minmax(0, 1fr) 16px; gap: 0 8px; align-items: center;
     min-height: 56px; padding: 4px 0; margin: 0; border-radius: 0; box-shadow: inset 0 -1px 0 var(--tblr-border-color); }
