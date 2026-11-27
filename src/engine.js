@@ -3059,6 +3059,16 @@ export class Weave {
     return f;
   }
 
+  #keptCollapsed(db, v) {
+    if (!Array.isArray(v.collapsed) || !v.collapsed.length || !v.group?.length) return null;
+    const ids = v.group.map((l) => l.field).filter((id) => db.fields[id]);
+    const group = v.group.filter((l) => db.fields[l.field]).map((l) => ({ ...l, field: db.fields[l.field].name }));
+    const pick = { ids: new Set(ids) };
+    const items = this.listEntities(db.id).map((e) => this.#readEntityIn(e.id, { pick, chips: Object.create(null) }));
+    const levels = ViewPane.levelsFor(group, ids.map((id) => this.#groupFieldShape(db.fields[id])), { domains: ids.map((id) => this.#groupTargets(db.fields[id])), items });
+    return ViewPane.keptCollapsed(levels, v.collapsed);
+  }
+
   #sameGrouping(db, view) {
     if (!view.group?.length) return [];
     const sig = ListCore.groupSig(view.group);
@@ -3119,7 +3129,8 @@ export class Weave {
       if (g.length) next.group = g; else delete next.group;
       if (patch.collapsed === undefined && ListCore.groupSig(g) !== before) {
         const twin = this.#sameGrouping(db, next)[0];
-        if (Array.isArray(twin?.collapsed)) next.collapsed = [...twin.collapsed]; else delete next.collapsed;
+        const kept = twin ? (Array.isArray(twin.collapsed) ? [...twin.collapsed] : null) : this.#keptCollapsed(db, next);
+        if (kept) next.collapsed = kept; else delete next.collapsed;
       }
     }
     if (patch.completedBy !== undefined) {

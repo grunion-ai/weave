@@ -214,16 +214,16 @@ test('rule: deleted rows show but never add to a total', () => {
   assert.match(sum.display, /^\$/, 'the Σ value wears the column\'s currency costume');
 });
 
-test('rule: changing the group fields or their orders expands every group again (Feature #348)', () => {
+test('rule: changing the group levels keeps the folds whose key path still exists (Issue #1914)', () => {
   const { x, issue: t } = fresh();
   x.tableView(`${t.id}/Standard`, { group: ['Area'], collapsed: ['Nav'] });
   assert.deepEqual(x.tableView(`${t.id}/Standard`, { group: ['Area'] }).collapsed, ['Nav'], 'same grouping: still collapsed');
-  assert.equal(x.tableView(`${t.id}/Standard`, { group: [{ field: 'Area', dir: 'desc' }] }).collapsed, undefined, 'same field, new order: a new grouping, every group open');
-  x.tableView(`${t.id}/Standard`, { collapsed: ['Nav'] });
-  assert.equal(x.tableView(`${t.id}/Standard`, { group: ['Severity'] }).collapsed, undefined, 'new field: every group open');
-  assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Severity' }], ['Nav']), null);
-  assert.equal(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area', dir: 'desc' }], ['Nav']), null);
-  assert.deepEqual(VP.nextCollapsed([{ field: 'Area' }], [{ field: 'Area' }], ['Nav']), ['Nav']);
+  assert.deepEqual(x.tableView(`${t.id}/Standard`, { group: [{ field: 'Area', dir: 'desc' }] }).collapsed, ['Nav'], 'same field, new order: the Nav group still exists, still collapsed');
+  assert.equal(x.tableView(`${t.id}/Standard`, { group: ['Severity'] }).collapsed, undefined, 'new field: no Nav group, every group open');
+  const level = (labels) => ({ domain: labels.map((label) => ({ label })), nullLabel: 'No value' });
+  assert.deepEqual(VP.keptCollapsed([level(['Nav', 'Grid']), level(['Low'])], ['Nav', 'Grid › Low', 'Grid › High', 'No value', 'Completed']), ['Nav', 'Grid › Low', 'No value', 'Completed']);
+  assert.equal(VP.keptCollapsed([level(['Low'])], ['Nav']), null);
+  assert.equal(VP.keptCollapsed([level(['Nav'])], null), null);
 });
 
 test('rule: a group order reverses and No value stays last', () => {
