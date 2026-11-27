@@ -10,6 +10,7 @@ import { ROOT } from './lib/source.mjs';
 import { firstPartyAssets } from './lib/bytes.mjs';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
+import { Weave } from '../src/engine.js';
 
 const PUBLIC = join(ROOT, 'public');
 const ASSETS = firstPartyAssets(PUBLIC);
@@ -150,5 +151,22 @@ test('the server sends first-party scripts and styles minified, minified before 
     assert.ok(vendor.body.equals(readFileSync(join(PUBLIC, 'vendor/mermaid.min.js'))), 'vendored code is already minified and never touched');
     const again = await get(port, '/app.js', { 'If-None-Match': plain.headers.etag });
     assert.equal(again.status, 304);
+  });
+});
+
+test('a server started with warmAssets minifies every first-party script and style in the background, so the first request is a cache hit (Issue #1646)', async () => {
+  await withServer(async ({ server, port }) => {
+    assert.equal(server.minifyRuns(), 0, 'a server without warmAssets waits for the first request');
+    await get(port, '/style.css');
+    assert.equal(server.minifyRuns(), 1);
+  });
+  await withServer(new Weave(), { warmAssets: true }, async ({ server, port }) => {
+    await server.warmed;
+    const runs = server.minifyRuns();
+    assert.equal(runs, ASSETS.length, 'one minify per first-party script and style');
+    const app = await get(port, '/app.js');
+    assert.equal(app.body.toString(), minifyJs(readFileSync(join(PUBLIC, 'app.js'), 'utf8')));
+    await get(port, '/style.css');
+    assert.equal(server.minifyRuns(), runs, 'the first requests pay no minify');
   });
 });

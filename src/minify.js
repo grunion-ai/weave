@@ -156,9 +156,10 @@ export function minifyCss(src) {
 
 export function createMinified() {
   const known = new Map();
-  return (full, { mtimeMs, size }, read) => {
+  const minified = (full, { mtimeMs, size }, read) => {
     const hit = known.get(full);
     if (hit && hit.mtimeMs === mtimeMs && hit.size === size) return hit.body;
+    minified.runs++;
     const raw = read();
     let body = raw;
     try {
@@ -168,4 +169,6 @@ export function createMinified() {
     known.set(full, { mtimeMs, size, body });
     return body;
   };
+  minified.runs = 0;
+  return minified;
 }

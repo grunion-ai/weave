@@ -1,0 +1,1 @@
+- `weave serve` minifies every first-party script and stylesheet in the background right after it starts listening, so the first request for `/app.js` after a deploy reads the cache instead of paying the 30 to 90 ms minify (Issue #1646).

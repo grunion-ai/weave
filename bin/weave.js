@@ -225,7 +225,7 @@ async function main() {
     if (origin) console.log(`Public origin: ${origin}${process.env.WEAVE_TRUST_PROXY ? ' (trusting X-Forwarded-For)' : ''}`);
     let nightly = null;
     const dest = process.env.WEAVE_BACKUP_DEST || null;
-    const { server, port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000 });
+    const { server, port: actual } = await startServer(w, { port, host, build: buildInfo, backup: () => nightly?.status() ?? null, authProbeEvery: 15 * 60_000, warmAssets: true });
     let stopped = null;
     const stop = (why) => stopped ??= server.shutdown()
       .then(({ workspaces, cut }) => console.log(`Weave stopped (${why}): ${workspaces} workspace${workspaces === 1 ? '' : 's'} closed${cut ? `, ${cut} unfinished request${cut === 1 ? '' : 's'} cut off` : ''}`))

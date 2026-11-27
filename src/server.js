@@ -661,7 +661,7 @@ const SHUTDOWN_DRAIN_MS = 5000;
 
 const providerFromEnv = (env = process.env) => { const c = oidcFromEnv(env); return c ? createOidc(c) : null; };
 
-export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), paintLog = origin ? (line) => console.log(line) : null, scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
+export function createServer(defaultWeave, { workspaces = {}, build = () => null, backup = () => null, cloudBackups = cloudStore(), origin = originFromEnv(), trustProxy = trustProxyFromEnv(), limits, allowedHosts = allowedHostsFromEnv(), checkHost = true, frameAncestors = frameAncestorsFromEnv(), oidc = providerFromEnv(), mcpOrigins = mcpOriginsFromEnv(), mail = mailerFromEnv(), baseDomain = baseDomainFromEnv(), openSignup = openSignupFromEnv(), clerkKey = clerkKeyFromEnv(), deployToken = deployTokenFromEnv(), billing = billingFromEnv(), posthog = posthogFromEnv(), paintLog = origin ? (line) => console.log(line) : null, warmAssets = false, scheduleEvery = 60_000, authProbeEvery = 0, trialMailEvery = TRIAL_MAIL_EVERY } = {}) {
   const hub = createWorkspaceHub(defaultWeave, { workspaces, walled: !!origin });
   const schedules = armSchedules(() => {
     for (const { name } of hub.list()) {
@@ -819,6 +819,18 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
       fail(res, statusFor(err), error, code, id);
     }
   });
+  server.minifyRuns = () => minified.runs;
+  server.warmed = !warmAssets ? Promise.resolve() : new Promise((done) => server.once('listening', () => {
+    const files = readdirSync(PUBLIC_DIR, { recursive: true }).filter((f) => /\.(?:m?js|css)$/.test(f) && !f.startsWith('vendor/'));
+    const next = () => {
+      const file = files.shift();
+      if (!file || !server.listening) return done();
+      const full = join(PUBLIC_DIR, file);
+      try { minified(full, statSync(full), () => readFileSync(full)); } catch {}
+      setImmediate(next);
+    };
+    setImmediate(next);
+  }));
   const stopTimers = () => { schedules.stop(); trialMail?.stop(); if (signInProbe) clearInterval(signInProbe); };
   server.on('close', stopTimers);
   server.shutdown = ({ drainMs = SHUTDOWN_DRAIN_MS } = {}) => stopping ??= new Promise((resolve) => {
@@ -844,10 +856,10 @@ export function createServer(defaultWeave, { workspaces = {}, build = () => null
   return server;
 }
 
-export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, paintLog, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
+export function startServer(weave, { port = 4400, host = '127.0.0.1', workspaces = {}, build = () => null, backup = () => null, cloudBackups, origin, trustProxy, limits, allowedHosts, frameAncestors, oidc, mcpOrigins, mail, baseDomain, openSignup, clerkKey, deployToken, billing, posthog, paintLog, warmAssets, scheduleEvery, authProbeEvery, trialMailEvery } = {}) {
   const { enforce, warning } = origin || allowedHosts?.length || mcpOrigins?.length || baseDomain ? { enforce: true, warning: null } : hostCheckFor({ host });
   if (warning) console.warn(warning);
-  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(paintLog !== undefined ? { paintLog } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
+  const server = createServer(weave, { workspaces, build, backup, limits, ...(cloudBackups !== undefined ? { cloudBackups } : {}), checkHost: enforce, ...(origin !== undefined ? { origin } : {}), ...(trustProxy !== undefined ? { trustProxy } : {}), ...(allowedHosts !== undefined ? { allowedHosts } : {}), ...(frameAncestors !== undefined ? { frameAncestors } : {}), ...(oidc !== undefined ? { oidc } : {}), ...(mcpOrigins !== undefined ? { mcpOrigins } : {}), ...(mail !== undefined ? { mail } : {}), ...(baseDomain !== undefined ? { baseDomain } : {}), ...(openSignup !== undefined ? { openSignup } : {}), ...(clerkKey !== undefined ? { clerkKey } : {}), ...(deployToken !== undefined ? { deployToken } : {}), ...(billing !== undefined ? { billing } : {}), ...(posthog !== undefined ? { posthog } : {}), ...(paintLog !== undefined ? { paintLog } : {}), ...(warmAssets !== undefined ? { warmAssets } : {}), ...(scheduleEvery !== undefined ? { scheduleEvery } : {}), ...(authProbeEvery !== undefined ? { authProbeEvery } : {}), ...(trialMailEvery !== undefined ? { trialMailEvery } : {}) });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({ server, port: server.address().port }));
   });
