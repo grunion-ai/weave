@@ -5,7 +5,7 @@ export const PROJECTS = ['weave', 'harness', 'plumbline', 'decklet', 'underchat'
 const VERBS = ['Fix', 'Draft', 'Review', 'Ship', 'Call', 'Renew', 'Measure', 'Migrate', 'Cancel', 'Book'];
 const NOUNS = ['the quarterly tax filing', 'view pane accordion', 'insurance dispute letter', 'overnight digest', 'Railway token', 'gym schedule', 'landing page hero', 'expense log gaps', 'domain renewal', 'a very long task name that keeps going well past any reasonable column width so truncation has to cope'];
 
-export const FIELDS = ['Name', 'State', 'Due', 'Workstream', 'Captured', 'Fibery', 'Uno Row', 'Tags', 'Spec', 'Assignee', 'Project', 'Visibility', 'Version', 'Commit', 'As of', 'Files'];
+export const FIELDS = ['Name', 'State', 'Due', 'Workstream', 'Captured', 'Fibery', 'Uno Row', 'Tags', 'Spec', 'Assignee', 'Project', 'Visibility', 'Version', 'Commit', 'As of', 'Files', 'Photo'];
 
 export const VIEWS = {
   Standard: {},
@@ -57,6 +57,7 @@ export function seedTasks(w, { rows = 60 } = {}) {
   w.addField(tasks.id, { name: 'Commit', type: 'text' });
   w.addField(tasks.id, { name: 'As of', type: 'date' });
   w.addField(tasks.id, { name: 'Files', type: 'attachments' });
+  w.addField(tasks.id, { name: 'Photo', type: 'attachments', config: { multiple: false } });
   const rel = PROJECTS.map((name) => w.createEntity(project.id, { name }).id);
   const day = (n) => new Date(Date.UTC(2026, 8, 1 + n)).toISOString().slice(0, 10);
   const ids = [];
@@ -108,7 +109,12 @@ export function spacesTable(w) {
 
 const SPACES_BASE = ['Name', 'Description', 'Template', 'Tables', 'Workflows', 'Workspace'];
 
+export function useCover(w, tableId, on) {
+  w.updateField(tableId, 'Photo', { config: { preview: on ? 'cover' : null } });
+}
+
 export function resetTasks(w, tableId) {
+  useCover(w, tableId, false);
   const spaces = spacesTable(w);
   for (const f of spaces?.fields ?? []) if (!SPACES_BASE.includes(f.name)) w.deleteField(spaces.id, f.id, { hard: true });
   writeViews(w, tableId);
