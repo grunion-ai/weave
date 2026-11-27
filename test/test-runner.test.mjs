@@ -69,6 +69,34 @@ test('only the file that failed runs again', () => {
   assert.equal(RETRIES, 1, 'a file that needs three goes is broken, not flaky');
 });
 
+test('a failing todo or skipped case never names its file for the retry (Issue #1779)', async () => {
+  const { default: failedFiles } = await import('../scripts/failed-files.mjs');
+  async function* events() {
+    yield { type: 'test:fail', data: { file: 'todo.mjs', todo: 'Issue #1' } };
+    yield { type: 'test:fail', data: { file: 'skip.mjs', skip: true } };
+    yield { type: 'test:fail', data: { file: 'real.mjs' } };
+  }
+  const out = [];
+  for await (const chunk of failedFiles(events())) out.push(chunk);
+  assert.deepEqual(out.join('').split('\n').filter(Boolean), ['real.mjs']);
+});
+
+test('a file whose only failures are todo cases is not retried beside a real failure (Issue #1779)', () => {
+  const f = fixture('broken');
+  const todo = join(f.dir, 'todo.test.mjs');
+  writeFileSync(todo, "import test from 'node:test';\ntest('pending', { todo: 'Issue #1' }, () => { throw new Error('not yet'); });\n");
+  try {
+    const said = [];
+    run([f.good, todo, f.subject], [], { out: (line) => said.push(line) });
+    const retrying = said.find((l) => l.startsWith('# RETRYING'));
+    assert.ok(retrying.includes(f.subject));
+    assert.ok(!retrying.includes(todo), 'a todo failure is expected, not a flake');
+    assert.ok(!said.join('\n').includes(`RETRIED and green: 1 file(s) failed the first run and passed the second: ${todo}`));
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
 test('the retry breadcrumb is on stdout, where the gate quotes it', () => {
   const f = fixture('flaky');
   const env = { ...childEnv(), WEAVE_TEST_MANAGER_DIR: join(f.dir, 'manager'), WEAVE_TEST_JOB: '',
