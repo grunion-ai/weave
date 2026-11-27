@@ -262,3 +262,50 @@ test('REST, MCP and CLI carry the stats field narrowing (Issue #235)', async () 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('tableStats narrowed by where or search rolls the space rollups over the rows it keeps (Issue #1911)', () => {
+  const { w, t, spacesT } = build();
+  w.addField(spacesT.id, { name: 'N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } });
+  w.addField(spacesT.id, { name: 'Cost sum', type: 'rollup', config: { via: 'Sessions', targetField: 'Cost', aggregate: 'sum' } });
+  w.addField(spacesT.id, { name: 'Done N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count', where: [['Done', '=', true]] } });
+  const whole = w.tableStats(t.id);
+  assert.deepEqual(whole.rollups.map((r) => [r.name, r.value]), [['N', 4], ['Cost sum', 14], ['Done N', 2]], 'no narrowing reads the stored values');
+  const scheduled = w.tableStats(t.id, { where: [['Kind', 'in', ['scheduled']]] });
+  assert.deepEqual(scheduled.rollups.map((r) => [r.name, r.value, r.display]), [['N', 2, '2'], ['Cost sum', 10, '$10.00'], ['Done N', 1, '1']]);
+  assert.deepEqual(scheduled.rollups.map((r) => r.fieldId), whole.rollups.map((r) => r.fieldId), 'each rollup keeps its field id');
+  const none = w.tableStats(t.id, { where: [['Kind', 'in', ['nope']]] });
+  assert.equal(none.rollups.find((r) => r.name === 'N').value, 0, 'a filter that keeps nothing counts nothing');
+  const searched = w.tableStats(t.id, { search: 'b' });
+  assert.equal(searched.rows, 1, 'search narrows the rows');
+  assert.equal(searched.rollups.find((r) => r.name === 'N').value, 1);
+  assert.deepEqual(w.tableStats(t.id, { field: 'Cost', where: [['Kind', 'in', ['interactive']]] }).rollups.map((r) => [r.name, r.value]), [['Cost sum', 4]]);
+});
+
+test('REST, MCP and CLI carry the stats search narrowing (Issue #1911)', async () => {
+  const { w, t, spacesT } = build();
+  w.addField(spacesT.id, { name: 'N', type: 'rollup', config: { via: 'Sessions', aggregate: 'count' } });
+  assert.ok(TOOLS.find((x) => x.name === 'weave_stats').inputSchema.properties.search, 'weave_stats advertises search');
+  assert.equal(dispatchTool(w, 'weave_stats', { table: 'Agent/Sessions', search: 'b' }).rollups[0].value, 1);
+  await withServer(w, async ({ base }) => {
+    const where = encodeURIComponent(JSON.stringify([['Kind', 'in', ['scheduled']]]));
+    const body = await (await fetch(`${base}/api/tables/${t.id}/stats?where=${where}`)).json();
+    assert.equal(body.rollups[0].value, 2, 'REST where narrows the rollups');
+    const found = await (await fetch(`${base}/api/tables/${t.id}/stats?search=b`)).json();
+    assert.equal(found.rows, 1, 'REST search narrows the rows');
+  });
+  const dir = tempDir('weave-stats-search-');
+  try {
+    const data = join(dir, 'ws.db');
+    const d = new Weave({ path: data });
+    const sp = d.createSpace({ name: 'Agent' });
+    const dt = d.createTable({ space: sp.id, name: 'Sessions' });
+    d.createEntity(dt.id, { values: { Name: 'alpha' } });
+    d.createEntity(dt.id, { values: { Name: 'beta' } });
+    d.close?.();
+    const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'weave.js');
+    const out = JSON.parse(execFileSync('node', [BIN, 'stats', 'Agent/Sessions', '--search', 'beta', '--data', data], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    assert.equal(out.rows, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -8985,13 +8985,20 @@ export class Weave {
     return out;
   }
 
-  tableStats(dbRef, { by = null, where = null, field = null } = {}) {
+  tableStats(dbRef, { by = null, where = null, field = null, search = null } = {}) {
     const db = this.getTable(dbRef);
     const only = field == null ? null : this.getField(db.id, field);
     let rows = this.listEntities(db.id);
+    let narrowed = false;
     if (where && (Array.isArray(where) ? where.length : true)) {
       this.#checkWhere(db, where);
       rows = rows.filter((r) => this.#matchNode(r, db, Array.isArray(where) ? { and: where } : where));
+      narrowed = true;
+    }
+    if (String(search ?? '').trim()) {
+      const hit = new Set(this.#searchHits(search, db.id).map((h) => h.e.id));
+      rows = rows.filter((e) => hit.has(e.id));
+      narrowed = true;
     }
     const SKIP = new Set(['view', 'document', 'attachments', 'avatar', 'key', 'field']);
     const withheld = this.#withheld(db);
@@ -9052,7 +9059,12 @@ export class Weave {
       }
       return col;
     });
-    const out = { table: this.qualifiedName(db), rows: rows.length, columns, rollups: this.tableRollups(db.id, { field: only?.id ?? null }) };
+    let rollups = this.tableRollups(db.id, { field: only?.id ?? null });
+    if (narrowed) {
+      const over = new Map(this.#rollupsOver(db, rows, () => null, { filtered: true }).map((r) => [r.fieldId, r]));
+      rollups = rollups.map((r) => (over.has(r.fieldId) ? { ...r, value: over.get(r.fieldId).value, display: over.get(r.fieldId).display } : r));
+    }
+    const out = { table: this.qualifiedName(db), rows: rows.length, columns, rollups };
     if (by) {
       const byF = this.getField(db.id, by);
       const keys = dressAll(byF);
@@ -9433,7 +9445,7 @@ export class Weave {
     };
   }
 
-  #rollupsOver(db, entities, column = () => null) {
+  #rollupsOver(db, all, column = () => null, { filtered = false } = {}) {
     const spacesT = this.#sysTable('spaces');
     const row = spacesT && this.#sysRow('spaces', db.spaceId);
     if (!row) return [];
@@ -9442,21 +9454,27 @@ export class Weave {
     const out = [];
     for (const fid of spacesT.fieldOrder) {
       const f = spacesT.fields[fid];
-      if (f?.type !== 'rollup' || f.config.via !== db.id || f.config.where) continue;
+      if (f?.type !== 'rollup' || f.config.via !== db.id || (f.config.where && !filtered)) continue;
       const agg = f.config.aggregate;
       const target = f.config.targetField ? db.fields[f.config.targetField] ?? null : null;
+      const w = f.config.where;
+      let entities = all;
+      if (w) {
+        try { entities = all.filter((e) => this.#matchNode(e, db, Array.isArray(w) ? { and: w } : w)); } catch { entities = null; }
+      }
       let value = null;
-      if (agg === 'count') value = entities.length;
+      if (!entities) value = null;
+      else if (agg === 'count') value = entities.length;
       else if (target) {
         const ticks = isBoolType(target.type) && NUMERIC_AGGREGATES.includes(agg);
-        const vals = (column(target) ?? entities.map((e) => this.#resolve(e, db, target, 1))).map((x) => (ticks && !isChainMarker(x) ? (x ? 1 : 0) : x));
+        const vals = ((w ? null : column(target)) ?? entities.map((e) => this.#resolve(e, db, target, 1))).map((x) => (ticks && !isChainMarker(x) ? (x ? 1 : 0) : x));
         if (!vals.some(isChainMarker)) {
           const display = ['distinct', 'join'].includes(agg) ? entities.map((e, i) => this.#displayValue(db, target, vals[i], e)) : null;
           value = aggregateValues(agg, vals, { display, separator: f.config.separator ?? ', ' });
         }
       }
       const shown = value == null ? null : reg.#displayValue(spacesT, f, value, row);
-      out.push({ field: target?.name ?? nameField, aggregate: agg, value, display: shown == null ? null : String(shown) });
+      out.push({ ...(filtered ? { fieldId: f.id } : {}), field: target?.name ?? nameField, aggregate: agg, value, display: shown == null ? null : String(shown) });
     }
     return out;
   }

@@ -8843,10 +8843,21 @@ function renderFooter(db, cols) {
     el('td'));
 }
 
+function footStatsPath(db, field = null) {
+  const q = new URLSearchParams();
+  if (field) q.set('field', field);
+  const where = filterWhere(db);
+  if (where) q.set('where', JSON.stringify(where));
+  const search = tableSearchText(db);
+  if (search) q.set('search', search);
+  const qs = q.toString();
+  return `/tables/${db.id}/stats${qs ? `?${qs}` : ''}`;
+}
+
 async function fillFooter(db, foot, rollups = null, { col = null } = {}) {
   if (!foot) return;
   try {
-    rollups ??= (await api('GET', `/tables/${db.id}/stats`)).rollups;
+    rollups ??= (await api('GET', footStatsPath(db))).rollups;
   } catch { return; }
   if (!foot.isConnected) return;
   const nameCol = db.fields.find((f) => f.role === 'name')?.name ?? 'Name';
@@ -8870,7 +8881,7 @@ async function footerPicker(anchor, db, col) {
   if (!spacesT || !aggs.length) return;
   const nameCol = db.fields.find((x) => x.role === 'name')?.name ?? 'Name';
   let rollups = [];
-  const load = async () => { rollups = (await api('GET', `/tables/${db.id}/stats?field=${encodeURIComponent(f.id)}`)).rollups; };
+  const load = async () => { rollups = (await api('GET', footStatsPath(db, f.id))).rollups; };
   const have = (agg) => rollups.find((r) => (r.targetField ?? nameCol) === col && r.aggregate === agg && !r.where);
   const tailKey = `Σ ${db.id} ${col}`;
   const write = async (agg, on) => {
