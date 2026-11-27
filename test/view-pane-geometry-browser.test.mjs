@@ -89,6 +89,27 @@ if (s) {
     }
   }
 
+  test('opening a lower section in a short window brings its header into view (Issue #1923)', async () => {
+    resetTasks(weave, tasks.id);
+    const work = weave.tableView(tasks.id).views.find((v) => v.name === 'Work').id;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 600 } });
+    try {
+      await paneOnLoad(page, 'filters');
+      await page.goto(`${base}/#/table/${tasks.id}/view/${work}`, { waitUntil: 'networkidle' });
+      await tableDrawn(page);
+      await page.waitForSelector('#view-pane #vp-body-filters');
+      const scroll = page.locator('#view-pane .vp-scroll');
+      await page.locator('#view-pane .vp-acc[data-section="display"]').scrollIntoViewIfNeeded();
+      await page.locator('#view-pane .vp-acc[data-section="display"]').click();
+      await page.waitForSelector('#view-pane #vp-body-display .vp-agg');
+      const [head, box] = await Promise.all([
+        page.locator('#view-pane .vp-acc[data-section="display"]').evaluate((n) => n.getBoundingClientRect().toJSON()),
+        scroll.evaluate((n) => n.getBoundingClientRect().toJSON()),
+      ]);
+      assert.ok(head.top >= box.top - 1 && head.bottom <= box.bottom + 1, `the Display header sits at ${Math.round(head.top)}..${Math.round(head.bottom)} in a pane showing ${Math.round(box.top)}..${Math.round(box.bottom)}`);
+    } finally { await page.close(); }
+  });
+
   test('the Report a problem button overlaps no View pane button (Issue #1926)', async () => {
     const page = await open('Work', {}, { section: 'filters' });
     try {
