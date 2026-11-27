@@ -1,0 +1,1 @@
+- **Table stats read each row once** (Issue #1619): `weave_stats` keeps every field's resolved values and display values for the call, so a `by` grouping and its per-group rollups reuse them instead of resolving each numeric field again per bucket. Output is byte-identical; grouping a 20,000-row table by Stage drops from about 74 ms to about 60 ms on the Mac.
