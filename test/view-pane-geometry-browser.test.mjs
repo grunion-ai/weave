@@ -47,8 +47,8 @@ if (s) {
 
   const footCount = (page, sel) => page.locator(sel).first().evaluate((n) => Number(n.textContent.replace(/[^\d]/g, '')));
   const TOTALS = [
-    ['an ungrouped filtered view', 'Standard', { filters: { Workstream: ['Home', 'Startup'] }, rollups: true }, 'Issue #1911'],
-    ['an ungrouped view whose filter matches nothing', 'Standard', { filters: { Assignee: ['Guest'] }, rollups: true }, 'Issue #1911'],
+    ['an ungrouped filtered view', 'Standard', { filters: { Workstream: ['Home', 'Startup'] }, rollups: true }],
+    ['an ungrouped view whose filter matches nothing', 'Standard', { filters: { Assignee: ['Guest'] }, rollups: true }],
     ['a grouped filtered view', 'Work', { subtotals: 'top' }],
     ['a grouped view whose filter matches nothing', 'Work', { filters: { Assignee: ['Guest'] } }],
   ];
@@ -113,6 +113,27 @@ if (s) {
       await page.locator('#view-pane .vp-acc[data-section="group"]').click();
       await page.waitForSelector('#view-pane #vp-body-group');
       assert.match(await page.locator('#view-pane #vp-body-group').innerText(), /Level 3 and deeper group the Table layout only/);
+    } finally { await page.close(); }
+  });
+
+  test('opening a lower section in a short window brings its header into view (Issue #1923)', async () => {
+    resetTasks(weave, tasks.id);
+    const work = weave.tableView(tasks.id).views.find((v) => v.name === 'Work').id;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 600 } });
+    try {
+      await paneOnLoad(page, 'filters');
+      await page.goto(`${base}/#/table/${tasks.id}/view/${work}`, { waitUntil: 'networkidle' });
+      await tableDrawn(page);
+      await page.waitForSelector('#view-pane #vp-body-filters');
+      const scroll = page.locator('#view-pane .vp-scroll');
+      await page.locator('#view-pane .vp-acc[data-section="display"]').scrollIntoViewIfNeeded();
+      await page.locator('#view-pane .vp-acc[data-section="display"]').click();
+      await page.waitForSelector('#view-pane #vp-body-display .vp-agg');
+      const [head, box] = await Promise.all([
+        page.locator('#view-pane .vp-acc[data-section="display"]').evaluate((n) => n.getBoundingClientRect().toJSON()),
+        scroll.evaluate((n) => n.getBoundingClientRect().toJSON()),
+      ]);
+      assert.ok(head.top >= box.top - 1 && head.bottom <= box.bottom + 1, `the Display header sits at ${Math.round(head.top)}..${Math.round(head.bottom)} in a pane showing ${Math.round(box.top)}..${Math.round(box.bottom)}`);
     } finally { await page.close(); }
   });
 
