@@ -3059,6 +3059,16 @@ export class Weave {
     return f;
   }
 
+  #keptCollapsed(db, v) {
+    if (!Array.isArray(v.collapsed) || !v.collapsed.length || !v.group?.length) return null;
+    const ids = v.group.map((l) => l.field).filter((id) => db.fields[id]);
+    const group = v.group.filter((l) => db.fields[l.field]).map((l) => ({ ...l, field: db.fields[l.field].name }));
+    const pick = { ids: new Set(ids) };
+    const items = this.listEntities(db.id).map((e) => this.#readEntityIn(e.id, { pick, chips: Object.create(null) }));
+    const levels = ViewPane.levelsFor(group, ids.map((id) => this.#groupFieldShape(db.fields[id])), { domains: ids.map((id) => this.#groupTargets(db.fields[id])), items });
+    return ViewPane.keptCollapsed(levels, v.collapsed);
+  }
+
   #checkGroup(db, input) {
     let levels;
     try { levels = ListCore.parseGroup(input); } catch (err) { throw new WeaveError(err.message, 'invalid'); }
@@ -3108,11 +3118,11 @@ export class Weave {
       else throw new WeaveError(`subtotals is all, top or none: which group levels carry a Σ row — got ${JSON.stringify(patch.subtotals)}`, 'invalid');
     }
     if (patch.group !== undefined) {
-      const before = next.group ?? [];
+      const before = ListCore.groupSig(next.group);
       const g = patch.group == null ? [] : this.#checkGroup(db, patch.group);
       if (g.length) next.group = g; else delete next.group;
-      if (patch.collapsed === undefined) {
-        const kept = ViewPane.nextCollapsed(before, g, next.collapsed);
+      if (patch.collapsed === undefined && ListCore.groupSig(g) !== before) {
+        const kept = this.#keptCollapsed(db, next);
         if (kept) next.collapsed = kept; else delete next.collapsed;
       }
     }

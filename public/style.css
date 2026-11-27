@@ -2993,6 +2993,7 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
   #main > .table-wrap .wv-grid > tbody > tr.group-head { background: var(--wv-canvas); }
   #main > .table-wrap .wv-grid > tbody > tr.group-head > td { flex: 1; min-width: 0; height: auto; border: 0; background: none; }
   #main > .table-wrap .wv-grid > tbody > tr.group-sum > td { display: none; }
+  #main > .table-wrap .wv-grid > tbody > tr.group-sum:not(.grand) { display: none; }
   #main > .table-wrap .wv-grid > tbody > tr.group-sum > td.group-sum-cell:nth-child(3) { display: block; flex: 1; min-width: 0; height: auto; border: 0; padding: 0 14px; white-space: normal; }
 }
 .group-head-in > :not(.group-count, .group-summary) { flex: none; }

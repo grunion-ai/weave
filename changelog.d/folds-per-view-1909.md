@@ -1,2 +1,1 @@
-- Folded groups belong to the view that folded them: Collapse all, Expand all and a fold in the grid or on a board no longer reach other views grouped the same way, and a view regrouped like another one adopts none of its folds (Issue #1909).
-- Editing a Group level keeps every fold whose path still names the same levels: a new direction keeps them all, a new second level keeps the first-level folds, and a new first level or date grain clears them (Issue #1914).
+- Folded groups belong to the view that folded them: Collapse all, Expand all and a fold in the grid or on a board no longer reach other views grouped the same way, and a view regrouped like another one adopts none of its folds; it keeps its own folds whose key path still exists (Issue #1909).

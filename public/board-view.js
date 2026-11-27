@@ -94,7 +94,7 @@ function renderBoard(main, db, items, ctx) {
   const picksState = ctx.embedded ? { dbId: db.id, ids: [], full: false } : boardPicks;
   const writeView = (patch) => ctx.writeView ? ctx.writeView(patch) : listViewWrite(db, patch);
   const groups = boardCore.groupsOf(v);
-  const picture = boardCore.pictureOf(db, v);
+  const picture = boardCore.coverField(db) ? boardCore.pictureOf(db, v) : 'off';
   const size = boardCore.widths(picture);
   const fit = boardCore.fitOf(v);
   const flow = boardCore.flowOf(v);

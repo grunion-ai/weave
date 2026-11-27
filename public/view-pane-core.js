@@ -124,13 +124,14 @@
     return countText(rows, term) + (gone ? ` · ${gone} deleted` : '');
   }
 
-  function nextCollapsed(prev, next, collapsed) {
+  function keptCollapsed(levels, collapsed) {
     if (!Array.isArray(collapsed)) return null;
-    const key = (l) => (typeof l === 'string' ? `${l}:` : `${l?.field}:${l?.grain ?? ''}`);
-    const a = (prev ?? []).map(key), b = (next ?? []).map(key);
-    let same = 0;
-    while (same < a.length && same < b.length && a[same] === b[same]) same++;
-    const kept = collapsed.filter((p) => String(p).split(core().SEP).length <= same);
+    const labels = (levels ?? []).map((l) => new Set([...(l.domain ?? []).map((d) => String(d.label)), l.nullLabel]));
+    const kept = collapsed.filter((key) => {
+      if (key === core().COMPLETED) return true;
+      const parts = key.split(core().SEP);
+      return parts.length <= labels.length && parts.every((p, i) => labels[i].has(p));
+    });
     return kept.length ? kept : null;
   }
 
@@ -206,7 +207,7 @@
   root.weaveViewPane = {
     SORT_CAP, GROUP_CAP, SUBTOTALS, SUBTOTAL_LABELS, SORT_LEVELS, SECTIONS,
     isEmpty, normalize, comparator, groupKeys, groupDomain, boolKey, levelsFor, rowsFor, passes, filterLabels, liveRows,
-    countText, nodeCount, nextCollapsed, crumbs, crumbText, breakdownField, breakdown, subtotalAt, model, activeFilters, directionWords,
+    countText, nodeCount, keptCollapsed, crumbs, crumbText, breakdownField, breakdown, subtotalAt, model, activeFilters, directionWords,
     get NO_VALUE() { return NO_VALUE(); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

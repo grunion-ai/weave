@@ -57,7 +57,7 @@ if (s) {
       const page = await open(name, patch, { height: 4000, count: true });
       try {
         const grouped = !!weave.tableView(`${tasks.id}/${name}`).group;
-        const cell = grouped ? '#main tr.group-sum.grand td[data-col="Name"] .foot-val' : '#main tr.wv-foot td.foot-cell[data-col="Name"] .foot-val';
+        const cell = grouped ? '#main tr.group-sum.grand .group-sum-label' : '#main tr.wv-foot td.foot-cell[data-col="Name"] .foot-val';
         await page.waitForSelector(cell);
         const want = shown(weave.tableView(`${tasks.id}/${name}`).id);
         assert.equal(await page.locator('#main tr.entity-row').count(), want, 'the grid draws every row the view holds');
@@ -65,6 +65,26 @@ if (s) {
       } finally { await page.close(); }
     });
   }
+
+  test('with Rollups on, each group states its row count once, in its head (Issue #1932)', async () => {
+    const page = await open('Work', { subtotals: 'all' }, { height: 4000, count: true });
+    try {
+      await page.waitForSelector('#main tr.group-sum.grand td[data-col="Name"]');
+      const rows = await page.locator('#main tr.group-sum').evaluateAll((trs) => trs.map((t) => ({
+        grand: t.classList.contains('grand'),
+        label: t.querySelector('.group-sum-label')?.textContent ?? null,
+        counts: [...t.querySelectorAll('.foot-stat .foot-agg')].filter((a) => a.textContent === 'n').length,
+      })));
+      const heads = await page.locator('#main tr.group-head .group-count').allTextContents();
+      assert.ok(heads.length > 1 && heads.every((t) => /^\d+ tasks?$/.test(t)), `each head carries its count: ${heads}`);
+      const groups = rows.filter((r) => !r.grand);
+      assert.equal(groups.length, heads.length, 'one subtotal row per group');
+      assert.deepEqual(groups.filter((r) => r.label || r.counts), [], 'a subtotal row repeats neither the group name nor its count');
+      const grand = rows.find((r) => r.grand);
+      assert.match(grand.label, /^All · \d+ tasks?$/, 'the grand total names its count once');
+      assert.equal(grand.counts, 0, 'and draws no n cell beside it');
+    } finally { await page.close(); }
+  });
 
   for (const layout of ['table', 'board']) {
     test(`a ${layout} whose filter matches nothing says so (Issue #1913)`, { todo: 'Issue #1913' }, async () => {
@@ -108,6 +128,19 @@ if (s) {
       ]);
       assert.ok(head.top >= box.top - 1 && head.bottom <= box.bottom + 1, `the Display header sits at ${Math.round(head.top)}..${Math.round(head.bottom)} in a pane showing ${Math.round(box.top)}..${Math.round(box.bottom)}`);
     } finally { await page.close(); }
+  });
+
+  test('a board on a table with no picture field draws no picture slot and keeps its card width at every Picture size (Issue #1917)', async () => {
+    const widths = {};
+    for (const picture of ['off', 'small', 'medium', 'large']) {
+      const page = await open('Kanban', { picture });
+      try {
+        await page.waitForSelector('#main .wv-board .tile');
+        assert.equal(await page.locator('#main .wv-board .tile-cover').count(), 0, `${picture}: no picture slot on a table with no picture field`);
+        widths[picture] = await page.locator('#main .wv-board .tile').first().evaluate((n) => Math.round(n.getBoundingClientRect().width));
+      } finally { await page.close(); }
+    }
+    assert.deepEqual(new Set(Object.values(widths)).size, 1, `card widths ${JSON.stringify(widths)}`);
   });
 
   test('the Report a problem button overlaps no View pane button (Issue #1926)', async () => {
