@@ -2,6 +2,11 @@
 
 weave's tracker (the Development space in the weave workspace) is the changelog of record: every Feature and Issue row carries its evidence. This file is the release-notes digest.
 
+## v0.4.189 (2026-11-26)
+
+- **Phone controls reach the 44 px touch target** (Issue #1762): on a coarse pointer the views sheet Rename, Duplicate and Hold to delete buttons, the view names, Reset view and Clear filters, the activity panel buttons, the record page Close, a relation field "+ link" and the document downloads menu each take 44 px, a phone row checkbox hands its tap to the row, and test/touch-baseline.json records no short control on either platform.
+- **Table stats read each row once** (Issue #1619): `weave_stats` keeps every field's resolved values and display values for the call, so a `by` grouping and its per-group rollups reuse them instead of resolving each numeric field again per bucket. Output is byte-identical; grouping a 20,000-row table by Stage drops from about 74 ms to about 60 ms on the Mac.
+
 ## v0.4.188 (2026-11-26)
 
 - **A workspace opens when a newer release wrote an option value this build does not know** (Issue #1721): an unknown attachments preview, size or fit, avatar shape, document kind, credential kind or keystore, number display or format, date clock or zone, or workflow state category in a stored field config falls back to the type's default on open, with a console warning and a `field-config-tolerated` audit row naming the table, field, key and value. Adding or updating a field still refuses the unknown value.
