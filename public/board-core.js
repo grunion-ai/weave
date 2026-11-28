@@ -40,6 +40,9 @@
   }
   const photoFieldName = (db) => freeFieldName(db, 'Photo');
 
+  const COMPACT_CARD_FIELDS = 3;
+  const cardFields = (fields = [], density) => (density === 'compact' ? fields.slice(0, COMPACT_CARD_FIELDS) : fields);
+
   const PICK_MIN = 2;
   const PICK_CAP = 4;
 
@@ -109,5 +112,5 @@
     return { card: CARD_PX[size], column: COLUMN_PX[size], phone: PHONE_COLUMNS[size] };
   }
 
-  root.weaveBoardCore = { GROUPS, PICTURES, FITS, FRAMES, FLOWS, fitOf, frameOf, flowOf, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
+  root.weaveBoardCore = { GROUPS, PICTURES, FITS, FRAMES, FLOWS, fitOf, frameOf, flowOf, CARD_PX, COLUMN_PX, PHONE_COLUMNS, isPicture, coverField, coverOf, coverDrop, freeFieldName, photoFieldName, COMPACT_CARD_FIELDS, cardFields, PICK_MIN, PICK_CAP, togglePick, compareRows, laneGrid, laneShut, laneFold, groupsOf, pictureOf, widths };
 })(typeof window !== 'undefined' ? window : globalThis);

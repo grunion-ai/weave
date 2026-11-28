@@ -30,10 +30,10 @@
     },
     "/board-core.js": {
       "gzip": 2077,
-      "br": 1844
+      "br": 1945
     },
     "/board-view.js": {
-      "gzip": 6584,
+      "gzip": 6975,
       "br": 6202
     },
     "/breadcrumbs.js": {
@@ -327,7 +327,7 @@
     "/grid-window.js": "Issue #1702: samePage joins the grid cores so a cold open can tell a page whose row stamps moved from one whose cells moved, which is 273 gzip bytes of comparison; measured 816 gzip and 726 Brotli, budget set as that plus a twentieth",
     "/agent-connect-core.js": "Issue #1276: derive distinct workspace connector names and use them in setup and authentication instructions; measured 2532 gzip and 2183 Brotli bytes.",
     "/app.js": "PR #490 relanded after PR #494 grew app.js past the budget PR #359 measured: gzip 157,089 to 157,228 served, budget set 5% above at 165,090; br unchanged. Issue #1280 (gallery fit modes) grew br from 125,937 budget to 126,142 served; br budget set 5% above at 132,450. Feature #339 (the write-only Integrations Credential cell, its Replace dialog and the read-only kept columns) took served gzip to 165,313 past the 165,090 budget; gzip budget set 5% above at 173,580. Issue #1685 writes every scheduled document draft to local storage and adds the Restore and Discard bar to docSection: served gzip 147,890 past its 147,657 budget; gzip budget set 5% above at 155,285. Issue #1383 gives the phone menu sheet the picker's sheetGrip: served br 118,150 past its 118,113 budget; br budget set 5% above at 124,058",
-    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above. Issue #1280 (gallery fit modes) added FITS, FRAMES, FLOWS, fitOf, frameOf and flowOf: gzip 1,750 to 1,978, br 1,552 to 1,756. Budget set 5% above",
+    "/board-core.js": "PR #375 (Feature #353) added coverDrop and photoFieldName: gzip 744 to 895, br 623 to 767. Feature #354 (compare picked cards) added togglePick and compareRows: gzip 895 to 1,172, br 767 to 1,024. Feature #355 (swimlanes) added laneGrid, laneShut and laneFold: gzip 1,172 to 1,750, br 1,024 to 1,552. Budget set 5% above. Issue #1280 (gallery fit modes) added FITS, FRAMES, FLOWS, fitOf, frameOf and flowOf: gzip 1,750 to 1,978, br 1,552 to 1,756. Budget set 5% above. Issue #1930 added COMPACT_CARD_FIELDS and cardFields so a Compact board card draws three field chips: br 1,756 to 1,863. Budget set 5% above",
     "/breadcrumbs.js": "Issue #765 (share header button reland) gave foldPlan per-crumb mins so the last-but-one folds only when the kept crumbs overflow at their floors: served gzip 1,360 past its 1,331 budget, br 1,256 past its 1,231. Budget set 5% above",
     "/chip.css": "Feature #389 step 2: the Crepe reference source (.wv-ref-src) shares the hidden-raw-text rule with .doc-ref-raw: br 3,150 budget to 3,159 served, budget set 5% above.",
     "/list-core.js": "Issue #1203: drawnKeys names the groups the list and board drew so Collapse all folds the option groups with no rows; measured 3,428 gzip bytes served against a 3,420 budget, set 5% above at 3,599. Brotli unchanged, still inside 3,113.",
@@ -344,7 +344,8 @@
     "/space-launcher-view.js": "Feature #355: the launcher serves the workspace home as well as the space home, so it gained mountLauncher and showWorkspaceLauncher: gzip 2,770 budget to 2,897 served, br 2,431 to 2,558, budget set 5% above",
     "/workflows-cells.js": "Feature #249: Health reads as a coloured, read-only state with its reason on hover, click and phone tap",
     "/save-queue.js": "Feature #217 step 2: the save glyph (saveGlyph, bindEscape) lives beside the queue so app.js stays at its budget: gzip 1,559 to 2,034, br 1,420 to 1,812. Budget set 5% above.",
-    "/doc-editor.js": "Issue #1896: mountTiptapEditor with its slash menu, selection toolbar, raw HTML node and LCS source keeper sits beside the Crepe and Vditor mounts while the three run side by side behind weave.editor: gzip 17,610 budget to 20,898 served, br 15,670 to 18,535, budget set 5% above. Removing the editors that lose takes it back down. Issue #1893: attachListMove (Ctrl+Cmd+Up/Down moves a list item) served gzip 22,029 and br 19,539, budget set about 2% above. Issue #1873: attachInlineListPaste (one copied list line pasted into a bullet joins it) served gzip 22,575 and br 19,985, budget set about 2% above."
+    "/doc-editor.js": "Issue #1896: mountTiptapEditor with its slash menu, selection toolbar, raw HTML node and LCS source keeper sits beside the Crepe and Vditor mounts while the three run side by side behind weave.editor: gzip 17,610 budget to 20,898 served, br 15,670 to 18,535, budget set 5% above. Removing the editors that lose takes it back down. Issue #1893: attachListMove (Ctrl+Cmd+Up/Down moves a list item) served gzip 22,029 and br 19,539, budget set about 2% above. Issue #1873: attachInlineListPaste (one copied list line pasted into a bullet joins it) served gzip 22,575 and br 19,985, budget set about 2% above.",
+    "/board-view.js": "Issue #1930: fieldsEl draws a Compact board card as the name and three field chips and wvSetDensity redraws the card lists in place, so a density switch needs no refetch: gzip 6,584 to 6,642 served. Budget set 5% above"
   },
   "boot": {
     "gzip": 357084,

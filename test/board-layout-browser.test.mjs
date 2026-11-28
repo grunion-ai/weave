@@ -527,4 +527,54 @@ if (s) {
       assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
   });
+
+  test('Compact draws a card as the name and three field chips, at most half the Comfortable height (Issue #1930)', async () => {
+    const dense = weave.createTable({ space: 'Buyer', name: 'Dense' });
+    weave.addField(dense.id, { name: 'State', type: 'select', config: { options: [{ name: 'Research' }, { name: 'Ready to Buy', hue: 'green' }] } });
+    const notes = Array.from({ length: 13 }, (_, i) => `Note ${i + 1}`);
+    for (const name of notes) weave.addField(dense.id, { name, type: 'text' });
+    weave.createEntity(dense.id, { name: 'Desk', values: { State: 'Research', ...Object.fromEntries(notes.map((n) => [n, 'short'])) } });
+    const denseView = (density) => weave.tableView(`${dense.id}/Standard`, {
+      layout: 'board', groups: 'stacked', picture: 'off', group: ['State'], density,
+      fields: ['Name', 'State', ...notes], collapsed: null, order: null, filters: {}, sort: [],
+    });
+    const openDense = async (density) => {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      page.on('pageerror', (e) => (page.errors ??= []).push(e.message));
+      await page.goto(`${base}/#/table/${dense.id}`, { waitUntil: 'networkidle' });
+      await page.waitForSelector(`.board-wrap[data-density="${density}"] .tile`);
+      return page;
+    };
+    const drawn = {};
+    for (const density of ['comfortable', 'compact']) {
+      denseView(density);
+      const page = await openDense(density);
+      try {
+        const card = page.locator('.wv-board .tile').first();
+        drawn[density] = { height: (await card.boundingBox()).height, rows: await card.locator('.tile-field').count() };
+        assert.deepEqual(page.errors ?? [], [], `${density}: no page error`);
+      } finally { await page.close(); }
+    }
+    assert.equal(drawn.comfortable.rows, 14, `Comfortable keeps every card field, got ${drawn.comfortable.rows}`);
+    assert.ok(drawn.compact.rows <= 3, `Compact draws at most three card fields, got ${drawn.compact.rows}`);
+    assert.ok(drawn.compact.height <= drawn.comfortable.height / 2,
+      `Compact card ${drawn.compact.height}px is at most half the Comfortable card ${drawn.comfortable.height}px`);
+
+    denseView('comfortable');
+    const page = await openDense('comfortable');
+    try {
+      await openPane(page, 'display');
+      const card = page.locator('.wv-board .tile').first();
+      const pick = async (label) => {
+        await page.locator('#view-pane .vp-density .seg-opt', { hasText: label }).click();
+        await page.waitForSelector(`.board-wrap[data-density="${label.toLowerCase()}"] .tile`);
+        return eventually(() => card.locator('.tile-field').count(), label === 'Compact' ? 3 : 14);
+      };
+      assert.equal(await pick('Compact'), 3, 'the switch to Compact redraws the card with three fields');
+      assert.ok((await card.boundingBox()).height <= drawn.comfortable.height / 2, 'the redrawn Compact card is at most half the Comfortable height');
+      assert.equal(await pick('Comfortable'), 14, 'the switch back to Comfortable puts every field back');
+      assert.equal(await pick('Compact'), 3, 'a second switch to Compact caps the fields again');
+      assert.deepEqual(page.errors ?? [], [], 'no page error on a density round trip');
+    } finally { await page.close(); }
+  });
 }

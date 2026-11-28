@@ -171,3 +171,13 @@ test('the picture defaults to the cover field size, and sizes map to card and co
   assert.deepEqual(Board.PHONE_COLUMNS, { small: 3, medium: 2, large: 2 });
   assert.deepEqual(Board.widths('off'), { card: 188, column: 232, phone: 2 }, 'picture off sizes like medium');
 });
+
+test('Compact keeps the first three card fields and the other densities keep every one (Issue #1930)', () => {
+  const fields = Array.from({ length: 14 }, (_, i) => ({ name: `F${i + 1}` }));
+  assert.equal(Board.COMPACT_CARD_FIELDS, 3);
+  assert.deepEqual(Board.cardFields(fields, 'compact').map((f) => f.name), ['F1', 'F2', 'F3']);
+  assert.equal(Board.cardFields(fields, 'comfortable').length, 14);
+  assert.equal(Board.cardFields(fields, 'spacious').length, 14);
+  assert.deepEqual(Board.cardFields([{ name: 'State' }], 'compact').map((f) => f.name), ['State'], 'fewer fields than the cap stay as they are');
+  assert.deepEqual(Board.cardFields(undefined, 'compact'), []);
+});
