@@ -1,0 +1,1 @@
+- Clicking away from an untouched **+ Add view** or **Duplicate** name box now drops the row instead of creating the view; Enter still creates, and a click away after you change the name still creates it (Issue #1920).

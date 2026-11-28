@@ -204,6 +204,31 @@ if (s) {
     } finally { reset(); await page.close(); }
   });
 
+  test('a click away from an untouched new or duplicate name cancels: no view is made, the pane stays open', async () => {
+    reset();
+    const page = await open();
+    try {
+      await page.click('.view-strip .view-add');
+      const input = page.locator('.view-strip .view-name-input');
+      await input.waitFor();
+      assert.equal(await input.inputValue(), 'View 2');
+      await page.mouse.click(700, 600);
+      await page.waitForFunction(() => !document.querySelector('.view-strip .view-name-input'));
+      await page.waitForTimeout(300);
+      assert.deepEqual(order(), ['Standard'], 'an untouched name makes nothing on blur');
+      assert.doesNotMatch(await page.evaluate(() => location.hash), /\/view\//, 'no new view opened');
+      await ensureViews(page);
+      await tab(page, 'Standard').hover();
+      await tab(page, 'Standard').locator('.view-dup-btn').click();
+      await input.waitFor();
+      assert.equal(await input.inputValue(), 'Standard 2');
+      await page.mouse.click(700, 600);
+      await page.waitForFunction(() => !document.querySelector('.view-strip .view-name-input'));
+      await page.waitForTimeout(300);
+      assert.deepEqual(order(), ['Standard'], 'an untouched duplicate name makes nothing on blur');
+    } finally { reset(); await page.close(); }
+  });
+
   test('Rename edits the name in place: Enter commits, Escape cancels, blur commits', async () => {
     reset();
     weave.tableView(`${jobs.id}/A`, { from: 'blank' });
