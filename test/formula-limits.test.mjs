@@ -97,13 +97,17 @@ test('addField answers a worded limit, not a RangeError, on a deep expression (I
   });
 });
 
-test('a grid page over a formula at the length budget stays inside its millisecond budget (Issue #1605)', () => {
-  const { w, t } = probe(200, sized(MAX_EXPRESSION_CHARS));
-  const started = performance.now();
-  const page = w.query(t.id, { limit: 200 });
-  const ms = performance.now() - started;
+test('the longest allowed formula reads each reference once per row, in one pass over its tokens (Issue #1605)', () => {
+  const refs = Math.floor(MAX_EXPRESSION_CHARS / 'Amount+'.length);
+  const expression = Array(refs).fill('Amount').join('+');
+  assert.ok(expression.length <= MAX_EXPRESSION_CHARS);
+  let reads = 0;
+  assert.equal(evaluate(expression, () => { reads++; return 2; }), refs * 2);
+  assert.equal(reads, refs, `one evaluation read its ${refs} references ${reads} times`);
+  const { w, t } = probe(200, expression);
+  const page = w.query(t.id, { limit: 200, select: ['Amount', 'Total'] });
   assert.equal(page.items.length, 200);
-  assert.ok(ms < 1000, `a 200-row page over the longest allowed formula took ${Math.round(ms)}ms, budget 1000ms`);
+  assert.ok(page.items.every((r) => r.Total === r.Amount * refs), 'every row of the page carries its total');
 });
 
 test('the check surface the CLI, route and MCP tool share answers the same limits (Issues #1605, #1612)', () => {

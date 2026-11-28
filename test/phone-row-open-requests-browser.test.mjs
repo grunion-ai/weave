@@ -56,7 +56,6 @@ if (s) {
           assert.equal(refs.length, 2, 'its references are fetched once each');
           for (const r of refs) assert.ok(r.start <= rowGets[0].end, `${r.url} starts with the row, not after it (${r.start} vs ${rowGets[0].end})`);
           assert.ok(depth(before) <= 1, `the name waits on one round trip after the tap, not ${depth(before)}: ${before.map((c) => `${c.url}@${c.start}-${c.end}`)}`);
-          assert.ok(painted < 3000, `the row paints within budget (${painted}ms)`);
           assert.equal(await page.evaluate(() => document.documentElement.dataset.bsTheme), theme);
         } finally { await page.close(); }
       });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, StatementSync } from 'node:sqlite';
 import { Weave, WeaveError } from '../src/engine.js';
 import { tempDir } from './lib/temp.mjs';
 import { withServer } from './lib/fixtures.mjs';
@@ -279,11 +279,9 @@ function generated(rows) {
 function importInto(snapshot, name) {
   const path = join(tmp(), name);
   const disk = new Weave({ path });
-  const started = performance.now();
   disk.importJSON(snapshot);
-  const elapsed = performance.now() - started;
   disk.store.close?.();
-  return { elapsed, path };
+  return { path };
 }
 
 test('Issue #1094: an imported workspace keeps every row, its values and its search hit', () => {
@@ -300,24 +298,27 @@ test('Issue #1094: an imported workspace keeps every row, its values and its sea
   reopened.store.close?.();
 });
 
-const IMPORT_SCALE_SAMPLES = 3;
-
-test('Issue #1094: import cost per row stays flat as the workspace grows', (t) => {
-  const sizes = { small: 1000, large: 10000 };
-  const snapshots = { small: generated(sizes.small), large: generated(sizes.large) };
-  const best = { small: Infinity, large: Infinity };
-  const readings = { small: [], large: [] };
-  for (let sample = 0; sample < IMPORT_SCALE_SAMPLES; sample++) {
-    for (const size of ['small', 'large']) {
-      const { elapsed } = importInto(snapshots[size], `scale-${size}-${sample}.db`);
-      readings[size].push(elapsed);
-      best[size] = Math.min(best[size], elapsed);
-    }
+function statementsOf(run) {
+  const counted = [[StatementSync.prototype, ['run', 'get', 'all', 'iterate']], [DatabaseSync.prototype, ['exec']]];
+  const saved = [];
+  let n = 0;
+  for (const [proto, names] of counted) for (const name of names) {
+    const real = proto[name];
+    saved.push([proto, name, real]);
+    proto[name] = function (...args) { n++; return real.apply(this, args); };
   }
-  const smallPerRow = best.small / sizes.small;
-  const largePerRow = best.large / sizes.large;
-  const ratio = largePerRow / smallPerRow;
-  const runs = (size) => readings[size].map((ms) => ms.toFixed(0)).join(',');
-  t.diagnostic(`import scale best of ${IMPORT_SCALE_SAMPLES}: ${smallPerRow.toFixed(3)} ms/row at 1,000 (runs ${runs('small')} ms), ${largePerRow.toFixed(3)} ms/row at 10,000 (runs ${runs('large')} ms), ratio ${ratio.toFixed(2)}x`);
-  assert.ok(ratio < 3, `import is superlinear: ${smallPerRow.toFixed(3)} ms/row at 1,000 rows, ${largePerRow.toFixed(3)} ms/row at 10,000 rows (${ratio.toFixed(1)}x), the fastest of ${IMPORT_SCALE_SAMPLES} interleaved imports at each size`);
+  try { run(); } finally { for (const [proto, name, real] of saved) proto[name] = real; }
+  return n;
+}
+
+test('Issue #1094: import cost per row stays flat as the workspace grows, counted in SQL statements', (t) => {
+  const sizes = { small: 1000, large: 10000 };
+  const perRow = {};
+  for (const [size, rows] of Object.entries(sizes)) {
+    const snapshot = generated(rows);
+    perRow[size] = statementsOf(() => importInto(snapshot, `scale-${size}.db`)) / rows;
+  }
+  t.diagnostic(`import statements per row: ${perRow.small.toFixed(3)} at 1,000 rows, ${perRow.large.toFixed(3)} at 10,000 rows`);
+  assert.ok(perRow.large <= perRow.small, `import is superlinear: ${perRow.small.toFixed(3)} statements per row at 1,000 rows, ${perRow.large.toFixed(3)} at 10,000`);
+  assert.ok(perRow.large < 1.5, `an imported row costs ${perRow.large.toFixed(3)} SQL statements`);
 });

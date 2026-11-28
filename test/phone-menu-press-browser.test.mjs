@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import { launch, phoneBrowser, phonePage } from './lib/browser.mjs';
 import { API_DELAY_MS } from './lib/feedback.mjs';
 
-const PRESS_BUDGET_MS = 100;
-
 const s = await launch('phone menu press', (weave) => {
   weave.createSpace({ name: 'Development' });
   const issues = weave.createTable({ space: 'Development', name: 'Issue' });
@@ -16,12 +14,17 @@ const s = await launch('phone menu press', (weave) => {
 });
 
 const watch = () => {
-  const marks = (window.__press = { down: null, up: null, click: null, peek: null, frames: [] });
+  const marks = (window.__press = { down: null, up: null, click: null, peek: null, frames: [], order: [] });
   const at = () => performance.now();
   const app = () => document.querySelector('#app');
-  addEventListener('pointerdown', (e) => { if (e.isTrusted && marks.down == null) marks.down = at(); }, true);
-  addEventListener('pointerup', (e) => { if (e.isTrusted && marks.up == null) marks.up = at(); }, true);
-  addEventListener('click', (e) => { if (e.isTrusted && marks.click == null) marks.click = at(); }, true);
+  addEventListener('pointerdown', (e) => { if (e.isTrusted && marks.down == null) { marks.down = at(); marks.order.push('down'); } }, true);
+  addEventListener('pointerup', (e) => { if (e.isTrusted && marks.up == null) { marks.up = at(); marks.order.push('up'); } }, true);
+  addEventListener('click', (e) => {
+    if (!e.isTrusted || marks.click != null) return;
+    marks.click = at();
+    marks.order.push('click');
+    setTimeout(() => marks.order.push('timer'), 0);
+  }, true);
   const frame = (left) => requestAnimationFrame(() => {
     marks.frames.push({ t: at(), held: app().classList.contains('nav-held') });
     if (left > 1) frame(left - 1);
@@ -29,6 +32,7 @@ const watch = () => {
   const seen = () => {
     if (marks.peek != null || !app()?.classList.contains('nav-peek')) return;
     marks.peek = at();
+    marks.order.push('peek');
     frame(4);
   };
   new MutationObserver(seen).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
@@ -64,13 +68,14 @@ if (s) {
     return `press to up ${span('down', 'up')} ms, press to click ${span('down', 'click')} ms, press to peek ${span('down', 'peek')} ms, frames after the class ${m.frames.map((f) => `${Math.round(f.t - m.peek)}${f.held ? ' held' : ''}`).join(', ')} ms, API held ${API_DELAY_MS} ms`;
   };
 
-  test(`the phone menu opens within ${PRESS_BUDGET_MS} ms of the press (Issue #1061)`, async (t) => {
+  test('the phone menu opens in the task of the tap, before any timer and before the held API answers (Issue #1061)', async (t) => {
     const m = await press();
     t.diagnostic(shape(m));
     assert.notEqual(m.down, null, 'the tap is a trusted press');
     assert.notEqual(m.peek, null, 'the press opens the menu');
-    const ms = Math.round(m.peek - m.down);
-    assert.ok(ms <= PRESS_BUDGET_MS, `the menu opened ${ms} ms after the press, budget ${PRESS_BUDGET_MS} ms`);
+    const { order } = m;
+    assert.ok(order.indexOf('timer') > 0, `a zero-delay timer ran after the click: ${order.join(', ')}`);
+    assert.ok(order.indexOf('peek') < order.indexOf('timer'), `the menu opened before the first timer after the tap: ${order.join(', ')}`);
   });
 
   test('the menu paints its first frame before the focus hold reads the panel back (Issue #1061)', async (t) => {

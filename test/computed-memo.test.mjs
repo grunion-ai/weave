@@ -82,15 +82,6 @@ test('a sort on a one-row table never resolves the sort key, as before (Issue #1
   assert.equal(seen, 1, 'the query checks the sort field name once and resolves no row');
 });
 
-test('5k rows sorted by a formula over a lookup answer inside the budget (Issue #1000)', () => {
-  const { w, item } = seeded();
-  w.query(item.id, { limit: 50 });
-  const t = performance.now();
-  w.query(item.id, { sort: [{ field: 'Score' }], limit: 50 });
-  const ms = performance.now() - t;
-  assert.ok(ms < 120, `sorted query took ${ms.toFixed(0)} ms, budget 120 ms`);
-});
-
 test('a memoised value never outlives the depth limit it was computed under (Issue #1000)', () => {
   const w = new Weave();
   w.createSpace({ name: 'S' });

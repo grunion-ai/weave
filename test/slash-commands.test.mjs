@@ -754,18 +754,16 @@ if (s) {
     await page.keyboard.type('/link table');
     await page.waitForSelector('.vditor-hint:not(.vditor-panel--arrow) button', { state: 'visible' });
     await hintSettled(page);
-    await page.keyboard.press('Enter');
-    const opened = await page.evaluate(async () => {
-      const at = performance.now();
-      for (let i = 0; i < 300; i++) {
+    await page.evaluate(() => {
+      window.__pickerEarly = null;
+      addEventListener('keydown', () => setTimeout(() => {
         const box = document.querySelector('#cmdk');
-        if (box && getComputedStyle(box).display !== 'none') return { ms: performance.now() - at };
-        await new Promise((r) => setTimeout(r, 10));
-      }
-      return { ms: performance.now() - at, missing: true };
+        window.__pickerEarly = !!box && getComputedStyle(box).display !== 'none';
+      }, 0), { once: true, capture: true });
     });
-    assert.ok(!opened.missing, 'the picker opened');
-    assert.ok(opened.ms < 400, `the picker opened on the keypress, not on Vditor's 800ms timer (${Math.round(opened.ms)}ms)`);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.__pickerEarly !== null);
+    assert.equal(await page.evaluate(() => window.__pickerEarly), true, "the picker opened in the keypress task, not on Vditor's 800ms timer");
     await page.keyboard.type('Note');
     await page.waitForSelector('#cmdk-results[data-query="Note"] [role="option"]');
     await page.keyboard.press('Enter');
