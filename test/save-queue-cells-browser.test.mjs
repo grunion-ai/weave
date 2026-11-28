@@ -98,20 +98,23 @@ if (s) {
     } finally { await page.close(); }
   });
 
-  test('the page going hidden mid-edit lands the typed value within one second (Feature #217)', async () => {
+  test('the page going hidden mid-edit sends the typed value in the visibilitychange task and lands it (Feature #217)', async () => {
     const page = await open(`#/entity/${page2.id}`);
     try {
       const row2 = `.fieldrow[data-field="A"]`;
       await page.click(`${row2} .text-dressed`);
       await page.fill(`${row2} input`, 'typed then hidden');
       assert.equal(await page.evaluate((q) => document.activeElement === document.querySelector(q), `${row2} input`), true, 'the field still holds focus, as iOS keeps it');
-      const t0 = Date.now();
-      await page.evaluate(() => {
+      const early = await page.evaluate(() => new Promise((resolve) => {
+        const sent = [];
+        const real = window.fetch;
+        window.fetch = (url, init) => { sent.push(`${init?.method ?? 'GET'} ${url}`); return real(url, init); };
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
         document.dispatchEvent(new Event('visibilitychange'));
-      });
-      assert.equal(await until(() => stored(page2.id, 'A'), 'typed then hidden', 1000), 'typed then hidden');
-      assert.ok(Date.now() - t0 <= 1000, `landed in ${Date.now() - t0} ms`);
+        setTimeout(() => { window.fetch = real; resolve(sent); }, 0);
+      }));
+      assert.ok(early.some((s) => s.startsWith('PATCH ')), `the write went out before any timer: ${early.join(', ') || 'nothing sent'}`);
+      assert.equal(await until(() => stored(page2.id, 'A'), 'typed then hidden'), 'typed then hidden');
     } finally { await page.close(); }
   });
 

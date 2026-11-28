@@ -43,20 +43,6 @@ test('a table query visits its own rows, not the workspace (Issue #998)', () => 
   assert.ok(visits.ids.size < 200, `a 100-row query in a 50k workspace read ${visits.ids.size} entities, budget 200`);
 });
 
-test('a table query in a 50k workspace answers inside its time budget (Issue #998)', () => {
-  const { w, small } = seeded();
-  w.query(small.id, { limit: 100 });
-  const times = [];
-  for (let i = 0; i < 20; i++) {
-    const t = performance.now();
-    w.query(small.id, { limit: 100, trashCount: true, countAll: true });
-    times.push(performance.now() - t);
-  }
-  times.sort((a, b) => a - b);
-  const p95 = times[Math.ceil(times.length * 0.95) - 1];
-  assert.ok(p95 < 30, `p95 ${p95.toFixed(1)} ms, budget 30 ms`);
-});
-
 test('the table index follows create, trash, restore, purge, undo and reload (Issue #998)', () => {
   const { w, small, big } = seeded({ tables: 3, rows: 300, small: 50 });
   const same = (dbId, opts) => assert.deepEqual(w.listEntities(dbId, opts).map((e) => e.id), brute(w, dbId, opts));

@@ -238,21 +238,20 @@ test('a checkout without the playwright module never starts the browser lane (Is
   } finally { rmSync(f.dir, { recursive: true, force: true }); }
 });
 
-test('npm test exits non-zero in seconds when the browser is missing (Issue #557)', () => {
+test('npm test exits non-zero before any lane starts when the browser is missing (Issue #557)', () => {
   const f = fixture('flaky');
   const browserish = join(f.dir, 'late-browser.test.mjs');
   writeFileSync(browserish, "import test from 'node:test';\ntest('late', () => {});\n");
   const env = { ...childEnv(), PLAYWRIGHT_BROWSERS_PATH: join(f.dir, 'no-browsers'), WEAVE_TEST_MANAGER_DIR: join(f.dir, 'manager'), WEAVE_TEST_JOB: '',
     WEAVE_TEST_MIN_FREE_GB: '0', WEAVE_TEST_MIN_MEMORY_PERCENT: '0', WEAVE_TEST_MAX_LOAD: '99999' };
   try {
-    const started = Date.now();
     let out = '', status = 0;
     try { execFileSync(process.execPath, ['scripts/test.mjs', f.good, browserish], { cwd: ROOT, encoding: 'utf8', env, timeout: 120000 }); }
     catch (error) { out = error.stdout; status = error.status; }
     assert.equal(status, 1);
     assert.match(out, /# BROWSER MISSING: /);
     assert.match(out, /# RESULT red: browser missing, no lane ran/);
-    assert.ok(Date.now() - started < 60000, `exited in ${Date.now() - started} ms`);
+    assert.doesNotMatch(out, /^(?:not )?ok \d+ /m, 'no test ran before the exit');
   } finally {
     execFileSync(process.execPath, ['scripts/test.mjs', '--stop'], { cwd: ROOT, env });
     rmSync(f.dir, { recursive: true, force: true });

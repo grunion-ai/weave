@@ -1,0 +1,1 @@
+- No gating test holds a wall-clock reading under a millisecond bound any more: the fifteen assertions Issue #1768 named count the work, assert event order, or are dropped where a count beside them already holds the behaviour, and a source scan keeps new ones out (Issue #1768).

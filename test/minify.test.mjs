@@ -62,13 +62,30 @@ test('minifyCss drops comments and spaces beside braces, separators and colons, 
   assert.equal(minifyCss('.\\31 0 { a: b }'), '.\\31 0{a:b}', 'the space ending a hex escape stays');
 });
 
-test('minifyJs reads app.js in linear time, well under a second', () => {
-  const src = readFileSync(join(PUBLIC, 'app.js'), 'utf8');
-  const start = performance.now();
-  minifyJs(src);
-  minifyCss(readFileSync(join(PUBLIC, 'style.css'), 'utf8'));
-  const ms = performance.now() - start;
-  assert.ok(ms < 1000, `minifying app.js and style.css took ${Math.round(ms)} ms; the first request waits on it`);
+function readsOf(minify, text) {
+  let reads = 0;
+  const spans = { slice: (a, b = text.length) => Math.max(0, Math.min(b, text.length) - a), indexOf: (needle, from = 0) => { const at = text.indexOf(needle, from); return (at < 0 ? text.length : at) - from; } };
+  const src = new Proxy(new String(text), {
+    get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) { reads++; return text[key]; }
+      if (key === 'length') return text.length;
+      const value = text[key];
+      if (typeof value !== 'function') return value;
+      return (...args) => { reads += spans[key] ? spans[key](...args) : text.length; return value.apply(text, args); };
+    },
+  });
+  assert.equal(minify(src), minify(text));
+  return reads;
+}
+
+test('minifyJs and minifyCss read app.js and style.css in linear time, counted in characters read', () => {
+  for (const [minify, file, join2] of [[minifyJs, 'app.js', ';\n'], [minifyCss, 'style.css', '\n']]) {
+    const text = readFileSync(join(PUBLIC, file), 'utf8');
+    const once = readsOf(minify, text);
+    const twice = readsOf(minify, text + join2 + text);
+    assert.ok(once <= 4 * text.length, `${file}: ${once} characters read for ${text.length}`);
+    assert.ok(twice <= 2.1 * once, `${file} doubled read ${twice} characters against ${once} for one copy: the scan is superlinear`);
+  }
 });
 
 test('createMinified serves a file it cannot minify as written', () => {

@@ -28,6 +28,11 @@ const arm = (page) => page.evaluate(() => {
     },
   });
 });
+const sentByNextTask = (page, type) => page.evaluate((t) => {
+  window.__early = null;
+  addEventListener(t, () => setTimeout(() => { window.__early ??= window.__sent.length; }, 0), { once: true, capture: true });
+}, type);
+
 const glyph = (page) => page.evaluate(() => {
   const b = document.querySelector('.save-glyph');
   return b && { hidden: b.hidden, state: b.dataset.state, label: b.getAttribute('aria-label') };
@@ -121,22 +126,22 @@ if (s) {
   test('Escape sends a waiting save at once (Feature #217)', async () => {
     const page = await open();
     try {
-      const t0 = await page.evaluate(() => { window.__job('esc'); return performance.now(); });
+      await page.evaluate(() => window.__job('esc'));
+      await sentByNextTask(page, 'keydown');
       await page.keyboard.press('Escape');
-      await page.waitForFunction(() => window.__sent.length === 1);
-      const at = await page.evaluate(() => window.__sent[0].at);
-      assert.ok(at - t0 < 500, `Escape did not wait for the debounce (${Math.round(at - t0)} ms)`);
+      await page.waitForFunction(() => window.__early !== null);
+      assert.equal(await page.evaluate(() => window.__early), 1, 'Escape sent the save in its own task, not on the debounce timer');
     } finally { await page.close(); }
   });
 
   test('a tap on the clock sends a waiting save at once (Feature #217)', async () => {
     const page = await open();
     try {
-      const t0 = await page.evaluate(() => { window.__job('tap'); return performance.now(); });
+      await page.evaluate(() => window.__job('tap'));
+      await sentByNextTask(page, 'click');
       await page.click(GLYPH);
-      await page.waitForFunction(() => window.__sent.length === 1);
-      const at = await page.evaluate(() => window.__sent[0].at);
-      assert.ok(at - t0 < 500, `the tap did not wait for the debounce (${Math.round(at - t0)} ms)`);
+      await page.waitForFunction(() => window.__early !== null);
+      assert.equal(await page.evaluate(() => window.__early), 1, 'the tap sent the save in its own task, not on the debounce timer');
     } finally { await page.close(); }
   });
 

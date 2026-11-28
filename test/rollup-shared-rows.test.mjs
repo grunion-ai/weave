@@ -35,14 +35,13 @@ test('a filtered rollup reads its child table once per query, not once per paren
   assert.equal(calls.n, 1, `the child table was listed ${calls.n} times for one query`);
 });
 
-test('a grid of 1k parents over a filtered 10k-row rollup answers inside its budget (Issue #999)', () => {
-  const { w, par } = seeded();
+test('a grid of 1k parents over a filtered 10k-row rollup lists the child table once for the whole grid (Issue #999)', () => {
+  const { w, kid, par } = seeded();
   w.query(par.id, { limit: 50 });
-  const t = performance.now();
+  const calls = countLists(w, kid.id);
   const out = w.query(par.id, {});
-  const ms = performance.now() - t;
   assert.equal(out.items.length, 1000);
-  assert.ok(ms < 2000, `grid query took ${ms.toFixed(0)} ms, budget 2000 ms`);
+  assert.equal(calls.n, 1, `the child table was listed ${calls.n} times for a 1k-row grid`);
 });
 
 test('the shared child list is per query: a write between queries shows up (Issue #999)', () => {

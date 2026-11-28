@@ -303,8 +303,22 @@ test('an attachment at the file cap round-trips through the durable write', () =
   w.createTable({ space: 'Dev', name: 'Deck' });
   const e = w.createEntity('Deck', { name: 'Big' });
   const bytes = Buffer.alloc(8 * 1024 * 1024, 7);
-  const started = Date.now();
   const file = w.attachFile(e.id, { name: 'big.bin', bytes });
-  assert.ok(Date.now() - started < 10_000, 'an 8 MB attach took over ten seconds: one fsync per blob, not per chunk');
   assert.deepEqual(w.readFile(file.id).bytes, bytes);
+});
+
+test('an 8 MB blob lands in one flushed write and one directory fsync, not one per chunk', () => {
+  const calls = [];
+  const fs = {
+    mkdirSync: () => {},
+    writeFileSync: (path, data, options) => calls.push(`write:${data.length}:${options.flush}`),
+    renameSync: () => calls.push('rename'),
+    openSync: () => 'dir',
+    fsyncSync: (fd) => calls.push(`fsync:${fd}`),
+    closeSync: () => {},
+    rmSync: () => {},
+  };
+  const bytes = Buffer.alloc(8 * 1024 * 1024, 7);
+  writeFileDurable('/d/big.bin', bytes, {}, { fs, platform: 'linux' });
+  assert.deepEqual(calls, [`write:${bytes.length}:true`, 'rename', 'fsync:dir']);
 });
