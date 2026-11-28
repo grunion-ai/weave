@@ -51,9 +51,9 @@ A relation block uses the Board layout when the linked table's first view select
 | **Alt+↑** / **Alt+↓** on a focused view | Moves it one place. |
 | Hover or focus a view | Shows its **Rename**, **Duplicate** and **Delete** buttons. There is no right-click menu. |
 | **Rename** | Edits the name in place. **Enter** or clicking away saves; **Escape** cancels. |
-| **Duplicate** | Adds a record under the view with its name focused (`Open bugs 2`). **Enter** or clicking away creates the copy and opens it; **Escape** drops the row. |
+| **Duplicate** | Adds a record under the view with its name focused (`Open bugs 2`). **Enter** creates the copy and opens it. Clicking away creates it only when you changed the name; otherwise, like **Escape**, it drops the row. |
 | **Delete** | Hold the button until it fills. The last view cannot be deleted. |
-| **+ Add view** | Adds a record with its name focused, offered as the next free **View N**. **Enter** or clicking away creates the view from the system default that **Reset view** restores, and opens it; **Escape** drops the row. The pane stays open throughout. |
+| **+ Add view** | Adds a record with its name focused, offered as the next free **View N**. **Enter** creates the view from the system default that **Reset view** restores, and opens it. Clicking away creates it only when you changed the name; otherwise, like **Escape**, it drops the row. The pane stays open throughout. |
 | **Reset view** | Returns the view to the system default: a Table with no grouping, every regular field in schema order with the table's default system columns, no filters, sorting, search, custom widths or frozen columns, no deleted records, no Σ rollup row, and Comfortable density. **+ Add view** starts from the same default. The view keeps its name. |
 | **Clear all** | Removes filters, deleted records, search, sorting and grouping while keeping the column layout and density. |
 

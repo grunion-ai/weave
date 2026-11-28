@@ -4662,7 +4662,7 @@ function viewStrip(db) {
         finish(false).then(() => document.querySelector(':is(.table-view-popover, #view-pane) .view-add')?.focus({ preventScroll: true }));
       }
     });
-    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('blur', () => finish(input.value.trim() !== e.name));
     editorInput = input;
     return row;
   };
