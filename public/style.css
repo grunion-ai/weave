@@ -2680,6 +2680,8 @@ html.wv-reordering, html.wv-reordering * { cursor: grabbing !important; user-sel
 .tile-field dt { color: var(--tblr-secondary); font-weight: 400; }
 .tile-field dd { min-width: 0; margin: 0; overflow: hidden; }
 .tile-field:has(.range-cell) > dd { grid-column: 1 / -1; }
+.tile-fields.is-chips { display: flex; flex-wrap: wrap; gap: var(--wv-space-2) var(--wv-space-8); }
+.tile-fields.is-chips > .tile-field { display: inline-flex; align-items: baseline; gap: var(--wv-space-4); max-width: 100%; }
 .tile-field .inline-edit { --wv-edit-fs: var(--fs-secondary); }
 .tile-field > dd > .text-dressed { padding: var(--wv-nudge) 4px; }
 .board-footer { border-top: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }

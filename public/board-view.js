@@ -99,6 +99,7 @@ function renderBoard(main, db, items, ctx) {
   const fit = boardCore.fitOf(v);
   const flow = boardCore.flowOf(v);
   const masonry = picture !== 'off' && (fit === 'original' || fit === 'capped') && flow === 'masonry';
+  const density = gridDensity(db);
   const fields = boardCardFields(db);
   if (picksState.dbId !== db.id) Object.assign(picksState, { dbId: db.id, ids: [], full: false });
   const known = new Set((everyone ?? items).map((it) => it.id));
@@ -144,6 +145,12 @@ function renderBoard(main, db, items, ctx) {
     if (got.refuse === 'no-field') return toast(`${db.name} has no picture field for covers.`, false, { label: 'Add a Photo field', run: () => addPhotoField(it, got.file) }, { kind: 'info' });
     labeledEditorFor(got.field, it, db, () => reload(), { compact: true }).dropFiles([got.file]);
   };
+  const fieldsEl = (it, mode) => {
+    const shown = boardCore.cardFields(fields, mode);
+    if (!shown.length) return null;
+    return el('dl', { class: mode === 'compact' ? 'tile-fields is-chips' : 'tile-fields' }, ...shown.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
+      el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, edited, { compact: true })))));
+  };
   const tileEl = (node, path) => {
     const it = node.row.item;
     const file = picture === 'off' ? null : boardCore.coverOf(db, it);
@@ -160,8 +167,7 @@ function renderBoard(main, db, items, ctx) {
             el('input', { type: 'checkbox', 'aria-label': `Pick ${label} to compare`, onchange: () => pickCard(it.id) })),
           el('span', { class: 'tile-id' }, `#${it.publicId}`),
           el('a', { class: 'tile-title', href: `#/entity/${it.id}`, draggable: 'false', tabindex: '-1' }, label)),
-        fields.length ? el('dl', { class: 'tile-fields' }, ...fields.map((f) => el('div', { class: 'tile-field', dataset: { field: f.name } },
-          el('dt', {}, f.name), el('dd', {}, labeledEditorFor(f, it, db, edited, { compact: true }))))) : null));
+        fieldsEl(it, density)));
     card.wvPath = path;
     card.wvItem = node;
     if (masonry) masonryWatch(card);
@@ -277,8 +283,18 @@ function renderBoard(main, db, items, ctx) {
   const picks = el('span', { class: 'board-picks' });
   const footer = el('div', { class: 'list-footer board-footer', role: 'status', 'aria-live': 'polite' },
     el('span', {}, listCore.footerText({ shown: arranged.shown, all, done: s.completedBy ? arranged.done : null, term: db.term })), hint, picks);
-  const wrap = el('div', { class: 'board-wrap', dataset: { layout: 'board', density: gridDensity(db) } }, board, footer);
-  wrap.wvSetDensity = (mode) => { wrap.dataset.density = mode; saveGridDensity(db, mode); };
+  const wrap = el('div', { class: 'board-wrap', dataset: { layout: 'board', density } }, board, footer);
+  wrap.wvSetDensity = (mode) => {
+    wrap.dataset.density = mode;
+    saveGridDensity(db, mode);
+    for (const card of board.querySelectorAll('.tile[data-eid]')) {
+      const fresh = fieldsEl(card.wvItem?.row?.item, mode);
+      const was = card.querySelector('.tile-fields');
+      if (was && fresh) was.replaceWith(fresh);
+      else if (was) was.remove();
+      else if (fresh) card.querySelector('.tile-body').append(fresh);
+    }
+  };
   wrap.wvRefresh = () => reload();
   wrap.wvSaved = async (written) => { if (known.has(written.id)) await reload(); };
   main.append(wrap);

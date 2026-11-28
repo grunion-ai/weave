@@ -1,0 +1,1 @@
+- A Compact board card now shows the record name and the first three card fields as chips on one wrapped row, so Compact is a short kanban card again instead of every field at a tighter padding; Comfortable and Spacious still list every field, and switching density redraws the cards in place (Issue #1930).
