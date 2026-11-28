@@ -374,6 +374,19 @@ test('handbook: no guide names the architect role "admin" except the rename note
   assert.deepEqual(hits, [], 'a guide line says admin where the role is architect (Feature #255)');
 });
 
+test('oidc: a provider that names itself with a trailing slash, as Auth0 does, passes the probe and signs a person in (GitHub #1046)', async () => {
+  const s = await serve();
+  try {
+    s.idp.tamper('slash');
+    const probe = await createOidc({ issuer: s.idp.issuer, clientId: s.idp.clientId, clientSecret: s.idp.clientSecret }).probe();
+    assert.deepEqual([probe.ok, probe.code], [true, 'invalid_grant'], probe.detail);
+    const { res, cookie } = await s.signIn(KYLE);
+    assert.equal(res.status, 302);
+    const me = await (await s.call('GET', '/api/auth/me', { cookie })).json();
+    assert.deepEqual([me.account.name, me.account.identities[0].issuer], ['kyle', s.idp.issuer], 'the identity keeps the configured issuer');
+  } finally { s.stop(); }
+});
+
 test('routes: a token that fails verification never becomes a session', async () => {
   const s = await serve();
   try {

@@ -28,6 +28,7 @@ export function oidcFromEnv(env = process.env) {
 }
 
 const refuse = (message) => new WeaveError(message, 'unauthorized');
+const sameIssuer = (named, issuer) => typeof named === 'string' && named.replace(/\/+$/, '') === issuer.replace(/\/+$/, '');
 const decodePart = (part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
 
 export function createOidc({ issuer, clientId, clientSecret = null, name = null, fetch = globalThis.fetch } = {}) {
@@ -45,7 +46,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
   const discover = async () => {
     if (discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.doc;
     const doc = await getJson(`${issuer}/.well-known/openid-configuration`);
-    if (doc.issuer !== issuer) throw refuse(`The identity provider names itself ${doc.issuer}, not ${issuer} (check WEAVE_OIDC_ISSUER)`);
+    if (!sameIssuer(doc.issuer, issuer)) throw refuse(`The identity provider names itself ${doc.issuer}, not ${issuer} (check WEAVE_OIDC_ISSUER)`);
     for (const k of ['authorization_endpoint', 'token_endpoint', 'jwks_uri']) if (!doc[k]) throw refuse(`The identity provider's discovery document has no ${k}`);
     discovered = { at: Date.now(), doc };
     return doc;
@@ -70,7 +71,7 @@ export function createOidc({ issuer, clientId, clientSecret = null, name = null,
     const ok = await subtle.verify(alg.verify, key, Buffer.from(parts[2], 'base64url'), Buffer.from(`${parts[0]}.${parts[1]}`));
     if (!ok) throw refuse('The id token\'s signature does not verify');
     const now = Math.floor(Date.now() / 1000);
-    if (claims.iss !== issuer) throw refuse('The id token was issued by someone else');
+    if (!sameIssuer(claims.iss, issuer)) throw refuse('The id token was issued by someone else');
     if (![].concat(claims.aud).includes(clientId)) throw refuse('The id token was issued to another client');
     if (Array.isArray(claims.aud) && claims.aud.length > 1 && claims.azp !== clientId) throw refuse('The id token was issued to another client');
     if (!(Number(claims.exp) + SKEW_S > now)) throw refuse('The id token has expired');

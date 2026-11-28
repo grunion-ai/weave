@@ -1,0 +1,1 @@
+- Sign-in through a provider that names its issuer with a trailing slash, as Auth0 does, no longer fails with `discovery_failed`: the discovery document's issuer and the id token's `iss` now match `WEAVE_OIDC_ISSUER` with or without the slash (GitHub #1046).

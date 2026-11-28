@@ -49,7 +49,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
     if (url.pathname === '/.well-known/openid-configuration') {
       seen.discovery += 1;
       return json(200, {
-        issuer,
+        issuer: tamper === 'slash' ? `${issuer}/` : issuer,
         authorization_endpoint: `${issuer}/oauth/authorize`,
         token_endpoint: `${issuer}/oauth/token`,
         userinfo_endpoint: `${issuer}/oauth/userinfo`,
@@ -196,7 +196,7 @@ export async function startIdp({ clientId = 'weave-client', clientSecret = 's3cr
       if (!refreshing && challenge !== grant.challenge) return json(400, { error: 'invalid_grant', error_description: 'PKCE verifier mismatch' });
       const now = Math.floor(Date.now() / 1000);
       const payload = {
-        iss: tamper === 'iss' ? 'https://someone-else.example' : issuer,
+        iss: tamper === 'iss' ? 'https://someone-else.example' : tamper === 'slash' ? `${issuer}/` : issuer,
         aud: tamper === 'aud' ? 'another-client' : clientId,
         sub: grant.claims.sub,
         nonce: tamper === 'nonce' ? 'not-the-nonce' : grant.nonce,
